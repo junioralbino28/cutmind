@@ -60,7 +60,10 @@ def main() -> int:
     creationflags = 0
     start_new_session = os.name != "nt"
     if os.name == "nt":
-        creationflags = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+        # Console escondido, herdado pelo ffprobe/ffmpeg que o servidor chama.
+        # Com DETACHED_PROCESS o CREATE_NO_WINDOW é ignorado e cada chamada abre
+        # uma janela de terminal nova.
+        creationflags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
 
     with stdout_path.open("ab") as stdout, stderr_path.open("ab") as stderr:
         process = subprocess.Popen(
