@@ -13,12 +13,14 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 SERVER = HERE / "preview_server.py"
+sys.path.insert(0, str(HERE))
+from preview_server import add_network_args, ensure_token, is_local_bind, phone_urls  # noqa: E402
 
 
-def port_available(port: int) -> bool:
+def port_available(port: int, host: str = "127.0.0.1") -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         try:
-            sock.bind(("127.0.0.1", port))
+            sock.bind((host, port))
         except OSError:
             return False
     return True
@@ -30,6 +32,7 @@ def main() -> int:
     )
     parser.add_argument("--root", type=Path, required=True, help="session edit dir")
     parser.add_argument("--port", type=int, default=4820)
+    add_network_args(parser)
     args = parser.parse_args()
 
     root = args.root.resolve()
@@ -39,8 +42,12 @@ def main() -> int:
         parser.error("port must be between 1 and 65535")
     if not SERVER.is_file():
         parser.error(f"preview server not found: {SERVER}")
-    if not port_available(args.port):
+    if not port_available(args.port) or not port_available(args.port, args.host):
         parser.error(f"port {args.port} is already in use")
+
+    # Antes de ligar o servidor: ele lê este mesmo código do projeto. Criado
+    # depois, os dois podiam gravar códigos diferentes e o link impresso não entrava.
+    token = None if is_local_bind(args.host) else ensure_token(root)
 
     stdout_path = root / "preview-server.log"
     stderr_path = root / "preview-server.err.log"
@@ -53,7 +60,15 @@ def main() -> int:
         str(root),
         "--port",
         str(args.port),
+        "--host",
+        args.host,
+        "--max-upload-gb",
+        str(args.max_upload_gb),
     ]
+    for name in args.allow_host:
+        command += ["--allow-host", name]
+    if args.upload_dir:
+        command += ["--upload-dir", str(args.upload_dir.resolve())]
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
 
@@ -82,6 +97,10 @@ def main() -> int:
         f"CENNO Edit preview started (PID {process.pid}) -> "
         f"http://127.0.0.1:{args.port}"
     )
+    if token:
+        print("Aberto para a rede: só entra quem tem o link com o código.")
+        for u in phone_urls(args.host, args.port, token):
+            print(f"  celular ({u['label']}): {u['url']}")
     print(f"logs: {stdout_path} | {stderr_path}")
     return 0
 

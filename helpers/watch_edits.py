@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Emit one event per save from the preview UI.
 
-Two files, both written by the UI and neither able to reach the chat on its own:
+Three files, all written by the UI and none able to reach the chat on its own:
   - preview_edits.json — timeline adjustments and correction markers
   - preview_style.json — the Fase 1 → Fase 2 gate: editing style, caption style,
     edit elements
+  - preview_upload.json — vídeos que o usuário mandou pelo botão Enviar (o
+    servidor grava o arquivo na pasta dos vídeos e lista aqui)
 
 Run this under the Monitor tool so every save notifies the session automatically:
 
@@ -98,6 +100,22 @@ def style_digest(p: Path) -> str:
     return "\n".join(out)
 
 
+def upload_digest(p: Path) -> str:
+    """Vídeos que chegaram pelo botão Enviar do editor (celular ou PC)."""
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        return f"preview_upload.json ilegível ({e.__class__.__name__}) — confira a pasta dos vídeos"
+    files = d.get("files") or []
+    out = [f"VÍDEO ENVIADO PELO EDITOR ({d.get('savedAt', '')}) — "
+           f"{len(files)} arquivo(s) em {d.get('folder', '')}:"]
+    for f in files:
+        out.append(f"  · {f.get('file')} ({(f.get('size') or 0) / 1_000_000:.0f} MB)")
+    out.append("  É material novo desta edição: sem corte ainda, é a fonte — siga a Fase 1. "
+               "Com corte pronto, pergunte o que fazer com ele. Depois apague preview_upload.json.")
+    return "\n".join(out)
+
+
 def fmt(t: float) -> str:
     m, s = divmod(max(0.0, float(t)), 60)
     return f"{int(m)}:{s:05.2f}"
@@ -108,6 +126,7 @@ def main() -> int:
     watched = {
         root / "preview_edits.json": digest,
         root / "preview_style.json": style_digest,
+        root / "preview_upload.json": upload_digest,
     }
     # a file already sitting there at startup means it is pending — say so once
     last: dict[Path, float | None] = {}

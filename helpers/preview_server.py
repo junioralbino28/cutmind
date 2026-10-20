@@ -13,30 +13,54 @@ per-session it is fed by data only:
 
 Routes:
   /                     the app (from <skill>/assets/preview/)
+  /celular              the phone editor (assets/preview/celular.html)
+  /c?t=<código>         entrada do celular pelo link/QR: grava o código num
+                        cookie e manda para /celular
   /assets/<file>        app files (css/js/logo)
   /media/<path>         files under --root (the edit dir) — Range supported
   /gen/waveform.json    min/max audio peaks of cut.mp4 (auto-(re)generated)
   /gen/thumbs/<n>.jpg   timeline filmstrip thumbs (auto-generated, 1 per 2s)
+  /gen/frame?src=&t=    um quadro do vídeo de ORIGEM (edl.json "sources") no
+                        tempo t — a prévia da alça ao aparar
   /api/state    GET     state.json + mtimes (UI polls this to hot-reload)
+  /api/celular  GET     só no computador: links + QR code para abrir no celular
   /api/save     POST    body → <edit>/preview_edits.json (atomic), or
                         <edit>/preview_style.json when body.type=="style-setup"
+  /api/upload   POST    ?name=<arquivo>, corpo = o vídeo → pasta dos vídeos
+                        (pai do <edit>) + aviso em <edit>/preview_upload.json
+
+Quem entra: por padrão o servidor ouve só em 127.0.0.1 e atende só este
+computador (e o celular ligado por `adb reverse`, que chega como 127.0.0.1).
+Com --host 0.0.0.0 ele abre para a rede, e todo pedido que não venha do
+próprio computador precisa do código (cookie gravado pela entrada /c). Em
+qualquer caso o cabeçalho Host tem de ser IP, localhost ou um nome liberado
+com --allow-host: é o que barra um site de fora usando DNS rebinding.
 
 Usage:
     uv run helpers/preview_server.py --root <videos_dir>/edit [--port 4820]
+        [--host 0.0.0.0] [--allow-host .ts.net] [--max-upload-gb 8]
 """
 from __future__ import annotations
 
 import argparse
 import array
+import hmac
+import io
+import ipaddress
 import json
+import os
 import re
+import secrets
 import shutil
+import socket
 import subprocess
 import sys
 import threading
 import time
+from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs
 
 APP_DIR = Path(__file__).resolve().parent.parent / "assets" / "preview"
 PEAKS_PER_SEC = 40
@@ -48,6 +72,8 @@ MIME = {
     ".css": "text/css; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
     ".json": "application/json; charset=utf-8",
+    ".webmanifest": "application/manifest+json; charset=utf-8",
+    ".svg": "image/svg+xml",
     ".png": "image/png",
     ".jpg": "image/jpeg",
     ".webp": "image/webp",
@@ -57,8 +83,110 @@ MIME = {
     ".srt": "text/plain; charset=utf-8",
 }
 
+# ---- acesso pela rede (celular) ----
+LOCAL_CLIENTS = {"127.0.0.1", "::1"}
+TOKEN_COOKIE = "cenno_t"
+TOKEN_MAX_AGE = 30 * 24 * 3600  # 30 dias: o atalho na tela inicial continua entrando
+MAX_JSON_BYTES = 2_000_000
+UPLOAD_EXTS = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".3gp", ".mts", ".m2ts"}
+DISK_MARGIN = 512 * 1024 * 1024  # nunca encher o disco: sobra meio GB
+WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
+                    *(f"LPT{i}" for i in range(1, 10))}
+
 _thumb_lock = threading.Lock()
 _thumb_state: dict[str, float] = {}  # video path -> mtime generated
+_upload_lock = threading.Lock()
+_frame_slots = threading.BoundedSemaphore(2)  # ffmpeg de quadro avulso ao mesmo tempo
+
+
+def ensure_token(root: Path) -> str:
+    """O código que o celular precisa ter quando o servidor abre para a rede.
+
+    Fica no projeto, não na memória: reiniciar o servidor não obriga ninguém a
+    escanear o QR de novo, e o atalho na tela inicial continua entrando.
+    """
+    p = root / ".preview_cache" / "celular-token"
+    try:
+        tok = p.read_text(encoding="utf-8").strip()
+        if re.fullmatch(r"[A-Za-z0-9_-]{20,}", tok):
+            return tok
+    except OSError:
+        pass
+    tok = secrets.token_urlsafe(18)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(tok, encoding="utf-8")
+    if os.name != "nt":
+        os.chmod(p, 0o600)
+    return tok
+
+
+def is_local_bind(host: str) -> bool:
+    return host in ("127.0.0.1", "localhost", "::1")
+
+
+def phone_hosts(bind_host: str) -> list[tuple[str, str]]:
+    """Os endereços pelos quais o celular alcança este computador."""
+    if bind_host not in ("0.0.0.0", ""):
+        return [("Rede", bind_host)]
+    found: list[tuple[str, str]] = []
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("192.0.2.1", 9))  # só escolhe a rota de saída; nada é enviado
+            ip = s.getsockname()[0]
+        if not ip.startswith("127."):
+            found.append(("Wi-Fi de casa", ip))
+    except OSError:
+        pass
+    tailnet = ipaddress.ip_network("100.64.0.0/10")
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if ipaddress.ip_address(ip) in tailnet and all(ip != f[1] for f in found):
+                found.append(("Tailscale (fora de casa)", ip))
+    except OSError:
+        pass
+    return found
+
+
+def phone_urls(bind_host: str, port: int, token: str) -> list[dict[str, str]]:
+    return [{"label": label, "url": f"http://{ip}:{port}/c?t={token}"}
+            for label, ip in phone_hosts(bind_host)]
+
+
+def qr_svg(text: str) -> str | None:
+    """QR code em SVG. Sem o segno instalado, None: a tela mostra só o link."""
+    try:
+        import segno
+    except ImportError:
+        return None
+    buf = io.BytesIO()
+    segno.make(text, error="m").save(buf, kind="svg", scale=6, border=2,
+                                    dark="#0b0e13", light="#ffffff", xmldecl=False)
+    return buf.getvalue().decode("utf-8")
+
+
+def clean_upload_name(raw: str) -> str:
+    """Só o nome do arquivo, sem pasta e sem caractere que o Windows recusa."""
+    name = raw.replace("\\", "/").split("/")[-1]
+    name = re.sub(r'[\x00-\x1f<>:"|?*]', "_", name).strip(" .")
+    stem, dot, ext = name.rpartition(".")
+    if not dot:
+        stem, ext = name, ""
+    stem = stem.strip(" .")[:100] or "video"
+    if stem.upper() in WINDOWS_RESERVED:
+        stem = f"_{stem}"
+    return f"{stem}.{ext.lower()}" if ext else stem
+
+
+def unique_path(folder: Path, name: str) -> Path:
+    """Nunca sobrescreve: "video.mp4" ocupado vira "video (2).mp4"."""
+    stem, ext = Path(name).stem, Path(name).suffix
+    n = 1
+    while True:
+        cand = name if n == 1 else f"{stem} ({n}){ext}"
+        if not (folder / cand).exists() and not (folder / f".{cand}.parte").exists():
+            return folder / cand
+        n += 1
 
 
 def probe_duration(path: Path) -> float:
@@ -124,7 +252,86 @@ def gen_thumbs(video: Path, out_dir: Path) -> None:
 
 class Handler(BaseHTTPRequestHandler):
     root: Path  # set on the class by main()
+    token: str | None = None  # só existe quando o servidor abre para a rede
+    allow_hosts: tuple[str, ...] = ()
+    upload_dir: Path | None = None
+    max_upload: int = 8 * 1024 ** 3
+    bind_host: str = "127.0.0.1"
     protocol_version = "HTTP/1.1"
+    # Envio parado (celular saiu do Wi-Fi) não segura uma thread e um .parte para sempre.
+    timeout = 300
+
+    # ---- quem pode entrar ----
+    def _client_is_local(self) -> bool:
+        return self.client_address[0] in LOCAL_CLIENTS
+
+    def _host_ok(self) -> bool:
+        """Contra DNS rebinding: um site de fora que aponta um nome dele para este
+        computador chega com o NOME dele no Host. IP e localhost passam; nome só
+        se for liberado com --allow-host (".ts.net" do Tailscale, Codespaces)."""
+        host = (self.headers.get("Host") or "").strip().lower()
+        if not host:
+            return True
+        name = host[1:host.find("]")] if host.startswith("[") else host.split(":")[0]
+        try:
+            ipaddress.ip_address(name)
+            return True
+        except ValueError:
+            pass
+        if name == "localhost":
+            return True
+        for allowed in self.allow_hosts:
+            a = allowed.lower()
+            if (a.startswith(".") and (name.endswith(a) or name == a[1:])) or name == a:
+                return True
+        return False
+
+    def _cookie_token(self) -> str | None:
+        raw = self.headers.get("Cookie")
+        if not raw:
+            return None
+        try:
+            jar = SimpleCookie()
+            jar.load(raw)
+        except CookieError:
+            return None
+        m = jar.get(TOKEN_COOKIE)
+        return m.value if m else None
+
+    def _token_ok(self, value: str | None) -> bool:
+        return bool(self.token and value and hmac.compare_digest(value, self.token))
+
+    def _gate(self, path: str) -> bool:
+        """True = pode seguir. False = já respondeu com o erro."""
+        if not self._host_ok():
+            self._deny(403, "Endereço não permitido.", path)
+            return False
+        if self._client_is_local() or self._token_ok(self._cookie_token()) or path == "/c":
+            return True  # /c confere o código que vem no próprio link
+        self._deny(403, "Abra o editor pelo link ou pelo QR code que aparece no computador.", path)
+        return False
+
+    def _deny(self, code: int, msg: str, path: str) -> None:
+        sys.stderr.write(f"[{time.strftime('%H:%M:%S')}] negado {code} "
+                         f"{self.client_address[0]} {self.command} {path}\n")
+        self.close_connection = True  # um POST negado deixa o corpo sem ler
+        if path.startswith(("/api/", "/gen/", "/media/")):
+            body = json.dumps({"error": msg}, ensure_ascii=False).encode()
+            self._hdr(code, "application/json; charset=utf-8", len(body), {"Connection": "close"})
+        else:
+            body = ("<!doctype html><meta charset='utf-8'><meta name='viewport' "
+                    "content='width=device-width,initial-scale=1'><title>CENNO Edit</title>"
+                    "<body style='font:16px/1.5 system-ui,sans-serif;background:#0b0e13;"
+                    f"color:#e8ebf0;padding:32px'><p>{msg}</p></body>").encode()
+            self._hdr(code, "text/html; charset=utf-8", len(body), {"Connection": "close"})
+        self.wfile.write(body)
+
+    def _fail(self, code: int, msg: str) -> None:
+        """Erro num POST cujo corpo não foi lido: fecha a conexão depois."""
+        self.close_connection = True
+        body = json.dumps({"error": msg}, ensure_ascii=False).encode()
+        self._hdr(code, "application/json; charset=utf-8", len(body), {"Connection": "close"})
+        self.wfile.write(body)
 
     # ---- helpers ----
     def _hdr(self, code: int, ctype: str, length: int | None = None,
@@ -181,8 +388,11 @@ class Handler(BaseHTTPRequestHandler):
                 remaining -= len(chunk)
 
     def _safe(self, base: Path, rel: str) -> Path | None:
+        # Por partes do caminho, não pelo começo do texto: "edit-x" começa com
+        # "edit" e, comparado como texto, uma pasta irmã passava por dentro.
+        base = base.resolve()
         p = (base / rel.lstrip("/")).resolve()
-        return p if str(p).startswith(str(base.resolve())) else None
+        return p if p == base or p.is_relative_to(base) else None
 
     def _current_video(self) -> Path | None:
         state_p = self.root / "state.json"
@@ -197,9 +407,19 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- routes ----
     def do_GET(self) -> None:  # noqa: N802
-        path = self.path.split("?", 1)[0]
+        path, _, query = self.path.partition("?")
+        if not self._gate(path):
+            return
         if path in ("/", "/index.html"):
             self._send_file(APP_DIR / "index.html")
+        elif path == "/celular":
+            self._send_file(APP_DIR / "celular.html")
+        elif path == "/c":
+            self._enter(query)
+        elif path == "/api/celular":
+            self._celular_info()
+        elif path == "/gen/frame":
+            self._frame(query)
         elif path.startswith("/assets/"):
             p = self._safe(APP_DIR, path[len("/assets/"):])
             self._send_file(p) if p else self._json({"error": "bad path"}, 400)
@@ -216,13 +436,29 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": "unknown route"}, 404)
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path.split("?", 1)[0] != "/api/save":
-            self._json({"error": "unknown route"}, 404)
+        path, _, query = self.path.partition("?")
+        if not self._gate(path):
+            return
+        if path == "/api/upload":
+            self._upload(query)
+            return
+        if path != "/api/save":
+            self._fail(404, "unknown route")
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self._fail(400, "invalid Content-Length")
+            return
+        if length > MAX_JSON_BYTES:
+            self._fail(413, "ajuste grande demais")
+            return
+        try:
             body = json.loads(self.rfile.read(length) or b"{}")
         except (ValueError, json.JSONDecodeError):
+            self._json({"error": "invalid JSON"}, 400)
+            return
+        if not isinstance(body, dict):
             self._json({"error": "invalid JSON"}, 400)
             return
         body["savedAt"] = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -236,6 +472,162 @@ class Handler(BaseHTTPRequestHandler):
         tmp.write_text(json.dumps(body, ensure_ascii=False, indent=2))
         tmp.replace(out)
         self._json({"ok": True, "file": str(out)})
+
+    # ---- celular ----
+    def _enter(self, query: str) -> None:
+        """Entrada pelo link/QR: troca o código da URL por um cookie e tira o
+        código da barra de endereço. Lax, não Strict: com Strict o cookie não
+        vai no primeiro carregamento quando o link é aberto de outro app."""
+        t = (parse_qs(query).get("t") or [""])[0]
+        extra = {"Location": "/celular"}
+        if self._token_ok(t):
+            extra["Set-Cookie"] = (f"{TOKEN_COOKIE}={self.token}; Path=/; Max-Age={TOKEN_MAX_AGE}; "
+                                   "HttpOnly; SameSite=Lax")
+        elif not self._client_is_local():
+            self._deny(403, "Link vencido ou incompleto. Abra de novo pelo QR code do computador.", "/c")
+            return
+        self._hdr(303, "text/plain; charset=utf-8", 0, extra)
+
+    def _celular_info(self) -> None:
+        # Só o próprio computador vê os links: eles carregam o código.
+        if not self._client_is_local():
+            self._deny(403, "Só no computador.", "/api/celular")
+            return
+        if not self.token:
+            self._json({"enabled": False})
+            return
+        urls = phone_urls(self.bind_host, self.server.server_address[1], self.token)
+        for u in urls:
+            u["qr"] = qr_svg(u["url"])
+        self._json({"enabled": True, "urls": urls})
+
+    def _source_path(self, name: str) -> Path | None:
+        """Um vídeo de origem pelo NOME que o edl.json dá a ele — nunca por um
+        caminho vindo do pedido."""
+        state: dict = {}
+        try:
+            state = json.loads((self.root / "state.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            pass
+        edl_p = self._safe(self.root, str(state.get("edl") or "edl.json"))
+        if not edl_p:
+            return None
+        try:
+            sources = json.loads(edl_p.read_text(encoding="utf-8")).get("sources") or {}
+        except (OSError, json.JSONDecodeError, AttributeError):
+            return None
+        rel = sources.get(name) if isinstance(sources, dict) else None
+        if not rel:
+            return None
+        p = Path(rel)
+        p = (p if p.is_absolute() else self.root / p).resolve()
+        return p if p.is_file() else None
+
+    def _frame(self, query: str) -> None:
+        q = parse_qs(query)
+        try:
+            t = max(0.0, float((q.get("t") or ["0"])[0]))
+            h = min(1080, max(120, int(float((q.get("h") or ["480"])[0]))))
+        except ValueError:
+            self._json({"error": "t ou h inválido"}, 400)
+            return
+        src = (q.get("src") or [""])[0]
+        path = self._source_path(src)
+        if not path:
+            self._json({"error": f"fonte desconhecida: {src}"}, 404)
+            return
+        if not _frame_slots.acquire(timeout=5):
+            self._json({"error": "ocupado, tente de novo"}, 503)
+            return
+        try:
+            jpg = subprocess.run(
+                ["ffmpeg", "-v", "error", "-ss", f"{t:.3f}", "-i", str(path),
+                 "-frames:v", "1", "-vf", f"scale=-2:{h}", "-q:v", "5",
+                 "-f", "image2pipe", "-vcodec", "mjpeg", "-"],
+                capture_output=True, timeout=15,
+            ).stdout
+        except subprocess.TimeoutExpired:
+            jpg = b""
+        finally:
+            _frame_slots.release()
+        if not jpg:
+            self._json({"error": "sem quadro nesse tempo"}, 404)
+            return
+        self._hdr(200, "image/jpeg", len(jpg))
+        self.wfile.write(jpg)
+
+    def _upload(self, query: str) -> None:
+        """O vídeo vai, em pedaços, para a pasta dos vídeos — nunca para a memória."""
+        if self.upload_dir is None:
+            self._fail(404, "envio desligado")
+            return
+        raw_len = self.headers.get("Content-Length")
+        if raw_len is None:
+            self._fail(411, "Envio sem tamanho (Content-Length).")
+            return
+        try:
+            length = int(raw_len)
+        except ValueError:
+            self._fail(400, "Tamanho inválido.")
+            return
+        if length <= 0:
+            self._fail(400, "Arquivo vazio.")
+            return
+        if length > self.max_upload:
+            self._fail(413, f"Vídeo maior que o limite de {self.max_upload / 1024 ** 3:.1f} GB.")
+            return
+        name = clean_upload_name((parse_qs(query).get("name") or [""])[0])
+        if Path(name).suffix.lower() not in UPLOAD_EXTS:
+            self._fail(415, "Só vídeo: mp4, mov, m4v, webm, mkv, avi, 3gp, mts.")
+            return
+        folder = self.upload_dir
+        try:
+            if length > shutil.disk_usage(folder).free - DISK_MARGIN:
+                self._fail(507, "Sem espaço no computador para esse vídeo.")
+                return
+        except OSError:
+            pass
+        with _upload_lock:
+            final = unique_path(folder, name)
+            part = folder / f".{final.name}.parte"
+            part.touch(exist_ok=False)  # reserva o nome antes de soltar a trava
+        try:
+            with open(part, "wb") as f:
+                remaining = length
+                while remaining > 0:
+                    chunk = self.rfile.read(min(1 << 20, remaining))
+                    if not chunk:
+                        raise ConnectionError("o envio parou no meio")
+                    f.write(chunk)
+                    remaining -= len(chunk)
+            os.replace(part, final)
+        except (OSError, ConnectionError) as e:
+            part.unlink(missing_ok=True)
+            sys.stderr.write(f"[{time.strftime('%H:%M:%S')}] envio de {name} falhou: {e}\n")
+            self.close_connection = True
+            try:
+                self._json({"error": "O envio parou no meio. Tente de novo."}, 400)
+            except OSError:
+                pass
+            return
+        # O aviso para o agente: lista, porque dois envios seguidos não podem
+        # virar um só. A skill lê, cuida e apaga — como os outros preview_*.json.
+        signal = self.root / "preview_upload.json"
+        item = {"file": final.name, "path": str(final), "size": length,
+                "savedAt": time.strftime("%Y-%m-%d %H:%M:%S")}
+        with _upload_lock:
+            try:
+                data = json.loads(signal.read_text(encoding="utf-8"))
+                files = data.get("files") if isinstance(data, dict) else None
+            except (OSError, json.JSONDecodeError):
+                files = None
+            files = (files if isinstance(files, list) else []) + [item]
+            tmp = signal.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"type": "upload", "folder": str(folder), "files": files,
+                                       "savedAt": item["savedAt"]}, ensure_ascii=False, indent=2),
+                           encoding="utf-8")
+            tmp.replace(signal)
+        self._json({"ok": True, "file": final.name, "size": length})
 
     # ---- dynamic bits ----
     def _state(self) -> None:
@@ -375,10 +767,25 @@ def _check_access(root: Path) -> None:
     )
 
 
+def add_network_args(ap: argparse.ArgumentParser) -> None:
+    """As opções de rede, iguais aqui e no start_preview.py."""
+    ap.add_argument("--host", default="127.0.0.1",
+                    help="127.0.0.1 = só este computador (padrão); 0.0.0.0 = abre para a "
+                         "rede, e o celular entra pelo link com código")
+    ap.add_argument("--allow-host", action="append", default=[], metavar="NOME",
+                    help="nome liberado no cabeçalho Host além de IP e localhost; "
+                         "começando com ponto vale o sufixo (ex.: .ts.net)")
+    ap.add_argument("--upload-dir", type=Path, default=None,
+                    help="para onde vão os vídeos enviados pelo editor (padrão: a pasta "
+                         "dos vídeos, pai do --root)")
+    ap.add_argument("--max-upload-gb", type=float, default=8.0)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="CENNO Edit preview interface server")
     ap.add_argument("--root", type=Path, required=True, help="the session <edit> dir")
     ap.add_argument("--port", type=int, default=4820)
+    add_network_args(ap)
     args = ap.parse_args()
 
     root = args.root.resolve()
@@ -387,10 +794,23 @@ def main() -> None:
     _check_access(root)
     if not (APP_DIR / "index.html").exists():
         raise SystemExit(f"app not found at {APP_DIR}")
+    upload_dir = (args.upload_dir or root.parent).resolve()
+    if not upload_dir.is_dir():
+        raise SystemExit(f"pasta de envio não existe: {upload_dir}")
 
     Handler.root = root
-    srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    Handler.allow_hosts = tuple(args.allow_host)
+    Handler.upload_dir = upload_dir
+    Handler.max_upload = int(args.max_upload_gb * 1024 ** 3)
+    Handler.bind_host = args.host
+    if not is_local_bind(args.host):
+        Handler.token = ensure_token(root)
+    srv = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"CENNO Edit preview -> http://127.0.0.1:{args.port}  (root: {root})", flush=True)
+    if Handler.token:
+        print("Aberto para a rede: só entra quem tem o link com o código.", flush=True)
+        for u in phone_urls(args.host, args.port, Handler.token):
+            print(f"  celular ({u['label']}): {u['url']}", flush=True)
     srv.serve_forever()
 
 
