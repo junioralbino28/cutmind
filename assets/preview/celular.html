@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#08090c">
+<title>CENNO Edit</title>
+<link rel="icon" href="/assets/cenno-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- As mesmas faces do editor de PC: as amostras de legenda e headline usam
+     exatamente estas (Poppins 900 itálica, Playfair 900 itálica, Lora, Baskerville). -->
+<link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,900&family=Playfair+Display:ital,wght@1,900&family=Lora:ital,wght@0,400;0,600;1,400;1,600&family=Libre+Baskerville:wght@700&family=Inter:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/celular.css">
+</head>
+<body>
+<div class="app" id="app">
+
+  <header class="topbar">
+    <div class="brand"><img src="/assets/cenno-logo-white.png" alt="CENNO Edit"></div>
+    <div class="proj">
+      <div class="proj-name" id="projectName">CENNO Edit</div>
+      <div class="proj-sub" id="projectSub">carregando…</div>
+    </div>
+    <span class="pill sent hidden" id="sentPill">enviado</span>
+    <button class="tb-btn primary hidden" id="btnSave" type="button">Salvar <b id="dirtyCount">0</b></button>
+    <!-- no canto de cima, onde o CapCut e o Edits põem o Exportar -->
+    <button class="tb-btn ghost hidden" id="btnDownload" type="button"><span class="tb-ico" id="downloadIco"></span>Baixar</button>
+  </header>
+
+  <section class="stage" id="stage">
+    <!-- .comp: a mesma composição dos cartões do Estilo (faixa, janela do vídeo, headline, legenda) -->
+    <div class="player comp" id="player">
+      <div class="win"><video class="media" id="video" playsinline webkit-playsinline preload="auto"></video></div>
+      <div class="band" id="ovBand"></div>
+      <div class="hl" id="ovHl"></div>
+      <div class="cap" id="ovCap"></div>
+      <button class="tap-play" id="tapPlay" type="button" aria-label="Reproduzir ou pausar"></button>
+    </div>
+  </section>
+
+  <section class="transport" id="transport">
+    <button class="t-play" id="btnPlay" type="button" aria-label="Reproduzir"></button>
+    <div class="tc"><span id="tNow">0:00.00</span><span class="tc-sep">/</span><span id="tTotal">0:00.00</span></div>
+    <div class="t-spacer"></div>
+    <button class="t-mute" id="btnMute" type="button" aria-label="Som"></button>
+  </section>
+
+  <section class="timeline" id="timeline">
+    <canvas class="ruler" id="ruler"></canvas>
+    <div class="tracks" id="tracks"></div>
+    <div class="needle" id="needle"></div>
+    <div class="trim-tip hidden" id="trimTip"></div>
+  </section>
+
+  <nav class="toolbar" id="toolbar" aria-label="Ferramentas"></nav>
+  <nav class="toolbar ctx hidden" id="ctxbar" aria-label="Ferramentas da tomada"></nav>
+
+  <section class="empty hidden" id="empty">
+    <div class="empty-card">
+      <div class="empty-ico" id="emptyIco"></div>
+      <h1>Envie um vídeo</h1>
+      <p>Escolha da galeria do celular. O corte começa assim que ele chegar.</p>
+      <button class="tb-btn primary big" id="btnEmptyUpload" type="button">Escolher vídeo</button>
+      <p class="empty-alt">Ou peça no Claude ou no ChatGPT para editar um vídeo que já está no computador.</p>
+    </div>
+  </section>
+</div>
+
+<!-- painel que sobe de baixo: Estilo -->
+<section class="sheet" id="sheet" aria-hidden="true">
+  <div class="sheet-grip"></div>
+  <div class="sheet-tabs" id="sheetTabs" role="tablist"></div>
+  <div class="sheet-body" id="sheetBody"></div>
+  <footer class="sheet-foot">
+    <div class="sheet-sum" id="sheetSum"></div>
+    <button class="tb-btn ghost" id="sheetClose" type="button">Fechar</button>
+    <button class="tb-btn primary" id="sheetApply" type="button">Aplicar</button>
+  </footer>
+</section>
+
+<!-- painel pequeno: o que mudar no trecho marcado -->
+<section class="sheet small" id="noteSheet" aria-hidden="true">
+  <div class="sheet-grip"></div>
+  <div class="note-head"><b>O que mudar aqui?</b><span id="noteRange"></span></div>
+  <textarea id="noteText" rows="3" placeholder="Ex.: tira essa pausa, troca a imagem, a legenda errou a palavra…"></textarea>
+  <footer class="sheet-foot">
+    <button class="tb-btn ghost danger hidden" id="noteDelete" type="button">Excluir</button>
+    <div class="t-spacer"></div>
+    <button class="tb-btn ghost" id="noteCancel" type="button">Cancelar</button>
+    <button class="tb-btn primary" id="noteOk" type="button">Guardar</button>
+  </footer>
+</section>
+
+<input type="file" id="fileInput" accept="video/*" hidden>
+<div class="toast hidden" id="toast" role="status"></div>
+<script src="/assets/celular.js"></script>
+</body>
+</html>
