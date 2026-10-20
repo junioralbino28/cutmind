@@ -324,8 +324,9 @@ button { font-family: inherit; cursor: pointer; }
 .sheet-grip { width: 36px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.2); margin: 8px auto 2px; flex: none; }
 
 /* com o Estilo aberto a prévia fica em cima, ao vivo, e o resto dá lugar ao painel */
-.app.styling .transport, .app.styling .timeline, .app.styling .toolbar { display: none !important; }
-.app.styling .stage { flex: none; height: calc(100dvh - var(--sheet-h) - 56px - var(--safe-t)); }
+/* o topo também sai: no navegador do celular a barra de endereço já come ~70px */
+.app.styling .topbar, .app.styling .transport, .app.styling .timeline, .app.styling .toolbar { display: none !important; }
+.app.styling .stage { flex: none; height: calc(100dvh - var(--sheet-h)); padding-top: calc(10px + var(--safe-t)); }
 
 .sheet-tabs { display: flex; gap: 20px; padding: 2px 18px 0; overflow-x: auto; scrollbar-width: none; flex: none; border-bottom: 1px solid var(--stroke); }
 .sheet-tabs::-webkit-scrollbar { display: none; }
@@ -352,7 +353,10 @@ button { font-family: inherit; cursor: pointer; }
    Edição = quadro inteiro (3 por linha). Legenda e headline = recorte em volta do
    texto, 2 por linha: a 86 px de largura a legenda saía com 4,7 px, ilegível. */
 .cards { display: grid; gap: 12px 10px; padding: 2px 14px 8px; }
-.cards.tall { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* os de quadro inteiro são medidos pela ALTURA que sobra no painel: no celular real
+   (barra do navegador) a largura de 1/3 dava cartões mais altos que o painel */
+.cards.tall { display: flex; justify-content: center; gap: 14px; }
+.cards.tall .card { flex: none; }
 .cards.wide { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .card { min-width: 0; border: 0; background: transparent; color: inherit; text-align: center; }
 .face {
@@ -363,7 +367,7 @@ button { font-family: inherit; cursor: pointer; }
   background: #0a0a0c;
   border: 1.5px solid var(--stroke);
 }
-.cards.tall .face { aspect-ratio: 9 / 16; }
+.cards.tall .face { aspect-ratio: 9 / 16; width: auto; height: clamp(100px, calc(var(--sheet-h) - 190px), 230px); } /* 190 = alça + abas + dica + nome + rodapé */
 .cards.wide .face { aspect-ratio: 1.6; }
 .card.on .face { border: 2px solid var(--orange); }
 .face .frame { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }

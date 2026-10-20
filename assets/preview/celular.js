@@ -543,8 +543,14 @@ async function loadBandPoster() {
       v.addEventListener('error', no, { once: true });
       setTimeout(no, 5000);
     });
-    v.currentTime = Math.min(1, (v.duration || 2) / 2);
-    await new Promise((ok) => { v.addEventListener('seeked', ok, { once: true }); setTimeout(ok, 1500); });
+    // no meio do clipe a arte já entrou; no celular o "seeked" chega antes do quadro
+    // estar decodificado, então espera também um quadro pintado (senão sai preto)
+    v.currentTime = Math.min(2.5, (v.duration || 2) / 2);
+    await new Promise((ok) => { v.addEventListener('seeked', ok, { once: true }); setTimeout(ok, 4000); });
+    if (typeof v.requestVideoFrameCallback === 'function') {
+      await new Promise((ok) => { v.requestVideoFrameCallback(() => ok()); v.play().catch(ok); setTimeout(ok, 1500); });
+      v.pause();
+    }
     const W = 432, H = 300; // 1080x750
     const cv = document.createElement('canvas');
     cv.width = W; cv.height = H;
@@ -1456,8 +1462,8 @@ function styleHint() {
   switch (S.styleTab) {
     case 'edit':
       return S.style.edit === 'limpa'
-        ? 'Sem imagem de apoio: você aparece na tela inteira o vídeo todo.'
-        : 'A prévia mostra um trecho com imagem de apoio. No resto do vídeo você aparece na tela inteira.';
+        ? 'Sem imagem de apoio: tela inteira o vídeo todo.'
+        : 'No resto do vídeo, você aparece na tela inteira.';
     case 'captions': return 'Toque num estilo e veja em cima, no seu vídeo e no tamanho real.';
     case 'headline':
       return hookText() !== HEADLINE_TEXT
