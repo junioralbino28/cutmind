@@ -341,6 +341,10 @@ def main() -> None:
                     help="substituir mesmo que o destino seja um clone git")
     ap.add_argument("--no-remotion", action="store_true",
                     help="não instalar a skill do Remotion (só a Fase 1)")
+    ap.add_argument("--source", default=None,
+                    help="instalar a partir de uma pasta local (um clone), sem baixar")
+    ap.add_argument("--skip-deps", action="store_true",
+                    help="não rodar o uv sync (usado nos testes)")
     args = ap.parse_args()
 
     log("cenno-edit — instalação")
@@ -355,7 +359,8 @@ def main() -> None:
     # depois dela todo destino tem um SKILL.md e a pergunta não existe mais.
     ja_existia = any((d / SKILL_NAME / 'SKILL.md').exists() for _, d in targets)
     with tempfile.TemporaryDirectory() as tmp:
-        src = fetch_repo(REPO, args.ref, Path(tmp), "cenno-edit")
+        src = (Path(args.source).resolve() if args.source
+               else fetch_repo(REPO, args.ref, Path(tmp), SKILL_NAME))
         if src is None:
             sys.exit(1)
         # One agent failing must not cost the others. A locked directory under
@@ -400,7 +405,10 @@ def main() -> None:
     # `if dests else False` claimed uv was missing when there was simply nothing
     # to sync — which is what a run that skipped every destination looks like.
     # Fall back to asking the system.
-    have_uv = all(run_uv_sync(d) for d in dests) if dests else bool(shutil.which("uv"))
+    if args.skip_deps:
+        have_uv = bool(shutil.which("uv"))
+    else:
+        have_uv = all(run_uv_sync(d) for d in dests) if dests else bool(shutil.which("uv"))
 
     log()
     log("verificação:")
