@@ -27,6 +27,8 @@ def test_instala_no_claude_e_no_codex(tmp_path):
         assert (destino / "SKILL.md").is_file(), agente
         assert (destino / "helpers" / "render.py").is_file(), agente
         assert not (destino / "tests").exists(), agente
+    # --no-remotion: o resumo não pode anunciar uma skill que não foi instalada
+    assert "remotion-best-practices" not in r.stdout
 
 
 def test_sem_codex_instala_so_no_claude(tmp_path):

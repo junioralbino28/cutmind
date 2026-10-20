@@ -438,7 +438,8 @@ def main() -> None:
     log("instalado em:")
     for d in dests:
         log(f"  {d}")
-        log(f"  {d.parent / REMOTION_NAME}")
+        if (d.parent / REMOTION_NAME).is_dir():
+            log(f"  {d.parent / REMOTION_NAME}")
 
     if skipped:
         log()
