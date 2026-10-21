@@ -87,6 +87,12 @@ it to `midia/`; it lands at the needle as an audio layer marked `trilha`, at 15%
 named as in the catalog and colored apart from recordings. A track that cannot
 download shows the reason and adds nothing.
 
+The kit hosts no music, so with no soundtrack in the catalog the panel shows a guide
+instead: post without a soundtrack and pick the music in the app, or download it free
+from the sites in `TRILHAS_GRATIS` (the same list as `references/trilhas-gratis.md`;
+links open in a new tab) and bring it with **Escolher música do celular**, the same as
+**Do celular**.
+
 Each layer is a track, as in any editor:
 
 - A header pinned at the left: speaker (audio) or eye (image), plus a lock. The

@@ -468,10 +468,11 @@ licensing to the user for logos/celebrities). Keep photographer credits.
 
 ## Phase 3 — soundtrack (short-form)
 
-Ask: **from the kit library** (first: no key, nothing to install), **AI-generated**
-(Treblo) or **local file** (copy to `public/trilha.mp3`).
+Ask: **no soundtrack** (for Reels, TikTok and Shorts the music can go in inside the
+app when posting), **a file of theirs** (free sites in `references/trilhas-gratis.md`;
+relay that list) or **AI-generated** (Treblo). The kit hosts no music.
 
-**From the kit library.** `uv run python -X utf8 helpers/pacotes.py listar --tipo trilha
+**From the kit library (only if it lists something).** `uv run python -X utf8 helpers/pacotes.py listar --tipo trilha
 --busca <mood>` lists the soundtracks with mood (`calma`, `animada`…), length and name;
 pick by the energy of the cut transcript, then:
 ```bash

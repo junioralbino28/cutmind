@@ -2683,6 +2683,22 @@ function syncLayers() {
  * trilha para midia/. Ela entra na agulha como camada de áudio, com volume de
  * fundo, e a partir daí é uma camada como as outras (mover, aparar, volume). */
 const TRILHA_VOLUME = 0.15; // o mesmo do pacotes.py: embaixo da voz
+/* O kit não hospeda música: com a biblioteca vazia, o painel mostra onde baixar de
+ * graça. A mesma lista está em references/trilhas-gratis.md (o teste confere). */
+const TRILHAS_GRATIS = [
+  ['Sem precisar dar crédito', [
+    ['Pixabay Música', 'https://pixabay.com/music/'],
+    ['Mixkit', 'https://mixkit.co/free-stock-music/'],
+    ['StreamBeats', 'https://www.streambeats.com/'],
+    ['Holizna', 'https://holiznacc0.bandcamp.com/', 'lo-fi e hip hop em domínio público'],
+  ]],
+  ['Grátis, com crédito na descrição do post', [
+    ['Biblioteca de áudio do YouTube', 'https://studio.youtube.com/', 'no YouTube Studio; só algumas pedem crédito'],
+    ['Uppbeat', 'https://uppbeat.io/'],
+    ['Incompetech', 'https://incompetech.com/music/royalty-free/music.html', 'do Kevin MacLeod'],
+    ['Free To Use', 'https://freetouse.com/music'],
+  ]],
+];
 const PREV = new Audio();
 let trFiltro = 'todas', trSel = null, trBaixando = null;
 const trAberto = () => $('trilhaSheet').classList.contains('open');
@@ -2710,11 +2726,41 @@ function closeTrilhas() {
   trSel = null;
   showSheet($('trilhaSheet'), false);
 }
+function renderGuiaTrilhas(box) {
+  const guia = el('div', 'tr-guia', box);
+  el('p', 'tr-guia-lead', guia).textContent = 'Vai postar no Instagram, no TikTok ou no Shorts? '
+    + 'Deixe sem trilha e escolha a música na hora de postar, no próprio app.';
+  el('p', 'sheet-hint', guia).textContent = 'Conta comercial no Instagram vê só a Sound Collection da Meta. '
+    + 'No TikTok, conta empresa vê só a Biblioteca de Música Comercial, que vale só dentro do TikTok.';
+  el('p', 'tr-guia-lead', guia).textContent = 'Para a música ficar no vídeo, baixe de graça num destes sites e traga pelo botão.';
+  for (const [grupo, sites] of TRILHAS_GRATIS) {
+    el('b', 'tr-guia-grupo', guia).textContent = grupo;
+    for (const [nome, url, nota] of sites) {
+      const a = el('a', 'tr-site', guia);
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      el('b', null, a).textContent = nome;
+      el('span', null, a).textContent = nota || new URL(url).hostname.replace(/^www\./, '');
+    }
+  }
+  const btn = el('button', 'tb-btn primary tr-guia-btn', guia);
+  btn.type = 'button';
+  btn.dataset.act = 'do-celular';
+  btn.textContent = 'Escolher música do celular';
+  el('p', 'sheet-hint', guia).textContent = 'Se o YouTube reivindicar uma música grátis, '
+    + 'conteste com o link da página onde você baixou.';
+}
 function renderTrilhas() {
   const lista = S.trilhas || [];
   const climas = [...new Set(lista.map((p) => p.clima).filter(Boolean))];
   const filtros = $('trilhaFiltros');
   filtros.innerHTML = '';
+  if (!lista.length) { // biblioteca vazia: sem filtros, só o guia
+    $('trilhaLista').innerHTML = '';
+    renderGuiaTrilhas($('trilhaLista'));
+    return;
+  }
   for (const [id, nome] of [['todas', 'Todas'], ['favoritas', 'Favoritas'],
     ...climas.map((c) => [c, c[0].toUpperCase() + c.slice(1)])]) {
     const b = el('button', `subtab${trFiltro === id ? ' on' : ''}`, filtros);
@@ -2726,9 +2772,7 @@ function renderTrilhas() {
   box.innerHTML = '';
   const vis = lista.filter((p) => trFiltro === 'todas' || (trFiltro === 'favoritas' ? p.favorito : p.clima === trFiltro));
   if (!vis.length) {
-    el('p', 'sheet-hint', box).textContent = !lista.length
-      ? 'A biblioteca deste kit ainda está vazia. Para usar uma música sua: Áudio → Do celular.'
-      : trFiltro === 'favoritas'
+    el('p', 'sheet-hint', box).textContent = trFiltro === 'favoritas'
         ? 'Toque na estrela de uma trilha para guardá-la aqui. A favorita fica neste computador.'
         : 'Nenhuma trilha aqui.';
     return;
@@ -2824,6 +2868,13 @@ $('trilhaFiltros').addEventListener('click', (e) => {
   renderTrilhas();
 });
 $('trilhaLista').addEventListener('click', (e) => {
+  if (e.target.closest('[data-act="do-celular"]')) { // o mesmo de Áudio → Do celular
+    closeTrilhas();
+    S.audioMenu = false;
+    renderToolbar();
+    $('fileAudio').click();
+    return;
+  }
   const row = e.target.closest('.tr-row');
   if (!row) return;
   const btn = e.target.closest('[data-act]');
