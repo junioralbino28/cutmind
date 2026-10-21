@@ -1,4 +1,4 @@
-/* CENNO Edit — editor de celular.
+/* CutMind — editor de celular.
  *
  * MESMO backend do editor de PC — nenhum servidor novo:
  *   GET  /api/state            state.json + edl.json + mtimes
@@ -96,7 +96,7 @@ const ICON = {
 const {
   STYLE_CATALOG, ACCENT_USERS, ACCENT_DEFAULT, CAP_TEXT, HEADLINE_TEXT, HL_STYLES, STATIC_VARIANTS, ORPHAN_PT,
   CAP_BUILDERS, buildHeadlineDemo, buildStaticDemo, capPhrases,
-} = CennoEstilos;
+} = CutMindEstilos;
 
 // o "Nenhum" mais claro que o do PC: aqui ele fica sobre o vídeo, não sobre fundo liso
 const NONE_MARK = '<svg viewBox="0 0 64 34" style="width:56%;height:auto">'
@@ -616,7 +616,7 @@ async function applyState(data) {
   S.videoDuration = data.videoDuration || 0;
   S.fps = S.state.fps || 30;
   S.savedPending = !!data.hasPendingEdits;
-  document.title = S.state.project ? `${S.state.project} · CENNO Edit` : 'CENNO Edit';
+  document.title = S.state.project ? `${S.state.project} · CutMind` : 'CutMind';
 
   const ranges = (data.edl && data.edl.ranges) || [];
   S.jcut = (data.edl && data.edl.jcut_timeline) || null;
@@ -1473,7 +1473,7 @@ function download() {
   const rel = hasFinal() ? S.state.finalVideo : (S.state.video || 'cut.mp4');
   const a = document.createElement('a');
   a.href = `/media/${rel}`;
-  a.download = `${(S.state.project || 'cenno-edit').replace(/[\\/:*?"<>|]+/g, '-')}.mp4`;
+  a.download = `${(S.state.project || 'cutmind').replace(/[\\/:*?"<>|]+/g, '-')}.mp4`;
   document.body.appendChild(a);
   a.click();
   a.remove();

@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 RAIZ = Path(__file__).resolve().parents[1]
-_spec = importlib.util.spec_from_file_location("instalador", RAIZ / "cenno_edit_install.py")
+_spec = importlib.util.spec_from_file_location("instalador", RAIZ / "cutmind_install.py")
 inst = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(inst)
 

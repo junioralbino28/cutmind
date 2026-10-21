@@ -16,10 +16,10 @@ Quem usa: o agente, pela linha de comando, e o servidor do editor (o celular toc
     python helpers/pacotes.py atualizar                         # catálogo novo, sem atualizar o kit
 
 Variáveis (todas opcionais):
-    CENNO_PACOTES_DIR         o cache (padrão ~/.cenno-edit/pacotes)
-    CENNO_PACOTES_LIMITE_GB   o tamanho do cache (padrão 2)
-    CENNO_PACOTES_BASE        outro servidor com a mesma árvore da Release (plano B)
-    CENNO_PACOTES_CATALOGO    outro catálogo (testes)
+    CUTMIND_PACOTES_DIR         o cache (padrão ~/.cutmind/pacotes)
+    CUTMIND_PACOTES_LIMITE_GB   o tamanho do cache (padrão 2)
+    CUTMIND_PACOTES_BASE        outro servidor com a mesma árvore da Release (plano B)
+    CUTMIND_PACOTES_CATALOGO    outro catálogo (testes)
 """
 from __future__ import annotations
 
@@ -147,7 +147,7 @@ def _sha256(p: Path) -> str:
 def _http_baixar(url: str, destino: Path, limite: int) -> None:
     """Grava em `destino` no máximo `limite` + 1 bytes: arquivo maior que o catálogo
     diz é cortado aqui e reprovado na conferência, sem encher o disco."""
-    req = urllib.request.Request(url, headers={"User-Agent": "cenno-edit-pacotes"})
+    req = urllib.request.Request(url, headers={"User-Agent": "cutmind-pacotes"})
     with urllib.request.urlopen(req, timeout=60) as r, open(destino, "wb") as f:
         resta = limite + 1
         while resta > 0:
@@ -180,8 +180,8 @@ class Pacotes:
     @classmethod
     def do_ambiente(cls) -> "Pacotes":
         """O catálogo mais novo entre o do kit e o baixado por `atualizar`."""
-        cache = Path(os.environ.get("CENNO_PACOTES_DIR") or Path.home() / ".cenno-edit" / "pacotes")
-        kit = Path(os.environ.get("CENNO_PACOTES_CATALOGO") or CATALOGO_KIT)
+        cache = Path(os.environ.get("CUTMIND_PACOTES_DIR") or Path.home() / ".cutmind" / "pacotes")
+        kit = Path(os.environ.get("CUTMIND_PACOTES_CATALOGO") or CATALOGO_KIT)
         cats = [ler_catalogo(kit)]
         if (cache / "catalogo.json").is_file():
             try:
@@ -189,8 +189,8 @@ class Pacotes:
             except CatalogoInvalido:
                 pass  # cópia estragada: vale a do kit
         cat = max(cats, key=lambda c: c["gerado"])
-        gb = float(os.environ.get("CENNO_PACOTES_LIMITE_GB") or LIMITE_PADRAO_GB)
-        return cls(cat, cache, int(gb * 1024 ** 3), base=os.environ.get("CENNO_PACOTES_BASE") or None)
+        gb = float(os.environ.get("CUTMIND_PACOTES_LIMITE_GB") or LIMITE_PADRAO_GB)
+        return cls(cat, cache, int(gb * 1024 ** 3), base=os.environ.get("CUTMIND_PACOTES_BASE") or None)
 
     # ---- consulta ----
     def pacote(self, pid: str) -> dict:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Start the CENNO Edit preview as a detached, UTF-8-safe local process."""
+"""Start the CutMind preview as a detached, UTF-8-safe local process."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def port_available(port: int, host: str = "127.0.0.1") -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Start the CENNO Edit preview server in the background"
+        description="Start the CutMind preview server in the background"
     )
     parser.add_argument("--root", type=Path, required=True, help="session edit dir")
     parser.add_argument("--port", type=int, default=4820)
@@ -94,7 +94,7 @@ def main() -> int:
         )
 
     print(
-        f"CENNO Edit preview started (PID {process.pid}) -> "
+        f"CutMind preview started (PID {process.pid}) -> "
         f"http://{pc_host(args.host)}:{args.port}"
     )
     if token:

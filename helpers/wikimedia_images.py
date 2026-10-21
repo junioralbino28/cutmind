@@ -15,7 +15,7 @@ from pathlib import Path
 import requests
 
 API = "https://commons.wikimedia.org/w/api.php"
-UA = {"User-Agent": "cenno-edit/1.0 (short-form editor; contact via skill)"}
+UA = {"User-Agent": "cutmind/1.0 (short-form editor; contact via skill)"}
 
 
 def slugify(s: str) -> str:

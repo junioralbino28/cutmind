@@ -82,7 +82,7 @@ def main() -> None:
     args = ap.parse_args()
 
     if shutil.which("yt-dlp") is None:
-        sys.exit("yt-dlp not on PATH — the venv is stale: uv sync --directory <cenno-edit>")
+        sys.exit("yt-dlp not on PATH — the venv is stale: uv sync --directory <cutmind>")
 
     h = args.max_height
     fmt = (f"bv*[height<={h}][ext=mp4]+ba[ext=m4a]/bv*[height<={h}]+ba"

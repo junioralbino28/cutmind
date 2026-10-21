@@ -152,9 +152,9 @@ def test_base_do_ambiente_troca_o_endereco(rel, monkeypatch):
     try:
         cat_p = rel.tmp / "catalogo.json"
         cat_p.write_text(json.dumps(rel.cat), encoding="utf-8")
-        monkeypatch.setenv("CENNO_PACOTES_CATALOGO", str(cat_p))
-        monkeypatch.setenv("CENNO_PACOTES_DIR", str(rel.cache))
-        monkeypatch.setenv("CENNO_PACOTES_BASE", f"http://127.0.0.1:{srv.server_address[1]}")
+        monkeypatch.setenv("CUTMIND_PACOTES_CATALOGO", str(cat_p))
+        monkeypatch.setenv("CUTMIND_PACOTES_DIR", str(rel.cache))
+        monkeypatch.setenv("CUTMIND_PACOTES_BASE", f"http://127.0.0.1:{srv.server_address[1]}")
         pk.Pacotes.do_ambiente().obter("calma-01")
         assert rel.pedidos == []  # nada foi pedido à Release original
     finally:
@@ -216,9 +216,9 @@ def test_atualizar_guarda_o_catalogo_mais_novo(rel, monkeypatch):
     (rel.raiz / "catalogo" / "catalogo.json").write_text(json.dumps(novo), encoding="utf-8")
     kit = rel.tmp / "kit-catalogo.json"
     kit.write_text(json.dumps(rel.cat), encoding="utf-8")
-    monkeypatch.setenv("CENNO_PACOTES_CATALOGO", str(kit))
-    monkeypatch.setenv("CENNO_PACOTES_DIR", str(rel.cache))
-    monkeypatch.delenv("CENNO_PACOTES_BASE", raising=False)
+    monkeypatch.setenv("CUTMIND_PACOTES_CATALOGO", str(kit))
+    monkeypatch.setenv("CUTMIND_PACOTES_DIR", str(rel.cache))
+    monkeypatch.delenv("CUTMIND_PACOTES_BASE", raising=False)
     assert pk.Pacotes.do_ambiente().atualizar() is True
     assert [x["id"] for x in pk.Pacotes.do_ambiente().listar()] == ["calma-01"]  # o do cache é mais novo
 

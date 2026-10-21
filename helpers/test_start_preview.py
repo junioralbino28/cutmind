@@ -48,7 +48,7 @@ def stop_process(pid: int) -> None:
 
 def main() -> int:
     port = free_port()
-    with tempfile.TemporaryDirectory(prefix="cenno-edit-preview-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="cutmind-preview-") as tmp:
         edit = Path(tmp) / "edição com espaços"
         edit.mkdir()
         (edit / "state.json").write_text(

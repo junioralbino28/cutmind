@@ -96,7 +96,7 @@ def call_whisperx(
         raise RuntimeError(
             "whisperx is missing from this environment. It is a normal dependency "
             "of the skill, so this usually means the venv is stale:\n"
-            "    uv sync --directory <cenno-edit>"
+            "    uv sync --directory <cutmind>"
         ) from e
 
     device, compute_type = _whisperx_device()

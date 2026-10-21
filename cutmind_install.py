@@ -1,9 +1,9 @@
-"""One-command installer for the cenno-edit skill.
+"""One-command installer for the cutmind skill.
 
-    uv run https://raw.githubusercontent.com/junioralbino28/cenno-edit/main/cenno_edit_install.py
+    uv run https://raw.githubusercontent.com/junioralbino28/cutmind/main/cutmind_install.py
 
 `uv run <url>` and not `uvx --from <package>`: uvx would resolve and install the
-whole cenno-edit dependency tree — torch, pandas, numpy — merely to run a script that
+whole cutmind dependency tree — torch, pandas, numpy — merely to run a script that
 imports nothing but the stdlib. Measured: 2+ minutes and a from-source build of
 pandas, versus 0.4s for the script. Same reason this file stays stdlib-only.
 
@@ -40,8 +40,8 @@ import urllib.request
 from pathlib import Path
 
 
-REPO = "junioralbino28/cenno-edit"
-SKILL_NAME = "cenno-edit"
+REPO = "junioralbino28/cutmind"
+SKILL_NAME = "cutmind"
 
 # Phase 2 needs Remotion domain knowledge, which lives in a SUBDIRECTORY of its
 # own repo — so it cannot be cloned into place and has always been a second
@@ -64,7 +64,7 @@ AGENT_DIRS: list[tuple[str, Path]] = [
     # (builtin/skills/agy-customizations): skills live at `skills/<name>/SKILL.md`
     # and the machine-local configuration root is `~/.gemini/config/`. Same
     # frontmatter contract as Claude Code — name + description — and the same
-    # optional `references/` convention, so cenno-edit installs there unchanged.
+    # optional `references/` convention, so cutmind installs there unchanged.
     ("Google Gemini", Path.home() / ".gemini" / "config" / "skills"),
 ]
 
@@ -82,7 +82,7 @@ SKILL_PAYLOAD = (
     "SKILL.md",
     "agents",
     "assets",
-    "cenno_edit_install.py",
+    "cutmind_install.py",
     "helpers",
     "install.md",
     "pyproject.toml",
@@ -159,7 +159,7 @@ def _validate_payload(src: Path) -> None:
 
 
 def _copy_payload(src: Path, dest: Path) -> None:
-    """Copy only the published skill payload from an cenno-edit checkout."""
+    """Copy only the published skill payload from a CutMind checkout."""
     dest.mkdir(parents=True, exist_ok=True)
     for entry in SKILL_PAYLOAD:
         source = src / entry
@@ -251,7 +251,7 @@ def install_into(src: Path, skills_dir: Path, force: bool,
                     entry.unlink()
             except OSError as e:
                 log(f"    ! não consegui remover {entry.name}: {e}")
-    # dirs_exist_ok so the surviving .venv/.env keep their place. CENNO Edit uses an
+    # dirs_exist_ok so the surviving .venv/.env keep their place. CutMind uses an
     # explicit allowlist; third-party skills (currently Remotion) retain their
     # own complete directory structure.
     if name == SKILL_NAME:
@@ -282,7 +282,7 @@ def _clone_is_pristine(repo: Path) -> bool:
         return False
     # The venv and the key file are ours to carry across an install anyway.
     leftovers = [ln for ln in r.stdout.splitlines()
-                 if ln.strip() and not ln[3:].startswith((".venv/", ".env", "cenno_edit.egg-info/"))]
+                 if ln.strip() and not ln[3:].startswith((".venv/", ".env", "cutmind.egg-info/"))]
     return not leftovers
 
 
@@ -408,8 +408,8 @@ def garantir_node(pode_instalar: bool) -> tuple[str, str]:
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        prog="cenno-edit-install",
-        description="Instala a skill cenno-edit no seu agente (Claude Code, Codex, …).")
+        prog="cutmind-install",
+        description="Instala a skill cutmind no seu agente (Claude Code, Codex, …).")
     ap.add_argument("--ref", default="main", help="branch ou tag (padrão: main)")
     ap.add_argument("--target", default=None,
                     help="pasta de skills específica, em vez de detectar")
@@ -425,7 +425,7 @@ def main() -> None:
                     help="não instalar o Node.js sozinho quando faltar (só avisar)")
     args = ap.parse_args()
 
-    log("cenno-edit — instalação")
+    log("cutmind — instalação")
     log()
 
     targets = detect_targets(args.target)
@@ -516,11 +516,11 @@ def main() -> None:
     else:
         missing.append("node")
         log(f"  x node       — Remotion (Fase 2). Instale com: {hint('node')}")
-    # git is not an cenno-edit dependency — the install above used no git at all. But
+    # git is not a CutMind dependency — the install above used no git at all. But
     # Claude Code leans on it, so its absence is worth a word rather than
     # silence. Deliberately NOT added to `missing`: nothing here is blocked by it.
     if not shutil.which("git"):
-        log(f"  · git        — a cenno-edit não usa, mas o Claude Code sim. {hint('git')}")
+        log(f"  · git        — o CutMind não usa, mas o Claude Code sim. {hint('git')}")
 
     # Say where it landed, explicitly. The failure this replaces was silent: the
     # installer reported success while having skipped the agent the user actually
@@ -550,8 +550,8 @@ def main() -> None:
                 log("    É um clone git. Um clone limpo é substituído pela versão")
                 log("    publicada; se tiver alterações suas, ele é guardado ao lado.")
                 log("    Rode de novo com --force:")
-                log("      uv run https://raw.githubusercontent.com/junioralbino28/cenno-edit/"
-                    "main/cenno_edit_install.py --force")
+                log("      uv run https://raw.githubusercontent.com/junioralbino28/cutmind/"
+                    "main/cutmind_install.py --force")
         log("=" * 68)
 
     if failed:
@@ -579,14 +579,13 @@ def main() -> None:
         ", ".join(instalados[:-1]) + " e " + instalados[-1]
 
     if ja_existia:
-        log("CENNO Edit atualizada! Você está na última versão disponibilizada por")
-        log("CENNO.")
+        log("CutMind atualizado! Você está na última versão publicada.")
         log()
         log("Reinicie o agente para ele carregar a nova versão.")
     else:
-        log(f"Tudo pronto! A CENNO Edit está instalada e pronta para usar no {onde}.")
+        log(f"Tudo pronto! O CutMind está instalado e pronto para usar no {onde}.")
         log()
-        log("Reinicie o agente e abra uma nova sessão chamando a Skill CENNO Edit.")
+        log("Reinicie o agente e abra uma nova sessão chamando a skill CutMind.")
         log()
         # The one operational detail that cannot be dropped: the session has to
         # start in the footage folder. Opened anywhere else the agent has

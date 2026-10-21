@@ -3,7 +3,7 @@
 Async: start a generation → poll until SUCCESS → download the mp3. On FAILURE
 no credit is charged. Result URLs expire ~168h, so we download immediately.
 
-Needs TREBLO_API_KEY (env or .env at the cenno-edit repo root).
+Needs TREBLO_API_KEY (env or .env at the cutmind repo root).
 
 Usage:
     python helpers/treblo_music.py "warm lo-fi ambient, unobtrusive" -o remotion/public/trilha.mp3

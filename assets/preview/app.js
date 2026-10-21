@@ -12,7 +12,7 @@
    a programmatic `.click()` worked, which is what makes it confusing to diagnose)
    and the needle jumped to 0, since the gutter sits left of t=0.
 */
-/* CENNO Edit preview — interactive editing timeline.
+/* CutMind preview — interactive editing timeline.
  * IMMUTABLE app: everything per-session comes from /api/state (state.json,
  * edl.json) + /gen/* (waveform, thumbs) + /media/* (video, captions, edit-data).
  * User adjustments are POSTed to /api/save → <edit>/preview_edits.json and
@@ -83,7 +83,7 @@ const ICON = {
 const {
   STYLE_CATALOG, ACCENT_USERS, ACCENT_DEFAULT,
   CAP_BUILDERS, buildHeadlineDemo, buildStaticDemo,
-} = CennoEstilos;
+} = CutMindEstilos;
 
 // The "Nenhum" preview. Deliberately not an empty box: an empty card reads as
 // "still loading" next to five that render real type. A struck-through frame
@@ -126,7 +126,7 @@ let S = {
   // A1/A2 live folded inside the audio track. They answer "where is the J-cut",
   // which is a question you ask once — so the default is closed, and the choice
   // is remembered rather than re-made every reload.
-  jcutOpen: localStorage.getItem('cenno-edit.jcutOpen') === '1',
+  jcutOpen: localStorage.getItem('cutmind.jcutOpen') === '1',
 };
 
 function defaultStyle() {
@@ -284,7 +284,7 @@ async function applyState(data) {
   S.fps = S.state.fps || 24;
   S.savedPending = !!data.hasPendingEdits;
 
-  $('projectName').textContent = S.state.project || 'CENNO Edit';
+  $('projectName').textContent = S.state.project || 'CutMind';
   $('stateMessage').textContent = S.state.message || '';
 
   const ranges = (data.edl && data.edl.ranges) || [];
@@ -1454,7 +1454,7 @@ document.querySelectorAll('.tl-chip[data-icon]').forEach((c) => {
 $('jcutToggle').addEventListener('click', () => {
   if (!(S.jcut && S.jcut.length)) return;
   S.jcutOpen = !S.jcutOpen;
-  localStorage.setItem('cenno-edit.jcutOpen', S.jcutOpen ? '1' : '0');
+  localStorage.setItem('cutmind.jcutOpen', S.jcutOpen ? '1' : '0');
   renderJcutAudio();
   updateScrollRange();
   positionNeedle();

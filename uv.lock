@@ -325,7 +325,7 @@ wheels = [
 ]
 
 [[package]]
-name = "cenno-edit"
+name = "cutmind"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

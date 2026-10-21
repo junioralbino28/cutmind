@@ -1,5 +1,5 @@
 [project]
-name = "cenno-edit"
+name = "cutmind"
 version = "0.1.0"
 description = "Conversation-driven video editor skill for Codex and Claude Code"
 # Capped below 3.14: torch publishes no cp314 wheels, which silently broke BOTH
@@ -38,15 +38,15 @@ animations = ["manim"]
 # `uv sync --extra matting`. Base install stays light for users who don't need it.
 matting = ["torch", "torchvision"]
 
-# The one-command installer: `uvx --from git+<repo> cenno-edit-install`, or plain
-# `uvx cenno-edit-install` once this is on PyPI. Stdlib-only, so it runs before any
-# dependency exists — see cenno_edit_install.py.
+# The one-command installer: `uvx --from git+<repo> cutmind-install`, or plain
+# `uvx cutmind-install` once this is on PyPI. Stdlib-only, so it runs before any
+# dependency exists — see cutmind_install.py.
 [project.scripts]
-cenno-edit-install = "cenno_edit_install:main"
+cutmind-install = "cutmind_install:main"
 
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["cenno_edit_install"]
+py-modules = ["cutmind_install"]

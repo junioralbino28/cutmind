@@ -1,7 +1,7 @@
-/* CENNO Edit — editor de celular.
+/* CutMind — editor de celular.
    A mão de quem já editou no celular sabe onde cada coisa fica: botão principal no
    canto de cima, play no centro, desfazer à direita, tempo em cima da linha do tempo,
-   moldura branca no trecho escolhido. Isso fica. A cara é da CENNO: neutros próprios,
+   moldura branca no trecho escolhido. Isso fica. A cara é do CutMind: neutros próprios,
    Montserrat, laranja só no que é ação ou está ativo, verde para "enviado".
    --hl-accent é outra coisa: a cor que o USUÁRIO escolhe para os estilos de texto. */
 :root {

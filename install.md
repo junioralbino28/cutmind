@@ -1,9 +1,9 @@
 ---
-name: cenno-edit-install
-description: Verify or repair an cenno-edit install (Claude Code, Codex, or any agent with a skills directory). The user installs with one command from README.md; this file is for checking that it worked and fixing what didn't.
+name: cutmind-install
+description: Verify or repair a CutMind install (Claude Code, Codex, or any agent with a skills directory). The user installs with one command from README.md; this file is for checking that it worked and fixing what didn't.
 ---
 
-# cenno-edit install
+# cutmind install
 
 Use this file only for first-time setup, verification or repair. For daily
 editing, read `SKILL.md`. Always read `helpers/` — that's where the scripts live.
@@ -11,7 +11,7 @@ editing, read `SKILL.md`. Always read `helpers/` — that's where the scripts li
 > **The user installs, you verify.** `README.md` gives them one command:
 >
 > ```
-> uv run https://raw.githubusercontent.com/junioralbino28/cenno-edit/main/cenno_edit_install.py
+> uv run https://raw.githubusercontent.com/junioralbino28/cutmind/main/cutmind_install.py
 > ```
 >
 > That is the supported install and it is the user's action, not yours. If
@@ -24,8 +24,8 @@ editing, read `SKILL.md`. Always read `helpers/` — that's where the scripts li
 
 ## What the install consists of
 
-1. The skill directory itself — `~/.claude/skills/cenno-edit`, or the equivalent for
-   Codex (`~/.codex/skills`) or Antigravity (`~/.gemini/config/skills`). `cenno_edit_install.py` puts it there; it needs no git on the user's
+1. The skill directory itself — `~/.claude/skills/cutmind`, or the equivalent for
+   Codex (`~/.codex/skills`) or Antigravity (`~/.gemini/config/skills`). `cutmind_install.py` puts it there; it needs no git on the user's
    machine because it unpacks a tarball.
 2. Python deps via `uv sync`, which includes **WhisperX** — transcription is a
    normal dependency, not an extra.
@@ -43,7 +43,7 @@ keyless tool look like it needs an account.
 ## Two layouts
 
 - **User layout** (what the installer produces, and what you should assume): the
-  skill directory IS `~/.claude/skills/cenno-edit` or `~/.codex/skills/cenno-edit`.
+  skill directory IS `~/.claude/skills/cutmind` or `~/.codex/skills/cutmind`.
   Nothing to register, no symlink, identical on every OS.
 - **Contributor layout**: repo cloned wherever the user keeps projects, plus a
   link into the skills directory. Only for someone developing the skill. The
@@ -51,16 +51,16 @@ keyless tool look like it needs an account.
 
     ```bash
     # macOS / Linux
-    ln -sfn ~/Developer/cenno-edit ~/.claude/skills/cenno-edit
-    ln -sfn ~/Developer/cenno-edit ~/.codex/skills/cenno-edit
+    ln -sfn ~/Developer/cutmind ~/.claude/skills/cutmind
+    ln -sfn ~/Developer/cutmind ~/.codex/skills/cutmind
     ```
 
     ```powershell
     # Windows — a junction needs no admin rights, unlike a symlink
-    New-Item -ItemType Junction -Path "$env:USERPROFILE\.claude\skills\cenno-edit" `
-      -Target "$env:USERPROFILE\Developer\cenno-edit"
-    New-Item -ItemType Junction -Path "$env:USERPROFILE\.codex\skills\cenno-edit" `
-      -Target "$env:USERPROFILE\Developer\cenno-edit"
+    New-Item -ItemType Junction -Path "$env:USERPROFILE\.claude\skills\cutmind" `
+      -Target "$env:USERPROFILE\Developer\cutmind"
+    New-Item -ItemType Junction -Path "$env:USERPROFILE\.codex\skills\cutmind" `
+      -Target "$env:USERPROFILE\Developer\cutmind"
     ```
 
 ## Repair steps
@@ -70,12 +70,12 @@ Detect the platform before emitting commands. Do not hand a Windows user `ln`,
 alias for `Invoke-WebRequest` and takes different flags. Use `Select-String`,
 `Select-Object -First`, `Set-Content`, `Invoke-RestMethod`.
 
-Everything below calls the skill directory `<CENNO_EDIT>`.
+Everything below calls the skill directory `<CUTMIND>`.
 
 ### Python deps
 
 ```bash
-uv sync --directory <CENNO_EDIT>
+uv sync --directory <CUTMIND>
 ```
 
 `uv` reads `pyproject.toml`, provisions a Python 3.10–3.13 interpreter on its own
@@ -140,7 +140,7 @@ wired up.
 
 ```bash
 # macOS / Linux
-cd <CENNO_EDIT>
+cd <CUTMIND>
 uv run python helpers/timeline_view.py --help >/dev/null && echo "helpers OK"
 uv run python -c "import cv2; print('opencv', cv2.__version__)"          # Phase-2 face tracking
 uv run python -c "import whisperx; print('whisperx OK')"                 # transcription
@@ -151,7 +151,7 @@ node --version && echo "node OK (Phase 2)"
 
 ```powershell
 # Windows — no grep/head; use Select-String and Select-Object
-cd <CENNO_EDIT>
+cd <CUTMIND>
 uv run python helpers/timeline_view.py --help > $null; if ($?) { "helpers OK" }
 uv run python -c "import cv2; print('opencv', cv2.__version__)"
 uv run python -c "import whisperx; print('whisperx OK')"
@@ -180,8 +180,8 @@ time, before anything has been inspected, pre-empts that with a guess.
 ## Keeping the skill current
 
 - Re-run the install command. It replaces the skill and preserves `.env`.
-- On the contributor layout: `git -C <CENNO_EDIT> pull --ff-only`, then
-  `uv sync --directory <CENNO_EDIT>` if `pyproject.toml` changed.
+- On the contributor layout: `git -C <CUTMIND> pull --ff-only`, then
+  `uv sync --directory <CUTMIND>` if `pyproject.toml` changed.
 
 ## Cold-start reminders
 
@@ -195,7 +195,7 @@ time, before anything has been inspected, pre-empts that with a guess.
   always this.
 - `ffmpeg` from static builds is fine. Any modern (≥4.x) build is enough.
 - `yt-dlp` is a Python dependency, not a system package. If a URL source fails
-  with "yt-dlp not on PATH", the venv is stale — `uv sync --directory <CENNO_EDIT>`.
+  with "yt-dlp not on PATH", the venv is stale — `uv sync --directory <CUTMIND>`.
 - Node 18+ and `remotion-best-practices` are Phase-2 only. Phase 1 (cut + grade)
   works without them, so a user who only wants a clean cut can start immediately.
 - Remotion projects are scaffolded per-video by copying the skill's own template

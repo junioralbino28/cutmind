@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
-INSTALADOR = RAIZ / "cenno_edit_install.py"
+INSTALADOR = RAIZ / "cutmind_install.py"
 
 
 def rodar(home: Path):
@@ -23,7 +23,7 @@ def test_instala_no_claude_e_no_codex(tmp_path):
     r = rodar(tmp_path)
     assert r.returncode == 0, r.stdout + r.stderr
     for agente in (".claude", ".codex"):
-        destino = tmp_path / agente / "skills" / "cenno-edit"
+        destino = tmp_path / agente / "skills" / "cutmind"
         assert (destino / "SKILL.md").is_file(), agente
         assert (destino / "helpers" / "render.py").is_file(), agente
         assert not (destino / "tests").exists(), agente
@@ -34,5 +34,5 @@ def test_instala_no_claude_e_no_codex(tmp_path):
 def test_sem_codex_instala_so_no_claude(tmp_path):
     r = rodar(tmp_path)
     assert r.returncode == 0, r.stdout + r.stderr
-    assert (tmp_path / ".claude" / "skills" / "cenno-edit" / "SKILL.md").is_file()
+    assert (tmp_path / ".claude" / "skills" / "cutmind" / "SKILL.md").is_file()
     assert not (tmp_path / ".codex").exists()

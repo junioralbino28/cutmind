@@ -1,9 +1,9 @@
 ---
-name: cenno-edit
+name: cutmind
 description: Conversation-driven video editing for short-form vertical (Reels, TikTok, Shorts) and longform horizontal video. Use when asked to cut, grade, caption, add graphics, create a soundtrack, transcribe, or prepare video edits. Run Phase 1 (audio-led clean cut and grade), obtain approval, then build Phase 2/3 Remotion visuals and audio.
 ---
 
-# CENNO Edit
+# CutMind
 
 ## Principle
 
@@ -25,7 +25,7 @@ description: Conversation-driven video editing for short-form vertical (Reels, T
 6. **Cache transcripts per source.** Never re-transcribe unless the source changed.
 7. **Color grade per-segment during extraction**, never post-concat.
 8. **Strategy confirmation before execution.**
-9. **All session outputs in `<videos_dir>/edit/`** — never inside the cenno-edit repo.
+9. **All session outputs in `<videos_dir>/edit/`** — never inside the cutmind repo.
 10. **PHASE 2 is Remotion-only** — no ffmpeg/PIL burned text or overlays.
 11. **PHASE 2 is data-driven.** Scaffold by copying the track template; describe the video in `public/edit-data.json`. **Never read or edit the template TSX** (`src/Main.tsx` etc.) — the only editable code file is `src/CustomGraphics.tsx`, only for bespoke graphics.
 12. **Verify numerically first.** Run `verify_cut.py` on every rendered cut; open images only for flagged junctions. Batch any multi-frame look into one `contact_sheet.py` / `grade.py --candidates` montage.
@@ -71,7 +71,7 @@ First-time install lives in `install.md`. On cold start just verify:
 - The `remotion-best-practices` skill for Phase-2 domain knowledge (install from https://github.com/remotion-dev/skills if missing).
 - Phase 2/3 can use optional API keys (illustrative images, AI soundtrack). They are listed in the track reference, asked for lazily when the feature is first used, and never at install time. **Nothing in Phase 1 needs a key.**
 
-Helpers live in `helpers/`, resolved relative to this SKILL.md (usually `~/.claude/skills/cenno-edit/` or `~/.codex/skills/cenno-edit/`, or a symlink/junction pointing there). Run them as `uv run python helpers/<name>.py` — a bare `python` misses the `.venv` that `uv sync` builds. **On Windows, run every helper as `uv run python -X utf8 helpers/<name>.py`**; redirected/non-interactive Python otherwise inherits the legacy Windows code page and can crash on Unicode filenames or status messages.
+Helpers live in `helpers/`, resolved relative to this SKILL.md (usually `~/.claude/skills/cutmind/` or `~/.codex/skills/cutmind/`, or a symlink/junction pointing there). Run them as `uv run python helpers/<name>.py` — a bare `python` misses the `.venv` that `uv sync` builds. **On Windows, run every helper as `uv run python -X utf8 helpers/<name>.py`**; redirected/non-interactive Python otherwise inherits the legacy Windows code page and can crash on Unicode filenames or status messages.
 
 ## Helpers
 
@@ -93,14 +93,14 @@ Phase 1:
 Phase 2/3 helpers (captions, face tracking, image search, music) are listed in
 the track reference you load after the gate.
 
-- **`pacotes.py listar|obter|camada|favorito|cache|atualizar`** — the kit's library (soundtracks today; effects, transitions and filters as they are converted). The catalog (`assets/pacotes/catalogo.json`) says what exists; a package downloads only when used, into a local cache (`~/.cenno-edit/pacotes`, 2 GB, favorites kept), checked by sha256. `pacotes.py camada <edit> <id>` puts a soundtrack on the timeline as an audio layer — the same `camadas.json` the editor writes.
+- **`pacotes.py listar|obter|camada|favorito|cache|atualizar`** — the kit's library (soundtracks today; effects, transitions and filters as they are converted). The catalog (`assets/pacotes/catalogo.json`) says what exists; a package downloads only when used, into a local cache (`~/.cutmind/pacotes`, 2 GB, favorites kept), checked by sha256. `pacotes.py camada <edit> <id>` puts a soundtrack on the timeline as an audio layer — the same `camadas.json` the editor writes.
 
 Interface:
 - **`preview_server.py --root <edit> [--port 4820] [--host 0.0.0.0]`** — serves the standard preview interface (see the Preview interface section). App code lives at `assets/preview/` and is IMMUTABLE. `--host` opens it to the phone, with a code — only when the user asks; read `references/celular.md` first.
 
 ## Preview interface (standard — launch it at the start of every edit)
 
-Every edit session gets the same interactive interface in the user's preview panel: a video-editor timeline (video track with filmstrip + audio track with waveform), a live playhead that scrubs the render in real time, per-take trim handles and take removal, and — from Phase 2 — caption and insert tracks. The layout follows the source aspect on its own: **vertical** sources put a tall player on the right with the transport + timeline on the left; **horizontal** sources keep the player stacked above the timeline. Dark glass, CENNO Edit brand. **Never build a UI per session** — feed the standard interface with `state.json`. Editing `assets/preview/` is allowed only when the user asks for a UI change; it is shared, so the improvement lands for every project.
+Every edit session gets the same interactive interface in the user's preview panel: a video-editor timeline (video track with filmstrip + audio track with waveform), a live playhead that scrubs the render in real time, per-take trim handles and take removal, and — from Phase 2 — caption and insert tracks. The layout follows the source aspect on its own: **vertical** sources put a tall player on the right with the transport + timeline on the left; **horizontal** sources keep the player stacked above the timeline. Dark glass, CutMind brand. **Never build a UI per session** — feed the standard interface with `state.json`. Editing `assets/preview/` is allowed only when the user asks for a UI change; it is shared, so the improvement lands for every project.
 
 **Launch (do this when a session starts, even before the first render — the UI shows a waiting state):**
 1. Write `<edit>/state.json`:
@@ -116,7 +116,7 @@ Every edit session gets the same interactive interface in the user's preview pan
    (`captions`/`editData`/`finalVideo` only when they exist; the Fase-2 tab plays `finalVideo` — the render WITH captions/inserts — while Fase 1 plays the clean cut; `sourceDurations` lets the UI clamp take extensions; `awaitingStyle`/`style` drive the Estilo tab below.)
 2. Select the runtime adapter; never invoke another host's tools.
 
-   - **Claude Code:** ensure `.claude/launch.json` has the config (adjust `--root` per session). The server takes the port by flag only, so pass the harness-assigned `$PORT` and set `autoPort`: `{"name": "cenno-edit-preview", "runtimeExecutable": "sh", "runtimeArgs": ["-c", "exec python3 <skill>/helpers/preview_server.py --root '<edit>' --port \"$PORT\""], "autoPort": true, "port": 4820}`. Run `preview_start` with name `cenno-edit-preview`, then arm `Monitor(command="python3 <skill>/helpers/watch_edits.py '<edit>'", description="escolhas e marcações salvas no preview", persistent=true)` **in the same turn**. **If this host has no `preview_start` tool (e.g. Claude Code in the VS Code extension on Windows — check before assuming), fall back to the Codex path below:** `uv run python -X utf8 helpers/start_preview.py --root '<edit>' --port 4820`, print the URL for the user to open, and arm the same `Monitor` with `uv run python -X utf8 <skill>/helpers/watch_edits.py '<edit>'` — a bare `python3` misses the `.venv` and does not exist on Windows.
+   - **Claude Code:** ensure `.claude/launch.json` has the config (adjust `--root` per session). The server takes the port by flag only, so pass the harness-assigned `$PORT` and set `autoPort`: `{"name": "cutmind-preview", "runtimeExecutable": "sh", "runtimeArgs": ["-c", "exec python3 <skill>/helpers/preview_server.py --root '<edit>' --port \"$PORT\""], "autoPort": true, "port": 4820}`. Run `preview_start` with name `cutmind-preview`, then arm `Monitor(command="python3 <skill>/helpers/watch_edits.py '<edit>'", description="escolhas e marcações salvas no preview", persistent=true)` **in the same turn**. **If this host has no `preview_start` tool (e.g. Claude Code in the VS Code extension on Windows — check before assuming), fall back to the Codex path below:** `uv run python -X utf8 helpers/start_preview.py --root '<edit>' --port 4820`, print the URL for the user to open, and arm the same `Monitor` with `uv run python -X utf8 <skill>/helpers/watch_edits.py '<edit>'` — a bare `python3` misses the `.venv` and does not exist on Windows.
    - **Codex desktop / CLI:** start `uv run python -X utf8 helpers/start_preview.py --root '<edit>' --port 4820`. It detaches safely on Windows and Unix, preserves paths with spaces/non-ASCII characters, and leaves logs in the edit directory. Once it responds, use the `control-in-app-browser` skill to open `http://127.0.0.1:4820` in the in-app Browser automatically and leave that tab on the preview. Do not assume `preview_start`, `Monitor`, or `.claude/launch.json` exists. If the Browser capability or a persistent local process is unavailable, give the user the command and local URL instead. After showing the preview, tell the user to save and reply in this task. On every subsequent user message, before any other work, check for `preview_edits.json`, `preview_style.json` and `preview_upload.json` (videos sent with the editor's Enviar button); read, validate, apply, then remove `preview_edits.json` and `preview_upload.json`.
 
    A preview save must always lead to an agent-visible action: Claude Code uses the persistent watcher; Codex uses the user's next task message as the notification boundary.

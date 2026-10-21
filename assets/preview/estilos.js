@@ -1,9 +1,9 @@
-/* CENNO Edit — catálogo de estilos e amostras, um arquivo só para os dois editores.
+/* CutMind — catálogo de estilos e amostras, um arquivo só para os dois editores.
  *
  * O editor de PC (app.js) e o de celular (celular.js) carregam este arquivo antes
  * do próprio script e pegam daqui o que precisam:
  *
- *   const { STYLE_CATALOG, CAP_BUILDERS, ... } = CennoEstilos;
+ *   const { STYLE_CATALOG, CAP_BUILDERS, ... } = CutMindEstilos;
  *
  * Duas cópias divergem, e uma amostra que mente sobre o estilo é pior que nenhuma.
  * Mudou o visual de uma legenda ou headline no template (Main.tsx, StackedCaptions,
@@ -24,7 +24,7 @@
   };
 
   /* ---------- style catalog (the Fase 1 → Fase 2 gate) ----------
-   * The one place that knows which looks CENNO Edit can build. It is APP-level, not
+   * The one place that knows which looks CutMind can build. It is APP-level, not
    * session-level: a new editing style or caption style is a new entry here plus
    * its implementation in the track reference — never a per-session UI.
    * The user's pick ships to <edit>/preview_style.json; the skill reads it once,
@@ -622,7 +622,7 @@
 
   const CAP_BUILDERS = { karaoke: buildKaraokeDemo, stacked: buildStackedDemo, scatter: buildScatterDemo };
 
-  window.CennoEstilos = Object.freeze({
+  window.CutMindEstilos = Object.freeze({
     STYLE_CATALOG, ACCENT_USERS, ACCENT_DEFAULT,
     CAP_TEXT, FPS_REF, HEADLINE_TEXT, HL_MIN, HL_STYLES, SCAT, STATIC_VARIANTS, ORPHAN_PT,
     bez, easeOutCubic, easeStack, clamp01,

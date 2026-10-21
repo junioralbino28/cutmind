@@ -1,4 +1,4 @@
-"""CENNO Edit preview server — serves the standard editing interface + session media.
+"""CutMind preview server — serves the standard editing interface + session media.
 
 The interface app (assets/preview/) is IMMUTABLE and lives in the skill repo;
 per-session it is fed by data only:
@@ -109,7 +109,7 @@ MIME = {
 
 # ---- acesso pela rede (celular) ----
 LOCAL_CLIENTS = {"127.0.0.1", "::1"}
-TOKEN_COOKIE = "cenno_t"
+TOKEN_COOKIE = "cutmind_t"
 TOKEN_MAX_AGE = 30 * 24 * 3600  # 30 dias: o atalho na tela inicial continua entrando
 MAX_JSON_BYTES = 2_000_000
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".3gp", ".mts", ".m2ts"}
@@ -372,7 +372,7 @@ class Handler(BaseHTTPRequestHandler):
             self._hdr(code, "application/json; charset=utf-8", len(body), {"Connection": "close"})
         else:
             body = ("<!doctype html><meta charset='utf-8'><meta name='viewport' "
-                    "content='width=device-width,initial-scale=1'><title>CENNO Edit</title>"
+                    "content='width=device-width,initial-scale=1'><title>CutMind</title>"
                     "<body style='font:16px/1.5 system-ui,sans-serif;background:#0b0e13;"
                     f"color:#e8ebf0;padding:32px'><p>{msg}</p></body>").encode()
             self._hdr(code, "text/html; charset=utf-8", len(body), {"Connection": "close"})
@@ -911,7 +911,7 @@ def _check_access(root: Path) -> None:
     Ordinary permission or ownership problems come back as EACCES (13). The two
     need completely different fixes, so do not merge the messages.
     """
-    probe = root / ".cenno_edit_write_probe"
+    probe = root / ".cutmind_write_probe"
     err: OSError | None = None
     try:
         probe.write_text("ok")
@@ -967,7 +967,7 @@ def add_network_args(ap: argparse.ArgumentParser) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="CENNO Edit preview interface server")
+    ap = argparse.ArgumentParser(description="CutMind preview interface server")
     ap.add_argument("--root", type=Path, required=True, help="the session <edit> dir")
     ap.add_argument("--port", type=int, default=4820)
     add_network_args(ap)
@@ -991,7 +991,7 @@ def main() -> None:
     if not is_local_bind(args.host):
         Handler.token = ensure_token(root)
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"CENNO Edit preview -> http://{pc_host(args.host)}:{args.port}  (root: {root})", flush=True)
+    print(f"CutMind preview -> http://{pc_host(args.host)}:{args.port}  (root: {root})", flush=True)
     if Handler.token:
         print("Aberto para a rede: só entra quem tem o link com o código.", flush=True)
         for u in phone_urls(args.host, args.port, Handler.token):

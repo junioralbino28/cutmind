@@ -131,7 +131,7 @@ são a interface real do site, não um resumo:
 3. Abrir a seção **Developers**.
 4. Clicar em **Get Started for Free**.
 5. Clicar em **API Keys**.
-6. Clicar em **Create Key**, escrever o nome **CENNO Edit** e confirmar em **Create**.
+6. Clicar em **Create Key**, escrever o nome **CutMind** e confirmar em **Create**.
 7. Copiar a chave e colar na conversa.
 
 Ao receber a chave: escreva `TREBLO_API_KEY=<chave>` no `.env` da raiz da skill,
@@ -139,5 +139,5 @@ confirme em uma linha que gravou, e **nunca repita a chave de volta** na convers
 nem em saída de ferramenta. Se ele preferir não criar conta, siga com trilha de
 arquivo local — a Fase 3 funciona assim, só não compõe.
 
-A instalação não menciona nenhuma delas de propósito: a cenno-edit não precisa de
+A instalação não menciona nenhuma delas de propósito: o CutMind não precisa de
 chave para funcionar, e listar chaves no primeiro contato faz parecer que precisa.

@@ -1,4 +1,4 @@
-# CENNO Edit
+# CutMind
 
 Edição de vídeo por conversa, no Claude Code e no Codex. Você coloca o vídeo
 bruto numa pasta, abre o agente ali e pede a edição: ele transcreve, escolhe as
@@ -19,6 +19,6 @@ só entra quem abriu pelo link ou QR, que levam um código deste computador.
 
 ## Instalar a partir desta pasta
 
-    python cenno_edit_install.py --source .
+    python cutmind_install.py --source .
 
 Precisa de `uv` e `ffmpeg` instalados. O Node.js (Fase 2) o instalador põe sozinho quando falta: pelo winget no Windows e pelo Homebrew no Mac. No Linux ele mostra o comando.
