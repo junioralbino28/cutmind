@@ -350,6 +350,7 @@ const S = {
   mudoUsuario: false, // o alto-falante da linha do play (só a prévia; não vai para o vídeo)
   midiaDur: {},       // duração de cada áudio de midia/, lida do arquivo
   audioMenu: false,   // Áudio tocado: a barra mostra Trilhas / Do celular
+  importMenu: false,  // Importar (ou o + da faixa) tocado: a barra mostra Vídeo / Imagem / Áudio
   trilhas: null,      // a biblioteca do kit (lista do servidor), carregada ao abrir
   trilhaNomes: {},    // id da trilha → nome, para o bloco na linha do tempo
 };
@@ -823,11 +824,11 @@ function renderTakes(lane) {
     }
   });
   if (editable && !movendo) {
-    // "+" no fim da faixa: outro vídeo da galeria (o toque é tratado em tapAt)
+    // "+" no fim da faixa: a mesma escolha do Importar (o toque é tratado em tapAt)
     const add = el('button', 'add-tile', lane);
     add.type = 'button';
     add.innerHTML = ICON.mais;
-    add.setAttribute('aria-label', 'Enviar outro vídeo');
+    add.setAttribute('aria-label', 'Importar vídeo, imagem ou áudio');
     add.style.left = `${dl.reduce((a, d) => Math.max(a, d.out + d.dur), 0) * S.pps + 10}px`;
   }
   if (G.mode === 'move') el('div', 'move-caret', lane).id = 'moveCaret'; // onde ela vai cair
@@ -1198,7 +1199,11 @@ function tapAt(target) {
     if (f) { S.t = clampT(renderedToDraft(f.start) + 0.02); positionTimeline(); preciseSeek(); }
     return;
   }
-  if (target && target.closest && target.closest('.add-tile')) { $('fileInput').click(); return; }
+  if (target && target.closest && target.closest('.add-tile')) {
+    S.selected = -1; S.layerSel = null; S.audioMenu = false; S.importMenu = true;
+    renderTimeline(); renderToolbar();
+    return;
+  }
   const note = target && target.closest && target.closest('.chip.note');
   if (note) { openNote(note.dataset.id, false); return; }
   const lc = target && target.closest && target.closest('.chip.layer');
@@ -1306,10 +1311,10 @@ function renderToolbar() {
   const ctx = $('ctxbar');
   const lsel = S.layerSel ? camItem(S.layerSel) : null;
   const sel = !lsel && S.selected >= 0 && S.view === 'corte' ? S.draft[S.selected] : null;
-  if (sel || lsel) S.audioMenu = false;
-  const amenu = S.audioMenu;
-  tb.classList.toggle('hidden', !!(sel || lsel || amenu));
-  ctx.classList.toggle('hidden', !(sel || lsel || amenu));
+  if (sel || lsel) { S.audioMenu = false; S.importMenu = false; }
+  const amenu = S.audioMenu, imenu = S.importMenu;
+  tb.classList.toggle('hidden', !!(sel || lsel || amenu || imenu));
+  ctx.classList.toggle('hidden', !(sel || lsel || amenu || imenu));
   const hasVideo = S.videoDuration > 0;
   const tool = (host, id, label, opts = {}) => {
     const b = el('button', `tool${opts.on ? ' on' : ''}${opts.armed ? ' armed' : ''}${opts.cls ? ` ${opts.cls}` : ''}`, host);
@@ -1329,16 +1334,24 @@ function renderToolbar() {
     return;
   }
   tb.innerHTML = '';
-  // Corte/Final virou o seletor do topo; Enviar virou o "+" no fim da faixa
+  // Corte/Final virou o seletor do topo. Importar traz qualquer arquivo do celular e
+  // pergunta o tipo (o + no fim da faixa abre a mesma escolha)
+  tool(tb, 'importar', 'Importar', { icon: ICON.mais });
   tool(tb, 'cortar', 'Cortar', { icon: ICON.corte, disabled: !hasVideo });
-  // imagem e áudio entram como camadas novas, na agulha (o servidor guarda em midia/)
   tool(tb, 'audio', 'Áudio', { disabled: !hasVideo });
-  tool(tb, 'imagem', 'Imagem', { disabled: !hasVideo });
   tool(tb, 'legenda', 'Legenda', { disabled: !hasVideo || !canStyle() });
   tool(tb, 'estilo', 'Estilo', { disabled: !hasVideo || !canStyle() });
   tool(tb, 'marcar', S.pendingIn != null ? 'Fim' : 'Marcar', { armed: S.pendingIn != null, disabled: !hasVideo });
 
   ctx.innerHTML = '';
+  if (imenu) { // Importar: o tipo do arquivo. Vídeo vai para a pasta dos vídeos (o agente corta);
+    // imagem e áudio entram como camadas novas, na agulha (o servidor guarda em midia/)
+    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
+    tool(ctx, 'imp-video', 'Vídeo', { icon: ICON.final });
+    tool(ctx, 'imp-imagem', 'Imagem', { icon: ICON.imagem, disabled: !hasVideo });
+    tool(ctx, 'imp-audio', 'Áudio', { icon: ICON.audio, disabled: !hasVideo });
+    return;
+  }
   if (amenu) { // Áudio: uma trilha da biblioteca do kit ou um arquivo do celular
     tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
     tool(ctx, 'trilhas', 'Trilhas', { icon: ICON.audio });
@@ -1377,11 +1390,14 @@ document.addEventListener('click', (e) => {
     case 'estilo': openStyle('edit'); break;
     case 'legenda': openStyle('captions'); break;
     case 'marcar': toggleMark(); break;
-    case 'audio': S.audioMenu = true; renderToolbar(); break;
+    case 'importar': S.importMenu = true; S.audioMenu = false; renderToolbar(); break;
+    case 'imp-video': S.importMenu = false; renderToolbar(); $('fileInput').click(); break;
+    case 'imp-imagem': S.importMenu = false; renderToolbar(); $('fileImagem').click(); break;
+    case 'imp-audio': S.importMenu = false; renderToolbar(); $('fileAudio').click(); break;
+    case 'audio': S.audioMenu = true; S.importMenu = false; renderToolbar(); break;
     case 'trilhas': S.audioMenu = false; renderToolbar(); openTrilhas(); break;
     case 'do-celular': S.audioMenu = false; renderToolbar(); $('fileAudio').click(); break;
-    case 'imagem': $('fileImagem').click(); break;
-    case 'voltar': S.selected = -1; S.layerSel = null; S.audioMenu = false; renderTimeline(); renderToolbar(); break;
+    case 'voltar': S.selected = -1; S.layerSel = null; S.audioMenu = false; S.importMenu = false; renderTimeline(); renderToolbar(); break;
     case 'dividir': splitSelected(); break;
     case 'duplicar': duplicateSelected(); break;
     case 'excluir': if (S.layerSel) deleteLayerSel(); else deleteSelected(); break;

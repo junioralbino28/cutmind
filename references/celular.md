@@ -72,10 +72,12 @@ and the disk is never filled past its last 512 MB.
 
 ## Images and audio (layers)
 
-**Imagem** in the toolbar picks a file; **Áudio** opens a second bar: **Trilhas**
-(the kit library) or **Do celular** (a file). A file streams into `<edit>/midia/`
-(never overwriting) and becomes a new layer at the needle: an image for 3 s, an
-audio for its own length (cut at the end of the video).
+**Importar** (first in the toolbar, and the **+** at the end of the video track)
+asks the type: **Vídeo · Imagem · Áudio**. A video goes to the videos folder (see
+above); an image or audio streams into `<edit>/midia/` (never overwriting) and
+becomes a new layer at the needle: an image for 3 s, an audio for its own length (cut
+at the end of the video). **Áudio** in the toolbar opens **Trilhas** (the kit library)
+or **Do celular** (a file, the same as Importar → Áudio).
 
 **Trilhas** is a panel with mood filters (Todas, Favoritas, then each mood in the
 catalog). Tapping a row plays its 20 s preview (only the preview downloads) and
