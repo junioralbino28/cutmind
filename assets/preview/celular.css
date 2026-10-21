@@ -123,6 +123,15 @@ button { font-family: inherit; cursor: pointer; }
 .tap-play { position: absolute; inset: 0; background: transparent; border: 0; }
 /* ao aparar: quadro do vídeo de origem na alça, enquadrado como o vídeo */
 .peek { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; background: #000; z-index: 3; pointer-events: none; }
+/* camada de imagem: o cartão do vídeo final (Main.tsx: 780×500 px, 90 do topo, canto 28) */
+.ov-img {
+  position: absolute; left: 50%; top: 4.6875%; width: 72.222%; height: 26.042%;
+  translate: -50% 0;
+  border-radius: 3.59% / 5.6%;
+  object-fit: cover;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  z-index: 2; pointer-events: none;
+}
 /* fora do Estilo a prévia é só o vídeo (no "Posição das frases", o vídeo e a frase) */
 .player:not(.styling) .band, .player:not(.styling) .hl { display: none !important; }
 .player:not(.styling):not(.posicionando) .cap { display: none !important; }
@@ -349,6 +358,51 @@ button { font-family: inherit; cursor: pointer; }
 .chip.frase.cur { color: var(--text); background: var(--surface2); outline: 1.5px solid #fff; outline-offset: -1.5px; }
 .chip.frase.own { box-shadow: inset 3px 0 0 var(--brand); }
 
+/* camadas: cada imagem ou áudio enviado é uma faixa. À esquerda, fixo, o cabeçalho dela
+   (silenciar ou esconder, e travar); na faixa do vídeo, o silenciar do som original */
+.th {
+  position: absolute; left: 0; top: 0; bottom: 0; z-index: 4;
+  display: flex; align-items: center; gap: 2px;
+  padding: 0 10px 0 4px;
+  background: linear-gradient(90deg, var(--surface) 72%, rgba(24, 24, 24, 0));
+}
+.th-b {
+  position: relative;
+  width: 24px; height: 24px;
+  border: 0; border-radius: 5px;
+  background: transparent; color: var(--dim);
+  display: grid; place-items: center;
+}
+.th-b svg { width: 15px; height: 15px; display: block; }
+.th-b::after { content: ''; position: absolute; inset: -3px -1px; } /* alvo do dedo um pouco maior */
+.th-b.on { color: var(--brand); }
+.th-b:active { background: var(--surface3); }
+.timeline.moving .th { visibility: hidden; }
+.tr-audio.mudo canvas { opacity: 0.3; }
+.chip.layer { pointer-events: auto; gap: 5px; padding: 0 6px 0 4px; }
+.chip.layer.aud { background: #1c2925; box-shadow: inset 2px 0 0 #63c7a6; }
+.chip.layer.img { background: #25212f; box-shadow: inset 2px 0 0 #b49cf0; }
+.chip.layer .l-thumb { height: calc(100% - 6px); aspect-ratio: 1; flex: none; object-fit: cover; border-radius: 2px; pointer-events: none; }
+.chip.layer .l-ico { flex: none; color: #63c7a6; }
+.chip.layer .l-ico svg, .chip.layer .l-tag svg { width: 13px; height: 13px; display: block; }
+.chip.layer .l-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.chip.layer .l-tag { flex: none; color: var(--brand); }
+.chip.layer.sel { overflow: visible; outline: 2px solid #fff; outline-offset: -1px; z-index: 3; }
+.track.mudo .chip.layer, .track.oculto .chip.layer { opacity: 0.4; }
+.track.travado .chip.layer { background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0 4px, transparent 4px 8px); }
+.lh {
+  position: absolute; top: 0; bottom: 0;
+  width: 12px;
+  background: #fff;
+  z-index: 4;
+  display: grid; place-items: center;
+}
+.lh::before { content: ''; width: 2px; height: 10px; border-radius: 1px; background: #1a1a1a; }
+.lh::after { content: ''; position: absolute; top: -6px; bottom: -6px; left: -10px; right: -10px; }
+.lh.l { left: -12px; border-radius: 3px 0 0 3px; }
+.lh.r { right: -12px; border-radius: 0 3px 3px 0; }
+.vol-range { width: calc(100% - 32px); margin: 16px 16px 8px; accent-color: var(--brand); }
+
 /* a frase que está na tela, pronta para arrastar */
 .player.posicionando .tap-play { touch-action: none; }
 .player.posicionando .cap .cap-demo::after {
@@ -570,6 +624,7 @@ textarea:focus { box-shadow: inset 0 0 0 1px var(--line2); }
   font-size: 12.5px; font-weight: 500; line-height: 1.4;
   z-index: 40;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  pointer-events: none; /* só avisa: fica sobre as faixas de baixo e não pode roubar o toque delas */
 }
 
 /* ---------- envio de vídeo: cartão com a barra, no alto, sobre o vídeo ----------

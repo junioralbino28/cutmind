@@ -45,6 +45,8 @@
       <div class="band" id="ovBand"></div>
       <div class="hl" id="ovHl"></div>
       <div class="cap" id="ovCap"></div>
+      <!-- camada de imagem debaixo da agulha: no lugar e no tamanho do cartão do vídeo final -->
+      <img class="ov-img hidden" id="ovImg" alt="">
       <!-- ao aparar: o quadro do vídeo de ORIGEM na alça (o corte não tem o que foi cortado) -->
       <img class="peek hidden" id="peek" alt="">
       <button class="tap-play" id="tapPlay" type="button" aria-label="Reproduzir ou pausar"></button>
@@ -113,7 +115,20 @@
   </footer>
 </section>
 
+<!-- painel pequeno: volume da camada de áudio escolhida -->
+<section class="sheet small" id="volSheet" aria-hidden="true">
+  <div class="sheet-grip"></div>
+  <div class="note-head"><b>Volume</b><span id="volVal">100%</span></div>
+  <input class="vol-range" id="volRange" type="range" min="0" max="200" step="5" value="100" aria-label="Volume da camada">
+  <footer class="sheet-foot">
+    <div class="t-spacer"></div>
+    <button class="tb-btn primary" id="volOk" type="button">Pronto</button>
+  </footer>
+</section>
+
 <input type="file" id="fileInput" accept="video/*" hidden>
+<input type="file" id="fileAudio" accept="audio/*" hidden>
+<input type="file" id="fileImagem" accept="image/*" hidden>
 <!-- envio de vídeo: vai em pedaços para a pasta dos vídeos no computador -->
 <section class="upload hidden" id="upload" role="status" aria-live="polite">
   <div class="up-row">

@@ -556,6 +556,44 @@ ffmpeg -y -i out/render.mp4 -i ../cut.mp4 -filter_complex "[1:a]adelay=33:all=1,
 
 Verify `max_volume ≤ -1 dB` (`-af volumedetect`). Copy to `edit/final.mp4`.
 
+## Layers from the editor (`camadas.json`)
+
+The user can put images and audio on the timeline (editor: **Áudio** / **Imagem**;
+`references/celular.md`). The project file is `<edit>/camadas.json`, times in
+cut.mp4 seconds, schema in `helpers/camadas.py`; every save also carries it in
+`preview_edits.json`, and `watch_edits.py` lists each item.
+
+1. **Images** → `uv run python -X utf8 helpers/camadas_edit_data.py <edit>`. Each
+   visible image becomes an `inserts[]` card (the upper-zone card above, marked
+   `"camada": <id>`) and is copied to `public/midia/camada-<id>.<ext>` — a name with
+   no spaces or accents for `staticFile`. Only those inserts are touched, and they
+   go last (on top, as in the editor). Re-run after every save: hidden or deleted
+   layers leave the edit-data. Then re-render.
+2. **Sound** → `uv run python -X utf8 helpers/mixar_final.py <edit> --render out/render.mp4`
+   replaces the hand-written re-mux above, same rules: picture range/tags fixed,
+   voice from cut.mp4 with the 1-frame delay — left **out** when the user turned the
+   video's sound off —, the soundtrack when enabled, then every audio layer that
+   plays (trim `corte`/`duracao`, volume 0–200%, `melhorar` → the
+   `melhorar_audio.py` chain: noise reduction + the voice chain), delayed like the
+   voice so it stays where the user heard it. Effects go in composition time with
+   `--sfx <file>@<seconds>[:volume]`. Sum without normalizing, then loudnorm.
+   `--base render` keeps Remotion's own audio (the stacked captions' SFX, see
+   above) and only adds the layers; it refuses when the video's sound is off,
+   because voice and SFX come mixed there. `--mostrar` prints the command. It
+   prints the colour tags and the peak when done.
+3. **Verify** like any delivery: a still inside each image window, the layer
+   audible in its window, a silenced layer and a hidden image absent.
+
+**Same save re-cuts?** The layer times belong to the cut that was on screen. When
+`preview_edits.json` also carries `edl`, map every `inicio` before step 1: find the
+old range it falls in (old `edl.json`), its source time, and where that source time
+lands in the new ranges; rewrite `camadas.json` with the new times. A layer whose
+moment was cut out has nowhere to go — leave it out and tell the user.
+
+The image card's whoosh is a Remotion `<Sfx>`: with the default `--base cut` it is
+not in the delivery. Pass `--sfx <public>/sfx/whoosh.mp3@<start>:0.09` per image
+when the card should sound.
+
 ---
 
 ## The Estilo tab (between Fase 1 and Fase 2)

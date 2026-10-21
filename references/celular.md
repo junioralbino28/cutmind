@@ -70,6 +70,31 @@ that video is the source: start Phase 1. With a cut ready, ask what it is for.
 Delete `preview_upload.json` once handled. Limits: `--max-upload-gb` (default 8)
 and the disk is never filled past its last 512 MB.
 
+## Images and audio (layers)
+
+**Áudio** and **Imagem** in the toolbar pick a file; it streams into `<edit>/midia/`
+(never overwriting) and becomes a new layer at the needle: an image for 3 s, an
+audio for its own length (cut at the end of the video). Each layer is a track, as in
+any editor:
+
+- A header pinned at the left: speaker (audio) or eye (image), plus a lock. The
+  video track gets a speaker too: it turns the original sound off (in Corte). The
+  speaker in the play row only mutes the phone's preview, nothing else.
+- Tap selects: **Voltar · Volume · Melhorar · Excluir** for audio (volume 0–200%;
+  Melhorar asks the agent to clean the noise and run the voice chain), **Voltar ·
+  Excluir** for an image. Hold and drag moves it; the white handles trim (audio
+  cannot stretch past its file). A locked layer cannot be selected or moved.
+- Images are tracks above the video, audio below the original sound. The timeline
+  grows with the layers up to a ceiling, then the tracks get thinner.
+- Corte plays the audio layers along with the video and shows the image where the
+  final card goes (780×500, 90 px from the top). Final plays `final.mp4` as rendered.
+- Undo/redo covers all of it. **Salvar** sends `camadas`; the server validates it
+  (files only from `midia/`, sane times and volumes) and writes `<edit>/camadas.json`
+  — the project file, read back when the editor opens. A refusal shows the reason.
+
+The agent side (images → inserts, sound → final mix) is in `references/shortform.md`,
+"Layers from the editor".
+
 ## What the server enforces
 
 - Data routes (`/api`, `/media`, `/gen`) need the code unless the request comes

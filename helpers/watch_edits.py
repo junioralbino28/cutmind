@@ -25,7 +25,7 @@ from pathlib import Path
 
 def digest(p: Path) -> str:
     try:
-        d = json.loads(p.read_text())
+        d = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as e:
         return f"preview_edits.json ilegível ({e.__class__.__name__}) — peça ao usuário para salvar de novo"
 
@@ -59,6 +59,12 @@ def digest(p: Path) -> str:
         parts.append("  edl.ranges é a lista inteira, na ordem nova — monte o edl.json por ela (SKILL.md).")
     if ed:
         head.append("inserts/gancho movidos")
+    if "camadas" in d:
+        head.append(f"camadas: {camadas_resumo(d['camadas'])}")
+        parts += camadas_linhas(d["camadas"])
+        if edl:
+            parts.append("  ⚠ O corte mudou no mesmo Salvar: os tempos das camadas são do corte ANTIGO. "
+                         "Leve-os para o corte novo antes de montar (references/shortform.md).")
     if not head:
         head.append("ajustes salvos")
 
@@ -67,10 +73,51 @@ def digest(p: Path) -> str:
     return "\n".join(out)
 
 
+def _plural(n: int, um: str, varios: str) -> str:
+    return f"{n} {um if n == 1 else varios}"
+
+
+def camadas_resumo(c: dict) -> str:
+    fx = c.get("faixas") or []
+    n_img = sum(len(f.get("itens") or []) for f in fx if f.get("tipo") == "imagem")
+    n_aud = sum(len(f.get("itens") or []) for f in fx if f.get("tipo") == "audio")
+    if not n_img and not n_aud:
+        return "nenhuma"
+    return ", ".join(x for x in (n_img and _plural(n_img, "imagem", "imagens"),
+                                 n_aud and _plural(n_aud, "áudio", "áudios")) if x)
+
+
+def camadas_linhas(c: dict) -> list[str]:
+    """Uma linha por item, no relógio do cut.mp4; o que está silenciado ou escondido
+    aparece para o agente saber que fica FORA do vídeo final."""
+    out = ["  camadas.json (gravado pelo editor), tempos do cut.mp4:"]
+    for f in c.get("faixas") or []:
+        for it in f.get("itens") or []:
+            ini, dur = float(it.get("inicio", 0)), float(it.get("duracao", 0))
+            nome = str(it.get("arquivo", "")).removeprefix("midia/")
+            if f.get("tipo") == "audio":
+                bits = [f"volume {round(float(it.get('volume', 1)) * 100)}%"]
+                if it.get("corte"):
+                    bits.append(f"a partir de {fmt(it['corte'])} do arquivo")
+                if it.get("melhorar"):
+                    bits.append("melhorar")
+                if f.get("mudo"):
+                    bits.append("silenciada: fica fora")
+                out.append(f'  · áudio "{nome}" de {fmt(ini)} a {fmt(ini + dur)}, {", ".join(bits)}')
+            else:
+                fora = ", escondida: fica fora" if f.get("oculto") else ""
+                out.append(f'  · imagem "{nome}" de {fmt(ini)} a {fmt(ini + dur)}{fora}')
+    if (c.get("video") or {}).get("mudo"):
+        out.append("  · som do vídeo desligado: a voz do corte fica fora do vídeo final")
+    out.append("  Imagens → camadas_edit_data.py (inserts[]); som → mixar_final.py "
+               "(references/shortform.md, \"Camadas\").")
+    return out
+
+
 def style_digest(p: Path) -> str:
     """The gate choice: what Fase 2 should be built as."""
     try:
-        d = json.loads(p.read_text())
+        d = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as e:
         return f"preview_style.json ilegível ({e.__class__.__name__}) — peça ao usuário para salvar de novo"
 

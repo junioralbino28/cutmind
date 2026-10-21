@@ -28,10 +28,13 @@ Routes:
                         "Posição das frases" mostra as mesmas frases do render
   /api/state    GET     state.json + mtimes (UI polls this to hot-reload)
   /api/celular  GET     só no computador: links + QR code para abrir no celular
+  /api/midia    GET     imagens e áudios do projeto (<edit>/midia/)
   /api/save     POST    body → <edit>/preview_edits.json (atomic), or
-                        <edit>/preview_style.json when body.type=="style-setup"
-  /api/upload   POST    ?name=<arquivo>, corpo = o vídeo → pasta dos vídeos
-                        (pai do <edit>) + aviso em <edit>/preview_upload.json
+                        <edit>/preview_style.json when body.type=="style-setup";
+                        com `camadas`, grava também <edit>/camadas.json (camadas.py)
+  /api/upload   POST    ?name=<arquivo>, corpo = o arquivo. Vídeo → pasta dos
+                        vídeos (pai do <edit>) + aviso em <edit>/preview_upload.json;
+                        imagem e áudio → <edit>/midia/ (camadas do projeto)
 
 Quem entra: por padrão o servidor ouve só em 127.0.0.1 e atende só este
 computador (e o celular ligado por `adb reverse`, que chega como 127.0.0.1).
@@ -64,7 +67,9 @@ import time
 from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, unquote
+
+import camadas as cam  # mesma pasta deste arquivo
 
 APP_DIR = Path(__file__).resolve().parent.parent / "assets" / "preview"
 PEAKS_PER_SEC = 40
@@ -84,6 +89,15 @@ MIME = {
     ".mp4": "video/mp4",
     ".mov": "video/quicktime",
     ".mp3": "audio/mpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".wav": "audio/wav",
+    ".ogg": "audio/ogg",
+    ".opus": "audio/ogg",
+    ".flac": "audio/flac",
+    ".weba": "audio/webm",
     ".srt": "text/plain; charset=utf-8",
 }
 
@@ -92,7 +106,9 @@ LOCAL_CLIENTS = {"127.0.0.1", "::1"}
 TOKEN_COOKIE = "cenno_t"
 TOKEN_MAX_AGE = 30 * 24 * 3600  # 30 dias: o atalho na tela inicial continua entrando
 MAX_JSON_BYTES = 2_000_000
-UPLOAD_EXTS = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".3gp", ".mts", ".m2ts"}
+VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".3gp", ".mts", ".m2ts"}
+# imagem e áudio são camadas do projeto: vão para <edit>/midia/, não para a pasta dos vídeos
+UPLOAD_EXTS = VIDEO_EXTS | cam.IMAGE_EXTS | cam.AUDIO_EXTS
 DISK_MARGIN = 512 * 1024 * 1024  # nunca encher o disco: sobra meio GB
 WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
                     *(f"LPT{i}" for i in range(1, 10))}
@@ -197,6 +213,17 @@ def unique_path(folder: Path, name: str) -> Path:
         if not (folder / cand).exists() and not (folder / f".{cand}.parte").exists():
             return folder / cand
         n += 1
+
+
+def upload_kind(name: str) -> str | None:
+    ext = Path(name).suffix.lower()
+    if ext in VIDEO_EXTS:
+        return "video"
+    if ext in cam.IMAGE_EXTS:
+        return "imagem"
+    if ext in cam.AUDIO_EXTS:
+        return "audio"
+    return None
 
 
 def probe_duration(path: Path) -> float:
@@ -444,7 +471,9 @@ class Handler(BaseHTTPRequestHandler):
             p = self._safe(APP_DIR, path[len("/assets/"):])
             self._send_file(p) if p else self._json({"error": "bad path"}, 400)
         elif path.startswith("/media/"):
-            p = self._safe(self.root, path[len("/media/"):])
+            # o navegador codifica espaço e acento (midia/Grava%C3%A7%C3%A3o.m4a); a
+            # trava de pasta (_safe) vem depois de decodificar, então %2e%2e não passa
+            p = self._safe(self.root, unquote(path[len("/media/"):]))
             self._send_file(p) if p else self._json({"error": "bad path"}, 400)
         elif path == "/gen/waveform.json":
             self._waveform()
@@ -452,6 +481,8 @@ class Handler(BaseHTTPRequestHandler):
             self._thumbs(path[len("/gen/thumbs/"):])
         elif path == "/api/state":
             self._state()
+        elif path == "/api/midia":
+            self._midia()
         else:
             self._json({"error": "unknown route"}, 404)
 
@@ -487,9 +518,18 @@ class Handler(BaseHTTPRequestHandler):
         # clobber the other (they are written at different moments, by different
         # screens, and the skill consumes+deletes them independently).
         name = "preview_style.json" if body.get("type") == "style-setup" else "preview_edits.json"
+        if name == "preview_edits.json" and "camadas" in body:
+            # as camadas são o arquivo do projeto (como num editor): gravadas aqui,
+            # conferidas, e o agente é avisado pelo preview_edits.json como sempre
+            try:
+                body["camadas"] = cam.normalize(body["camadas"])
+            except cam.CamadasInvalidas as e:
+                self._json({"error": f"camadas: {e}"}, 400)
+                return
+            cam.save(self.root / "camadas.json", body["camadas"])
         out = self.root / name
         tmp = out.with_suffix(".tmp")
-        tmp.write_text(json.dumps(body, ensure_ascii=False, indent=2))
+        tmp.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(out)
         self._json({"ok": True, "file": str(out)})
 
@@ -605,7 +645,9 @@ class Handler(BaseHTTPRequestHandler):
                                for c in cues]})
 
     def _upload(self, query: str) -> None:
-        """O vídeo vai, em pedaços, para a pasta dos vídeos — nunca para a memória."""
+        """Em pedaços, direto para o disco — nunca para a memória. Vídeo vai para a
+        pasta dos vídeos (é material novo: o agente é avisado); imagem e áudio vão
+        para <edit>/midia/ (são camadas do projeto, que o editor põe na linha do tempo)."""
         if self.upload_dir is None:
             self._fail(404, "envio desligado")
             return
@@ -622,13 +664,15 @@ class Handler(BaseHTTPRequestHandler):
             self._fail(400, "Arquivo vazio.")
             return
         if length > self.max_upload:
-            self._fail(413, f"Vídeo maior que o limite de {self.max_upload / 1024 ** 3:.1f} GB.")
+            self._fail(413, f"Arquivo maior que o limite de {self.max_upload / 1024 ** 3:.1f} GB.")
             return
         name = clean_upload_name((parse_qs(query).get("name") or [""])[0])
-        if Path(name).suffix.lower() not in UPLOAD_EXTS:
-            self._fail(415, "Só vídeo: mp4, mov, m4v, webm, mkv, avi, 3gp, mts.")
+        kind = upload_kind(name)
+        if kind is None:
+            self._fail(415, "Só vídeo, imagem ou áudio: mp4, mov, webm, jpg, png, webp, mp3, m4a, wav, ogg.")
             return
-        folder = self.upload_dir
+        folder = self.upload_dir if kind == "video" else self.root / cam.MIDIA_DIR
+        folder.mkdir(exist_ok=True)
         try:
             if length > shutil.disk_usage(folder).free - DISK_MARGIN:
                 self._fail(507, "Sem espaço no computador para esse vídeo.")
@@ -658,6 +702,10 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 pass
             return
+        if kind != "video":
+            self._json({"ok": True, "file": final.name, "size": length, "tipo": kind,
+                        "arquivo": f"{cam.MIDIA_DIR}/{final.name}"})
+            return
         # O aviso para o agente: lista, porque dois envios seguidos não podem
         # virar um só. A skill lê, cuida e apaga — como os outros preview_*.json.
         signal = self.root / "preview_upload.json"
@@ -675,7 +723,19 @@ class Handler(BaseHTTPRequestHandler):
                                        "savedAt": item["savedAt"]}, ensure_ascii=False, indent=2),
                            encoding="utf-8")
             tmp.replace(signal)
-        self._json({"ok": True, "file": final.name, "size": length})
+        self._json({"ok": True, "file": final.name, "size": length, "tipo": "video"})
+
+    def _midia(self) -> None:
+        """Imagens e áudios do projeto (o que chegou pelo Enviar)."""
+        pasta = self.root / cam.MIDIA_DIR
+        itens = []
+        if pasta.is_dir():
+            for f in sorted(pasta.iterdir(), key=lambda x: x.stat().st_mtime):
+                tipo = upload_kind(f.name) if f.is_file() and not f.name.startswith(".") else None
+                if tipo in ("imagem", "audio"):
+                    itens.append({"arquivo": f"{cam.MIDIA_DIR}/{f.name}", "nome": f.name,
+                                  "tipo": tipo, "bytes": f.stat().st_size})
+        self._json({"midia": itens})
 
     # ---- dynamic bits ----
     def _state(self) -> None:

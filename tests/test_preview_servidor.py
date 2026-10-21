@@ -173,8 +173,9 @@ def test_envio_vai_para_a_pasta_dos_videos_sem_sobrescrever(srv):
 
 
 def test_envio_recusa_o_que_nao_e_video(srv):
-    r, _ = pedir(srv.port, "POST", "/api/upload?name=programa.exe",
-                 remoto=True, cookie=CODIGO, corpo=b"MZ")
+    # recusa pelo nome, sem ler o corpo; mandando o corpo, o Windows às vezes derruba a
+    # conexão no meio do envio (ConnectionAbortedError) e o teste falhava por acaso
+    r, _ = pedir_so_cabecalho(srv.port, "/api/upload?name=programa.exe", 2)
     assert r.status == 415
     assert not (srv.videos / "programa.exe").exists()
 
@@ -244,3 +245,67 @@ def test_frases_do_empilhado_saem_do_diretor(srv):
     assert [f["start"] for f in frases] == [c["startMs"] / 1000 for c in cues]  # as do diretor, não uma cópia
     assert pedir(srv.port, "GET", "/gen/frases?estilo=karaoke")[0].status == 400
     assert pedir(srv.port, "GET", "/gen/frases?estilo=stacked", remoto=True)[0].status == 403  # dado: só com o código
+
+
+# ---- camadas: imagem e áudio do projeto ----
+def test_imagem_e_audio_vao_para_a_midia_do_projeto(srv):
+    """Vídeo é material novo (vai para a pasta dos vídeos e avisa o agente); imagem e
+    áudio são camadas do projeto: vão para <edit>/midia/, sem aviso de vídeo novo."""
+    r, corpo = pedir(srv.port, "POST", "/api/upload?name=print.PNG", remoto=True, cookie=CODIGO, corpo=b"png")
+    dados = json.loads(corpo)
+    assert r.status == 200 and dados["tipo"] == "imagem" and dados["arquivo"] == "midia/print.png"
+    r, corpo = pedir(srv.port, "POST", "/api/upload?name=voz.m4a", remoto=True, cookie=CODIGO, corpo=b"m4a")
+    assert json.loads(corpo)["arquivo"] == "midia/voz.m4a"
+    assert (srv.edit / "midia" / "print.png").read_bytes() == b"png"
+    assert not (srv.videos / "voz.m4a").exists()
+    assert not (srv.edit / "preview_upload.json").exists()
+    r, corpo = pedir(srv.port, "GET", "/api/midia", remoto=True, cookie=CODIGO)
+    assert [(m["arquivo"], m["tipo"]) for m in json.loads(corpo)["midia"]] == [
+        ("midia/print.png", "imagem"), ("midia/voz.m4a", "audio")]
+    r, corpo = pedir(srv.port, "GET", "/media/midia/voz.m4a", remoto=True, cookie=CODIGO)
+    assert r.status == 200 and r.getheader("Content-Type") == "audio/mp4"
+
+
+def test_midia_com_espaco_e_acento_abre_pelo_endereco_do_navegador(srv):
+    """O navegador pede /media/midia/Grava%C3%A7%C3%A3o%20de%20voz.m4a: o servidor tem
+    de achar o arquivo pelo nome de verdade. E o caminho codificado não abre porta:
+    %2e%2e continua sendo "..", barrado como antes."""
+    r, corpo = pedir(srv.port, "POST", "/api/upload?name=Grava%C3%A7%C3%A3o%20de%20voz.m4a",
+                     remoto=True, cookie=CODIGO, corpo=b"m4a")
+    assert json.loads(corpo)["arquivo"] == "midia/Gravação de voz.m4a"
+    r, corpo = pedir(srv.port, "GET", "/media/midia/Grava%C3%A7%C3%A3o%20de%20voz.m4a", remoto=True, cookie=CODIGO)
+    assert r.status == 200 and corpo == b"m4a"
+    r, corpo = pedir(srv.port, "GET", "/media/%2e%2e/edit-segredo/x.txt")
+    assert r.status == 400 and "daqui".encode() not in corpo
+
+
+def _salvar(srv, corpo):
+    return pedir(srv.port, "POST", "/api/save", remoto=True, cookie=CODIGO,
+                 corpo=json.dumps(corpo).encode("utf-8"))
+
+
+def test_salvar_camadas_grava_o_arquivo_do_projeto(srv):
+    camadas = {"video": {"mudo": True}, "faixas": [
+        {"id": "a1", "tipo": "audio", "mudo": False, "itens": [
+            {"id": "a1-1", "arquivo": "midia/Gravação.m4a", "inicio": 1.23456, "duracao": 4, "volume": 0.8}]},
+        {"id": "i1", "tipo": "imagem", "oculto": True, "itens": [
+            {"id": "i1-1", "arquivo": "midia/print.png", "inicio": 2, "duracao": 3}]}]}
+    r, corpo = _salvar(srv, {"type": "timeline-edits", "camadas": camadas})
+    assert r.status == 200, corpo
+    salvo = json.loads((srv.edit / "camadas.json").read_text(encoding="utf-8"))
+    assert salvo["video"]["mudo"] is True
+    assert salvo["faixas"][0]["itens"][0] == {"id": "a1-1", "arquivo": "midia/Gravação.m4a", "inicio": 1.235,
+                                              "duracao": 4.0, "corte": 0.0, "volume": 0.8, "melhorar": False}
+    assert salvo["faixas"][1]["oculto"] is True
+    aviso = json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))
+    assert aviso["camadas"] == salvo
+
+
+def test_camadas_com_arquivo_de_fora_sao_recusadas(srv):
+    for arquivo in ("../state.json", "midia/../state.json", "midia/x/../../state.json", "midia/voz.exe"):
+        corpo = {"type": "timeline-edits", "camadas": {"faixas": [
+            {"id": "a1", "tipo": "audio", "itens": [{"id": "a1-1", "arquivo": arquivo, "duracao": 1}]}]}}
+        r, dados = _salvar(srv, corpo)
+        assert r.status == 400 and "camadas" in json.loads(dados)["error"], arquivo
+    assert not (srv.edit / "camadas.json").exists()
+    assert not (srv.edit / "preview_edits.json").exists()

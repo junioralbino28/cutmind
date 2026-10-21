@@ -180,6 +180,7 @@ the layer questions in chat.
   Validate each new edge against `speech_regions.py` (warn if an edge clips a word —
   the user's intent wins, but say so), update `edl.json`, re-render, `verify_cut.py`.
 - `editData` — insert/hook/behind timings → edit-data.json → re-render Phase 2.
+- `camadas` — images and audio the user put on the timeline (the server already wrote `<edit>/camadas.json`): images → `camadas_edit_data.py`, sound → `mixar_final.py` (`references/shortform.md`, "Layers from the editor").
 
 Then delete `preview_edits.json` and update `state.json`.
 

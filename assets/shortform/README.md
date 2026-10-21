@@ -72,7 +72,9 @@ Then copy `cut.mp4` into `public/` and generate the data files below.
     // "sfx": {"enabled": true, "clickVolume": 0.45, "scratchVolume": 0.16}
   },
   "inserts": [                       // rounded-card images, upper zone
-    {"src": "pexels/ai.jpg", "start": 1.95, "end": 3.35}
+    {"src": "pexels/ai.jpg", "start": 1.95, "end": 3.35},
+    // an image the user put on the timeline: written by camadas_edit_data.py, never by hand
+    {"src": "midia/camada-i1-1.png", "start": 5.0, "end": 8.0, "camada": "i1-1"}
   ],
   "behind": [                        // behind-the-subject (person_matte.py first)
     {"kind": "image", "src": "ill/x.jpg", "matte": "fg_x.mov", "start": 4.15, "dur": 1.65},

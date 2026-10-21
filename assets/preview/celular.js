@@ -8,7 +8,9 @@
  *   GET  /gen/frame?src=&t=    quadro do vídeo de ORIGEM (a alça ao aparar)
  *   POST /api/save             timeline-edits → preview_edits.json
  *                              style-setup    → preview_style.json
- *   POST /api/upload?name=     o vídeo escolhido → pasta dos vídeos no computador
+ *   POST /api/upload?name=     o vídeo escolhido → pasta dos vídeos no computador;
+ *                              imagem e áudio → <edit>/midia/ (viram camadas)
+ *   GET  /media/camadas.json   as camadas do projeto (o Salvar leva `camadas`)
  * Pela rede (servidor com --host), os dados só saem para quem abriu pelo link
  * ou QR do computador; sem isso /api/state dá 403 e a tela diz o que falta.
  * O agente (Claude ou Codex) lê exatamente os arquivos que o editor de PC grava,
@@ -74,6 +76,15 @@ const ICON = {
   mover: sv('<path d="M12 3.5v17M3.5 12h17"/><path d="M9.5 6 12 3.5 14.5 6M9.5 18l2.5 2.5 2.5-2.5M6 9.5 3.5 12 6 14.5M18 9.5l2.5 2.5-2.5 2.5"/>'),
   todas: sv('<rect x="4" y="5" width="16" height="4" rx="1.4"/><rect x="4" y="11" width="16" height="4" rx="1.4"/><path d="M7 19.5h10"/>'),
   imagem: sv('<rect x="3" y="5" width="18" height="14" rx="2.6"/><circle cx="8.5" cy="10" r="1.6"/><path d="M4 17.5l5-4.6 3.4 3 2.4-2 5.2 4"/>'),
+  audio: sv('<path d="M9 17.5V6.2l10-2v11"/><circle cx="6.6" cy="17.5" r="2.4"/><circle cx="16.6" cy="15.2" r="2.4"/>'),
+  som: sv('<path d="M4.5 9.5v5h3.2l4.8 4V5.5l-4.8 4z"/><path d="M15.8 9a4 4 0 0 1 0 6M18.4 6.6a7.4 7.4 0 0 1 0 10.8"/>'),
+  semSom: sv('<path d="M4.5 9.5v5h3.2l4.8 4V5.5l-4.8 4z"/><path d="M16 9.6l4.8 4.8m0-4.8L16 14.4"/>'),
+  olho: sv('<path d="M2.8 12s3.4-6 9.2-6 9.2 6 9.2 6-3.4 6-9.2 6-9.2-6-9.2-6z"/><circle cx="12" cy="12" r="2.6"/>'),
+  olhoFechado: sv('<path d="M2.8 12s3.4-6 9.2-6 9.2 6 9.2 6-3.4 6-9.2 6-9.2-6-9.2-6z"/><path d="M4 20 20 4"/>'),
+  cadeado: sv('<rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>'),
+  cadeadoAberto: sv('<rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 6.6-1.6"/>'),
+  melhorar: sv('<path d="M3.5 12h2.2M7.7 8.5v7M11.9 5.5v13M16.1 8.5v7M20.3 12h-2.2"/>'),
+  volume: sv('<path d="M4.5 9.5v5h3.2l4.8 4V5.5l-4.8 4z"/><path d="M15.8 9a4 4 0 0 1 0 6"/>'),
 };
 
 /* ---------- catálogo de estilos e amostras: estilos.js ----------
@@ -331,6 +342,11 @@ const S = {
   liveAnims: [],
   seq: 0,             // numeração das tomadas novas (divisão, cópia)
   base: [],           // as tomadas como estavam no último corte recebido ou no último Salvar
+  camadas: { versao: 1, video: { mudo: false }, faixas: [] }, // imagens e áudios postos pela pessoa (camadas.json)
+  camadasBase: '',    // as camadas como estavam ao abrir ou no último Salvar
+  layerSel: null,     // id do item de camada escolhido
+  mudoUsuario: false, // o alto-falante da linha do play (só a prévia; não vai para o vídeo)
+  midiaDur: {},       // duração de cada áudio de midia/, lida do arquivo
 };
 
 const fmt = (t) => {
@@ -473,7 +489,7 @@ function diffBase() {
 }
 const edlDirty = () => diffBase() > 0;
 function dirtyCount() {
-  return diffBase() + S.notes.length;
+  return diffBase() + S.notes.length + (camadasDirty() ? 1 : 0);
 }
 const isChanged = (r) => {
   const b = S.base.find((x) => x.uid === r.uid);
@@ -505,6 +521,8 @@ function snap() {
     pendingIn: S.pendingIn,
     selected: S.selected,
     pos: S.style ? JSON.parse(JSON.stringify(capPos())) : null,
+    cam: JSON.parse(JSON.stringify(S.camadas)),
+    layerSel: S.layerSel,
   };
 }
 function remember(before) {
@@ -525,6 +543,9 @@ function restore(s) {
   S.pendingIn = s.pendingIn;
   S.selected = s.selected < S.draft.length ? s.selected : -1;
   if (S.style && s.pos) S.style.captionPositions = JSON.parse(JSON.stringify(s.pos));
+  if (s.cam) S.camadas = s.cam;
+  S.layerSel = s.layerSel && camItem(s.layerSel) ? s.layerSel : null;
+  applyMute();
   S.t = clampT(S.t);
   renderTimeline(); renderToolbar(); refreshHeader(); renderHistory();
   drawFrase(true);
@@ -619,6 +640,8 @@ async function applyState(data) {
       try { S.editData = await (await fetch(`/media/${S.state.editData}?v=${Date.now()}`)).json(); buildInsertsDraft(); } catch (e) { /* ainda não existe */ }
     }
   }
+  S.layerSel = null;
+  await loadCamadas();
   if (hasVideo) {
     setVideoSrc(S.view);
     loadWave();
@@ -677,16 +700,24 @@ function trackPlan() {
   const fin = S.view === 'final';
   const hasTxt = S.insertsDraft.some(isText);
   const hasIns = S.insertsDraft.some((c) => !isText(c));
+  // camadas: as de imagem ficam acima do vídeo, as de áudio abaixo do som dele
+  const fx = S.posMode ? [] : S.camadas.faixas;
+  const lh = fx.length > 2 ? 20 : 26;
+  const layer = (f) => ({ id: `L-${f.id}`, h: lh, show: true, faixa: f });
   return [
     { id: 'frases', h: 22, show: S.posMode && S.frases.length > 0 },
     { id: 'notes', h: 14, show: S.notes.length > 0 || S.pendingIn != null },
     { id: 'caps', h: 18, show: fin && S.captions.length > 0 },
     { id: 'text', h: 18, show: fin && hasTxt },
     { id: 'ins', h: 18, show: fin && hasIns },
+    ...fx.filter((f) => f.tipo === 'imagem').reverse().map(layer), // a mais nova fica no alto, como no editor do PC
     { id: 'video', h: VIDEO_TRACK_H, show: true },
     { id: 'audio', h: 30, show: true },
+    ...fx.filter((f) => f.tipo === 'audio').map(layer),
   ].filter((t) => t.show);
 }
+// a linha do tempo cresce com as camadas até um teto; acima dele as faixas encolhem
+const TL_MIN = 178, TL_MAX = 292;
 
 const VIDEO_TRACK_H = 56;
 const MOVE_TILE = 60; // largura de cada tomada enquanto se move uma
@@ -700,10 +731,15 @@ function renderTimeline() {
   tracksEl.innerHTML = '';
   lanes = [];
   const width = `${Math.max(totalT(), 0.1) * S.pps}px`;
-  for (const tr of trackPlan()) {
-    const track = el('div', `track tr-${tr.id}`, tracksEl);
+  const plan = trackPlan();
+  // régua (30) + respiro (6) + faixas e os vãos entre elas
+  const need = 36 + plan.reduce((a, t) => a + t.h, 0) + 6 * (plan.length - 1);
+  timeline.style.height = `${Math.min(TL_MAX, Math.max(TL_MIN, need))}px`;
+  for (const tr of plan) {
+    const track = el('div', `track tr-${tr.faixa ? 'layer' : tr.id}`, tracksEl);
     track.style.height = `${tr.h}px`;
     if (tr.id === 'audio') {
+      track.classList.toggle('mudo', S.view === 'corte' && S.camadas.video.mudo);
       el('canvas', 'wave', track).id = 'wave';
       continue;
     }
@@ -711,7 +747,8 @@ function renderTimeline() {
     lane.style.width = width;
     lane.dataset.track = tr.id;
     lanes.push(lane);
-    if (tr.id === 'video') renderTakes(lane);
+    if (tr.faixa) { renderLayerTrack(track, lane, tr.faixa); continue; }
+    if (tr.id === 'video') { renderTakes(lane); if (S.view === 'corte' && !S.posMode) trackHead(track, null); }
     else if (tr.id === 'frases') renderFrases(lane);
     else if (tr.id === 'notes') renderNotes(lane);
     else if (tr.id === 'caps') {
@@ -945,12 +982,14 @@ let momentum = null;
 function stopMomentum() { if (momentum) { cancelAnimationFrame(momentum); momentum = null; } }
 
 timeline.addEventListener('pointerdown', (e) => {
+  // os botões do cabeçalho da faixa recebem o próprio clique: capturar o toque o roubaria
+  if (e.target.closest('.th')) return;
   try { timeline.setPointerCapture(e.pointerId); } catch (err) { /* toque sintético */ }
   G.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
   stopMomentum();
   clearTimeout(G.lp);
   if (G.pts.size === 2) {
-    if (G.mode === 'move') return; // movendo uma tomada, o segundo dedo não vira pinça
+    if (G.mode === 'move' || G.mode === 'layer') return; // movendo uma tomada ou camada, o segundo dedo não vira pinça
     const [a, b] = [...G.pts.values()];
     G.mode = 'pinch';
     G.d0 = Math.hypot(a.x - b.x, a.y - b.y) || 1;
@@ -967,6 +1006,8 @@ timeline.addEventListener('pointerdown', (e) => {
     requestPeek(S.draft[i].source, edgeT(S.draft[i], h.dataset.side));
     return;
   }
+  const lh = e.target.closest('.lh');
+  if (lh && startLayerDrag(e.clientX, 'trim', lh.dataset.side)) return;
   G.mode = 'pan';
   G.x0 = e.clientX; G.t0 = S.t; G.moved = false;
   G.lastX = e.clientX; G.lastT = performance.now(); G.vel = 0;
@@ -976,6 +1017,9 @@ timeline.addEventListener('pointerdown', (e) => {
   // segurar uma tomada sem arrastar: ela sai da faixa e vai para onde o dedo levar
   const tk = e.target.closest('.take');
   if (tk && S.view === 'corte' && !S.posMode) G.lp = setTimeout(() => startMove(+tk.dataset.i, e.clientX), 450);
+  // segurar um item de camada: ele passa a andar com o dedo
+  const lc = e.target.closest('.chip.layer');
+  if (lc) G.lp = setTimeout(() => holdLayer(lc.dataset.id, e.clientX), 450);
 });
 
 timeline.addEventListener('pointermove', (e) => {
@@ -1015,6 +1059,7 @@ timeline.addEventListener('pointermove', (e) => {
     return;
   }
   if (G.mode === 'move') { G.mv.x = e.clientX; updateMove(); return; }
+  if (G.mode === 'layer') { dragLayer(e.clientX); return; }
   if (G.mode === 'pan') {
     const dx = e.clientX - G.x0;
     if (!G.moved && Math.abs(dx) > 6) {
@@ -1038,6 +1083,7 @@ function endPointer(e) {
   G.pts.delete(e.pointerId);
   clearTimeout(G.lp);
   if (G.mode === 'move') { if (G.pts.size === 0) endMove(e.type === 'pointerup'); return; }
+  if (G.mode === 'layer') { if (G.pts.size === 0) endLayerDrag(); return; }
   if (G.mode === 'pinch') {
     if (G.pts.size === 1) { // sobrou um dedo: ele passa a arrastar, sem pulo
       const [p] = [...G.pts.values()];
@@ -1150,6 +1196,9 @@ function tapAt(target) {
   if (target && target.closest && target.closest('.add-tile')) { $('fileInput').click(); return; }
   const note = target && target.closest && target.closest('.chip.note');
   if (note) { openNote(note.dataset.id, false); return; }
+  const lc = target && target.closest && target.closest('.chip.layer');
+  if (lc) { tapLayer(lc.dataset.id); return; }
+  S.layerSel = null;
   const take = target && target.closest && target.closest('.take');
   if (take && S.view === 'corte') {
     const i = +take.dataset.i;
@@ -1195,8 +1244,9 @@ video.addEventListener('play', () => { $('btnPlay').innerHTML = ICON.pause; });
 video.addEventListener('pause', () => { $('btnPlay').innerHTML = ICON.play; });
 video.addEventListener('ended', () => { $('btnPlay').innerHTML = ICON.play; });
 $('btnMute').addEventListener('click', () => {
-  video.muted = !video.muted;
-  $('btnMute').innerHTML = video.muted ? ICON.mute : ICON.vol;
+  S.mudoUsuario = !S.mudoUsuario; // só a prévia: o silenciar que vai para o vídeo fica no cabeçalho da faixa
+  applyMute();
+  $('btnMute').innerHTML = S.mudoUsuario ? ICON.mute : ICON.vol;
 });
 $('btnUndo').innerHTML = ICON.desfazer;
 $('btnRedo').innerHTML = ICON.refazer;
@@ -1218,6 +1268,7 @@ function loop() {
     if (S.view === 'corte') followDraft();
     else { S.t = clampT(renderedToDraft(video.currentTime)); positionTimeline(); }
   }
+  syncLayers();
   requestAnimationFrame(loop);
 }
 
@@ -1248,9 +1299,10 @@ function followDraft() {
 function renderToolbar() {
   const tb = $('toolbar');
   const ctx = $('ctxbar');
-  const sel = S.selected >= 0 && S.view === 'corte' ? S.draft[S.selected] : null;
-  tb.classList.toggle('hidden', !!sel);
-  ctx.classList.toggle('hidden', !sel);
+  const lsel = S.layerSel ? camItem(S.layerSel) : null;
+  const sel = !lsel && S.selected >= 0 && S.view === 'corte' ? S.draft[S.selected] : null;
+  tb.classList.toggle('hidden', !!(sel || lsel));
+  ctx.classList.toggle('hidden', !(sel || lsel));
   const hasVideo = S.videoDuration > 0;
   const tool = (host, id, label, opts = {}) => {
     const b = el('button', `tool${opts.on ? ' on' : ''}${opts.armed ? ' armed' : ''}${opts.cls ? ` ${opts.cls}` : ''}`, host);
@@ -1272,11 +1324,24 @@ function renderToolbar() {
   tb.innerHTML = '';
   // Corte/Final virou o seletor do topo; Enviar virou o "+" no fim da faixa
   tool(tb, 'cortar', 'Cortar', { icon: ICON.corte, disabled: !hasVideo });
+  // imagem e áudio entram como camadas novas, na agulha (o servidor guarda em midia/)
+  tool(tb, 'audio', 'Áudio', { disabled: !hasVideo });
+  tool(tb, 'imagem', 'Imagem', { disabled: !hasVideo });
   tool(tb, 'legenda', 'Legenda', { disabled: !hasVideo || !canStyle() });
   tool(tb, 'estilo', 'Estilo', { disabled: !hasVideo || !canStyle() });
   tool(tb, 'marcar', S.pendingIn != null ? 'Fim' : 'Marcar', { armed: S.pendingIn != null, disabled: !hasVideo });
 
   ctx.innerHTML = '';
+  if (lsel) { // um item de camada escolhido
+    const aud = lsel.f.tipo === 'audio';
+    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
+    if (aud) {
+      tool(ctx, 'volume', `${Math.round(lsel.it.volume * 100)}%`);
+      tool(ctx, 'melhorar', 'Melhorar', { on: lsel.it.melhorar });
+    }
+    tool(ctx, 'excluir', 'Excluir', { icon: ICON.remover });
+    return;
+  }
   if (sel) {
     tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
     tool(ctx, 'dividir', 'Dividir');
@@ -1298,10 +1363,14 @@ document.addEventListener('click', (e) => {
     case 'estilo': openStyle('edit'); break;
     case 'legenda': openStyle('captions'); break;
     case 'marcar': toggleMark(); break;
-    case 'voltar': S.selected = -1; renderTimeline(); renderToolbar(); break;
+    case 'audio': $('fileAudio').click(); break;
+    case 'imagem': $('fileImagem').click(); break;
+    case 'voltar': S.selected = -1; S.layerSel = null; renderTimeline(); renderToolbar(); break;
     case 'dividir': splitSelected(); break;
     case 'duplicar': duplicateSelected(); break;
-    case 'excluir': deleteSelected(); break;
+    case 'excluir': if (S.layerSel) deleteLayerSel(); else deleteSelected(); break;
+    case 'volume': openVolume(); break;
+    case 'melhorar': toggleMelhorar(); break;
     case 'ouvir': {
       const d = draftLayout()[S.selected];
       S.t = d.out; preciseSeek(); positionTimeline(); video.play().catch(() => {});
@@ -1376,6 +1445,8 @@ function switchView(v) {
   if (v === S.view) return;
   S.view = v;
   S.selected = -1;
+  S.layerSel = null;
+  applyMute(); // o silenciar do som do vídeo vale no corte; o final já sai mixado
   setVideoSrc(v);
   renderTimeline();
   renderToolbar();
@@ -1399,7 +1470,7 @@ function download() {
 let upXhr = null;
 const mb = (b) => `${Math.round(b / 1e6)} MB`;
 function sendVideo(file) {
-  if (upXhr) { toast('Já tem um vídeo indo — espere terminar', 2400); return; }
+  if (upXhr) { toast('Já tem um envio indo — espere terminar', 2400); return; }
   const card = $('upload');
   card.className = 'upload';
   $('upName').textContent = file.name;
@@ -1426,8 +1497,10 @@ function sendVideo(file) {
     try { res = JSON.parse(xhr.responseText); } catch (err) { /* resposta sem JSON */ }
     if (xhr.status === 200 && res.ok) {
       $('upBar').style.width = '100%';
-      end('done', 'Chegou no computador. O agente já foi avisado.');
+      const camada = res.tipo === 'imagem' || res.tipo === 'audio';
+      end('done', camada ? 'Chegou. Está na linha do tempo, na agulha.' : 'Chegou no computador. O agente já foi avisado.');
       setTimeout(() => { if (!upXhr) card.classList.add('hidden'); }, 7000);
+      if (camada) { addLayer(res.tipo, res.arquivo); return; }
       if (!(S.videoDuration > 0)) {
         $('emptyTitle').textContent = 'Vídeo recebido';
         $('emptyText').textContent = 'O agente já foi avisado. O corte aparece aqui sozinho quando ficar pronto.';
@@ -2163,7 +2236,9 @@ function edlPayload() {
 }
 $('btnSave').addEventListener('click', async () => {
   const payload = { type: 'timeline-edits' };
+  const soCamadas = !edlDirty() && !S.notes.length;
   if (edlDirty()) payload.edl = edlPayload();
+  if (camadasDirty()) payload.camadas = S.camadas;
   if (S.notes.length) {
     payload.notes = S.notes.map((n) => ({
       start: +n.start.toFixed(3),
@@ -2176,19 +2251,331 @@ $('btnSave').addEventListener('click', async () => {
   }
   try {
     const res = await fetch('/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    if (!(await res.json()).ok) throw new Error('falhou');
+    const out = await res.json();
+    if (!out.ok) {
+      // camada recusada pelo servidor: o motivo vale mais que o aviso genérico
+      if (out.error) { toast(`Não salvei: ${out.error}`, 4500); return; }
+      throw new Error('falhou');
+    }
     S.savedPending = true;
     S.notes = [];
     S.pendingIn = null;
     // o que foi enviado vira a referência; `orig` segue sendo o edl.json até o agente refazer
     S.base = baseOf(S.draft);
+    S.camadasBase = camSig();
     S.selected = -1;
+    S.layerSel = null;
     forgetHistory(); // o que foi enviado ao agente não se desfaz daqui
     renderTimeline(); renderToolbar(); refreshHeader();
-    toast('Ajustes enviados. O agente refaz o corte.', 3000);
+    toast(soCamadas ? 'Camadas salvas. O agente põe no vídeo final.' : 'Ajustes enviados. O agente refaz o corte.', 3000);
   } catch (err) {
     toast('Não consegui salvar — o editor ainda está ligado no computador?', 4000);
   }
+});
+
+// ---------- camadas: imagens e áudios na linha do tempo ----------
+/* Como em qualquer editor: cada envio de imagem ou áudio vira uma faixa própria, com
+ * cabeçalho à esquerda (silenciar ou esconder, e travar). O vídeo principal ganha o
+ * "silenciar" do som original. Tudo fica em camadas.json, no relógio do cut.mp4: o
+ * Salvar leva as camadas, o servidor grava o arquivo e o agente põe no vídeo final
+ * (imagens no edit-data, áudio no mixar_final.py). A prévia toca e mostra as camadas no
+ * Corte; no Final, o vídeo já é o que o agente montou com elas. */
+function camVazio() { return { versao: 1, video: { mudo: false }, faixas: [] }; }
+function camSig() { return JSON.stringify(S.camadas); }
+function camadasDirty() { return camSig() !== S.camadasBase; }
+S.camadasBase = camSig();
+function camItem(id) {
+  for (const f of S.camadas.faixas) {
+    const it = f.itens.find((x) => x.id === id);
+    if (it) return { f, it };
+  }
+  return null;
+}
+async function loadCamadas() {
+  let c = null;
+  try {
+    const r = await fetch(`/media/camadas.json?v=${Date.now()}`);
+    if (r.ok) c = await r.json();
+  } catch (e) { /* ainda não existe */ }
+  S.camadas = c && Array.isArray(c.faixas) ? { versao: 1, video: { mudo: !!(c.video && c.video.mudo) }, faixas: c.faixas } : camVazio();
+  S.camadasBase = camSig();
+  applyMute();
+}
+const nomeMidia = (arq) => String(arq || '').replace(/^midia\//, '');
+function newFaixaId(letra) {
+  let n = 0;
+  for (const f of S.camadas.faixas) {
+    const m = new RegExp(`^${letra}(\\d+)$`).exec(f.id);
+    if (m) n = Math.max(n, +m[1]);
+  }
+  return `${letra}${n + 1}`;
+}
+// a duração de um áudio de midia/, lida do próprio arquivo pelo navegador
+function midiaDuration(arq) {
+  if (S.midiaDur[arq]) return Promise.resolve(S.midiaDur[arq]);
+  return new Promise((ok) => {
+    const a = new Audio();
+    const fim = (d) => { clearTimeout(t); ok(d); };
+    const t = setTimeout(() => fim(0), 8000);
+    a.preload = 'metadata';
+    a.onloadedmetadata = () => { if (isFinite(a.duration)) S.midiaDur[arq] = a.duration; fim(a.duration || 0); };
+    a.onerror = () => fim(0);
+    a.src = `/media/${arq}`;
+  });
+}
+async function addLayer(tipo, arquivo) {
+  const total = S.videoDuration || totalT();
+  const inicio = +Math.min(draftToRendered(S.t), Math.max(0, total - 0.5)).toFixed(3);
+  const resto = Math.max(0.5, total - inicio);
+  let dur = tipo === 'imagem' ? 3 : await midiaDuration(arquivo);
+  dur = Math.min(dur || 3, resto);
+  remember();
+  const letra = tipo === 'audio' ? 'a' : 'i';
+  const fid = newFaixaId(letra);
+  const item = { id: `${fid}-1`, arquivo, inicio, duracao: +dur.toFixed(3) };
+  if (tipo === 'audio') Object.assign(item, { corte: 0, volume: 1, melhorar: false });
+  const faixa = { id: fid, tipo, travado: false, itens: [item] };
+  faixa[tipo === 'audio' ? 'mudo' : 'oculto'] = false;
+  S.camadas.faixas.push(faixa);
+  S.layerSel = item.id;
+  S.selected = -1;
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+
+// cabeçalho fixo à esquerda da faixa: os botões dela (faixa null = o vídeo principal)
+function trackHead(track, f) {
+  const th = el('div', 'th', track);
+  const btn = (act, icon, label, on) => {
+    const b = el('button', `th-b${on ? ' on' : ''}`, th);
+    b.type = 'button';
+    b.dataset.act = act;
+    if (f) b.dataset.f = f.id;
+    b.innerHTML = icon;
+    b.setAttribute('aria-label', label);
+    b.setAttribute('aria-pressed', String(!!on));
+  };
+  if (!f) { btn('video-mudo', S.camadas.video.mudo ? ICON.semSom : ICON.som, 'Silenciar o som do vídeo', S.camadas.video.mudo); return; }
+  if (f.tipo === 'audio') btn('mudo', f.mudo ? ICON.semSom : ICON.som, 'Silenciar a camada', f.mudo);
+  else btn('oculto', f.oculto ? ICON.olhoFechado : ICON.olho, 'Esconder a camada', f.oculto);
+  btn('travar', f.travado ? ICON.cadeado : ICON.cadeadoAberto, 'Travar a camada', f.travado);
+}
+function renderLayerTrack(track, lane, f) {
+  track.classList.toggle('mudo', f.tipo === 'audio' && f.mudo);
+  track.classList.toggle('oculto', f.tipo === 'imagem' && f.oculto);
+  track.classList.toggle('travado', f.travado);
+  for (const it of f.itens) {
+    const a = renderedToDraft(it.inicio), b = renderedToDraft(it.inicio + it.duracao);
+    const chip = el('div', `chip layer ${f.tipo === 'audio' ? 'aud' : 'img'}`, lane);
+    chip.dataset.id = it.id;
+    chip.style.left = `${a * S.pps}px`;
+    chip.style.width = `${Math.max((b - a) * S.pps, 8)}px`;
+    if (f.tipo === 'imagem') {
+      const im = el('img', 'l-thumb', chip);
+      im.src = `/media/${it.arquivo}`;
+      im.alt = '';
+      im.draggable = false;
+    } else {
+      el('span', 'l-ico', chip).innerHTML = ICON.audio;
+    }
+    el('span', 'l-name', chip).textContent = nomeMidia(it.arquivo);
+    if (it.melhorar) el('span', 'l-tag', chip).innerHTML = ICON.melhorar;
+    if (it.id === S.layerSel) {
+      chip.classList.add('sel');
+      const l = el('div', 'lh l', chip);
+      l.dataset.side = 'l';
+      const r = el('div', 'lh r', chip);
+      r.dataset.side = 'r';
+    }
+  }
+  trackHead(track, f);
+}
+function tapLayer(id) {
+  const hit = camItem(id);
+  if (!hit) return;
+  if (hit.f.travado) { toast('Camada travada: toque no cadeado para soltar', 2200); return; }
+  S.layerSel = S.layerSel === id ? null : id;
+  S.selected = -1;
+  renderTimeline();
+  renderToolbar();
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('.th-b');
+  if (!b) return;
+  remember();
+  const act = b.dataset.act;
+  if (act === 'video-mudo') {
+    S.camadas.video.mudo = !S.camadas.video.mudo;
+    toast(S.camadas.video.mudo ? 'Som do vídeo desligado' : 'Som do vídeo ligado', 1600);
+  } else {
+    const f = S.camadas.faixas.find((x) => x.id === b.dataset.f);
+    if (!f) return;
+    if (act === 'mudo') f.mudo = !f.mudo;
+    else if (act === 'oculto') f.oculto = !f.oculto;
+    else if (act === 'travar') {
+      f.travado = !f.travado;
+      if (f.travado && f.itens.some((it) => it.id === S.layerSel)) S.layerSel = null;
+    }
+  }
+  applyMute();
+  renderTimeline(); renderToolbar(); refreshHeader();
+});
+
+// as alças do item escolhido aparam; segurar o item (como a tomada) o leva com o dedo
+function startLayerDrag(x, kind, side) {
+  const hit = camItem(S.layerSel);
+  if (!hit || hit.f.travado) return false;
+  G.mode = 'layer';
+  G.ly = { id: hit.it.id, kind, side, x0: x, it0: { ...hit.it }, before: snap() };
+  video.pause();
+  return true;
+}
+function holdLayer(id, x) {
+  if (G.mode !== 'pan' || G.moved) return;
+  const hit = camItem(id);
+  if (!hit) return;
+  if (hit.f.travado) { toast('Camada travada: toque no cadeado para soltar', 2200); return; }
+  const before = snap();
+  S.layerSel = id;
+  S.selected = -1;
+  if (navigator.vibrate) navigator.vibrate(12);
+  startLayerDrag(x, 'move');
+  G.ly.before = before; // desfazer volta também a escolha de antes
+  renderTimeline(); renderToolbar();
+}
+function dragLayer(x) {
+  const L = G.ly;
+  const hit = camItem(L.id);
+  if (!hit) return;
+  const it = hit.it, o = L.it0, aud = hit.f.tipo === 'audio';
+  const dt = (x - L.x0) / S.pps;
+  const fim = S.videoDuration || totalT();
+  if (L.kind === 'move') {
+    it.inicio = +Math.max(0, Math.min(o.inicio + dt, fim - 0.2)).toFixed(3);
+  } else if (L.side === 'r') {
+    let d = Math.max(0.2, o.duracao + dt);
+    const tot = aud && S.midiaDur[it.arquivo];
+    if (tot) d = Math.min(d, tot - it.corte);
+    it.duracao = +d.toFixed(3);
+  } else { // a ponta esquerda anda; a direita fica onde está
+    let k = Math.min(dt, o.duracao - 0.2);
+    k = Math.max(k, -o.inicio);
+    if (aud) k = Math.max(k, -o.corte); // não volta antes do começo do arquivo
+    it.inicio = +(o.inicio + k).toFixed(3);
+    it.duracao = +(o.duracao - k).toFixed(3);
+    if (aud) it.corte = +(o.corte + k).toFixed(3);
+  }
+  const tip = $('trimTip');
+  tip.textContent = L.kind === 'move' ? `começa em ${fmt(it.inicio)}` : `dura ${it.duracao.toFixed(2)} s`;
+  tip.classList.remove('hidden');
+  if (!G.layerQueued) {
+    G.layerQueued = true;
+    requestAnimationFrame(() => { G.layerQueued = false; renderTimeline(); refreshHeader(); });
+  }
+}
+function endLayerDrag() {
+  const L = G.ly;
+  G.mode = null;
+  $('trimTip').classList.add('hidden');
+  const hit = camItem(L.id);
+  if (hit && JSON.stringify(hit.it) !== JSON.stringify(L.it0)) remember(L.before); // tocar sem arrastar não conta
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+
+function deleteLayerSel() {
+  const hit = camItem(S.layerSel);
+  if (!hit) return;
+  remember();
+  hit.f.itens = hit.f.itens.filter((x) => x.id !== hit.it.id);
+  if (!hit.f.itens.length) S.camadas.faixas = S.camadas.faixas.filter((f) => f !== hit.f);
+  S.layerSel = null;
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+function toggleMelhorar() {
+  const hit = camItem(S.layerSel);
+  if (!hit) return;
+  remember();
+  hit.it.melhorar = !hit.it.melhorar;
+  toast(hit.it.melhorar ? 'O agente melhora este áudio: tira o ruído e acerta o volume' : 'Este áudio entra como está', 2600);
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+// volume: um painel pequeno com a régua; 100% é o arquivo como veio
+let volBefore = null;
+function openVolume() {
+  const hit = camItem(S.layerSel);
+  if (!hit) return;
+  volBefore = snap();
+  $('volRange').value = Math.round(hit.it.volume * 100);
+  $('volVal').textContent = `${Math.round(hit.it.volume * 100)}%`;
+  showSheet($('volSheet'), true);
+}
+$('volRange').addEventListener('input', () => {
+  const hit = camItem(S.layerSel);
+  if (!hit) return;
+  hit.it.volume = +($('volRange').value / 100).toFixed(2);
+  $('volVal').textContent = `${$('volRange').value}%`;
+});
+$('volOk').addEventListener('click', () => {
+  showSheet($('volSheet'), false);
+  if (volBefore && JSON.stringify(volBefore.cam) !== camSig()) remember(volBefore);
+  volBefore = null;
+  renderToolbar(); refreshHeader();
+});
+
+// prévia: o som do vídeo, o som de cada camada e a imagem por cima
+function applyMute() {
+  video.muted = S.mudoUsuario || (S.view === 'corte' && S.camadas.video.mudo);
+}
+const AUD = new Map(); // id do item → <audio>
+function audioEl(it) {
+  let a = AUD.get(it.id);
+  if (!a || a.dataset.arq !== it.arquivo) {
+    if (a) a.pause();
+    a = new Audio(`/media/${it.arquivo}`);
+    a.preload = 'auto';
+    a.dataset.arq = it.arquivo;
+    AUD.set(it.id, a);
+  }
+  return a;
+}
+let ovShown = '';
+function syncLayers() {
+  const corte = S.view === 'corte';
+  const playing = !video.paused && !video.ended && !G.mode;
+  const rt = corte ? draftToRendered(S.t) : 0;
+  const vivos = new Set();
+  let img = '';
+  if (corte && S.camadas) {
+    for (const f of S.camadas.faixas) {
+      for (const it of f.itens) {
+        const dentro = rt >= it.inicio && rt < it.inicio + it.duracao;
+        if (!dentro) continue;
+        // a camada mais nova fica por cima, como no vídeo final (os inserts dela entram por último)
+        if (f.tipo === 'imagem') { if (!f.oculto) img = it.arquivo; continue; }
+        if (f.mudo || !playing) continue;
+        vivos.add(it.id);
+        const a = audioEl(it);
+        const alvo = it.corte + (rt - it.inicio);
+        a.volume = Math.min(1, it.volume); // acima de 100% a prévia toca a 100%; o vídeo final leva o ganho
+        a.muted = S.mudoUsuario;
+        if (Math.abs(a.currentTime - alvo) > 0.25) a.currentTime = alvo;
+        if (a.paused) a.play().catch(() => {});
+      }
+    }
+  }
+  for (const [id, a] of AUD) if (!vivos.has(id) && !a.paused) a.pause();
+  if (img !== ovShown) {
+    ovShown = img;
+    const ov = $('ovImg');
+    if (img) ov.src = `/media/${img}`;
+    ov.classList.toggle('hidden', !img);
+  }
+}
+['fileAudio', 'fileImagem'].forEach((id) => {
+  $(id).addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (f) sendVideo(f); // o servidor separa: vídeo para a pasta dos vídeos, o resto para midia/
+  });
 });
 
 // ---------- avisos ----------
