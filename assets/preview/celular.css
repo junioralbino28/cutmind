@@ -390,6 +390,19 @@ button { font-family: inherit; cursor: pointer; }
 .chip.layer.sel { overflow: visible; outline: 2px solid #fff; outline-offset: -1px; z-index: 3; }
 .track.mudo .chip.layer, .track.oculto .chip.layer { opacity: 0.4; }
 /* trilha da biblioteca: outra cor que a gravação, para achar a música de olho */
+/* efeitos: o filtro cobre a tomada; a transição, a janela em volta do corte */
+.fx-canvas { pointer-events: none; }
+.chip.fx { pointer-events: auto; gap: 5px; padding: 0 6px 0 4px; }
+.chip.fx.fi { background: #2a2018; box-shadow: inset 2px 0 0 var(--brand); }
+.chip.fx.tr { background: #1d2431; box-shadow: none; outline: 1px solid #6aa8f0; outline-offset: -1px; justify-content: center; }
+.chip.fx .l-ico { flex: none; color: var(--brand); }
+.chip.fx.tr .l-ico { color: #6aa8f0; }
+.chip.fx .l-ico svg { width: 13px; height: 13px; display: block; }
+.chip.fx .l-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.chip.fx.sel { overflow: visible; outline: 2px solid #fff; outline-offset: -1px; z-index: 3; }
+.fx-ico { color: var(--brand); }
+.tr-play.fx-ico svg { width: 20px; height: 20px; fill: none; } /* o ícone é de traço; o play das trilhas é cheio */
+.tr-row.on .tr-play.fx-ico { background: var(--surface3); color: var(--brand); }
 .chip.layer.mus { background: #1b2433; box-shadow: inset 2px 0 0 #6aa8f0; }
 .chip.layer.mus .l-ico { color: #6aa8f0; }
 .track.travado .chip.layer { background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0 4px, transparent 4px 8px); }
@@ -436,10 +449,10 @@ button { font-family: inherit; cursor: pointer; }
   border-top: 1px solid var(--line);
 }
 .toolbar::-webkit-scrollbar { display: none; }
-/* as ferramentas dividem a largura; abaixo de 56px cada uma a barra rola */
+/* as ferramentas dividem a largura; abaixo de 50px cada uma a barra rola (as 7 cabem a partir de 375px) */
 .tool {
   flex: 1 1 0;
-  min-width: 56px; max-width: 80px; min-height: 56px;
+  min-width: 50px; max-width: 80px; min-height: 56px;
   border: 0; background: transparent;
   color: var(--text);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
@@ -487,6 +500,9 @@ button { font-family: inherit; cursor: pointer; }
 /* o topo também sai: no navegador do celular a barra de endereço já come ~70px */
 .app.styling .topbar, .app.styling .transport, .app.styling .timeline, .app.styling .toolbar { display: none !important; }
 .app.styling .stage { flex: none; height: calc(100dvh - var(--sheet-h)); padding-top: calc(10px + var(--safe-t)); }
+/* Filtros e Transições: o mesmo arranjo, a prévia em cima mostra o efeito tocado */
+.app.efeitando .topbar, .app.efeitando .transport, .app.efeitando .timeline, .app.efeitando .toolbar { display: none !important; }
+.app.efeitando .stage { flex: none; height: calc(100dvh - var(--sheet-h)); padding-top: calc(10px + var(--safe-t)); }
 
 .sheet-head {
   flex: none;

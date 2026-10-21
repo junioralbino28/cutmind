@@ -17,6 +17,8 @@ Routes:
   /c?t=<código>         entrada do celular pelo link/QR: grava o código num
                         cookie e manda para /celular
   /assets/<file>        app files (css/js/logo)
+  /efeitos/<file>       o motor de efeitos (assets/efeitos/motor.js + Three.js):
+                        o mesmo arquivo da prévia e do vídeo final
   /media/<path>         files under --root (the edit dir) — Range supported
   /gen/waveform.json    min/max audio peaks of cut.mp4 (auto-(re)generated)
   /gen/thumbs/<n>.jpg   timeline filmstrip thumbs (auto-generated, 1 per 2s)
@@ -31,13 +33,16 @@ Routes:
   /api/midia    GET     imagens e áudios do projeto (<edit>/midia/)
   /api/save     POST    body → <edit>/preview_edits.json (atomic), or
                         <edit>/preview_style.json when body.type=="style-setup";
-                        com `camadas`, grava também <edit>/camadas.json (camadas.py)
+                        com `camadas`, grava também <edit>/camadas.json (camadas.py);
+                        com `efeitos`, <edit>/efeitos.json (efeitos.py)
   /api/upload   POST    ?name=<arquivo>, corpo = o arquivo. Vídeo → pasta dos
                         vídeos (pai do <edit>) + aviso em <edit>/preview_upload.json;
                         imagem e áudio → <edit>/midia/ (camadas do projeto)
   /api/pacotes  GET     ?tipo=trilha: a biblioteca do kit (pacotes.py), com o que já
                         está baixado neste computador e os favoritos
   /gen/pacote-previa?id=  a prévia de um pacote (baixa na primeira vez)
+  /gen/pacote/<id>/<arq>  um arquivo de filtro/transição, da pasta aberta no
+                        cache (baixa e abre o zip na primeira vez)
   /api/pacotes/usar      POST {id}: baixa o pacote e copia para <edit>/midia/
   /api/pacotes/favorito  POST {id, on}: favorito fica no cache, mesmo cheio
 
@@ -75,9 +80,11 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote
 
 import camadas as cam  # mesma pasta deste arquivo
+import efeitos as ef  # mesma pasta deste arquivo
 import pacotes as pk  # mesma pasta deste arquivo
 
 APP_DIR = Path(__file__).resolve().parent.parent / "assets" / "preview"
+EFEITOS_DIR = APP_DIR.parent / "efeitos"
 PEAKS_PER_SEC = 40
 THUMB_EVERY_S = 2.0
 THUMB_HEIGHT = 90
@@ -105,6 +112,8 @@ MIME = {
     ".flac": "audio/flac",
     ".weba": "audio/webm",
     ".srt": "text/plain; charset=utf-8",
+    ".frag": "text/plain; charset=utf-8",
+    ".vert": "text/plain; charset=utf-8",
 }
 
 # ---- acesso pela rede (celular) ----
@@ -477,6 +486,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path.startswith("/assets/"):
             p = self._safe(APP_DIR, path[len("/assets/"):])
             self._send_file(p) if p else self._json({"error": "bad path"}, 400)
+        elif path.startswith("/efeitos/"):
+            p = self._safe(EFEITOS_DIR, unquote(path[len("/efeitos/"):]))
+            self._send_file(p) if p else self._json({"error": "bad path"}, 400)
         elif path.startswith("/media/"):
             # o navegador codifica espaço e acento (midia/Grava%C3%A7%C3%A3o.m4a); a
             # trava de pasta (_safe) vem depois de decodificar, então %2e%2e não passa
@@ -494,6 +506,8 @@ class Handler(BaseHTTPRequestHandler):
             self._pacotes_lista(query)
         elif path == "/gen/pacote-previa":
             self._pacote_previa(query)
+        elif path.startswith("/gen/pacote/"):
+            self._pacote_arquivo(path[len("/gen/pacote/"):])
         else:
             self._json({"error": "unknown route"}, 404)
 
@@ -532,15 +546,25 @@ class Handler(BaseHTTPRequestHandler):
         # clobber the other (they are written at different moments, by different
         # screens, and the skill consumes+deletes them independently).
         name = "preview_style.json" if body.get("type") == "style-setup" else "preview_edits.json"
-        if name == "preview_edits.json" and "camadas" in body:
-            # as camadas são o arquivo do projeto (como num editor): gravadas aqui,
-            # conferidas, e o agente é avisado pelo preview_edits.json como sempre
+        if name == "preview_edits.json":
+            # camadas e efeitos são arquivos do projeto (como num editor): os dois são
+            # conferidos antes de gravar qualquer um, e o agente é avisado pelo
+            # preview_edits.json como sempre
             try:
-                body["camadas"] = cam.normalize(body["camadas"])
+                if "camadas" in body:
+                    body["camadas"] = cam.normalize(body["camadas"])
+                if "efeitos" in body:
+                    body["efeitos"] = ef.normalize(body["efeitos"])
             except cam.CamadasInvalidas as e:
                 self._json({"error": f"camadas: {e}"}, 400)
                 return
-            cam.save(self.root / "camadas.json", body["camadas"])
+            except ef.EfeitosInvalidos as e:
+                self._json({"error": f"efeitos: {e}"}, 400)
+                return
+            if "camadas" in body:
+                cam.save(self.root / "camadas.json", body["camadas"])
+            if "efeitos" in body:
+                ef.save(self.root / "efeitos.json", body["efeitos"])
         out = self.root / name
         tmp = out.with_suffix(".tmp")
         tmp.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -778,6 +802,27 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": str(e)}, 502)
         except pk.PacoteErro as e:
             self._json({"error": str(e)}, 404)
+
+    def _pacote_arquivo(self, resto: str) -> None:
+        """Um arquivo de filtro/transição, da pasta aberta no cache (baixa e abre na 1ª vez)."""
+        pid, _, rel = resto.partition("/")
+        rel = unquote(rel)
+        pac = self._biblioteca()
+        if not pac:
+            return
+        try:
+            pasta = pac.aberto(pid)
+        except (pk.PacoteIndisponivel, pk.PacoteCorrompido) as e:
+            self._json({"error": str(e)}, 502)
+            return
+        except pk.PacoteErro as e:
+            self._json({"error": str(e)}, 404)
+            return
+        p = self._safe(pasta, rel) if rel and not rel.startswith(".") else None
+        if not p or p == pasta.resolve():
+            self._json({"error": "bad path"}, 400)
+            return
+        self._send_file(p)
 
     def _pacote_post(self, path: str) -> None:
         try:

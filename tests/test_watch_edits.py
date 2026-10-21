@@ -74,6 +74,22 @@ def test_aviso_diz_que_e_trilha_da_biblioteca(tmp_path):
     assert 'trilha "calma-01" (biblioteca) de 0:00.00' in aviso and "volume 15%" in aviso
 
 
+def test_aviso_conta_os_efeitos_e_diz_quem_aplica(tmp_path):
+    p = tmp_path / "preview_edits.json"
+    efeitos = {"versao": 1, "itens": [
+        {"id": "f1", "tipo": "filtro", "pacote": "filme-pb", "inicio": 2, "duracao": 3.5, "intensidade": 0.8},
+        {"id": "t1", "tipo": "transicao", "pacote": "zoom-central", "corte": 4.2, "duracao": 1.1}]}
+    p.write_text(json.dumps({"type": "timeline-edits", "efeitos": efeitos}), encoding="utf-8")
+    aviso = digest(p)
+    assert "efeitos: 1 filtro, 1 transição" in aviso
+    assert 'filtro "filme-pb" de 0:02.00 a 0:05.50, intensidade 80%' in aviso
+    assert 'transição "zoom-central" no corte de 0:04.20 (1.1 s)' in aviso
+    assert "efeitos_render.py" in aviso
+    p.write_text(json.dumps({"type": "timeline-edits", "efeitos": efeitos,
+                             "edl": {"ranges": [], "changes": [{}], "removed": []}}), encoding="utf-8")
+    assert "corte ANTIGO" in digest(p)
+
+
 def test_aviso_de_camadas_vazias(tmp_path):
     p = tmp_path / "preview_edits.json"
     p.write_text(json.dumps({"type": "timeline-edits", "camadas": {"video": {"mudo": False}, "faixas": []}}), encoding="utf-8")

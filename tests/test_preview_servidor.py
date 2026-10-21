@@ -311,6 +311,26 @@ def test_camadas_com_arquivo_de_fora_sao_recusadas(srv):
     assert not (srv.edit / "preview_edits.json").exists()
 
 
+def test_salvar_efeitos_grava_o_arquivo_do_projeto(srv):
+    efeitos = {"itens": [{"id": "f1", "tipo": "filtro", "pacote": "filme-pb", "inicio": 1, "duracao": 2,
+                          "intensidade": 0.5},
+                         {"id": "t1", "tipo": "transicao", "pacote": "zoom-central", "corte": 3.333333, "duracao": 1.1}]}
+    r, corpo = _salvar(srv, {"type": "timeline-edits", "efeitos": efeitos})
+    assert r.status == 200, corpo
+    salvo = json.loads((srv.edit / "efeitos.json").read_text(encoding="utf-8"))
+    assert salvo["itens"][1] == {"id": "t1", "tipo": "transicao", "pacote": "zoom-central", "corte": 3.333,
+                                 "duracao": 1.1}
+    assert json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))["efeitos"] == salvo
+
+
+def test_efeitos_tortos_nao_gravam_nada(srv):
+    r, dados = _salvar(srv, {"type": "timeline-edits", "camadas": {"faixas": []}, "efeitos": {"itens": [
+        {"id": "f1", "tipo": "filtro", "pacote": "../../x", "inicio": 0, "duracao": 1}]}})
+    assert r.status == 400 and "efeitos" in json.loads(dados)["error"]
+    assert not (srv.edit / "efeitos.json").exists() and not (srv.edit / "preview_edits.json").exists()
+    assert not (srv.edit / "camadas.json").exists()  # as camadas boas do mesmo Salvar também esperam
+
+
 # ---- biblioteca de trilhas: o celular escolhe, o servidor baixa ----
 @pytest.fixture
 def trilhas(srv, tmp_path):
@@ -381,6 +401,69 @@ def test_trilhas_sem_codigo_sao_barradas(srv, trilhas):
     assert pedir(srv.port, "GET", "/gen/pacote-previa?id=calma-01", remoto=True)[0].status == 403
     assert _post_json(srv, "/api/pacotes/usar", {"id": "calma-01"}, remoto=True)[0].status == 403
     assert not (srv.edit / "midia").exists()
+
+
+# ---- efeitos: o motor é código aberto; os arquivos do pacote são dados ----
+@pytest.fixture
+def filtro(srv, tmp_path):
+    """Uma Release local com um filtro em zip, e o servidor usando esse catálogo."""
+    import hashlib
+    import io
+    import zipfile
+    from functools import partial
+    from http.server import SimpleHTTPRequestHandler
+
+    import pacotes as pk
+
+    raiz = tmp_path / "release"
+    (raiz / "efeitos-1").mkdir(parents=True)
+    arquivos = {"efeito.json": b'{"formato": 1, "tipo": "filtro"}', "efeito.frag": b"void main(){}"}
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for nome, dados in arquivos.items():
+            z.writestr(nome, dados)
+    (raiz / "efeitos-1" / "filme-pb.zip").write_bytes(buf.getvalue())
+    rel = ps.ThreadingHTTPServer(("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=str(raiz)))
+    threading.Thread(target=partial(rel.serve_forever, poll_interval=0.05), daemon=True).start()
+    cat = pk.validar({"base": f"http://127.0.0.1:{rel.server_address[1]}", "pacotes": [
+        {"id": "filme-pb", "tipo": "filtro", "nome": "Filme P&B", "release": "efeitos-1",
+         "arquivo": "filme-pb.zip", "tamanho": len(buf.getvalue()),
+         "sha256": hashlib.sha256(buf.getvalue()).hexdigest()}]})
+    ps.Handler.pacotes = pk.Pacotes(cat, tmp_path / "cache", 10**9)
+    yield SimpleNamespace(arquivos=arquivos)
+    ps.Handler.pacotes = None
+    rel.shutdown()
+    rel.server_close()
+
+
+def test_arquivos_do_efeito_saem_pelo_servidor(srv, filtro):
+    r, corpo = pedir(srv.port, "GET", "/gen/pacote/filme-pb/efeito.json", remoto=True, cookie=CODIGO)
+    assert r.status == 200 and corpo == filtro.arquivos["efeito.json"]
+    assert r.getheader("Content-Type").startswith("application/json")
+    r, corpo = pedir(srv.port, "GET", "/gen/pacote/filme-pb/efeito.frag", remoto=True, cookie=CODIGO)
+    assert r.status == 200 and corpo == filtro.arquivos["efeito.frag"]
+    assert r.getheader("Content-Type").startswith("text/plain")
+
+
+def test_efeito_nao_entrega_o_que_esta_fora_dele(srv, filtro):
+    pedir(srv.port, "GET", "/gen/pacote/filme-pb/efeito.json", remoto=True, cookie=CODIGO)  # baixa e abre
+    for caminho in ("/gen/pacote/filme-pb/.sha256", "/gen/pacote/filme-pb/../filme-pb.zip",
+                    "/gen/pacote/filme-pb/%2e%2e/%2e%2e/estado.json", "/gen/pacote/filme-pb/"):
+        r, _ = pedir(srv.port, "GET", caminho, remoto=True, cookie=CODIGO)
+        assert r.status == 400, caminho
+    r, _ = pedir(srv.port, "GET", "/gen/pacote/nao-existe/efeito.json", remoto=True, cookie=CODIGO)
+    assert r.status == 404
+    assert pedir(srv.port, "GET", "/gen/pacote/filme-pb/efeito.json", remoto=True)[0].status == 403
+
+
+def test_motor_de_efeitos_e_interface_sem_codigo(srv):
+    r, corpo = pedir(srv.port, "GET", "/efeitos/motor.js", remoto=True)
+    assert r.status == 200 and b"carregarEfeito" in corpo
+    assert r.getheader("Content-Type").startswith("text/javascript")
+    r, _ = pedir(srv.port, "GET", "/efeitos/vendor/three.module.min.js", remoto=True)
+    assert r.status == 200
+    r, _ = pedir(srv.port, "GET", "/efeitos/../preview/index.html", remoto=True)
+    assert r.status == 400
 
 
 def test_usar_pacote_desconhecido_ou_pedido_torto(srv, trilhas):

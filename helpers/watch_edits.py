@@ -65,6 +65,12 @@ def digest(p: Path) -> str:
         if edl:
             parts.append("  ⚠ O corte mudou no mesmo Salvar: os tempos das camadas são do corte ANTIGO. "
                          "Leve-os para o corte novo antes de montar (references/shortform.md).")
+    if "efeitos" in d:
+        head.append(f"efeitos: {efeitos_resumo(d['efeitos'])}")
+        parts += efeitos_linhas(d["efeitos"])
+        if edl:
+            parts.append("  ⚠ O corte mudou no mesmo Salvar: os tempos dos efeitos são do corte ANTIGO. "
+                         "Leve-os para o corte novo antes do render (references/shortform.md).")
     if not head:
         head.append("ajustes salvos")
 
@@ -112,6 +118,31 @@ def camadas_linhas(c: dict) -> list[str]:
         out.append("  · som do vídeo desligado: a voz do corte fica fora do vídeo final")
     out.append("  Imagens → camadas_edit_data.py (inserts[]); som → mixar_final.py "
                "(references/shortform.md, \"Camadas\").")
+    return out
+
+
+def efeitos_resumo(e: dict) -> str:
+    itens = e.get("itens") or []
+    n_f = sum(1 for it in itens if it.get("tipo") == "filtro")
+    n_t = sum(1 for it in itens if it.get("tipo") == "transicao")
+    if not n_f and not n_t:
+        return "nenhum"
+    return ", ".join(x for x in (n_f and _plural(n_f, "filtro", "filtros"),
+                                 n_t and _plural(n_t, "transição", "transições")) if x)
+
+
+def efeitos_linhas(e: dict) -> list[str]:
+    out = ["  efeitos.json (gravado pelo editor), tempos do cut.mp4:"]
+    for it in e.get("itens") or []:
+        if it.get("tipo") == "filtro":
+            ini, dur = float(it.get("inicio", 0)), float(it.get("duracao", 0))
+            forca = (f", intensidade {round(float(it['intensidade']) * 100)}%"
+                     if it.get("intensidade") is not None else "")
+            out.append(f'  · filtro "{it.get("pacote")}" de {fmt(ini)} a {fmt(ini + dur)}{forca}')
+        else:
+            out.append(f'  · transição "{it.get("pacote")}" no corte de {fmt(float(it.get("corte", 0)))} '
+                       f'({float(it.get("duracao", 0)):.1f} s)')
+    out.append("  Efeitos → efeitos_render.py antes do render final (references/shortform.md, \"Efeitos\").")
     return out
 
 

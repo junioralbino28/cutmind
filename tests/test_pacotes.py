@@ -6,10 +6,12 @@ então nada sai para a internet.
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import sys
 import threading
 import urllib.error
+import zipfile
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -239,6 +241,67 @@ def test_camada_poe_a_trilha_no_projeto(rel):
     # a segunda vira outra faixa, sem repetir id
     f2 = pk.por_na_linha(p, edit, "animada-01", duracao_video=45.0)
     assert f2["id"] != faixa["id"] and f2["itens"][0]["duracao"] == 30.0
+
+
+# ---- efeitos: o zip é aberto no cache para o motor de efeitos ler ----
+def _zip(arquivos: dict[str, bytes]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for nome, dados in arquivos.items():
+            z.writestr(nome, dados)
+    return buf.getvalue()
+
+
+@pytest.fixture
+def efeitos(rel):
+    """A mesma Release, agora com filtros em zip: um bom e dois montados errado."""
+    (rel.raiz / "efeitos-1").mkdir()
+    bons = {"efeito.json": b'{"formato": 1}', "efeito.frag": b"void main(){}", "textura1.png": b"png"}
+    zips = {"filme-pb": _zip(bons),
+            "fuga": _zip({"efeito.json": b"{}", "../../fora.txt": b"escapou"}),
+            "sem-manifesto": _zip({"efeito.frag": b"x"})}
+    c = json.loads(json.dumps(rel.cat))
+    for pid, dados in zips.items():
+        (rel.raiz / "efeitos-1" / f"{pid}.zip").write_bytes(dados)
+        c["pacotes"].append({"id": pid, "tipo": "filtro", "nome": pid, "release": "efeitos-1",
+                             "arquivo": f"{pid}.zip", "tamanho": len(dados), "sha256": _sha(dados)})
+    return SimpleNamespace(cat=c, bons=bons, zips=zips)
+
+
+def test_efeito_e_aberto_no_cache_uma_vez(rel, efeitos):
+    p = pk.Pacotes(pk.validar(efeitos.cat), rel.cache, 10**9)
+    pasta = p.aberto("filme-pb")
+    assert pasta.is_relative_to(rel.cache)
+    assert {f.name: f.read_bytes() for f in pasta.iterdir() if not f.name.startswith(".")} == efeitos.bons
+    antes = (pasta / "efeito.frag").stat().st_mtime_ns
+    assert p.aberto("filme-pb") == pasta and (pasta / "efeito.frag").stat().st_mtime_ns == antes
+    assert rel.pedidos.count("/efeitos-1/filme-pb.zip") == 1
+
+
+def test_zip_montado_para_sair_da_pasta_nao_abre(rel, efeitos):
+    p = pk.Pacotes(pk.validar(efeitos.cat), rel.cache, 10**9)
+    with pytest.raises(pk.PacoteCorrompido, match="caminho"):
+        p.aberto("fuga")
+    assert not list(rel.tmp.rglob("fora.txt"))
+    assert not [d for d in (rel.cache / "filtro").iterdir() if d.is_dir()]  # nem a pasta pela metade fica
+    with pytest.raises(pk.PacoteCorrompido, match="efeito.json"):
+        p.aberto("sem-manifesto")
+
+
+def test_trilha_nao_abre_como_efeito(rel, efeitos):
+    with pytest.raises(pk.PacoteErro, match="não é pacote de efeito"):
+        pk.Pacotes(pk.validar(efeitos.cat), rel.cache, 10**9).aberto("calma-01")
+
+
+def test_cache_cheio_tira_o_efeito_e_a_pasta_aberta_juntos(rel, efeitos, monkeypatch):
+    relogio = iter(range(100, 200))
+    monkeypatch.setattr(pk, "_agora", lambda: next(relogio))
+    p = pk.Pacotes(pk.validar(efeitos.cat), rel.cache, 8200)  # cabem as duas trilhas, o filtro não
+    pasta = p.aberto("filme-pb")
+    p.obter("calma-01")
+    p.obter("animada-01")
+    assert not pasta.exists() and not p._local(p.pacote("filme-pb")).exists()
+    assert p.cache_info()["bytes"] <= 8200
 
 
 def test_so_trilha_vai_para_a_linha_do_tempo(rel):

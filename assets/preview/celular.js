@@ -11,6 +11,10 @@
  *   POST /api/upload?name=     o vídeo escolhido → pasta dos vídeos no computador;
  *                              imagem e áudio → <edit>/midia/ (viram camadas)
  *   GET  /media/camadas.json   as camadas do projeto (o Salvar leva `camadas`)
+ *   GET  /media/efeitos.json   filtros e transições do projeto (o Salvar leva `efeitos`)
+ *   GET  /api/pacotes?tipo=    a biblioteca do kit: trilha, filtro, transicao
+ *   GET  /gen/pacote/<id>/<a>  um arquivo de filtro/transição (o computador baixa na 1ª vez)
+ *   GET  /efeitos/motor.js     o motor de efeitos, o mesmo do vídeo final
  * Pela rede (servidor com --host), os dados só saem para quem abriu pelo link
  * ou QR do computador; sem isso /api/state dá 403 e a tela diz o que falta.
  * O agente (Claude ou Codex) lê exatamente os arquivos que o editor de PC grava,
@@ -87,6 +91,10 @@ const ICON = {
   volume: sv('<path d="M4.5 9.5v5h3.2l4.8 4V5.5l-4.8 4z"/><path d="M15.8 9a4 4 0 0 1 0 6"/>'),
   estrela: sv('<path d="M12 3.8l2.5 5.1 5.6.8-4 3.9.9 5.6L12 16.6l-5 2.6.9-5.6-4-3.9 5.6-.8z"/>'),
   estrelaCheia: sv('<path d="M12 3.8l2.5 5.1 5.6.8-4 3.9.9 5.6L12 16.6l-5 2.6.9-5.6-4-3.9 5.6-.8z" fill="currentColor"/>'),
+  efeitos: sv('<circle cx="9" cy="9.6" r="5"/><circle cx="15" cy="9.6" r="5"/><circle cx="12" cy="14.8" r="5"/>'),
+  filtro: sv('<circle cx="12" cy="12" r="7.5"/><path d="M12 4.5a7.5 7.5 0 0 1 0 15z" fill="currentColor" stroke="none"/>'),
+  transicao: sv('<rect x="2.5" y="6.5" width="7" height="11" rx="1.6"/><rect x="14.5" y="6.5" width="7" height="11" rx="1.6"/><path d="M12 9.4l2.6 2.6-2.6 2.6-2.6-2.6z" fill="currentColor" stroke="none"/>'),
+  intensidade: sv('<path d="M4 12h16"/><circle cx="14.5" cy="12" r="2.6" fill="currentColor"/>'),
 };
 
 /* ---------- catálogo de estilos e amostras: estilos.js ----------
@@ -353,6 +361,13 @@ const S = {
   importMenu: false,  // Importar (ou o + da faixa) tocado: a barra mostra Vídeo / Imagem / Áudio
   trilhas: null,      // a biblioteca do kit (lista do servidor), carregada ao abrir
   trilhaNomes: {},    // id da trilha → nome, para o bloco na linha do tempo
+  efeitos: { versao: 1, itens: [] }, // filtros e transições postos pela pessoa (efeitos.json)
+  efeitosBase: '',    // os efeitos como estavam ao abrir ou no último Salvar
+  fxSel: null,        // id do efeito escolhido na linha do tempo
+  fxMenu: false,      // Efeitos tocado: a barra mostra Filtros / Transições
+  fxLista: {},        // tipo → pacotes da biblioteca (filtro, transicao)
+  fxNomes: {},        // id do pacote → nome, para o bloco na linha do tempo
+  fxTeste: null,      // o efeito tocado no painel, mostrado na prévia antes do "Usar"
 };
 
 const fmt = (t) => {
@@ -495,7 +510,7 @@ function diffBase() {
 }
 const edlDirty = () => diffBase() > 0;
 function dirtyCount() {
-  return diffBase() + S.notes.length + (camadasDirty() ? 1 : 0);
+  return diffBase() + S.notes.length + (camadasDirty() ? 1 : 0) + (efeitosDirty() ? 1 : 0);
 }
 const isChanged = (r) => {
   const b = S.base.find((x) => x.uid === r.uid);
@@ -529,6 +544,8 @@ function snap() {
     pos: S.style ? JSON.parse(JSON.stringify(capPos())) : null,
     cam: JSON.parse(JSON.stringify(S.camadas)),
     layerSel: S.layerSel,
+    fx: JSON.parse(JSON.stringify(S.efeitos)),
+    fxSel: S.fxSel,
   };
 }
 function remember(before) {
@@ -551,10 +568,13 @@ function restore(s) {
   if (S.style && s.pos) S.style.captionPositions = JSON.parse(JSON.stringify(s.pos));
   if (s.cam) S.camadas = s.cam;
   S.layerSel = s.layerSel && camItem(s.layerSel) ? s.layerSel : null;
+  if (s.fx) S.efeitos = s.fx;
+  S.fxSel = s.fxSel && fxItem(s.fxSel) ? s.fxSel : null;
   applyMute();
   S.t = clampT(S.t);
   renderTimeline(); renderToolbar(); refreshHeader(); renderHistory();
   drawFrase(true);
+  fxRedesenhar();
 }
 function undo() {
   if (!HIST.past.length || G.mode) return;
@@ -647,7 +667,10 @@ async function applyState(data) {
     }
   }
   S.layerSel = null;
+  S.fxSel = null;
+  S.fxTeste = null;
   await loadCamadas();
+  await loadEfeitos();
   if (hasVideo) {
     setVideoSrc(S.view);
     loadWave();
@@ -717,6 +740,8 @@ function trackPlan() {
     { id: 'text', h: 18, show: fin && hasTxt },
     { id: 'ins', h: 18, show: fin && hasIns },
     ...fx.filter((f) => f.tipo === 'imagem').reverse().map(layer), // a mais nova fica no alto, como no editor do PC
+    // filtros e transições valem para o corte: no Final já estão no vídeo
+    { id: 'fx', h: 22, show: !fin && !S.posMode && S.efeitos.itens.length > 0 },
     { id: 'video', h: VIDEO_TRACK_H, show: true },
     { id: 'audio', h: 30, show: true },
     ...fx.filter((f) => f.tipo === 'audio').map(layer),
@@ -756,6 +781,7 @@ function renderTimeline() {
     if (tr.faixa) { renderLayerTrack(track, lane, tr.faixa); continue; }
     if (tr.id === 'video') { renderTakes(lane); if (S.view === 'corte' && !S.posMode) trackHead(track, null); }
     else if (tr.id === 'frases') renderFrases(lane);
+    else if (tr.id === 'fx') renderFxTrack(lane);
     else if (tr.id === 'notes') renderNotes(lane);
     else if (tr.id === 'caps') {
       for (const c of S.captions) {
@@ -1200,15 +1226,18 @@ function tapAt(target) {
     return;
   }
   if (target && target.closest && target.closest('.add-tile')) {
-    S.selected = -1; S.layerSel = null; S.audioMenu = false; S.importMenu = true;
+    S.selected = -1; S.layerSel = null; S.fxSel = null; S.audioMenu = false; S.fxMenu = false; S.importMenu = true;
     renderTimeline(); renderToolbar();
     return;
   }
   const note = target && target.closest && target.closest('.chip.note');
   if (note) { openNote(note.dataset.id, false); return; }
   const lc = target && target.closest && target.closest('.chip.layer');
-  if (lc) { tapLayer(lc.dataset.id); return; }
+  if (lc) { S.fxSel = null; tapLayer(lc.dataset.id); return; }
+  const fc = target && target.closest && target.closest('.chip.fx');
+  if (fc) { tapFx(fc.dataset.id); return; }
   S.layerSel = null;
+  S.fxSel = null;
   const take = target && target.closest && target.closest('.take');
   if (take && S.view === 'corte') {
     const i = +take.dataset.i;
@@ -1279,6 +1308,7 @@ function loop() {
     else { S.t = clampT(renderedToDraft(video.currentTime)); positionTimeline(); }
   }
   syncLayers();
+  if (!video.requestVideoFrameCallback) fxDesenhar(video.currentTime); // sem o aviso de quadro: a cada volta
   requestAnimationFrame(loop);
 }
 
@@ -1310,11 +1340,12 @@ function renderToolbar() {
   const tb = $('toolbar');
   const ctx = $('ctxbar');
   const lsel = S.layerSel ? camItem(S.layerSel) : null;
-  const sel = !lsel && S.selected >= 0 && S.view === 'corte' ? S.draft[S.selected] : null;
-  if (sel || lsel) { S.audioMenu = false; S.importMenu = false; }
-  const amenu = S.audioMenu, imenu = S.importMenu;
-  tb.classList.toggle('hidden', !!(sel || lsel || amenu || imenu));
-  ctx.classList.toggle('hidden', !(sel || lsel || amenu || imenu));
+  const fsel = !lsel && S.fxSel && S.view === 'corte' ? fxItem(S.fxSel) : null;
+  const sel = !lsel && !fsel && S.selected >= 0 && S.view === 'corte' ? S.draft[S.selected] : null;
+  if (sel || lsel || fsel) { S.audioMenu = false; S.importMenu = false; S.fxMenu = false; }
+  const amenu = S.audioMenu, imenu = S.importMenu, fmenu = S.fxMenu;
+  tb.classList.toggle('hidden', !!(sel || lsel || fsel || amenu || imenu || fmenu));
+  ctx.classList.toggle('hidden', !(sel || lsel || fsel || amenu || imenu || fmenu));
   const hasVideo = S.videoDuration > 0;
   const tool = (host, id, label, opts = {}) => {
     const b = el('button', `tool${opts.on ? ' on' : ''}${opts.armed ? ' armed' : ''}${opts.cls ? ` ${opts.cls}` : ''}`, host);
@@ -1339,6 +1370,7 @@ function renderToolbar() {
   tool(tb, 'importar', 'Importar', { icon: ICON.mais });
   tool(tb, 'cortar', 'Cortar', { icon: ICON.corte, disabled: !hasVideo });
   tool(tb, 'audio', 'Áudio', { disabled: !hasVideo });
+  tool(tb, 'efeitos', 'Efeitos', { disabled: !hasVideo });
   tool(tb, 'legenda', 'Legenda', { disabled: !hasVideo || !canStyle() });
   tool(tb, 'estilo', 'Estilo', { disabled: !hasVideo || !canStyle() });
   tool(tb, 'marcar', S.pendingIn != null ? 'Fim' : 'Marcar', { armed: S.pendingIn != null, disabled: !hasVideo });
@@ -1356,6 +1388,18 @@ function renderToolbar() {
     tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
     tool(ctx, 'trilhas', 'Trilhas', { icon: ICON.audio });
     tool(ctx, 'do-celular', 'Do celular', { icon: ICON.enviar });
+    return;
+  }
+  if (fmenu) { // Efeitos: filtro na tomada debaixo da agulha, transição no corte mais perto
+    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
+    tool(ctx, 'filtros', 'Filtros', { icon: ICON.filtro });
+    tool(ctx, 'transicoes', 'Transições', { icon: ICON.transicao });
+    return;
+  }
+  if (fsel) { // um efeito escolhido na linha do tempo
+    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
+    if (fsel.tipo === 'filtro') tool(ctx, 'intensidade', `${Math.round(fxIntensidade(fsel) * 100)}%`);
+    tool(ctx, 'excluir', 'Excluir', { icon: ICON.remover });
     return;
   }
   if (lsel) { // um item de camada escolhido
@@ -1390,17 +1434,29 @@ document.addEventListener('click', (e) => {
     case 'estilo': openStyle('edit'); break;
     case 'legenda': openStyle('captions'); break;
     case 'marcar': toggleMark(); break;
-    case 'importar': S.importMenu = true; S.audioMenu = false; renderToolbar(); break;
+    case 'importar': S.importMenu = true; S.audioMenu = false; S.fxMenu = false; renderToolbar(); break;
+    case 'efeitos': S.fxMenu = true; S.audioMenu = false; S.importMenu = false; renderToolbar(); break;
+    case 'filtros': S.fxMenu = false; renderToolbar(); openFx('filtro'); break;
+    case 'transicoes': S.fxMenu = false; renderToolbar(); openFx('transicao'); break;
+    case 'intensidade': openIntensidade(); break;
     case 'imp-video': S.importMenu = false; renderToolbar(); $('fileInput').click(); break;
     case 'imp-imagem': S.importMenu = false; renderToolbar(); $('fileImagem').click(); break;
     case 'imp-audio': S.importMenu = false; renderToolbar(); $('fileAudio').click(); break;
-    case 'audio': S.audioMenu = true; S.importMenu = false; renderToolbar(); break;
+    case 'audio': S.audioMenu = true; S.importMenu = false; S.fxMenu = false; renderToolbar(); break;
     case 'trilhas': S.audioMenu = false; renderToolbar(); openTrilhas(); break;
     case 'do-celular': S.audioMenu = false; renderToolbar(); $('fileAudio').click(); break;
-    case 'voltar': S.selected = -1; S.layerSel = null; S.audioMenu = false; S.importMenu = false; renderTimeline(); renderToolbar(); break;
+    case 'voltar':
+      S.selected = -1; S.layerSel = null; S.fxSel = null;
+      S.audioMenu = false; S.importMenu = false; S.fxMenu = false;
+      renderTimeline(); renderToolbar();
+      break;
     case 'dividir': splitSelected(); break;
     case 'duplicar': duplicateSelected(); break;
-    case 'excluir': if (S.layerSel) deleteLayerSel(); else deleteSelected(); break;
+    case 'excluir':
+      if (S.layerSel) deleteLayerSel();
+      else if (S.fxSel) deleteFxSel();
+      else deleteSelected();
+      break;
     case 'volume': openVolume(); break;
     case 'melhorar': toggleMelhorar(); break;
     case 'ouvir': {
@@ -2271,6 +2327,8 @@ $('btnSave').addEventListener('click', async () => {
   const soCamadas = !edlDirty() && !S.notes.length;
   if (edlDirty()) payload.edl = edlPayload();
   if (camadasDirty()) payload.camadas = S.camadas;
+  const comEfeitos = efeitosDirty();
+  if (comEfeitos) payload.efeitos = S.efeitos;
   if (S.notes.length) {
     payload.notes = S.notes.map((n) => ({
       start: +n.start.toFixed(3),
@@ -2294,12 +2352,16 @@ $('btnSave').addEventListener('click', async () => {
     S.pendingIn = null;
     // o que foi enviado vira a referência; `orig` segue sendo o edl.json até o agente refazer
     S.base = baseOf(S.draft);
+    const comCamadas = 'camadas' in payload;
     S.camadasBase = camSig();
+    S.efeitosBase = fxSig();
     S.selected = -1;
     S.layerSel = null;
+    S.fxSel = null;
     forgetHistory(); // o que foi enviado ao agente não se desfaz daqui
     renderTimeline(); renderToolbar(); refreshHeader();
-    toast(soCamadas ? 'Camadas salvas. O agente põe no vídeo final.' : 'Ajustes enviados. O agente refaz o corte.', 3000);
+    const oque = comEfeitos ? (comCamadas ? 'Camadas e efeitos salvos' : 'Efeitos salvos') : 'Camadas salvas';
+    toast(soCamadas ? `${oque}. O agente põe no vídeo final.` : 'Ajustes enviados. O agente refaz o corte.', 3000);
   } catch (err) {
     toast('Não consegui salvar — o editor ainda está ligado no computador?', 4000);
   }
@@ -2372,6 +2434,7 @@ async function addLayer(tipo, arquivo, extra = {}) {
   faixa[tipo === 'audio' ? 'mudo' : 'oculto'] = false;
   S.camadas.faixas.push(faixa);
   S.layerSel = item.id;
+  S.fxSel = null;
   S.selected = -1;
   renderTimeline(); renderToolbar(); refreshHeader();
 }
@@ -2470,6 +2533,7 @@ function holdLayer(id, x) {
   if (hit.f.travado) { toast('Camada travada: toque no cadeado para soltar', 2200); return; }
   const before = snap();
   S.layerSel = id;
+  S.fxSel = null;
   S.selected = -1;
   if (navigator.vibrate) navigator.vibrate(12);
   startLayerDrag(x, 'move');
@@ -2770,6 +2834,360 @@ $('trilhaLista').addEventListener('click', (e) => {
 ['play', 'pause'].forEach((ev) => PREV.addEventListener(ev, () => { if (trAberto()) renderTrilhas(); }));
 PREV.addEventListener('error', () => {
   if (PREV.dataset.id && trAberto()) toast('A prévia não carregou. Confira a internet do computador.', 3000);
+});
+
+/* ---------- efeitos: filtros e transições da biblioteca (helpers/efeitos.py) ----------
+ * O filtro entra na tomada debaixo da agulha; a transição, no corte mais perto dela,
+ * centrada nele. Tudo fica em efeitos.json, no relógio do cut.mp4: o Salvar leva
+ * `efeitos` e o agente aplica antes do render final (efeitos_render.py), com o MESMO
+ * motor desta prévia (assets/efeitos/motor.js), na mesma resolução e pelo número do
+ * quadro. A prévia desenha num canvas por cima do vídeo, só no Corte.
+ * Transição: antes do corte, o lado A anda e o B fica parado no 1º quadro depois dele;
+ * depois do corte, o A fica parado no último quadro antes dele e o B anda. Um quadro
+ * com transição e filtro recebe a transição primeiro e o filtro por cima. */
+const FX = { mod: null, motores: new Map(), congelados: new Map(), fila: Promise.resolve(), pararEm: null };
+const fxVazio = () => ({ versao: 1, itens: [] });
+const fxSig = () => JSON.stringify(S.efeitos);
+const efeitosDirty = () => fxSig() !== S.efeitosBase;
+S.efeitosBase = fxSig();
+const fxItem = (id) => S.efeitos.itens.find((x) => x.id === id) || null;
+const fxTam = () => ({ largura: video.videoWidth || FRAME_W, altura: video.videoHeight || FRAME_H });
+// o trecho do cut.mp4 que o efeito toca: a mesma conta do efeitos.py
+function fxJanela(it) {
+  if (it.tipo === 'transicao') return [it.corte - it.duracao / 2, it.corte + it.duracao / 2];
+  return [it.inicio, it.inicio + it.duracao];
+}
+const fxDentro = (it, t) => { const [a, b] = fxJanela(it); return a - 1e-6 <= t && t < b - 1e-6; };
+const fxCruzam = (x, y) => { const [a, b] = fxJanela(x), [c, d] = fxJanela(y); return a < d - 1e-6 && c < b - 1e-6; };
+
+async function loadEfeitos() {
+  let e = null;
+  try {
+    const r = await fetch(`/media/efeitos.json?v=${Date.now()}`);
+    if (r.ok) e = await r.json();
+  } catch (err) { /* ainda não existe */ }
+  S.efeitos = e && Array.isArray(e.itens) ? { versao: 1, itens: e.itens } : fxVazio();
+  S.efeitosBase = fxSig();
+  FX.congelados.clear();
+  // o bloco na linha do tempo mostra o nome do catálogo
+  if (S.efeitos.itens.length) loadFxListas().then(renderTimeline);
+}
+async function loadFxLista(tipo) {
+  try {
+    const r = await fetch(`/api/pacotes?tipo=${tipo}`);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || `erro ${r.status}`);
+    S.fxLista[tipo] = d.pacotes;
+  } catch (e) {
+    S.fxLista[tipo] = S.fxLista[tipo] || [];
+  }
+  for (const p of S.fxLista[tipo]) S.fxNomes[p.id] = p.nome;
+}
+const loadFxListas = () => Promise.all([loadFxLista('filtro'), loadFxLista('transicao')]);
+
+// um motor por pacote, na resolução do vídeo; o celular tem poucos contextos WebGL, ficam os 4 últimos
+function fxMotor(pacote) {
+  const { largura, altura } = fxTam();
+  const chave = `${pacote}@${largura}x${altura}`;
+  let m = FX.motores.get(chave);
+  if (m) {
+    FX.motores.delete(chave); // o mais usado vai para o fim da fila
+  } else {
+    FX.mod = FX.mod || import('/efeitos/motor.js');
+    m = { ef: null };
+    m.p = FX.mod.then((mod) => mod.carregarEfeito(`/gen/pacote/${encodeURIComponent(pacote)}/`, { largura, altura }));
+    // falhou: fica marcado por 10 s, senão cada quadro pediria o pacote de novo
+    m.p.then((ef) => { m.ef = ef; fxRedesenhar(); },
+      () => setTimeout(() => { if (FX.motores.get(chave) === m) FX.motores.delete(chave); }, 10000));
+  }
+  FX.motores.set(chave, m);
+  while (FX.motores.size > 4) {
+    const [velha, v] = FX.motores.entries().next().value;
+    FX.motores.delete(velha);
+    v.p.then((ef) => ef.destruir()).catch(() => {});
+  }
+  return m;
+}
+
+// os quadros parados da transição saem de um segundo vídeo, para não mexer no que está na tela
+const fxVid = document.createElement('video');
+fxVid.muted = true;
+fxVid.playsInline = true;
+fxVid.preload = 'auto';
+function quadroDoCorte(n) {
+  const fps = S.fps || 30;
+  FX.fila = FX.fila.catch(() => {}).then(() => new Promise((ok, falha) => {
+    const src = video.dataset.src;
+    const tirar = () => {
+      const { largura, altura } = fxTam();
+      const c = document.createElement('canvas');
+      c.width = largura;
+      c.height = altura;
+      c.getContext('2d').drawImage(fxVid, 0, 0, largura, altura);
+      ok(c);
+    };
+    const ir = () => {
+      fxVid.addEventListener('seeked', tirar, { once: true });
+      fxVid.currentTime = (Math.max(0, n) + 0.5) / fps; // o meio do quadro: cai nele, não no vizinho
+    };
+    setTimeout(() => falha(new Error('o quadro parado não carregou')), 15000);
+    if (fxVid.dataset.src !== src) {
+      fxVid.dataset.src = src;
+      fxVid.src = src;
+      fxVid.addEventListener('loadeddata', ir, { once: true });
+    } else ir();
+  }));
+  return FX.fila;
+}
+function fxCongelados(tr, fps) {
+  const k = Math.floor(tr.corte * fps + 0.5); // o 1º quadro depois do corte
+  const chave = `${video.dataset.src}#${k}`;
+  let c = FX.congelados.get(chave);
+  if (!c) {
+    c = { pronto: null };
+    FX.congelados.set(chave, c);
+    while (FX.congelados.size > 6) FX.congelados.delete(FX.congelados.keys().next().value);
+    Promise.all([quadroDoCorte(k - 1), quadroDoCorte(k)])
+      .then(([a, b]) => { c.pronto = { a, b, k }; fxRedesenhar(); })
+      .catch(() => FX.congelados.delete(chave));
+  }
+  return c.pronto;
+}
+
+function fxDesenhar(mediaTime) {
+  const cv = $('fxCanvas');
+  const esconder = () => { if (!cv.classList.contains('hidden')) cv.classList.add('hidden'); };
+  if (S.view !== 'corte' || S.posMode || S.styling || !video.videoWidth || G.mode === 'move') { esconder(); return; }
+  const fps = S.fps || 30;
+  const n = Math.floor(mediaTime * fps + 1e-3); // o quadro do cut.mp4 que está na tela
+  const t = n / fps;
+  if (FX.pararEm != null && !video.paused && t >= FX.pararEm) { video.pause(); FX.pararEm = null; }
+  let tr = null, fi = null;
+  for (const it of S.fxTeste ? [...S.efeitos.itens, S.fxTeste] : S.efeitos.itens) { // o de teste vale por último
+    if (!fxDentro(it, t)) continue;
+    if (it.tipo === 'transicao') tr = it; else fi = it;
+  }
+  if (!tr && !fi) { esconder(); return; }
+  let fonte = video, saida = null;
+  if (tr) {
+    const m = fxMotor(tr.pacote).ef;
+    const cong = fxCongelados(tr, fps);
+    if (m && cong) {
+      const antes = n < cong.k;
+      m.desenhar({ a: antes ? video : cong.a, b: antes ? cong.b : video,
+        tempo_ms: (t - (tr.corte - tr.duracao / 2)) * 1000 });
+      fonte = saida = m.canvas;
+    }
+  }
+  if (fi) {
+    const m = fxMotor(fi.pacote).ef;
+    if (m) {
+      m.desenhar({ quadro: fonte, intensidade: fi.intensidade });
+      saida = m.canvas;
+    }
+  }
+  if (!saida) { esconder(); return; } // o pacote ainda está descendo: mostra o vídeo como está
+  const { largura, altura } = fxTam();
+  if (cv.width !== largura || cv.height !== altura) { cv.width = largura; cv.height = altura; }
+  cv.getContext('2d').drawImage(saida, 0, 0, largura, altura);
+  cv.classList.remove('hidden');
+}
+// tocando, cada quadro novo do vídeo avisa (é o quadro que está na tela, não o relógio)
+function fxQuadro(agora, meta) {
+  fxDesenhar(meta.mediaTime);
+  video.requestVideoFrameCallback(fxQuadro);
+}
+if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(fxQuadro);
+function fxRedesenhar() { if (video.paused || video.ended) fxDesenhar(video.currentTime); }
+video.addEventListener('seeked', fxRedesenhar);
+
+function renderFxTrack(lane) {
+  for (const it of S.efeitos.itens) {
+    const [a0, b0] = fxJanela(it);
+    const a = renderedToDraft(Math.max(0, a0)), b = renderedToDraft(b0);
+    const chip = el('div', `chip fx ${it.tipo === 'filtro' ? 'fi' : 'tr'}${it.id === S.fxSel ? ' sel' : ''}`, lane);
+    chip.dataset.id = it.id;
+    chip.style.left = `${a * S.pps}px`;
+    chip.style.width = `${Math.max((b - a) * S.pps, 12)}px`;
+    el('span', 'l-ico', chip).innerHTML = it.tipo === 'filtro' ? ICON.filtro : ICON.transicao;
+    el('span', 'l-name', chip).textContent = S.fxNomes[it.pacote] || it.pacote;
+  }
+}
+function tapFx(id) {
+  if (!fxItem(id)) return;
+  S.fxSel = S.fxSel === id ? null : id;
+  S.layerSel = null;
+  S.selected = -1;
+  renderTimeline();
+  renderToolbar();
+}
+function deleteFxSel() {
+  if (!fxItem(S.fxSel)) return;
+  remember();
+  S.efeitos.itens = S.efeitos.itens.filter((x) => x.id !== S.fxSel);
+  S.fxSel = null;
+  renderTimeline(); renderToolbar(); refreshHeader();
+  fxRedesenhar();
+}
+// sem intensidade gravada, vale a do pacote (o motor já sabe qual é)
+function fxIntensidade(it) {
+  if (typeof it.intensidade === 'number') return it.intensidade;
+  const m = fxMotor(it.pacote).ef;
+  return (m && m.manifesto.intensidade && m.manifesto.intensidade.padrao) || 1;
+}
+let intBefore = null;
+function openIntensidade() {
+  const it = fxItem(S.fxSel);
+  if (!it) return;
+  intBefore = snap();
+  const v = Math.round(fxIntensidade(it) * 100);
+  $('fxIntRange').value = v;
+  $('fxIntVal').textContent = `${v}%`;
+  showSheet($('fxIntSheet'), true);
+}
+$('fxIntRange').addEventListener('input', () => {
+  const it = fxItem(S.fxSel);
+  if (!it) return;
+  it.intensidade = +($('fxIntRange').value / 100).toFixed(2);
+  $('fxIntVal').textContent = `${$('fxIntRange').value}%`;
+  fxRedesenhar();
+});
+$('fxIntOk').addEventListener('click', () => {
+  showSheet($('fxIntSheet'), false);
+  if (intBefore && JSON.stringify(intBefore.fx) !== fxSig()) remember(intBefore);
+  intBefore = null;
+  renderToolbar(); refreshHeader();
+});
+
+// o painel: tocar mostra o efeito no vídeo; "Usar" aplica
+let fxTipo = 'filtro', fxEscolha = null, fxBaixando = null;
+const fxAberto = () => $('fxSheet').classList.contains('open');
+async function openFx(tipo) {
+  fxTipo = tipo;
+  fxEscolha = null;
+  S.fxTeste = null;
+  video.pause();
+  $('fxTitle').textContent = tipo === 'filtro' ? 'Filtros' : 'Transições';
+  if (!S.fxLista[tipo]) $('fxLista').innerHTML = '<p class="sheet-hint">Carregando…</p>';
+  app.classList.add('efeitando');
+  showSheet($('fxSheet'), true);
+  await loadFxLista(tipo);
+  renderFxLista();
+}
+function closeFx() {
+  S.fxTeste = null;
+  FX.pararEm = null;
+  fxEscolha = null;
+  app.classList.remove('efeitando');
+  showSheet($('fxSheet'), false);
+  sizeCanvases(); positionTimeline(); // a linha do tempo volta a aparecer
+  fxRedesenhar();
+}
+function renderFxLista() {
+  const box = $('fxLista');
+  box.innerHTML = '';
+  const lista = S.fxLista[fxTipo] || [];
+  const filtro = fxTipo === 'filtro';
+  if (!lista.length) {
+    el('p', 'sheet-hint', box).textContent = filtro
+      ? 'A biblioteca deste kit ainda não tem filtros.' : 'A biblioteca deste kit ainda não tem transições.';
+    return;
+  }
+  el('p', 'sheet-hint', box).textContent = filtro
+    ? 'Toque para ver no vídeo. "Usar" põe o filtro na tomada debaixo da agulha.'
+    : 'Toque para ver no corte mais perto da agulha. "Usar" põe a transição nele.';
+  for (const p of lista) {
+    const row = el('div', `tr-row${fxEscolha === p.id ? ' on' : ''}`, box);
+    row.dataset.id = p.id;
+    el('span', 'tr-play fx-ico', row).innerHTML = filtro ? ICON.filtro : ICON.transicao;
+    const txt = el('div', 'tr-txt', row);
+    el('b', null, txt).textContent = p.nome;
+    const info = [];
+    if (!filtro && p.duracao) info.push(`${p.duracao.toFixed(1).replace('.', ',')} s`);
+    if (fxBaixando === p.id) info.push('baixando…');
+    else if (p.baixado) info.push('no computador');
+    el('span', null, txt).textContent = info.join(' · ');
+    if (fxEscolha === p.id) {
+      const usar = el('button', 'tb-btn primary tr-usar', row);
+      usar.type = 'button';
+      usar.dataset.act = 'usar';
+      usar.textContent = 'Usar';
+      usar.disabled = fxBaixando === p.id;
+    }
+  }
+}
+// a tomada debaixo da agulha e o corte mais perto dela, no relógio do cut.mp4
+function tomadaEm(rt) {
+  const rl = renderedLayout();
+  return rl.find((r) => rt >= r.out && rt < r.out + r.dur) || rl[rl.length - 1] || null;
+}
+function corteMaisPerto(rt) {
+  const cortes = renderedLayout().slice(1).map((r) => r.out);
+  if (!cortes.length) return null;
+  return cortes.reduce((a, c) => (Math.abs(c - rt) < Math.abs(a - rt) ? c : a));
+}
+function testarFx(id) {
+  const p = (S.fxLista[fxTipo] || []).find((x) => x.id === id);
+  if (!p) return;
+  const rt = draftToRendered(S.t);
+  if (fxTipo === 'filtro') {
+    const tk = tomadaEm(rt);
+    if (!tk) return;
+    S.fxTeste = { id: '_teste', tipo: 'filtro', pacote: id, inicio: +tk.out.toFixed(3), duracao: +tk.dur.toFixed(3) };
+  } else {
+    const corte = corteMaisPerto(rt);
+    if (corte == null) { toast('A transição vai num corte: este vídeo ainda é uma tomada só', 2800); return; }
+    const dur = Math.min(5, Math.max(0.1, p.duracao || 1));
+    S.fxTeste = { id: '_teste', tipo: 'transicao', pacote: id, corte: +corte.toFixed(3), duracao: dur };
+    // mostra a transição tocando: começa um pouco antes da janela e para um pouco depois
+    S.t = clampT(renderedToDraft(Math.max(0, corte - dur / 2 - 0.4)));
+    positionTimeline();
+    preciseSeek();
+    FX.pararEm = corte + dur / 2 + 0.4;
+    video.play().catch(() => {});
+  }
+  fxEscolha = id;
+  const m = fxMotor(id);
+  if (!m.ef) {
+    fxBaixando = id;
+    m.p.then(() => { if (fxBaixando === id) fxBaixando = null; p.baixado = true; if (fxAberto()) renderFxLista(); },
+      (e) => { fxBaixando = null; if (fxAberto()) renderFxLista(); toast(`O efeito não baixou: ${e.message}`, 3600); });
+  }
+  renderFxLista();
+  fxRedesenhar();
+}
+function novoFxId(letra) {
+  let n = 0;
+  for (const it of S.efeitos.itens) {
+    const m = new RegExp(`^${letra}(\\d+)$`).exec(it.id);
+    if (m) n = Math.max(n, +m[1]);
+  }
+  return `${letra}${n + 1}`;
+}
+function usarFx(id) {
+  const t = S.fxTeste;
+  if (!t || t.pacote !== id) return;
+  remember();
+  const novo = { ...t, id: novoFxId(t.tipo === 'filtro' ? 'f' : 't') };
+  // como no app de celular: um filtro por tomada, uma transição por corte; o novo troca o que estava ali
+  S.efeitos.itens = S.efeitos.itens.filter((x) => x.tipo !== novo.tipo || !fxCruzam(x, novo));
+  S.efeitos.itens.push(novo);
+  S.fxSel = novo.id;
+  S.layerSel = null;
+  S.selected = -1;
+  const nome = S.fxNomes[id] || id;
+  closeFx();
+  renderTimeline(); renderToolbar(); refreshHeader();
+  toast(t.tipo === 'filtro' ? `"${nome}" entrou na tomada` : `"${nome}" entrou no corte`, 2400);
+}
+$('fxClose').innerHTML = ICON.fechar;
+$('fxClose').addEventListener('click', closeFx);
+$('fxLista').addEventListener('click', (e) => {
+  const row = e.target.closest('.tr-row');
+  if (!row) return;
+  const btn = e.target.closest('[data-act]');
+  if (btn && btn.dataset.act === 'usar') usarFx(row.dataset.id);
+  else testarFx(row.dataset.id);
 });
 
 // ---------- avisos ----------

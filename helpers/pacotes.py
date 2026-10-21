@@ -1,15 +1,18 @@
-"""Pacotes do kit (trilhas e, depois, efeitos, transições e filtros): baixar só quando usar.
+"""Pacotes do kit (trilhas, filtros e transições; depois, efeitos e textos): baixar só quando usar.
 
 O catálogo diz o que existe e de onde vem. Cada pacote é um arquivo de uma Release do
 repositório de pacotes, no endereço `<base>/<release>/<arquivo>`. `obter` baixa para o
 cache deste computador, confere tamanho e sha256 e só então guarda. Os favoritos ficam;
 os outros saem, do menos usado para o mais usado, quando o cache passa do limite.
+Filtro e transição são um zip que `aberto` abre numa pasta ao lado, lida pelo motor de
+efeitos (assets/efeitos/motor.js); a pasta sai do cache junto com o zip.
 
 Quem usa: o agente, pela linha de comando, e o servidor do editor (o celular toca em
 "Usar" e o servidor baixa, sem agente no meio).
 
     python helpers/pacotes.py listar [--tipo trilha] [--busca calma]
     python helpers/pacotes.py obter <id> [--para <edit>/midia]
+    python helpers/pacotes.py abrir <id>                        # filtro/transição: a pasta aberta
     python helpers/pacotes.py camada <edit> <id> [--inicio 0]   # trilha na linha do tempo
     python helpers/pacotes.py favorito <id> [--tirar]
     python helpers/pacotes.py cache                             # o que está guardado
@@ -36,6 +39,7 @@ import time
 import unicodedata
 import urllib.error
 import urllib.request
+import zipfile
 from pathlib import Path
 from urllib.parse import quote, urlparse
 
@@ -47,9 +51,12 @@ TIPOS = ("trilha", "efeito", "transicao", "filtro", "texto")
 TRILHA_VOLUME = 0.15  # trilha normalizada em -14 LUFS, embaixo da voz: ~16 dB abaixo
 LIMITE_PADRAO_GB = 2.0
 MAX_ARQUIVO = 2 * 1024 ** 3  # o teto de um arquivo de Release
+ABERTOS = ("filtro", "transicao")  # chegam em zip e o motor de efeitos lê a pasta aberta
+MAX_ABERTO = 256 * 1024 ** 2  # zip que abre em mais que isso não é efeito, é bomba
+MAX_ENTRADAS = 200
 
 _ID = re.compile(r"[a-z0-9][a-z0-9-]{0,60}")
-_ARQ = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,120}")
+_ARQ = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,120}")  # também o nome dentro do zip: solto, sem pasta
 _SHA = re.compile(r"[0-9a-f]{64}")
 _LOCK = threading.RLock()  # o servidor atende pedidos em paralelo
 _agora = time.time  # o relógio do "menos usado" (os testes trocam)
@@ -260,19 +267,19 @@ class Pacotes:
     def cache_info(self) -> dict:
         g = self._guardados()
         return {"pasta": str(self.cache), "limite": self.limite, "arquivos": len(g),
-                "bytes": sum(f.stat().st_size for _, _, f in g), "favoritos": self._estado()["favoritos"]}
+                "bytes": sum(_ocupa(f) for _, _, f in g), "favoritos": self._estado()["favoritos"]}
 
     def _abrir_espaco(self, manter: Path) -> None:
         e = self._estado()
         g = self._guardados()
-        total = sum(f.stat().st_size for _, _, f in g)
+        total = sum(_ocupa(f) for _, _, f in g)
         for chave, pid, f in sorted(g, key=lambda x: e["uso"].get(x[0], 0)):
             if total <= self.limite:
                 break
             if pid in e["favoritos"] or f == manter:
                 continue
-            total -= f.stat().st_size
-            f.unlink(missing_ok=True)
+            total -= _ocupa(f)
+            _apagar(f)
             e["uso"].pop(chave, None)
         self._gravar_estado(e)
 
@@ -313,6 +320,19 @@ class Pacotes:
             self._abrir_espaco(manter=local)
         return _copiar(local, Path(para), p["sha256"]) if para is not None else local
 
+    def aberto(self, pid: str) -> Path:
+        """Filtro e transição: a pasta com o zip do pacote aberto (baixa e abre na primeira vez)."""
+        p = self.pacote(pid)
+        if p["tipo"] not in ABERTOS:
+            raise PacoteErro(f"{pid} é {p['tipo']}: não é pacote de efeito")
+        with _LOCK:
+            z = self.obter(pid)
+            pasta = _aberta_de(z)
+            marca = pasta / ".sha256"
+            if not (marca.is_file() and marca.read_text(encoding="ascii") == p["sha256"]):
+                _abrir_zip(z, pasta, p["sha256"])
+        return pasta
+
     def previa(self, pid: str) -> Path:
         p = self.pacote(pid)
         if "previa" not in p:
@@ -347,6 +367,58 @@ class Pacotes:
             return True
         finally:
             tmp.unlink(missing_ok=True)
+
+
+def _aberta_de(arquivo: Path) -> Path:
+    return arquivo.with_name(f"{arquivo.stem}.aberto")
+
+
+def _ocupa(arquivo: Path) -> int:
+    """O arquivo e, se for zip de efeito, a pasta aberta dele: saem juntos do cache."""
+    pasta = _aberta_de(arquivo)
+    extra = sum(f.stat().st_size for f in pasta.iterdir() if f.is_file()) if pasta.is_dir() else 0
+    return arquivo.stat().st_size + extra
+
+
+def _apagar(arquivo: Path) -> None:
+    arquivo.unlink(missing_ok=True)
+    shutil.rmtree(_aberta_de(arquivo), ignore_errors=True)
+
+
+def _abrir_zip(z: Path, pasta: Path, sha: str) -> None:
+    """Abre numa pasta nova e troca de uma vez. Só arquivos soltos (sem pasta, sem '..',
+    sem nome repetido), com teto de quantidade e de tamanho: um zip montado para escapar
+    da pasta ou encher o disco para aqui, antes de gravar qualquer coisa."""
+    tmp = pasta.with_name(f".{pasta.name}.{os.getpid()}.{threading.get_ident()}.part")
+    shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        with zipfile.ZipFile(z) as zf:
+            infos = zf.infolist()
+            nomes = [i.filename for i in infos]
+            if len(infos) > MAX_ENTRADAS or sum(i.file_size for i in infos) > MAX_ABERTO:
+                raise PacoteCorrompido(f"{z.name}: grande demais para abrir")
+            for i in infos:
+                if i.is_dir() or not _ARQ.fullmatch(i.filename) or ".." in i.filename:
+                    raise PacoteCorrompido(f"{z.name}: caminho não permitido dentro do pacote "
+                                           f"({i.filename[:60]!r})")
+            if len({n.lower() for n in nomes}) != len(nomes):
+                raise PacoteCorrompido(f"{z.name}: nome repetido dentro do pacote")
+            if "efeito.json" not in nomes:
+                raise PacoteCorrompido(f"{z.name}: sem efeito.json")
+            tmp.mkdir(parents=True)
+            for i in infos:
+                with zf.open(i) as src:
+                    dados = src.read(i.file_size + 1)
+                if len(dados) != i.file_size:
+                    raise PacoteCorrompido(f"{z.name}: {i.filename} não tem o tamanho que diz")
+                (tmp / i.filename).write_bytes(dados)
+        (tmp / ".sha256").write_text(sha, encoding="ascii")
+        shutil.rmtree(pasta, ignore_errors=True)
+        tmp.replace(pasta)
+    except (zipfile.BadZipFile, zipfile.LargeZipFile, NotImplementedError) as e:
+        raise PacoteCorrompido(f"{z.name} não abre como zip ({e.__class__.__name__})") from None
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _copiar(src: Path, pasta: Path, sha: str) -> Path:
@@ -415,6 +487,8 @@ def main() -> int:
     a = sub.add_parser("obter")
     a.add_argument("id")
     a.add_argument("--para", type=Path)
+    a = sub.add_parser("abrir")
+    a.add_argument("id")
     a = sub.add_parser("camada")
     a.add_argument("edit", type=Path)
     a.add_argument("id")
@@ -438,6 +512,8 @@ def main() -> int:
                       f"{p['clima']:<10} {p['nome']}")
         elif args.cmd == "obter":
             print(pac.obter(args.id, para=args.para))
+        elif args.cmd == "abrir":
+            print(pac.aberto(args.id))
         elif args.cmd == "camada":
             f = por_na_linha(pac, args.edit, args.id, _duracao_video(args.edit), args.inicio, args.volume)
             it = f["itens"][0]

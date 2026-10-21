@@ -42,7 +42,9 @@
   <section class="stage" id="stage">
     <!-- .comp: a mesma composição dos cartões do Estilo (faixa, janela do vídeo, headline, legenda) -->
     <div class="player comp" id="player">
-      <div class="win"><video class="media" id="video" playsinline webkit-playsinline preload="auto"></video></div>
+      <div class="win"><video class="media" id="video" playsinline webkit-playsinline preload="auto"></video>
+        <!-- filtro e transição debaixo da agulha, pelo mesmo motor do vídeo final (assets/efeitos/motor.js) -->
+        <canvas class="media fx-canvas hidden" id="fxCanvas"></canvas></div>
       <div class="band" id="ovBand"></div>
       <div class="hl" id="ovHl"></div>
       <div class="cap" id="ovCap"></div>
@@ -135,6 +137,26 @@
   </div>
   <div class="subtabs tr-filtros" id="trilhaFiltros"></div>
   <div class="sheet-body tr-lista" id="trilhaLista"></div>
+</section>
+
+<!-- filtros e transições da biblioteca: tocar mostra no vídeo, "Usar" aplica -->
+<section class="sheet fx-sheet" id="fxSheet" aria-hidden="true">
+  <div class="sheet-head">
+    <button class="sh-close" id="fxClose" type="button" aria-label="Fechar"></button>
+    <b class="sh-title" id="fxTitle">Filtros</b>
+  </div>
+  <div class="sheet-body tr-lista" id="fxLista"></div>
+</section>
+
+<!-- painel pequeno: intensidade do filtro escolhido -->
+<section class="sheet small" id="fxIntSheet" aria-hidden="true">
+  <div class="sheet-grip"></div>
+  <div class="note-head"><b>Intensidade</b><span id="fxIntVal">100%</span></div>
+  <input class="vol-range" id="fxIntRange" type="range" min="0" max="100" step="1" value="100" aria-label="Intensidade do filtro">
+  <footer class="sheet-foot">
+    <div class="t-spacer"></div>
+    <button class="tb-btn primary" id="fxIntOk" type="button">Pronto</button>
+  </footer>
 </section>
 
 <input type="file" id="fileInput" accept="video/*" hidden>
