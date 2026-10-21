@@ -92,6 +92,14 @@ any editor:
   (files only from `midia/`, sane times and volumes) and writes `<edit>/camadas.json`
   — the project file, read back when the editor opens. A refusal shows the reason.
 
+Tested on the Android phone over the cable, with real taps: **Imagem** opens the
+system photo picker (pick, then **Concluir**); **Áudio** opens the "open with" chooser,
+then the Files app (its search finds the file by name). Both land as layers at the
+needle; the headers, hold-to-move, the handle, the volume slider, Melhorar, undo/redo
+and the layer sound playing along all worked by finger. The photo picker hands the
+file over named by its media id (a number, like `1000012345.png`), so that is the name
+the layer shows.
+
 The agent side (images → inserts, sound → final mix) is in `references/shortform.md`,
 "Layers from the editor".
 
