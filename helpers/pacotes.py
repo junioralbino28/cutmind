@@ -222,7 +222,7 @@ class Pacotes:
             texto = _sem_acento(" ".join([p["id"], p["nome"], p["clima"], *p["tags"]]))
             if q and not all(w in texto for w in q):
                 continue
-            out.append({k: p[k] for k in ("id", "tipo", "nome", "clima", "tags", "duracao")}
+            out.append({k: p[k] for k in ("id", "tipo", "nome", "clima", "tags", "duracao", "tamanho")}
                        | {"previa": "previa" in p, "baixado": self._local(p).is_file(),
                           "favorito": p["id"] in est["favoritos"]})
         return out

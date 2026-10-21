@@ -132,6 +132,14 @@ the take under the needle, a transition playing across the cut nearest the needl
 the phone apps, a take holds one filter and a cut holds one transition: a new one
 replaces the old.
 
+Each filter row shows a **thumbnail of the frame under the needle with that filter**
+(the middle of the frame, 44×56). Thumbnails are drawn one at a time with a small
+engine that is destroyed right after (the phone has few WebGL contexts and the
+preview already holds up to 4), only for rows on screen, and only packages up to
+1.5 MB download by themselves; a bigger one, or one that fails, keeps the icon until
+tapped. They are kept per filter and per frame, so redrawing the list doesn't flicker.
+Transitions keep the icon.
+
 - The effects are a track right above the video: a filter spans its take, a
   transition spans its window around the cut. Tap selects: **Voltar · Intensidade
   (filter) · Excluir**. Intensidade is a 0–100% slider that redraws live.

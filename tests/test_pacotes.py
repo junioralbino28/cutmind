@@ -101,6 +101,8 @@ def test_listar_filtra_por_tipo_e_busca_sem_acento(rel):
     assert [x["id"] for x in p.listar(busca="VIOLAO")] == ["calma-01"]  # pelas tags
     assert p.listar(tipo="filtro") == []
     assert p.listar()[0]["baixado"] is False and p.listar()[0]["favorito"] is False
+    # o editor só baixa sozinho (miniatura de filtro) pacote pequeno: precisa do tamanho
+    assert next(x for x in p.listar() if x["id"] == "calma-01")["tamanho"] == 4000
 
 
 # ---- baixar ----

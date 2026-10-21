@@ -3142,6 +3142,78 @@ $('fxIntOk').addEventListener('click', () => {
   renderToolbar(); refreshHeader();
 });
 
+/* Miniatura de cada filtro: o quadro debaixo da agulha já com o filtro, como no app de
+ * celular. Um motor pequeno por vez (criar, desenhar, copiar, destruir), porque o celular
+ * tem poucos contextos WebGL e a prévia já usa até 4. Só desenha a linha que aparece no
+ * painel, e só baixa sozinho pacote pequeno; o maior fica com o ícone até a pessoa tocar. */
+const MINI = { w: 88, h: 112, limite: 1.5e6, fila: Promise.resolve(), quadro: null, chave: '',
+  feitas: new Map(), falhas: new Set(), obs: null };
+function miniQuadro() {
+  if (!video.videoWidth || video.readyState < 2) return null;
+  const chave = `${video.dataset.src}#${Math.round(video.currentTime * (S.fps || 30))}`;
+  if (MINI.chave !== chave) { // o meio do quadro, na proporção da miniatura
+    const c = document.createElement('canvas');
+    c.width = MINI.w;
+    c.height = MINI.h;
+    const k = Math.min(video.videoWidth / MINI.w, video.videoHeight / MINI.h);
+    const sw = MINI.w * k, sh = MINI.h * k;
+    c.getContext('2d').drawImage(video, (video.videoWidth - sw) / 2, (video.videoHeight - sh) / 2, sw, sh, 0, 0, MINI.w, MINI.h);
+    MINI.quadro = c;
+    MINI.chave = chave;
+  }
+  return MINI.quadro;
+}
+function miniPintar(ico, img) {
+  const c = document.createElement('canvas');
+  c.width = MINI.w;
+  c.height = MINI.h;
+  c.getContext('2d').drawImage(img, 0, 0);
+  ico.classList.add('com-mini');
+  ico.replaceChildren(c);
+}
+function miniPedir(p) {
+  const q = miniQuadro();
+  if (!q || MINI.falhas.has(p.id)) return;
+  const chave = `${p.id}|${MINI.chave}`;
+  MINI.fila = MINI.fila.catch(() => {}).then(async () => {
+    if (!MINI.feitas.has(chave) && fxAberto() && fxTipo === 'filtro') {
+      FX.mod = FX.mod || import('/efeitos/motor.js');
+      const ef = await (await FX.mod).carregarEfeito(`/gen/pacote/${encodeURIComponent(p.id)}/`, { largura: MINI.w, altura: MINI.h })
+        .catch(() => { MINI.falhas.add(p.id); return null; }); // o pacote que falta fica com o ícone, sem aviso
+      if (!ef) return;
+      try {
+        ef.desenhar({ quadro: q }); // a intensidade do pacote
+        const img = document.createElement('canvas');
+        img.width = MINI.w;
+        img.height = MINI.h;
+        img.getContext('2d').drawImage(ef.canvas, 0, 0);
+        MINI.feitas.set(chave, img);
+        while (MINI.feitas.size > 60) MINI.feitas.delete(MINI.feitas.keys().next().value);
+        p.baixado = true;
+      } finally {
+        ef.destruir();
+      }
+    }
+    const img = MINI.feitas.get(chave);
+    const ico = document.querySelector(`#fxLista .tr-row[data-id="${CSS.escape(p.id)}"] .fx-ico`);
+    if (img && ico && !ico.classList.contains('com-mini')) miniPintar(ico, img); // a lista pode ter sido redesenhada
+  });
+}
+function miniObservar(lista) {
+  if (MINI.obs) MINI.obs.disconnect();
+  if (fxTipo !== 'filtro' || !window.IntersectionObserver) return;
+  const porId = new Map(lista.map((p) => [p.id, p]));
+  MINI.obs = new IntersectionObserver((vistos) => {
+    for (const v of vistos) {
+      if (!v.isIntersecting) continue;
+      MINI.obs.unobserve(v.target);
+      const p = porId.get(v.target.closest('.tr-row').dataset.id);
+      if (p && !(p.tamanho > MINI.limite)) miniPedir(p);
+    }
+  }, { root: $('fxLista'), rootMargin: '120px' });
+  for (const ico of $('fxLista').querySelectorAll('.tr-row .fx-ico:not(.com-mini)')) MINI.obs.observe(ico);
+}
+
 // o painel: tocar mostra o efeito no vídeo; "Usar" aplica
 let fxTipo = 'filtro', fxEscolha = null, fxBaixando = null;
 const fxAberto = () => $('fxSheet').classList.contains('open');
@@ -3158,6 +3230,7 @@ async function openFx(tipo) {
   renderFxLista();
 }
 function closeFx() {
+  if (MINI.obs) MINI.obs.disconnect(); // fechado o painel, nenhuma miniatura nova entra na fila
   S.fxTeste = null;
   FX.pararEm = null;
   fxEscolha = null;
@@ -3182,7 +3255,10 @@ function renderFxLista() {
   for (const p of lista) {
     const row = el('div', `tr-row${fxEscolha === p.id ? ' on' : ''}`, box);
     row.dataset.id = p.id;
-    el('span', 'tr-play fx-ico', row).innerHTML = filtro ? ICON.filtro : ICON.transicao;
+    const ico = el('span', 'tr-play fx-ico', row);
+    ico.innerHTML = filtro ? ICON.filtro : ICON.transicao;
+    const pronta = filtro && miniQuadro() && MINI.feitas.get(`${p.id}|${MINI.chave}`);
+    if (pronta) miniPintar(ico, pronta); // redesenhar a lista não pisca: a miniatura já existe
     const txt = el('div', 'tr-txt', row);
     el('b', null, txt).textContent = p.nome;
     const info = [];
@@ -3198,6 +3274,7 @@ function renderFxLista() {
       usar.disabled = fxBaixando === p.id;
     }
   }
+  miniObservar(lista);
 }
 // a tomada debaixo da agulha e o corte mais perto dela, no relógio do cut.mp4
 function tomadaEm(rt) {

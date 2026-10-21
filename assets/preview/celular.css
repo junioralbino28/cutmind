@@ -558,6 +558,10 @@ button { font-family: inherit; cursor: pointer; }
 .tr-row.on .tr-play { background: var(--text); color: #111; }
 .tr-play svg { width: 15px; height: 15px; display: block; fill: currentColor; }
 .tr-play:disabled { opacity: 0.35; }
+/* miniatura do filtro: o quadro debaixo da agulha já com o filtro */
+.fx-ico.com-mini { width: 44px; height: 56px; overflow: hidden; background: #000; }
+.fx-ico.com-mini canvas { width: 100%; height: 100%; display: block; }
+.tr-row.on .fx-ico.com-mini { background: #000; box-shadow: 0 0 0 2px var(--text); }
 .tr-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .tr-txt b { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tr-txt span { font-size: 11.5px; color: var(--dim); }
