@@ -26,6 +26,9 @@ dependencies = [
     # there, on every OS, and `uv run` puts .venv/bin first on PATH so the helper
     # that shells out to `yt-dlp` finds it.
     "yt-dlp",
+    # QR code do "abrir no celular" (preview_server.py). Python puro, sem
+    # biblioteca nativa: no Windows nada de DLL para instalar à parte.
+    "segno>=1.6",
 ]
 
 [project.optional-dependencies]

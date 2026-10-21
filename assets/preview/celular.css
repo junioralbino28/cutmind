@@ -110,6 +110,8 @@ button { font-family: inherit; cursor: pointer; }
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
 }
 .tap-play { position: absolute; inset: 0; background: transparent; border: 0; }
+/* ao aparar: quadro do vídeo de origem na alça, enquadrado como o vídeo */
+.peek { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; background: #000; z-index: 3; pointer-events: none; }
 /* fora do Estilo a prévia é só o vídeo */
 .player:not(.styling) .band, .player:not(.styling) .hl, .player:not(.styling) .cap { display: none !important; }
 
@@ -434,6 +436,31 @@ textarea {
   z-index: 40;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
+
+/* ---------- envio de vídeo: cartão com a barra, no alto, sobre o vídeo ----------
+   Embaixo ele cobria a linha do tempo e as alças enquanto a pessoa continuava editando. */
+.upload {
+  position: fixed; left: 12px; right: 12px; top: calc(60px + var(--safe-t));
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px 12px 11px;
+  border-radius: 14px;
+  background: #161b23;
+  border: 1px solid var(--stroke2);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  z-index: 30;
+}
+.up-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.up-ico { width: 20px; height: 20px; color: var(--orange); flex: none; }
+.up-ico svg { width: 20px; height: 20px; display: block; }
+.up-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.up-row .tb-btn { height: 30px; padding: 0 12px; font-size: 12px; flex: none; }
+.up-track { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.up-bar { height: 100%; width: 0; border-radius: 2px; background: var(--orange); transition: width 0.2s linear; }
+.up-pct { font-family: var(--mono); font-size: 11.5px; color: var(--dim); line-height: 1.4; }
+.upload.done .up-bar { background: #3ecf8e; }
+.upload.done .up-pct { color: #9be8c4; font-family: inherit; }
+.upload.bad .up-bar { background: #ff6b5e; }
+.upload.bad .up-pct { color: #ff9b91; font-family: inherit; }
 
 /* ---------- amostras de legenda e headline: cópia fiel do app.css ----------
    Os números vêm do render (Main.tsx, StackedCaptions.tsx, ScatterCaptions.tsx,

@@ -6,6 +6,14 @@
 <meta name="theme-color" content="#08090c">
 <title>CENNO Edit</title>
 <link rel="icon" href="/assets/cenno-logo.png">
+<!-- "Adicionar à tela inicial": abre sem a barra do navegador quando o endereço é
+     seguro (https, ou 127.0.0.1 pelo cabo com adb reverse). Pelo Wi-Fi em http o
+     Chrome cria um atalho comum, que abre com a barra. -->
+<link rel="manifest" href="/assets/celular.webmanifest">
+<link rel="apple-touch-icon" href="/assets/icone-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- As mesmas faces do editor de PC: as amostras de legenda e headline usam
@@ -35,6 +43,8 @@
       <div class="band" id="ovBand"></div>
       <div class="hl" id="ovHl"></div>
       <div class="cap" id="ovCap"></div>
+      <!-- ao aparar: o quadro do vídeo de ORIGEM na alça (o corte não tem o que foi cortado) -->
+      <img class="peek hidden" id="peek" alt="">
       <button class="tap-play" id="tapPlay" type="button" aria-label="Reproduzir ou pausar"></button>
     </div>
   </section>
@@ -59,10 +69,10 @@
   <section class="empty hidden" id="empty">
     <div class="empty-card">
       <div class="empty-ico" id="emptyIco"></div>
-      <h1>Envie um vídeo</h1>
-      <p>Escolha da galeria do celular. O corte começa assim que ele chegar.</p>
+      <h1 id="emptyTitle">Envie um vídeo</h1>
+      <p id="emptyText">Escolha da galeria do celular. O corte começa assim que ele chegar.</p>
       <button class="tb-btn primary big" id="btnEmptyUpload" type="button">Escolher vídeo</button>
-      <p class="empty-alt">Ou peça no Claude ou no ChatGPT para editar um vídeo que já está no computador.</p>
+      <p class="empty-alt" id="emptyAlt">Ou peça no Claude ou no ChatGPT para editar um vídeo que já está no computador.</p>
     </div>
   </section>
 </div>
@@ -93,6 +103,16 @@
 </section>
 
 <input type="file" id="fileInput" accept="video/*" hidden>
+<!-- envio de vídeo: vai em pedaços para a pasta dos vídeos no computador -->
+<section class="upload hidden" id="upload" role="status" aria-live="polite">
+  <div class="up-row">
+    <span class="up-ico" id="upIco"></span>
+    <b class="up-name" id="upName"></b>
+    <button class="tb-btn ghost" id="upCancel" type="button">Cancelar</button>
+  </div>
+  <div class="up-track"><div class="up-bar" id="upBar"></div></div>
+  <div class="up-pct" id="upPct"></div>
+</section>
 <div class="toast hidden" id="toast" role="status"></div>
 <script src="/assets/estilos.js"></script>
 <script src="/assets/celular.js"></script>

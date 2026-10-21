@@ -1,12 +1,16 @@
-/* CENNO Edit — editor de celular (protótipo do passo 1).
+/* CENNO Edit — editor de celular.
  *
  * MESMO backend do editor de PC — nenhum servidor novo:
  *   GET  /api/state            state.json + edl.json + mtimes
- *   GET  /media/<arquivo>      vídeo, legendas, edit-data
+ *   GET  /media/<arquivo>      vídeo, legendas, edit-data, transcrição do corte
  *   GET  /gen/thumbs/*.jpg     miniaturas (1 a cada 2 s)
  *   GET  /gen/waveform.json    forma de onda
+ *   GET  /gen/frame?src=&t=    quadro do vídeo de ORIGEM (a alça ao aparar)
  *   POST /api/save             timeline-edits → preview_edits.json
  *                              style-setup    → preview_style.json
+ *   POST /api/upload?name=     o vídeo escolhido → pasta dos vídeos no computador
+ * Pela rede (servidor com --host), os dados só saem para quem abriu pelo link
+ * ou QR do computador; sem isso /api/state dá 403 e a tela diz o que falta.
  * O agente (Claude ou Codex) lê exatamente os arquivos que o editor de PC grava,
  * com os mesmos campos — por isso os payloads abaixo são cópia dos do app.js.
  *
@@ -66,7 +70,7 @@ const ICON = {
  * contrato com a skill (preview_style.json). As miniaturas desenhadas (mock) do
  * editor de PC ficam de fora: aqui cada opção aparece sobre um quadro do vídeo. */
 const {
-  STYLE_CATALOG, ACCENT_USERS, ACCENT_DEFAULT, CAP_TEXT, HEADLINE_TEXT, HL_STYLES, STATIC_VARIANTS,
+  STYLE_CATALOG, ACCENT_USERS, ACCENT_DEFAULT, CAP_TEXT, HEADLINE_TEXT, HL_STYLES, STATIC_VARIANTS, ORPHAN_PT,
   CAP_BUILDERS, buildHeadlineDemo, buildStaticDemo,
 } = CennoEstilos;
 
@@ -161,10 +165,44 @@ function fillText(node, look, moment, anims, only) {
   }
   if (only === 'headline') return;
   const c = STYLE_CATALOG.captions.find((o) => o.id === look.captions);
+  const words = S.capText || undefined; // sem transcrição do corte: a frase padrão
   if (c && !c.none) {
-    if (c.demo) anims.push(CAP_BUILDERS[c.demo](cap));
-    else { const st = buildStaticDemo(cap, c.stat); if (st) anims.push(st); }
+    if (c.demo) anims.push(CAP_BUILDERS[c.demo](cap, words));
+    else { const st = buildStaticDemo(cap, c.stat, words); if (st) anims.push(st); }
   }
+}
+
+/* A amostra de legenda com as palavras ditas no trecho que está na tela. Vêm da
+ * transcrição do corte (transcripts/cut.json, a mesma que vira captions.json na
+ * Fase 2). No primeiro portão de estilo ela pode ainda não existir: aí fica a
+ * frase padrão, como no editor de PC. */
+async function loadCutWords() {
+  if (S.cutWords !== undefined) return S.cutWords;
+  S.cutWords = null;
+  try {
+    const r = await fetch(`/media/transcripts/cut.json?v=${S.mtimes.video || 0}`);
+    if (r.ok) {
+      const d = await r.json();
+      S.cutWords = (d.words || [])
+        .filter((w) => w.type !== 'spacing' && String(w.text || '').trim())
+        .map((w) => ({ t: String(w.text).trim(), s: +w.start, e: +w.end }));
+    }
+  } catch (e) { /* sem transcrição do corte */ }
+  return S.cutWords;
+}
+function wordsAt(words, t) {
+  if (!words || !words.length) return null;
+  const i = words.findIndex((w) => w.e >= t);
+  if (i < 0) return null;
+  const out = [];
+  for (let k = i; k < words.length && out.length < 7; k++) {
+    const w = words[k].t;
+    const clean = w.replace(/[.,!?…;:]+$/, '');
+    if (clean) out.push(clean);
+    if (out.length >= 4 && /[.!?…]$/.test(w)) break; // termina com a frase, se ela acabar logo
+  }
+  while (out.length > 3 && ORPHAN_PT.test(out[out.length - 1])) out.pop(); // não acaba em "e", "de", "que"
+  return out.length >= 3 ? out.join(' ') : null;
 }
 
 // a imagem de apoio de verdade do projeto (a 1ª da tela dividida), quando já existe
@@ -390,9 +428,29 @@ function refreshHeader() {
 }
 
 // ---------- dados ----------
+// Pela rede, o servidor só entrega os dados a quem abriu pelo link/QR do computador.
+const EMPTY_TEXTS = { title: $('emptyTitle').textContent, text: $('emptyText').textContent };
+function setLocked(on) {
+  if (!!S.locked === on) return;
+  S.locked = on;
+  $('emptyTitle').textContent = on ? 'Falta o código deste computador' : EMPTY_TEXTS.title;
+  $('emptyText').textContent = on
+    ? 'Por segurança, pela rede o editor só abre com o link ou o QR code que aparece no computador. Abra por ele uma vez: este celular fica liberado.'
+    : EMPTY_TEXTS.text;
+  $('btnEmptyUpload').classList.toggle('hidden', on);
+  $('emptyAlt').classList.toggle('hidden', on);
+  if (on) {
+    $('empty').classList.remove('hidden');
+    $('projectSub').textContent = 'sem o código deste computador';
+  }
+}
+
 async function poll() {
   try {
-    const data = await (await fetch('/api/state')).json();
+    const res = await fetch('/api/state');
+    if (res.status === 403) { setLocked(true); setTimeout(poll, 4000); return; }
+    setLocked(false);
+    const data = await res.json();
     const sig = JSON.stringify([data.state, data.edl, data.mtimes, data.videoDuration]);
     if (sig !== S.lastSig) {
       if (dirtyCount() === 0 && !S.styling) {
@@ -411,6 +469,7 @@ async function applyState(data) {
   S.newStateWarned = false;
   S.state = data.state || {};
   S.mtimes = data.mtimes || {};
+  S.cutWords = undefined; // o corte pode ter mudado: a transcrição dele é lida de novo
   S.videoDuration = data.videoDuration || 0;
   S.fps = S.state.fps || 30;
   S.savedPending = !!data.hasPendingEdits;
@@ -712,6 +771,40 @@ function preciseSeek() {
   video.currentTime = draftToRendered(S.t);
 }
 
+// ---------- quadro do vídeo de ORIGEM na alça, enquanto apara ----------
+// O corte (cut.mp4) não tem o que foi cortado: esticando a tomada não haveria o
+// que mostrar. O servidor tira o quadro do arquivo de origem (/gen/frame). Um
+// pedido por vez; o último tempo pedido vence, o resto é descartado.
+const PEEK = { busy: false, want: null, shown: '' };
+function requestPeek(source, t) {
+  PEEK.want = { source, t: Math.max(0, t) };
+  pumpPeek();
+}
+function pumpPeek() {
+  if (PEEK.busy || !PEEK.want) return;
+  const { source, t } = PEEK.want;
+  PEEK.want = null;
+  const key = `${source}@${t.toFixed(2)}`;
+  if (key === PEEK.shown) return;
+  PEEK.busy = true;
+  const h = Math.min(960, Math.round(player.clientHeight * (window.devicePixelRatio || 1)));
+  const img = new Image();
+  img.onload = () => {
+    PEEK.busy = false;
+    PEEK.shown = key;
+    if (G.mode === 'trim') { $('peek').src = img.src; $('peek').classList.remove('hidden'); }
+    pumpPeek();
+  };
+  img.onerror = () => { PEEK.busy = false; pumpPeek(); };
+  img.src = `/gen/frame?src=${encodeURIComponent(source)}&t=${t.toFixed(3)}&h=${h}`;
+}
+function hidePeek() {
+  PEEK.want = null;
+  $('peek').classList.add('hidden');
+}
+// a alça da direita mostra o ÚLTIMO quadro que fica, não o primeiro que sai
+const edgeT = (r, side) => (side === 'l' ? r.start : Math.max(r.start, r.end - 1 / (S.fps || 30)));
+
 // ---------- gestos: 1 dedo arrasta, 2 dedos pinça, toque seleciona ----------
 const G = { pts: new Map(), mode: null };
 let momentum = null;
@@ -735,6 +828,7 @@ timeline.addEventListener('pointerdown', (e) => {
     G.mode = 'trim';
     G.trim = { i, side: h.dataset.side, x0: e.clientX, r: { ...S.draft[i] } };
     video.pause();
+    requestPeek(S.draft[i].source, edgeT(S.draft[i], h.dataset.side));
     return;
   }
   G.mode = 'pan';
@@ -769,6 +863,7 @@ timeline.addEventListener('pointermove', (e) => {
       const srcDur = (S.state.sourceDurations || {})[r.source];
       if (srcDur) r.end = Math.min(r.end, srcDur);
     }
+    requestPeek(r.source, edgeT(r, T.side));
     const d = T.side === 'l' ? r.start - r.orig.start : r.end - r.orig.end;
     const tip = $('trimTip');
     tip.textContent = `${T.side === 'l' ? 'início' : 'fim'} ${d >= 0 ? '+' : ''}${d.toFixed(2)} s`;
@@ -808,6 +903,7 @@ function endPointer(e) {
   }
   if (G.mode === 'trim') {
     $('trimTip').classList.add('hidden');
+    hidePeek();
     G.mode = null;
     renderTimeline(); renderToolbar(); refreshHeader(); // o "Original" acende depois de aparar
     return;
@@ -973,14 +1069,65 @@ function download() {
   toast(hasFinal() ? 'Baixando o vídeo final' : 'Baixando o corte (o final ainda não existe)', 2600);
 }
 
+// ---------- enviar vídeo: vai em pedaços para a pasta dos vídeos no computador ----------
+// XHR e não fetch: só ele dá o progresso do envio. O corpo é o próprio arquivo,
+// sem formulário — o servidor grava direto no disco, sem passar pela memória.
+let upXhr = null;
+const mb = (b) => `${Math.round(b / 1e6)} MB`;
+function sendVideo(file) {
+  if (upXhr) { toast('Já tem um vídeo indo — espere terminar', 2400); return; }
+  const card = $('upload');
+  card.className = 'upload';
+  $('upName').textContent = file.name;
+  $('upBar').style.width = '0%';
+  $('upPct').textContent = `0% · 0 de ${mb(file.size)}`;
+  $('upCancel').textContent = 'Cancelar';
+  const xhr = new XMLHttpRequest();
+  upXhr = xhr;
+  xhr.open('POST', `/api/upload?name=${encodeURIComponent(file.name)}`);
+  xhr.upload.onprogress = (e) => {
+    if (!e.lengthComputable) return;
+    const f = e.loaded / e.total;
+    $('upBar').style.width = `${(f * 100).toFixed(1)}%`;
+    $('upPct').textContent = `${Math.floor(f * 100)}% · ${mb(e.loaded)} de ${mb(e.total)}`;
+  };
+  const end = (cls, msg) => {
+    upXhr = null;
+    card.className = `upload ${cls}`;
+    $('upPct').textContent = msg;
+    $('upCancel').textContent = 'Fechar';
+  };
+  xhr.onload = () => {
+    let res = {};
+    try { res = JSON.parse(xhr.responseText); } catch (err) { /* resposta sem JSON */ }
+    if (xhr.status === 200 && res.ok) {
+      $('upBar').style.width = '100%';
+      end('done', 'Chegou no computador. O agente já foi avisado.');
+      setTimeout(() => { if (!upXhr) card.classList.add('hidden'); }, 7000);
+      if (!(S.videoDuration > 0)) {
+        $('emptyTitle').textContent = 'Vídeo recebido';
+        $('emptyText').textContent = 'O agente já foi avisado. O corte aparece aqui sozinho quando ficar pronto.';
+        $('btnEmptyUpload').textContent = 'Enviar outro';
+      }
+    } else {
+      end('bad', res.error || `Não consegui enviar (erro ${xhr.status}).`);
+    }
+  };
+  xhr.onerror = () => end('bad', 'A conexão caiu no meio do envio. O celular e o computador ainda estão na mesma rede?');
+  xhr.onabort = () => { upXhr = null; card.classList.add('hidden'); toast('Envio cancelado', 2000); };
+  xhr.send(file);
+}
+$('upCancel').addEventListener('click', () => { if (upXhr) upXhr.abort(); else $('upload').classList.add('hidden'); });
+window.addEventListener('beforeunload', (e) => { if (upXhr) { e.preventDefault(); e.returnValue = ''; } });
+
 $('fileInput').addEventListener('change', (e) => {
   const f = e.target.files && e.target.files[0];
   e.target.value = '';
-  if (!f) return;
-  toast(`"${f.name}" escolhido — o envio liga ao kit no próximo passo deste protótipo`, 4200);
+  if (f) sendVideo(f);
 });
 $('btnEmptyUpload').addEventListener('click', () => $('fileInput').click());
 $('emptyIco').innerHTML = ICON.enviar;
+$('upIco').innerHTML = ICON.enviar;
 $('downloadIco').innerHTML = ICON.baixar;
 $('btnDownload').addEventListener('click', download);
 
@@ -1061,6 +1208,7 @@ async function openStyle(tab) {
     setTimeout(ok, 1200);
   });
   S.frameUrl = captureFrame();
+  S.capText = wordsAt(await loadCutWords(), draftToRendered(S.t));
   await loadBandPoster();
   if (S.styling) renderStyle();
 }
@@ -1131,7 +1279,9 @@ function styleHint() {
       return S.style.edit === 'limpa'
         ? 'Sem imagem de apoio: tela inteira o vídeo todo.'
         : 'No resto do vídeo, você aparece na tela inteira.';
-    case 'captions': return 'Toque num estilo e veja em cima, no seu vídeo e no tamanho real.';
+    case 'captions': return S.capText
+      ? 'Toque num estilo e veja em cima, no seu vídeo, com as palavras deste trecho.'
+      : 'Toque num estilo e veja em cima, no seu vídeo e no tamanho real.';
     case 'headline':
       return hookText() !== HEADLINE_TEXT
         ? 'A frase que abre o vídeo, já com a headline deste projeto.'

@@ -90,6 +90,16 @@ def test_padrao_continua_so_este_computador():
     ps.add_network_args(ap)
     assert ap.parse_args([]).host == "127.0.0.1"
     assert ps.is_local_bind("127.0.0.1")
+    assert ps.pc_host("0.0.0.0") == "127.0.0.1" and ps.pc_host("192.168.0.5") == "192.168.0.5"
+
+
+def test_manifesto_aponta_icones_que_existem():
+    """Sem ícone de 192 e de 512 que exista de verdade, o Chrome não instala o app."""
+    m = json.loads((ps.APP_DIR / "celular.webmanifest").read_text(encoding="utf-8"))
+    assert m["display"] == "standalone" and m["start_url"] == "/celular"
+    assert {"192x192", "512x512"} <= {i["sizes"] for i in m["icons"]}
+    for icone in m["icons"]:
+        assert (ps.APP_DIR / icone["src"].removeprefix("/assets/")).is_file(), icone["src"]
 
 
 def test_computador_entra_sem_codigo(srv):
@@ -97,11 +107,13 @@ def test_computador_entra_sem_codigo(srv):
     assert r.status == 200
 
 
-def test_rede_sem_codigo_e_barrada(srv):
-    r, _ = pedir(srv.port, "GET", "/api/state", remoto=True)
-    assert r.status == 403
-    r, corpo = pedir(srv.port, "GET", "/celular", remoto=True)
-    assert r.status == 403 and b"QR code" in corpo
+def test_rede_sem_codigo_ve_a_tela_mas_nao_os_dados(srv):
+    """A interface é o código aberto do kit; o que o código protege são os dados."""
+    r, corpo = pedir(srv.port, "GET", "/api/state", remoto=True)
+    assert r.status == 403 and "QR code" in json.loads(corpo)["error"]
+    for dado in ("/media/state.json", "/gen/waveform.json", "/gen/frame?src=take1&t=0"):
+        assert pedir(srv.port, "GET", dado, remoto=True)[0].status == 403, dado
+    assert pedir(srv.port, "GET", "/celular", remoto=True)[0].status == 200
 
 
 def test_codigo_errado_e_barrado(srv):

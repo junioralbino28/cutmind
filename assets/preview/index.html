@@ -26,6 +26,7 @@
     <span id="savedPill" class="pill saved hidden">✓ Salvo — peça ao chat para aplicar as alterações. *Se estiver editando no Claude, a aplicação é automática; basta aguardar.</span>
     <button id="btnDiscard" class="btn ghost hidden">Descartar</button>
     <button id="btnSave" class="btn primary hidden">Salvar ajustes</button>
+    <button id="btnPhone" class="btn ghost" type="button">Abrir no celular</button>
   </div>
 </header>
 
@@ -199,6 +200,17 @@
 
 <div id="tooltip" class="tooltip hidden"></div>
 <div id="toast" class="toast hidden"></div>
+
+<!-- "Abrir no celular": o QR com o link que já leva o código deste computador -->
+<div id="phoneModal" class="phone-modal hidden" role="dialog" aria-modal="true" aria-labelledby="phoneTitle">
+  <div class="phone-card glass">
+    <div class="phone-head">
+      <h3 id="phoneTitle">Abrir no celular</h3>
+      <button id="phoneClose" class="btn ghost small" type="button">Fechar</button>
+    </div>
+    <div id="phoneBody" class="phone-body"></div>
+  </div>
+</div>
 
 <script src="/assets/estilos.js"></script>
 <script src="/assets/app.js"></script>

@@ -124,6 +124,11 @@ def is_local_bind(host: str) -> bool:
     return host in ("127.0.0.1", "localhost", "::1")
 
 
+def pc_host(bind_host: str) -> str:
+    """Por onde o próprio computador abre o editor."""
+    return "127.0.0.1" if bind_host in ("0.0.0.0", "") or is_local_bind(bind_host) else bind_host
+
+
 def phone_hosts(bind_host: str) -> list[tuple[str, str]]:
     """Os endereços pelos quais o celular alcança este computador."""
     if bind_host not in ("0.0.0.0", ""):
@@ -160,7 +165,8 @@ def qr_svg(text: str) -> str | None:
     except ImportError:
         return None
     buf = io.BytesIO()
-    segno.make(text, error="m").save(buf, kind="svg", scale=6, border=2,
+    # omitsize: sem largura/altura fixas e com viewBox, então o CSS da tela escala
+    segno.make(text, error="m").save(buf, kind="svg", scale=6, border=2, omitsize=True,
                                     dark="#0b0e13", light="#ffffff", xmldecl=False)
     return buf.getvalue().decode("utf-8")
 
@@ -302,13 +308,21 @@ class Handler(BaseHTTPRequestHandler):
         return bool(self.token and value and hmac.compare_digest(value, self.token))
 
     def _gate(self, path: str) -> bool:
-        """True = pode seguir. False = já respondeu com o erro."""
+        """True = pode seguir. False = já respondeu com o erro.
+
+        O código só é cobrado nos DADOS (/api, /media, /gen): a interface é o
+        código aberto do kit, sem nada do usuário. Assim o manifesto e os ícones,
+        que o navegador busca sem cookie, carregam — e a tela do celular abre e
+        explica o que falta, em vez de uma página de erro solta."""
         if not self._host_ok():
             self._deny(403, "Endereço não permitido.", path)
             return False
-        if self._client_is_local() or self._token_ok(self._cookie_token()) or path == "/c":
-            return True  # /c confere o código que vem no próprio link
-        self._deny(403, "Abra o editor pelo link ou pelo QR code que aparece no computador.", path)
+        if not path.startswith(("/api/", "/media/", "/gen/")):
+            return True  # interface; /c confere o código do próprio link
+        if self._client_is_local() or self._token_ok(self._cookie_token()):
+            return True
+        self._deny(403, "Este celular ainda não tem o código. Abra pelo link ou pelo QR code "
+                        "que aparece no computador.", path)
         return False
 
     def _deny(self, code: int, msg: str, path: str) -> None:
@@ -806,7 +820,7 @@ def main() -> None:
     if not is_local_bind(args.host):
         Handler.token = ensure_token(root)
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"CENNO Edit preview -> http://127.0.0.1:{args.port}  (root: {root})", flush=True)
+    print(f"CENNO Edit preview -> http://{pc_host(args.host)}:{args.port}  (root: {root})", flush=True)
     if Handler.token:
         print("Aberto para a rede: só entra quem tem o link com o código.", flush=True)
         for u in phone_urls(args.host, args.port, Handler.token):

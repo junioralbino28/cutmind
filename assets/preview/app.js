@@ -1397,6 +1397,54 @@ function toast(msg, ms) {
   toastTimer = setTimeout(() => t.classList.add('hidden'), ms || 3000);
 }
 
+// ---------- abrir no celular ----------
+// O servidor só entrega os links a este computador: eles levam o código que
+// libera o celular. Com o editor aberto só aqui (127.0.0.1), explica como abrir.
+async function openPhone() {
+  const body = $('phoneBody');
+  body.innerHTML = '';
+  el('p', 'phone-hint', body).textContent = 'Carregando…';
+  $('phoneModal').classList.remove('hidden');
+  let d = null;
+  try { d = await (await fetch('/api/celular')).json(); } catch (e) { /* servidor reiniciando */ }
+  body.innerHTML = '';
+  if (!d || !d.enabled) {
+    el('p', 'phone-hint', body).textContent = 'Agora o editor está aberto só para este computador.';
+    el('p', 'phone-hint', body).innerHTML = 'Para editar pelo celular, peça no chat: <b>"abre o editor no celular"</b>. '
+      + 'O agente religa o editor aberto para a sua rede, com um código, e o QR aparece aqui.';
+    return;
+  }
+  if (!d.urls.length) {
+    el('p', 'phone-hint', body).textContent = 'Não achei a rede deste computador. Ele está conectado ao Wi-Fi ou ao cabo?';
+    return;
+  }
+  const tabs = d.urls.length > 1 ? el('div', 'phone-tabs', body) : null;
+  const qr = el('div', 'phone-qr', body);
+  const url = el('div', 'phone-url', body);
+  const hint = el('p', 'phone-hint', body);
+  const show = (i) => {
+    const u = d.urls[i];
+    qr.innerHTML = u.qr || '';
+    qr.classList.toggle('hidden', !u.qr);
+    url.textContent = u.url;
+    hint.innerHTML = /tailscale/i.test(u.label)
+      ? 'Com o <b>Tailscale ligado no celular</b>, funciona de qualquer lugar. Aponte a câmera para o código.'
+      : 'Com o celular <b>no mesmo Wi-Fi</b> deste computador, aponte a câmera para o código. '
+        + 'Se não abrir, o Windows pode estar pedindo para liberar o Python na rede: aceite para redes privadas.';
+    if (tabs) [...tabs.children].forEach((b, k) => b.classList.toggle('on', k === i));
+  };
+  if (tabs) d.urls.forEach((u, i) => {
+    const b = el('button', 'btn small', tabs);
+    b.type = 'button';
+    b.textContent = u.label;
+    b.addEventListener('click', () => show(i));
+  });
+  show(0);
+}
+$('btnPhone').addEventListener('click', openPhone);
+$('phoneClose').addEventListener('click', () => $('phoneModal').classList.add('hidden'));
+$('phoneModal').addEventListener('click', (e) => { if (e.target === $('phoneModal')) $('phoneModal').classList.add('hidden'); });
+
 // ---------- boot ----------
 document.querySelectorAll('.tl-chip[data-icon]').forEach((c) => {
   c.innerHTML = ICON[c.dataset.icon] || '';

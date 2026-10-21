@@ -14,7 +14,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SERVER = HERE / "preview_server.py"
 sys.path.insert(0, str(HERE))
-from preview_server import add_network_args, ensure_token, is_local_bind, phone_urls  # noqa: E402
+from preview_server import add_network_args, ensure_token, is_local_bind, pc_host, phone_urls  # noqa: E402
 
 
 def port_available(port: int, host: str = "127.0.0.1") -> bool:
@@ -95,7 +95,7 @@ def main() -> int:
 
     print(
         f"CENNO Edit preview started (PID {process.pid}) -> "
-        f"http://127.0.0.1:{args.port}"
+        f"http://{pc_host(args.host)}:{args.port}"
     )
     if token:
         print("Aberto para a rede: só entra quem tem o link com o código.")
