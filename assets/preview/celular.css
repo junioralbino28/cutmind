@@ -174,7 +174,9 @@ button { font-family: inherit; cursor: pointer; }
 /* frase com lugar escolhido pela pessoa: o CENTRO do bloco vai para --fx/--fy */
 .comp.cap-free .cap { top: 0; height: 100%; }
 .comp.cap-free .cap .cap-demo { inset: auto; left: var(--fx, 50%); top: var(--fy, 76%); translate: -50% -50%; width: max-content; }
-.comp.cap-free .stk-cue, .comp.cap-free .scat-cue { position: relative; }
+/* o texto entra no fluxo para a caixa ter o tamanho da frase: é ela que a borda, o tracejado
+   e o toque para arrastar medem (com o texto solto, a caixa ficava 0×0 no centro da frase) */
+.comp.cap-free .kar-line, .comp.cap-free .stk-cue, .comp.cap-free .scat-cue, .comp.cap-free .stat-demo { position: relative; }
 
 /* ---------- linha do play ---------- */
 .transport {
