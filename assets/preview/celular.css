@@ -125,6 +125,26 @@ button { font-family: inherit; cursor: pointer; }
 .peek { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; background: #000; z-index: 3; pointer-events: none; }
 /* fora do Estilo a prévia é só o vídeo */
 .player:not(.styling) .band, .player:not(.styling) .hl, .player:not(.styling) .cap { display: none !important; }
+/* no Estilo o dedo desliza na prévia para trocar: o navegador não pode tomar o gesto */
+.player.styling .tap-play { touch-action: none; }
+/* em cima: embaixo ele cobria o título da faixa na "Tela dividida 2" e a legenda */
+.swipe-name {
+  position: absolute; left: 50%; top: 10px; translate: -50% 0; z-index: 4;
+  display: flex; align-items: center; gap: 6px;
+  max-width: calc(100% - 20px);
+  padding: 6px 10px; border-radius: 999px;
+  background: rgba(10, 10, 10, 0.66);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  color: #fff; font-size: 12.5px; font-weight: 700; white-space: nowrap;
+  pointer-events: none; opacity: 0; transition: opacity 0.2s;
+}
+.swipe-name.on { opacity: 1; }
+.swipe-name svg { width: 13px; height: 13px; flex: none; opacity: 0.7; }
+.swipe-name small { font-size: 11px; font-weight: 600; color: rgba(255, 255, 255, 0.6); }
+/* o estilo novo entra pelo lado de onde o dedo veio */
+.player.sw-next .hl, .player.sw-next .cap, .player.sw-next .band { animation: sw-in 0.24s ease-out both; --sw-from: 26px; }
+.player.sw-prev .hl, .player.sw-prev .cap, .player.sw-prev .band { animation: sw-in 0.24s ease-out both; --sw-from: -26px; }
+@keyframes sw-in { from { opacity: 0; translate: var(--sw-from) 0; } to { opacity: 1; translate: 0 0; } }
 
 /* ---------- composição do Estilo: a prévia e os cartões usam a MESMA geometria ----------
    As variáveis são % do quadro 1080x1920 e o JS as calcula a partir dos números do
@@ -402,6 +422,11 @@ button { font-family: inherit; cursor: pointer; }
 .sh-apply { height: 32px; padding: 0 12px; font-size: 12.5px; }
 .sheet-tabs { flex: 1; min-width: 0; display: flex; gap: 18px; padding: 0 6px; overflow-x: auto; scrollbar-width: none; }
 .sheet-tabs::-webkit-scrollbar { display: none; }
+/* aba escondida à direita (Cor, Extras em tela estreita): a borda esmaece, sinal de que rola */
+.sheet-tabs.more {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent);
+}
 .stab {
   flex: none;
   border: 0; background: transparent;
@@ -438,7 +463,7 @@ button { font-family: inherit; cursor: pointer; }
 .cards { display: grid; gap: 12px 10px; padding: 2px 14px 8px; }
 /* os de quadro inteiro são medidos pela ALTURA que sobra no painel: no celular real
    (barra do navegador) a largura de 1/3 dava cartões mais altos que o painel */
-.cards.tall { display: flex; justify-content: center; gap: 14px; }
+.cards.tall { display: flex; justify-content: safe center; gap: 14px; } /* safe: se um dia não couber, sobra para a direita (rola), nunca some à esquerda */
 .cards.tall .card { flex: none; }
 .cards.wide { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .card { min-width: 0; border: 0; background: transparent; color: inherit; text-align: center; }
@@ -449,7 +474,9 @@ button { font-family: inherit; cursor: pointer; }
   overflow: hidden;
   background: #0b0b0b;
 }
-.cards.tall .face { aspect-ratio: 9 / 16; width: auto; height: clamp(100px, calc(var(--sheet-h) - 170px), 230px); } /* 170 = cabeçalho + dica + nome + folga */
+/* 170 = cabeçalho + dica + nome + folga; e três lado a lado têm de caber na largura
+   (100vw - 28 de margem - 28 dos dois vãos): numa tela alta a altura sozinha estourava */
+.cards.tall .face { aspect-ratio: 9 / 16; width: auto; height: min(clamp(100px, calc(var(--sheet-h) - 170px), 230px), calc((100vw - 56px) / 3 * 16 / 9)); }
 .cards.wide .face { aspect-ratio: 1.6; }
 /* a moldura vai numa camada própria, por cima: um outline por dentro some sob o quadro posicionado */
 .card.on .face::after { content: ''; position: absolute; inset: 0; border: 2px solid #fff; border-radius: 6px; z-index: 2; pointer-events: none; }
@@ -597,4 +624,6 @@ textarea:focus { box-shadow: inset 0 0 0 1px var(--line2); }
 
 @media (prefers-reduced-motion: reduce) {
   .sheet { transition: none; }
+  .player.sw-next .hl, .player.sw-next .cap, .player.sw-next .band,
+  .player.sw-prev .hl, .player.sw-prev .cap, .player.sw-prev .band { animation: none; }
 }

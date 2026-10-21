@@ -99,13 +99,15 @@
       // card matches the height of its siblings in this row.
       {id: 'none', name: 'Nenhum', none: true, hlbox: true},
     ],
+    // `multiline`: more than one line on screen at once (the phone editor's
+    // "Uma linha / Várias linhas" filter reads it).
     captions: [
       {id: 'karaoke', name: 'Karaokê', demo: 'karaoke'},
-      {id: 'stacked', name: 'Empilhado', demo: 'stacked'},
-      {id: 'scatter', name: 'Disperso', demo: 'scatter'},
+      {id: 'stacked', name: 'Empilhado', demo: 'stacked', multiline: true},
+      {id: 'scatter', name: 'Disperso', demo: 'scatter', multiline: true},
       {id: 'simples', name: 'Simples', stat: 'simples'},
       {id: 'serifada', name: 'Serifada', stat: 'serifada'},
-      {id: 'classica', name: 'Clássica', stat: 'classica'},
+      {id: 'classica', name: 'Clássica', stat: 'classica', multiline: true},
       {id: 'none', name: 'Nenhum', none: true},
     ],
     elements: [

@@ -57,6 +57,7 @@ const ICON = {
   enviar: sv('<path d="M12 15.5V4.5M7.5 9 12 4.5 16.5 9"/><path d="M4.5 14.5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/>'),
   baixar: sv('<path d="M12 4.5v11M7.5 11l4.5 4.5 4.5-4.5"/><path d="M4.5 14.5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/>'),
   voltar: sv('<path d="M14.5 6 8.5 12l6 6"/>'),
+  avancar: sv('<path d="M9.5 6l6 6-6 6"/>'),
   ouvir: sv('<path d="M4.5 15v-2.5a7.5 7.5 0 0 1 15 0V15"/><rect x="3.5" y="14" width="4" height="6" rx="1.6"/><rect x="16.5" y="14" width="4" height="6" rx="1.6"/>'),
   remover: sv('<path d="M5 7h14M10 7V5.2c0-.4.3-.7.7-.7h2.6c.4 0 .7.3.7.7V7M7 7l.8 11.2c.1 1 .9 1.8 1.9 1.8h4.6c1 0 1.8-.8 1.9-1.8L17 7"/>'),
   restaurar: sv('<path d="M8.5 7 4.5 11l4 4"/><path d="M5 11h9a5 5 0 0 1 0 10h-3"/>'),
@@ -308,6 +309,8 @@ const S = {
   savedPending: false,
   styling: false,
   styleTab: 'edit',
+  capFilter: 'uma',   // filtro da aba Legenda: 'uma' ou 'varias' (linhas)
+  swipeTaught: false, // a dica "Deslize para trocar" já apareceu nesta visita
   frameUrl: null,
   bandUrl: null,      // um quadro da imagem de apoio do projeto (cartões)
   bandFor: '',
@@ -1156,7 +1159,8 @@ function togglePlay() {
   } else video.pause();
 }
 $('btnPlay').addEventListener('click', togglePlay);
-$('tapPlay').addEventListener('click', togglePlay);
+// logo depois de deslizar para trocar o estilo, o clique que o navegador manda junto não dá play
+$('tapPlay').addEventListener('click', () => { if (performance.now() - swipe.at > 400) togglePlay(); });
 video.addEventListener('play', () => { $('btnPlay').innerHTML = ICON.pause; });
 video.addEventListener('pause', () => { $('btnPlay').innerHTML = ICON.play; });
 video.addEventListener('ended', () => { $('btnPlay').innerHTML = ICON.play; });
@@ -1475,6 +1479,7 @@ const accentUsed = () => ACCENT_USERS.headlines.includes(S.style.headline) || AC
 async function openStyle(tab) {
   if (!S.style) return;
   S.styleTab = tab;
+  syncCapFilter();
   S.styling = true;
   S.selected = -1;
   video.pause();
@@ -1491,7 +1496,12 @@ async function openStyle(tab) {
   S.frameUrl = captureFrame();
   S.capText = wordsAt(await loadCutWords(), draftToRendered(S.t));
   await loadBandPoster();
-  if (S.styling) renderStyle();
+  if (!S.styling) return;
+  renderStyle();
+  if (!S.swipeTaught) { // uma vez por visita: mostra que dá para deslizar
+    S.swipeTaught = true;
+    flashName(`${ICON.voltar}<span>Deslize para trocar</span>${ICON.avancar}`, 1800);
+  }
 }
 
 function closeStyle() {
@@ -1499,7 +1509,8 @@ function closeStyle() {
   S.cardAnims = [];
   S.liveAnims = [];
   app.classList.remove('styling');
-  player.classList.remove('styling', 'is-split', 'band-top');
+  player.classList.remove('styling', 'is-split', 'band-top', 'sw-next', 'sw-prev');
+  $('swipeName').classList.remove('on');
   for (const k of GEOM_VARS) player.style.removeProperty(k);
   setBand($('ovBand'), false);
   $('ovHl').innerHTML = '';
@@ -1537,11 +1548,13 @@ function renderStyle() {
     b.dataset.tab = id;
     b.textContent = label;
   }
+  tabsMore();
   const body = $('sheetBody');
   body.innerHTML = '';
   body.scrollTop = 0;
   S.cardAnims = [];
 
+  if (S.styleTab === 'captions') renderCapFilter(body);
   const hint = styleHint();
   if (hint) el('p', 'sheet-hint', body).textContent = hint;
   if (S.styleTab === 'edit') renderCards(body, 'edits', 'edit');
@@ -1571,11 +1584,33 @@ function styleHint() {
   }
 }
 
+/* Legenda: o filtro de cima separa as de uma linha das de várias (o "Nenhum" aparece
+ * nos dois). Ao entrar na aba ele abre no grupo da legenda escolhida. */
+const CAP_FILTERS = [['uma', 'Uma linha'], ['varias', 'Várias linhas']];
+const capFilterOf = (o) => (o.multiline ? 'varias' : 'uma');
+function syncCapFilter() {
+  const o = STYLE_CATALOG.captions.find((x) => x.id === S.style.captions);
+  S.capFilter = o && !o.none ? capFilterOf(o) : S.capFilter || 'uma';
+}
+function optionsOf(group) {
+  const all = STYLE_CATALOG[group];
+  return group === 'captions' ? all.filter((o) => o.none || capFilterOf(o) === S.capFilter) : all;
+}
+function renderCapFilter(body) {
+  const row = el('div', 'subtabs', body);
+  for (const [id, label] of CAP_FILTERS) {
+    const b = el('button', `subtab${S.capFilter === id ? ' on' : ''}`, row);
+    b.type = 'button';
+    b.dataset.f = id;
+    b.textContent = label;
+  }
+}
+
 const CARD_ZOOM = 1.15; // nos cartões de legenda e headline o quadro aparece um pouco ampliado
 function renderCards(body, group, key) {
   const tall = group === 'edits';
   const grid = el('div', `cards ${tall ? 'tall' : 'wide'}`, body);
-  for (const o of STYLE_CATALOG[group]) {
+  for (const o of optionsOf(group)) {
     const card = el('button', `card${S.style[key] === o.id ? ' on' : ''}`, grid);
     card.type = 'button';
     card.dataset.key = key;
@@ -1693,18 +1728,89 @@ $('sheetTabs').addEventListener('click', (e) => {
   const b = e.target.closest('.stab');
   if (!b) return;
   S.styleTab = b.dataset.tab;
+  syncCapFilter();
   renderStyle();
 });
+function tabsMore() {
+  const t = $('sheetTabs');
+  t.classList.toggle('more', t.scrollLeft + t.clientWidth < t.scrollWidth - 2);
+}
+$('sheetTabs').addEventListener('scroll', tabsMore, { passive: true });
+window.addEventListener('resize', tabsMore);
+
+function pickStyle(key, id) {
+  S.style[key] = id;
+  const card = $('sheetBody').querySelector(`.card[data-id="${id}"]`);
+  if (!card) { syncCapFilter(); renderStyle(); return; } // está no outro filtro da legenda
+  // sem reconstruir os cartões: a lista não pula para o topo a cada toque
+  for (const c of card.parentNode.children) c.classList.toggle('on', c === card);
+  const hint = $('sheetBody').querySelector('.sheet-hint');
+  if (hint) hint.textContent = styleHint();
+  updateSummary();
+  applyLive();
+}
+
+/* Deslizar na prévia troca o estilo da aba aberta, na ordem dos cartões (na legenda,
+ * as de uma linha, depois as de várias, depois o "Nenhum"), e dá a volta no fim. */
+const SWIPE_TABS = { edit: ['edits', 'edit'], captions: ['captions', 'captions'], headline: ['headlines', 'headline'] };
+function swipeOrder(group) {
+  const all = STYLE_CATALOG[group];
+  if (group !== 'captions') return all;
+  const real = all.filter((o) => !o.none);
+  return [...real.filter((o) => !o.multiline), ...real.filter((o) => o.multiline), ...all.filter((o) => o.none)];
+}
+function stepStyle(dir) {
+  const tab = SWIPE_TABS[S.styleTab];
+  if (!S.styling || !tab) return;
+  const [group, key] = tab;
+  const list = swipeOrder(group);
+  const k = (list.findIndex((o) => o.id === S.style[key]) + dir + list.length) % list.length;
+  pickStyle(key, list[k].id);
+  const card = $('sheetBody').querySelector(`.card[data-id="${list[k].id}"]`);
+  if (card) card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  player.classList.remove('sw-next', 'sw-prev');
+  void player.offsetWidth; // recomeça a animação de entrada
+  player.classList.add(dir > 0 ? 'sw-next' : 'sw-prev');
+  flashName(`${ICON.voltar}<span>${list[k].name}</span><small>${k + 1}/${list.length}</small>${ICON.avancar}`);
+}
+let flashTimer = 0;
+function flashName(html, ms = 900) {
+  const pill = $('swipeName');
+  pill.innerHTML = html;
+  pill.classList.add('on');
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => pill.classList.remove('on'), ms);
+}
+const swipe = { id: null, x: 0, y: 0, at: 0 };
+player.addEventListener('pointerdown', (e) => {
+  if (!S.styling || !SWIPE_TABS[S.styleTab]) return;
+  swipe.id = e.pointerId; swipe.x = e.clientX; swipe.y = e.clientY;
+});
+// o fim do gesto na janela: com mouse o botão costuma ser solto já fora da prévia
+window.addEventListener('pointerup', (e) => {
+  if (e.pointerId !== swipe.id) return;
+  swipe.id = null;
+  const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
+  if (Math.abs(dx) < 36 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
+  swipe.at = performance.now(); // o clique que vem junto não pode dar play
+  stepStyle(dx < 0 ? 1 : -1);
+});
+window.addEventListener('pointercancel', (e) => { if (e.pointerId === swipe.id) swipe.id = null; });
+document.addEventListener('keydown', (e) => {
+  if (!S.styling || e.target.closest('input, textarea')) return;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); stepStyle(e.key === 'ArrowRight' ? 1 : -1); }
+});
+
 $('sheetBody').addEventListener('click', (e) => {
+  const sub = e.target.closest('.subtab');
+  if (sub) {
+    S.capFilter = sub.dataset.f;
+    renderStyle();
+    return;
+  }
   const card = e.target.closest('.card');
   if (card) {
-    // sem reconstruir os cartões: a lista não pula para o topo a cada toque
-    S.style[card.dataset.key] = card.dataset.id;
-    for (const c of card.parentNode.children) c.classList.toggle('on', c === card);
-    const hint = $('sheetBody').querySelector('.sheet-hint');
-    if (hint) hint.textContent = styleHint();
-    updateSummary();
-    applyLive();
+    pickStyle(card.dataset.key, card.dataset.id);
     return;
   }
   const chk = e.target.closest('.chk');
