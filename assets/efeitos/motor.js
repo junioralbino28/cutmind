@@ -85,6 +85,10 @@ async function motorShader(base, manifesto, largura, altura) {
     const t = new THREE.Texture(imgs[i]);
     t.flipY = false;
     t.colorSpace = THREE.LinearSRGBColorSpace;
+    // sem mipmap: numa tabela de cor a coordenada salta de célula entre pixels vizinhos, a GPU
+    // escolhe um nível borrado e o filtro sai pontilhado (medido no "Luz solar")
+    t.generateMipmaps = false;
+    t.minFilter = THREE.LinearFilter;
     t.needsUpdate = true;
     uniforms[uniform] = { value: t };
   });
