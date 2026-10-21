@@ -168,9 +168,17 @@ the layer questions in chat.
   `phase` tab the user was on. Use the RENDERED pair to find the moment in the
   existing render. These are instructions in the user's words — read them, then do
   the edit they describe (re-cut, re-grade, swap an insert, fix a caption…).
-- `edl.changes` / `edl.removed` — validate each new edge against
-  `speech_regions.py` (warn if an edge clips a word — the user's intent wins, but
-  say so), update `edl.json`, re-render, `verify_cut.py`.
+- `edl.ranges` — the FULL new list of takes, in the user's order: trims, splits
+  (two ranges from the same take), duplicates (the same span twice), deletions and
+  a new order are already applied. Rebuild `edl.json` `ranges` from it. `take`
+  (when present) is the index of the range in the current `edl.json` it came from:
+  copy `quote`, `reason` and `gain_db` from there. Two consecutive ranges from the
+  same source where one ends exactly where the next starts are a split the user kept
+  as is — merge them back before rendering, or the J-cut doubles the audio there.
+  `edl.ops` counts splits, duplicates and whether the order changed.
+- `edl.changes` / `edl.removed` — what changed against the current `edl.json`.
+  Validate each new edge against `speech_regions.py` (warn if an edge clips a word —
+  the user's intent wins, but say so), update `edl.json`, re-render, `verify_cut.py`.
 - `editData` — insert/hook/behind timings → edit-data.json → re-render Phase 2.
 
 Then delete `preview_edits.json` and update `state.json`.

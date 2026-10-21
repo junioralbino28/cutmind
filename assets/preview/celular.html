@@ -18,7 +18,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- As mesmas faces do editor de PC: as amostras de legenda e headline usam
      exatamente estas (Poppins 900 itálica, Playfair 900 itálica, Lora, Baskerville). -->
-<link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,900&family=Playfair+Display:ital,wght@1,900&family=Lora:ital,wght@0,400;0,600;1,400;1,600&family=Libre+Baskerville:wght@700&family=Inter:wght@500&display=swap" rel="stylesheet">
+<!-- Montserrat e Instrument Serif: a tipografia da marca CENNO, na interface. -->
+<link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,900&family=Playfair+Display:ital,wght@1,900&family=Lora:ital,wght@0,400;0,600;1,400;1,600&family=Libre+Baskerville:wght@700&family=Inter:wght@500&family=Montserrat:wght@400;500;600;700;800&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/celular.css">
 </head>
 <body>
@@ -26,14 +27,15 @@
 
   <header class="topbar">
     <div class="brand"><img src="/assets/cenno-logo-white.png" alt="CENNO Edit"></div>
-    <div class="proj">
-      <div class="proj-name" id="projectName">CENNO Edit</div>
-      <div class="proj-sub" id="projectSub">carregando…</div>
-    </div>
+    <!-- o que está na prévia: o corte (para aprovar) ou o vídeo final -->
+    <button class="mode" id="btnMode" type="button" aria-label="Trocar entre o corte e o vídeo final">
+      <span id="modeLabel">Corte</span><span class="mode-sub" id="projectSub">carregando…</span><span class="mode-car" id="modeCar"></span>
+    </button>
+    <div class="t-spacer"></div>
     <span class="pill sent hidden" id="sentPill">enviado</span>
+    <!-- um botão principal no canto de cima: Salvar quando há ajuste, Baixar quando não há -->
     <button class="tb-btn primary hidden" id="btnSave" type="button">Salvar <b id="dirtyCount">0</b></button>
-    <!-- no canto de cima, onde o CapCut e o Edits põem o Exportar -->
-    <button class="tb-btn ghost hidden" id="btnDownload" type="button"><span class="tb-ico" id="downloadIco"></span>Baixar</button>
+    <button class="tb-btn primary hidden" id="btnDownload" type="button"><span class="tb-ico" id="downloadIco"></span>Baixar</button>
   </header>
 
   <section class="stage" id="stage">
@@ -49,18 +51,22 @@
     </div>
   </section>
 
+  <!-- linha do play: tela cheia e som à esquerda, play no centro, desfazer e refazer à direita -->
   <section class="transport" id="transport">
+    <div class="t-side">
+      <button class="t-ico" id="btnFull" type="button" aria-label="Tela cheia"></button>
+      <button class="t-ico" id="btnMute" type="button" aria-label="Som"></button>
+    </div>
     <button class="t-play" id="btnPlay" type="button" aria-label="Reproduzir"></button>
-    <div class="tc"><span id="tNow">0:00.00</span><span class="tc-sep">/</span><span id="tTotal">0:00.00</span></div>
-    <div class="t-spacer"></div>
-    <!-- desfazer e refazer na linha do play, à direita, como no CapCut -->
-    <button class="t-hist" id="btnUndo" type="button" aria-label="Desfazer" disabled></button>
-    <button class="t-hist" id="btnRedo" type="button" aria-label="Refazer" disabled></button>
-    <button class="t-mute" id="btnMute" type="button" aria-label="Som"></button>
+    <div class="t-side right">
+      <button class="t-ico" id="btnUndo" type="button" aria-label="Desfazer" disabled></button>
+      <button class="t-ico" id="btnRedo" type="button" aria-label="Refazer" disabled></button>
+    </div>
   </section>
 
   <section class="timeline" id="timeline">
     <canvas class="ruler" id="ruler"></canvas>
+    <div class="tc"><span id="tNow">0:00.0</span><span class="tc-sep">/</span><span id="tTotal">0:00.0</span></div>
     <div class="tracks" id="tracks"></div>
     <div class="needle" id="needle"></div>
     <div class="trim-tip hidden" id="trimTip"></div>
@@ -82,14 +88,14 @@
 
 <!-- painel que sobe de baixo: Estilo -->
 <section class="sheet" id="sheet" aria-hidden="true">
-  <div class="sheet-grip"></div>
-  <div class="sheet-tabs" id="sheetTabs" role="tablist"></div>
+  <!-- fechar à esquerda, abas no meio, aplicar à direita: tudo no alto, perto do vídeo -->
+  <div class="sheet-head">
+    <button class="sh-close" id="sheetClose" type="button" aria-label="Fechar sem aplicar"></button>
+    <div class="sheet-tabs" id="sheetTabs" role="tablist"></div>
+    <button class="tb-btn primary sh-apply" id="sheetApply" type="button">Aplicar</button>
+  </div>
   <div class="sheet-body" id="sheetBody"></div>
-  <footer class="sheet-foot">
-    <div class="sheet-sum" id="sheetSum"></div>
-    <button class="tb-btn ghost" id="sheetClose" type="button">Fechar</button>
-    <button class="tb-btn primary" id="sheetApply" type="button">Aplicar</button>
-  </footer>
+  <div class="sheet-sum" id="sheetSum"></div>
 </section>
 
 <!-- painel pequeno: o que mudar no trecho marcado -->

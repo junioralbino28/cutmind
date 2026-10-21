@@ -61,6 +61,12 @@ const ICON = {
   remover: sv('<path d="M5 7h14M10 7V5.2c0-.4.3-.7.7-.7h2.6c.4 0 .7.3.7.7V7M7 7l.8 11.2c.1 1 .9 1.8 1.9 1.8h4.6c1 0 1.8-.8 1.9-1.8L17 7"/>'),
   restaurar: sv('<path d="M8.5 7 4.5 11l4 4"/><path d="M5 11h9a5 5 0 0 1 0 10h-3"/>'),
   original: sv('<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5v3.2h3.2"/>'),
+  dividir: sv('<path d="M12 3.5v17"/><path d="M8.5 8 5 12l3.5 4M15.5 8 19 12l-3.5 4"/>'),
+  duplicar: sv('<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/>'),
+  cheia: sv('<path d="M4.5 9V5.5a1 1 0 0 1 1-1H9M15 4.5h3.5a1 1 0 0 1 1 1V9M19.5 15v3.5a1 1 0 0 1-1 1H15M9 19.5H5.5a1 1 0 0 1-1-1V15"/>'),
+  fechar: sv('<path d="M6 9.5l6 6 6-6"/>', 2),
+  mais: sv('<path d="M12 5v14M5 12h14"/>', 2.2),
+  seta: sv('<path d="M6 9.5l6 6 6-6"/>', 2.6),
   desfazer: sv('<path d="M3.5 7.5v6h6"/><path d="M20.5 17a8.5 8.5 0 0 0-8.5-8.5 8.6 8.6 0 0 0-5.9 2.4L3.5 13.5"/>', 1.9),
   refazer: sv('<path d="M20.5 7.5v6h-6"/><path d="M3.5 17a8.5 8.5 0 0 1 8.5-8.5 8.6 8.6 0 0 1 5.9 2.4l2.6 2.6"/>', 1.9),
   check: sv('<path d="M5 12.5l4.5 4.5L19 7.5"/>', 3),
@@ -307,13 +313,16 @@ const S = {
   bandFor: '',
   cardAnims: [],
   liveAnims: [],
+  seq: 0,             // numeração das tomadas novas (divisão, cópia)
+  base: [],           // as tomadas como estavam no último corte recebido ou no último Salvar
 };
 
 const fmt = (t) => {
   if (!isFinite(t) || t < 0) t = 0;
-  const m = Math.floor(t / 60);
-  const s = t - m * 60;
-  return `${m}:${s.toFixed(2).padStart(5, '0')}`;
+  const d = Math.floor(t * 10 + 1e-6); // décimos: o bastante para achar o ponto, sem piscar
+  const m = Math.floor(d / 600);
+  const s = (d - m * 600) / 10;
+  return `${m}:${s.toFixed(1).padStart(4, '0')}`;
 };
 const fmtShort = (t) => {
   if (!isFinite(t) || t < 0) t = 0;
@@ -336,12 +345,16 @@ function jcutGeom(i) {
     tail: (j.tail_trim_frames || 0) / (S.fps || 30),
   };
 }
+/* Cada tomada do rascunho sabe de onde veio: `uid` (o<i> = tomada i do edl.json; n<k> =
+ * nova, de uma divisão ou cópia) e `from` (a tomada do edl.json de onde sai o conteúdo).
+ * Dividir, copiar e mover só mudam esta lista; o cut.mp4 continua o mesmo até o agente
+ * refazer, e a prévia mostra cada pedaço achando o trecho dele dentro do cut.mp4. */
 function draftLayout() {
   let t = 0;
   let at = 0;
-  return S.draft.map((r, i) => {
-    if (r.removed) return { ...r, out: t, dur: 0, aout: at, adur: 0 };
-    const g = jcutGeom(i);
+  return S.draft.map((r) => {
+    // a sobra do J-cut é de uma tomada inteira do edl.json; pedaço novo não tem
+    const g = r.orig ? jcutGeom(r.from) : { lead: 0, tail: 0 };
     const span = r.end - r.start;
     const adur = Math.max(0, span - g.tail);
     const dur = Math.max(0, adur - g.lead);
@@ -365,26 +378,36 @@ function renderedLayout() {
 }
 const draftTotal = () => draftLayout().reduce((a, r) => a + r.dur, 0);
 const totalT = () => draftTotal() || S.videoDuration || 0;
+// onde, no cut.mp4, está o quadro que a tomada `d` do rascunho mostra no instante `t`
+function itemRendered(d, t, rl = renderedLayout()) {
+  const R = S.rendered[d.from], L = rl[d.from];
+  if (!R || !L) return Math.min(t, S.videoDuration);
+  const s = d.start + (d.lead || 0) + (t - d.out);           // instante do arquivo de origem
+  const rt = L.out + (s - (R.start + jcutGeom(d.from).lead));
+  // além do que o cut.mp4 tem (alça puxada para fora): o quadro mais perto
+  return Math.max(L.out, Math.min(rt, L.out + L.dur - 0.02));
+}
+function itemAt(dl, t) {
+  for (let k = dl.length - 1; k >= 0; k--) if (t >= dl[k].out) return k;
+  return dl.length ? 0 : -1;
+}
 function draftToRendered(t) {
   const dl = draftLayout();
-  const rl = renderedLayout();
-  for (let i = dl.length - 1; i >= 0; i--) {
-    const d = dl[i];
-    if (d.removed || t < d.out) continue;
-    const off = Math.min(t - d.out, (rl[i]?.dur ?? d.dur) - 0.02);
-    return (rl[i]?.out ?? d.out) + Math.max(0, off);
-  }
-  return Math.min(t, S.videoDuration);
+  const k = itemAt(dl, t);
+  if (k < 0) return Math.min(t, S.videoDuration);
+  const d = dl[k];
+  return itemRendered(d, Math.min(t, d.out + Math.max(0, d.dur - 1e-3)));
 }
+// o contrário, só para o que ainda está no lugar de origem (vídeo final e faixas dele)
 function renderedToDraft(t) {
   const dl = draftLayout();
   const rl = renderedLayout();
   for (let i = rl.length - 1; i >= 0; i--) {
     const r = rl[i];
     if (t < r.out) continue;
-    if (dl[i]?.removed) return dl[i].out;
-    const off = Math.min(t - r.out, dl[i]?.dur ?? r.dur);
-    return (dl[i]?.out ?? r.out) + off;
+    const d = dl.find((x) => x.uid === `o${i}`);
+    if (!d) return dl.length ? Math.min(t, dl[dl.length - 1].out) : t; // tomada excluída
+    return d.out + Math.min(t - r.out, d.dur);
   }
   return t;
 }
@@ -416,17 +439,41 @@ function buildInsertsDraft() {
 const isText = (c) => c.kind === 'hook' || c.kind === 'word';
 
 // ---------- o que mudou e ainda não foi salvo ----------
-const edlDirty = () => S.draft.some((r) => r.removed || r.start !== r.orig.start || r.end !== r.orig.end);
-function dirtyCount() {
-  return S.draft.filter((r) => r.removed || r.start !== r.orig.start || r.end !== r.orig.end).length + S.notes.length;
+// comparado com o último corte recebido (ou o último Salvar): aparada, nova, excluída, ordem
+const baseOf = (draft) => draft.map(({ uid, start, end }) => ({ uid, start, end }));
+function diffBase() {
+  const base = new Map(S.base.map((b) => [b.uid, b]));
+  const now = new Set(S.draft.map((r) => r.uid));
+  let mudou = 0;
+  for (const r of S.draft) {
+    const b = base.get(r.uid);
+    if (!b || b.start !== r.start || b.end !== r.end) mudou++;
+  }
+  mudou += S.base.filter((b) => !now.has(b.uid)).length;
+  const antes = S.base.map((b) => b.uid).filter((u) => now.has(u));
+  const depois = S.draft.map((r) => r.uid).filter((u) => base.has(u));
+  if (antes.join() !== depois.join()) mudou++;
+  return mudou;
 }
+const edlDirty = () => diffBase() > 0;
+function dirtyCount() {
+  return diffBase() + S.notes.length;
+}
+const isChanged = (r) => {
+  const b = S.base.find((x) => x.uid === r.uid);
+  return !b || b.start !== r.start || b.end !== r.end;
+};
 function refreshHeader() {
   const n = dirtyCount();
+  const hasVideo = S.videoDuration > 0;
+  // um botão principal no canto: Salvar quando há ajuste; sem ajuste, Baixar
   $('btnSave').classList.toggle('hidden', n === 0);
+  $('btnDownload').classList.toggle('hidden', n > 0 || !hasVideo);
   $('dirtyCount').textContent = n;
   $('sentPill').classList.toggle('hidden', !(S.savedPending && n === 0));
-  const label = S.view === 'final' ? 'Final' : 'Corte';
-  $('projectSub').textContent = S.videoDuration ? `${label} · ${fmtShort(totalT())}` : 'sem vídeo ainda';
+  $('modeLabel').textContent = S.view === 'final' ? 'Final' : 'Corte';
+  $('projectSub').textContent = hasVideo ? fmtShort(totalT()) : '';
+  $('btnMode').disabled = !hasFinal(); // sem vídeo final, a prévia só tem o corte
 }
 
 // ---------- desfazer / refazer ----------
@@ -436,7 +483,7 @@ function refreshHeader() {
 const HIST = { past: [], future: [], max: 100 };
 function snap() {
   return {
-    draft: S.draft.map((r) => ({ ...r, orig: { ...r.orig } })),
+    draft: S.draft.map((r) => ({ ...r, orig: r.orig ? { ...r.orig } : null })),
     notes: S.notes.map((n) => ({ ...n })),
     pendingIn: S.pendingIn,
     selected: S.selected,
@@ -523,12 +570,13 @@ async function applyState(data) {
   S.videoDuration = data.videoDuration || 0;
   S.fps = S.state.fps || 30;
   S.savedPending = !!data.hasPendingEdits;
-  $('projectName').textContent = S.state.project || 'CENNO Edit';
+  document.title = S.state.project ? `${S.state.project} · CENNO Edit` : 'CENNO Edit';
 
   const ranges = (data.edl && data.edl.ranges) || [];
   S.jcut = (data.edl && data.edl.jcut_timeline) || null;
   S.rendered = ranges.map((r) => ({ source: r.source, start: +r.start, end: +r.end, beat: r.beat || '' }));
-  S.draft = S.rendered.map((r) => ({ ...r, removed: false, orig: { start: r.start, end: r.end } }));
+  S.draft = S.rendered.map((r, i) => ({ ...r, uid: `o${i}`, from: i, orig: { start: r.start, end: r.end } }));
+  S.base = baseOf(S.draft);
   S.selected = -1;
   forgetHistory(); // corte novo: as fotos antigas são de outras tomadas
 
@@ -620,6 +668,7 @@ function trackPlan() {
 }
 
 const VIDEO_TRACK_H = 56;
+const MOVE_TILE = 60; // largura de cada tomada enquanto se move uma
 const tileWidth = () => {
   const ar = video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 9 / 16;
   return Math.max(24, Math.round((VIDEO_TRACK_H - 3) * ar));
@@ -639,6 +688,7 @@ function renderTimeline() {
     }
     const lane = el('div', 'lane', track);
     lane.style.width = width;
+    lane.dataset.track = tr.id;
     lanes.push(lane);
     if (tr.id === 'video') renderTakes(lane);
     else if (tr.id === 'notes') renderNotes(lane);
@@ -669,34 +719,32 @@ function renderTakes(lane) {
   const dl = draftLayout();
   const rl = renderedLayout();
   const editable = S.view === 'corte';
+  // movendo: toda tomada vira um quadrado do mesmo tamanho, para levar uma longa
+  // de uma ponta à outra sem arrastar por um minuto de linha do tempo
+  const movendo = G.mode === 'move' && G.mv;
+  if (movendo) lane.style.width = `${dl.length * MOVE_TILE}px`;
   dl.forEach((r, i) => {
     const c = el('div', 'take', lane);
     c.dataset.i = i;
-    if (r.removed) {
-      // tomada tirada: um marcador fino no lugar dela — toque e restaure
-      c.classList.add('removed');
-      if (i === S.selected) c.classList.add('sel');
-      c.style.left = `${r.out * S.pps - 7}px`;
-      c.style.width = '14px';
-      return;
-    }
-    c.style.left = `${r.out * S.pps}px`;
-    c.style.width = `${Math.max(r.dur * S.pps, 6)}px`;
-    if (r.start !== r.orig.start || r.end !== r.orig.end) c.classList.add('dirty');
+    if (movendo && G.mv.i === i) c.classList.add('lifted'); // a que está sendo movida
+    c.style.left = movendo ? `${i * MOVE_TILE + 2}px` : `${r.out * S.pps}px`;
+    c.style.width = movendo ? `${MOVE_TILE - 4}px` : `${Math.max(r.dur * S.pps, 6)}px`;
+    if (isChanged(r)) c.classList.add('dirty');
     if (i === S.selected) c.classList.add('sel');
-    if (S.thumbCount > 0 && rl[i]) {
+    if (S.thumbCount > 0 && rl[r.from]) {
       /* Quadros no tamanho natural, como no CapCut: com zoom alto o mesmo quadro
        * se repete (só existe 1 miniatura a cada 2 s); esticar um quadro de 2 s
-       * por 170px vira uma faixa borrada. Com zoom baixo, quadros são pulados. */
+       * por 170px vira uma faixa borrada. Com zoom baixo, quadros são pulados.
+       * Cada quadro é o do trecho DESTA tomada no cut.mp4 (dividida, copiada ou movida). */
       const strip = el('div', 'strip', c);
       const tile = tileWidth();
-      const n = Math.ceil((r.dur * S.pps) / tile);
+      const n = movendo ? 1 : Math.ceil((r.dur * S.pps) / tile);
       for (let k = 0; k < n; k++) {
-        const tr = rl[i].out + Math.min((k * tile) / S.pps, Math.max(0, rl[i].dur - 0.01));
+        const tr = itemRendered(r, r.out + Math.min((k * tile) / S.pps, Math.max(0, r.dur - 0.01)), rl);
         const idx = Math.min(S.thumbCount, Math.floor(tr / THUMB_EVERY) + 1); // %04d do ffmpeg começa em 1
         const img = el('img', '', strip);
         img.src = `/gen/thumbs/${String(idx).padStart(4, '0')}.jpg`;
-        img.style.width = `${tile}px`;
+        img.style.width = movendo ? '100%' : `${tile}px`;
         img.alt = '';
         img.draggable = false;
       }
@@ -709,6 +757,15 @@ function renderTakes(lane) {
       rr.dataset.i = i; rr.dataset.side = 'r';
     }
   });
+  if (editable && !movendo) {
+    // "+" no fim da faixa: outro vídeo da galeria (o toque é tratado em tapAt)
+    const add = el('button', 'add-tile', lane);
+    add.type = 'button';
+    add.innerHTML = ICON.mais;
+    add.setAttribute('aria-label', 'Enviar outro vídeo');
+    add.style.left = `${dl.reduce((a, d) => Math.max(a, d.out + d.dur), 0) * S.pps + 10}px`;
+  }
+  if (G.mode === 'move') el('div', 'move-caret', lane).id = 'moveCaret'; // onde ela vai cair
 }
 
 function renderNotes(lane) {
@@ -739,7 +796,9 @@ function sizeCanvases() {
 function positionTimeline() {
   const x0 = half() - S.t * S.pps;
   const tf = `translate3d(${x0.toFixed(2)}px,0,0)`;
-  for (const l of lanes) l.style.transform = tf;
+  // movendo uma tomada, a faixa de vídeo (em quadrados) anda pelo próprio deslocamento
+  const mv = G.mode === 'move' && G.mv ? `translate3d(${G.mv.off.toFixed(2)}px,0,0)` : null;
+  for (const l of lanes) l.style.transform = mv && l.dataset.track === 'video' ? mv : tf;
   drawRuler();
   drawWave();
   $('tNow').textContent = fmt(S.t);
@@ -754,8 +813,8 @@ function drawRuler() {
   const t0 = S.t - hw / S.pps, t1 = S.t + hw / S.pps;
   const steps = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120];
   const step = steps.find((s) => s * S.pps >= 52) || 300;
-  ctx.font = '600 9.5px Poppins, sans-serif';
-  ctx.fillStyle = 'rgba(139,148,163,0.9)';
+  ctx.font = '600 9.5px Montserrat, system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(166,166,166,0.9)';
   ctx.strokeStyle = 'rgba(255,255,255,0.16)';
   ctx.lineWidth = 1;
   const end = totalT();
@@ -782,13 +841,13 @@ function drawWave() {
   const end = totalT();
   const hw = w / 2;
   const xa = Math.max(0, hw - S.t * S.pps), xb = Math.min(w, hw + (end - S.t) * S.pps);
-  ctx.fillStyle = 'rgba(115,139,3,0.10)';
+  ctx.fillStyle = 'rgba(255,255,255,0.05)';
   ctx.beginPath();
-  ctx.roundRect ? ctx.roundRect(xa, 1, Math.max(0, xb - xa), h - 2, 6) : ctx.rect(xa, 1, Math.max(0, xb - xa), h - 2);
+  ctx.roundRect ? ctx.roundRect(xa, 1, Math.max(0, xb - xa), h - 2, 4) : ctx.rect(xa, 1, Math.max(0, xb - xa), h - 2);
   ctx.fill();
   if (!S.wave) return;
   const mid = h / 2;
-  ctx.fillStyle = 'rgba(168,194,43,0.8)';
+  ctx.fillStyle = 'rgba(214,214,214,0.6)';
   const pps = S.wave.peaksPerSec;
   for (let px = Math.floor(xa); px < xb; px++) {
     const tDraft = S.t + (px - hw) / S.pps;
@@ -865,7 +924,9 @@ timeline.addEventListener('pointerdown', (e) => {
   try { timeline.setPointerCapture(e.pointerId); } catch (err) { /* toque sintético */ }
   G.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
   stopMomentum();
+  clearTimeout(G.lp);
   if (G.pts.size === 2) {
+    if (G.mode === 'move') return; // movendo uma tomada, o segundo dedo não vira pinça
     const [a, b] = [...G.pts.values()];
     G.mode = 'pinch';
     G.d0 = Math.hypot(a.x - b.x, a.y - b.y) || 1;
@@ -888,6 +949,9 @@ timeline.addEventListener('pointerdown', (e) => {
   G.down = e.target;
   G.downAt = performance.now();
   G.wasPlaying = !video.paused;
+  // segurar uma tomada sem arrastar: ela sai da faixa e vai para onde o dedo levar
+  const tk = e.target.closest('.take');
+  if (tk && S.view === 'corte') G.lp = setTimeout(() => startMove(+tk.dataset.i, e.clientX), 450);
 });
 
 timeline.addEventListener('pointermove', (e) => {
@@ -915,7 +979,8 @@ timeline.addEventListener('pointermove', (e) => {
       if (srcDur) r.end = Math.min(r.end, srcDur);
     }
     requestPeek(r.source, edgeT(r, T.side));
-    const d = T.side === 'l' ? r.start - r.orig.start : r.end - r.orig.end;
+    const ref = r.orig || T.r; // pedaço novo (divisão, cópia) não tem borda original: conta do início do gesto
+    const d = T.side === 'l' ? r.start - ref.start : r.end - ref.end;
     const tip = $('trimTip');
     tip.textContent = `${T.side === 'l' ? 'início' : 'fim'} ${d >= 0 ? '+' : ''}${d.toFixed(2)} s`;
     tip.classList.remove('hidden');
@@ -925,10 +990,12 @@ timeline.addEventListener('pointermove', (e) => {
     }
     return;
   }
+  if (G.mode === 'move') { G.mv.x = e.clientX; updateMove(); return; }
   if (G.mode === 'pan') {
     const dx = e.clientX - G.x0;
     if (!G.moved && Math.abs(dx) > 6) {
       G.moved = true;
+      clearTimeout(G.lp); // arrastou antes do tempo: é rolagem, não mover
       if (!video.paused) video.pause();
     }
     if (!G.moved) return;
@@ -945,6 +1012,8 @@ timeline.addEventListener('pointermove', (e) => {
 function endPointer(e) {
   if (!G.pts.has(e.pointerId)) return;
   G.pts.delete(e.pointerId);
+  clearTimeout(G.lp);
+  if (G.mode === 'move') { if (G.pts.size === 0) endMove(e.type === 'pointerup'); return; }
   if (G.mode === 'pinch') {
     if (G.pts.size === 1) { // sobrou um dedo: ele passa a arrastar, sem pulo
       const [p] = [...G.pts.values()];
@@ -971,6 +1040,66 @@ function endPointer(e) {
 timeline.addEventListener('pointerup', endPointer);
 timeline.addEventListener('pointercancel', endPointer);
 
+// ---------- mover: segurar a tomada e arrastar para outro lugar ----------
+function startMove(i, x) {
+  if (G.mode !== 'pan' || G.moved || !S.draft[i]) return;
+  G.mode = 'move';
+  const box = timeline.getBoundingClientRect();
+  // os quadrados começam com o da tomada segurada debaixo do dedo
+  G.mv = { i, x, to: i, off: x - box.left - (i * MOVE_TILE + MOVE_TILE / 2) };
+  if (navigator.vibrate) navigator.vibrate(12);
+  video.pause();
+  S.selected = i;
+  timeline.classList.add('moving');
+  renderTimeline();
+  renderToolbar();
+  const ghost = el('div', 'move-ghost', timeline);
+  const thumb = timeline.querySelector(`.take[data-i="${i}"] .strip img`);
+  if (thumb) el('img', '', ghost).src = thumb.src;
+  el('span', '', ghost).textContent = S.draft[i].beat || `tomada ${i + 1}`;
+  G.mv.ghost = ghost;
+  updateMove();
+  let last = performance.now();
+  const pan = (now) => { // dedo perto da borda: os quadrados andam sozinhos
+    if (G.mode !== 'move') return;
+    const r = timeline.getBoundingClientRect();
+    const dir = G.mv.x < r.left + 44 ? -1 : G.mv.x > r.right - 44 ? 1 : 0;
+    if (dir) {
+      const n = S.draft.length;
+      G.mv.off = Math.min(half(), Math.max(half() - n * MOVE_TILE, G.mv.off - (dir * 240 * (now - last)) / 1000));
+      positionTimeline();
+      updateMove();
+    }
+    last = now;
+    requestAnimationFrame(pan);
+  };
+  requestAnimationFrame(pan);
+}
+function updateMove() {
+  const M = G.mv;
+  const r = timeline.getBoundingClientRect();
+  M.ghost.style.left = `${M.x - r.left}px`;
+  // metade esquerda de um quadrado = cai antes dele; metade direita = depois
+  M.to = Math.max(0, Math.min(S.draft.length, Math.floor((M.x - r.left - M.off) / MOVE_TILE + 0.5)));
+  const caret = $('moveCaret');
+  if (caret) caret.style.left = `${M.to * MOVE_TILE}px`;
+}
+function endMove(keep) {
+  const M = G.mv;
+  G.mode = null;
+  M.ghost.remove();
+  timeline.classList.remove('moving');
+  let to = M.to;
+  if (keep && to !== M.i && to !== M.i + 1) {
+    remember();
+    const [it] = S.draft.splice(M.i, 1);
+    if (to > M.i) to -= 1;
+    S.draft.splice(to, 0, it);
+    S.selected = to;
+  }
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+
 function startMomentum(v) {
   if (Math.abs(v) < 0.05) { preciseSeek(); return; }
   let last = performance.now();
@@ -987,6 +1116,7 @@ function startMomentum(v) {
 }
 
 function tapAt(target) {
+  if (target && target.closest && target.closest('.add-tile')) { $('fileInput').click(); return; }
   const note = target && target.closest && target.closest('.chip.note');
   if (note) { openNote(note.dataset.id, false); return; }
   const take = target && target.closest && target.closest('.take');
@@ -1014,6 +1144,11 @@ timeline.addEventListener('wheel', (e) => {
 // ---------- reprodução ----------
 $('btnPlay').innerHTML = ICON.play;
 $('btnMute').innerHTML = ICON.vol;
+$('btnFull').innerHTML = ICON.cheia;
+$('btnFull').addEventListener('click', () => {
+  if (player.requestFullscreen) player.requestFullscreen().catch(() => {});
+  else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen(); // iPhone: só o vídeo vai para a tela cheia
+});
 function togglePlay() {
   if (video.paused) {
     if (S.t >= totalT() - 0.05) { S.t = 0; preciseSeek(); }
@@ -1046,10 +1181,33 @@ function loop() {
   for (const f of S.cardAnims) f(now);
   for (const f of S.liveAnims) f(now);
   if (!video.paused && !video.ended && !G.mode && !momentum) {
-    S.t = clampT(renderedToDraft(video.currentTime));
-    positionTimeline();
+    if (S.view === 'corte') followDraft();
+    else { S.t = clampT(renderedToDraft(video.currentTime)); positionTimeline(); }
   }
   requestAnimationFrame(loop);
+}
+
+/* No corte, tocar segue a ORDEM DO RASCUNHO: dentro de uma tomada o vídeo anda sozinho;
+ * no fim dela, salta para onde a próxima está no cut.mp4. Assim o que foi dividido,
+ * copiado ou movido já toca na ordem nova, antes de o agente refazer o corte. */
+function followDraft() {
+  if (video.seeking) return;
+  const dl = draftLayout();
+  const k = itemAt(dl, S.t);
+  if (k < 0) return;
+  const d = dl[k];
+  const t = d.out + (video.currentTime - itemRendered(d, d.out));
+  if (t < d.out - 0.3 || t > d.out + d.dur + 0.3) { video.currentTime = itemRendered(d, Math.min(S.t, d.out + d.dur)); return; }
+  if (t >= d.out + d.dur - 0.02) {
+    const nx = dl[k + 1];
+    if (!nx) { video.pause(); S.t = totalT(); positionTimeline(); return; }
+    S.t = nx.out;
+    const alvo = itemRendered(nx, nx.out);
+    if (Math.abs(video.currentTime - alvo) > 0.08) video.currentTime = alvo; // emenda que já é contínua não salta
+  } else {
+    S.t = Math.max(d.out, t);
+  }
+  positionTimeline();
 }
 
 // ---------- barra de ferramentas ----------
@@ -1069,21 +1227,21 @@ function renderToolbar() {
     return b;
   };
   tb.innerHTML = '';
-  tool(tb, 'corte', 'Corte', { on: S.view === 'corte', disabled: !hasVideo });
-  tool(tb, 'final', 'Final', { on: S.view === 'final', disabled: !hasFinal() });
-  tool(tb, 'estilo', 'Estilo', { disabled: !hasVideo || !canStyle() });
+  // Corte/Final virou o seletor do topo; Enviar virou o "+" no fim da faixa
+  tool(tb, 'cortar', 'Cortar', { icon: ICON.corte, disabled: !hasVideo });
   tool(tb, 'legenda', 'Legenda', { disabled: !hasVideo || !canStyle() });
+  tool(tb, 'estilo', 'Estilo', { disabled: !hasVideo || !canStyle() });
   tool(tb, 'marcar', S.pendingIn != null ? 'Fim' : 'Marcar', { armed: S.pendingIn != null, disabled: !hasVideo });
-  tool(tb, 'enviar', 'Enviar');
-  $('btnDownload').classList.toggle('hidden', !hasVideo);
 
   ctx.innerHTML = '';
   if (sel) {
     tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
-    tool(ctx, 'ouvir', 'Ouvir', { disabled: sel.removed });
-    if (sel.removed) tool(ctx, 'restaurar', 'Restaurar');
-    else tool(ctx, 'remover', 'Tirar');
-    tool(ctx, 'original', 'Original', { disabled: !sel.removed && sel.start === sel.orig.start && sel.end === sel.orig.end });
+    tool(ctx, 'dividir', 'Dividir');
+    tool(ctx, 'duplicar', 'Duplicar');
+    tool(ctx, 'excluir', 'Excluir', { icon: ICON.remover, disabled: S.draft.length < 2 });
+    tool(ctx, 'ouvir', 'Ouvir');
+    // "Original" volta às bordas que o agente cortou; pedaço novo não tem
+    tool(ctx, 'original', 'Original', { disabled: !sel.orig || (sel.start === sel.orig.start && sel.end === sel.orig.end) });
   }
 }
 
@@ -1093,24 +1251,76 @@ document.addEventListener('click', (e) => {
   const id = b.dataset.tool;
   const r = S.draft[S.selected];
   switch (id) {
-    case 'corte': switchView('corte'); break;
-    case 'final': switchView('final'); break;
+    case 'cortar': selectUnderNeedle(); break;
     case 'estilo': openStyle('edit'); break;
     case 'legenda': openStyle('captions'); break;
     case 'marcar': toggleMark(); break;
-    case 'enviar': $('fileInput').click(); break;
     case 'voltar': S.selected = -1; renderTimeline(); renderToolbar(); break;
+    case 'dividir': splitSelected(); break;
+    case 'duplicar': duplicateSelected(); break;
+    case 'excluir': deleteSelected(); break;
     case 'ouvir': {
       const d = draftLayout()[S.selected];
       S.t = d.out; preciseSeek(); positionTimeline(); video.play().catch(() => {});
       break;
     }
-    case 'remover': remember(); r.removed = true; renderTimeline(); renderToolbar(); refreshHeader(); break;
-    case 'restaurar': remember(); r.removed = false; renderTimeline(); renderToolbar(); refreshHeader(); break;
-    case 'original': remember(); r.start = r.orig.start; r.end = r.orig.end; r.removed = false; renderTimeline(); renderToolbar(); refreshHeader(); break;
+    case 'original': remember(); r.start = r.orig.start; r.end = r.orig.end; renderTimeline(); renderToolbar(); refreshHeader(); break;
     default: break;
   }
 });
+
+// "Cortar": escolhe a tomada que está debaixo da agulha (no corte) e abre as ferramentas dela
+function selectUnderNeedle() {
+  if (S.view !== 'corte') switchView('corte');
+  const dl = draftLayout();
+  let i = dl.findIndex((d) => S.t >= d.out && S.t < d.out + d.dur);
+  if (i < 0) i = dl.length - 1; // agulha no fim: a última
+  if (i < 0) return;
+  S.selected = i;
+  renderTimeline();
+  renderToolbar();
+}
+
+// Dividir: a tomada escolhida vira duas no ponto da agulha
+function splitSelected() {
+  const i = S.selected;
+  const d = draftLayout()[i];
+  if (!d || S.t <= d.out + MIN_SEG || S.t >= d.out + d.dur - MIN_SEG) {
+    toast('Ponha a agulha dentro da tomada para dividir', 2400);
+    return;
+  }
+  const r = S.draft[i];
+  const s = +(r.start + (d.lead || 0) + (S.t - d.out)).toFixed(3); // instante do arquivo de origem
+  remember();
+  S.draft.splice(i + 1, 0, { uid: `n${++S.seq}`, from: r.from, kind: 'split', source: r.source, start: s, end: r.end, beat: r.beat, orig: null });
+  r.end = s;
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+// Duplicar: uma cópia logo depois, já escolhida
+function duplicateSelected() {
+  const i = S.selected;
+  const r = S.draft[i];
+  remember();
+  S.draft.splice(i + 1, 0, { uid: `n${++S.seq}`, from: r.from, kind: 'dup', source: r.source, start: r.start, end: r.end, beat: r.beat, orig: null });
+  S.selected = i + 1;
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+// Excluir: sai da faixa (o ↶ traz de volta); a última tomada fica
+function deleteSelected() {
+  if (S.draft.length < 2) return;
+  remember();
+  S.draft.splice(S.selected, 1);
+  S.selected = -1;
+  S.t = clampT(S.t);
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+
+$('btnMode').addEventListener('click', () => {
+  if (!hasFinal()) return;
+  switchView(S.view === 'corte' ? 'final' : 'corte');
+});
+$('modeCar').innerHTML = ICON.seta;
+$('sheetClose').innerHTML = ICON.fechar;
 
 function switchView(v) {
   if (v === S.view) return;
@@ -1535,20 +1745,34 @@ $('sheetApply').addEventListener('click', async () => {
   }
 });
 
-// ---------- salvar ajustes do corte (mesmo payload do editor de PC) ----------
+// ---------- salvar ajustes do corte (os campos do editor de PC + take e ops) ----------
+/* `ranges` é a lista INTEIRA, na ordem nova: aparos, divisões, cópias e ordem já
+ * aplicados — o agente monta o edl.json a partir dela. `take` é o índice da tomada de
+ * origem no edl.json (para levar quote, reason e gain_db). `changes` e `removed` resumem
+ * o que mudou contra o edl.json de agora; `ops` conta o que não cabe neles. */
+function edlPayload() {
+  const tem = new Set(S.draft.map((r) => r.uid));
+  const novos = S.draft.filter((r) => !r.orig);
+  const ordem = S.draft.filter((r) => r.orig).map((r) => r.from);
+  return {
+    ranges: S.draft.map((r) => ({ source: r.source, start: +r.start.toFixed(3), end: +r.end.toFixed(3), beat: r.beat, take: r.from })),
+    removed: S.rendered.map((r, i) => ({ r, i })).filter(({ i }) => !tem.has(`o${i}`))
+      .map(({ r, i }) => ({ source: r.source, beat: r.beat, start: r.start, end: r.end, take: i })),
+    changes: S.draft.filter((r) => r.orig && (r.start !== r.orig.start || r.end !== r.orig.end)).map((r) => ({
+      source: r.source, beat: r.beat, take: r.from,
+      from: { start: r.orig.start, end: r.orig.end },
+      to: { start: +r.start.toFixed(3), end: +r.end.toFixed(3) },
+    })),
+    ops: {
+      divisoes: novos.filter((r) => r.kind === 'split').length,
+      copias: novos.filter((r) => r.kind === 'dup').length,
+      ordemMudou: ordem.some((v, k) => k > 0 && v < ordem[k - 1]),
+    },
+  };
+}
 $('btnSave').addEventListener('click', async () => {
   const payload = { type: 'timeline-edits' };
-  if (edlDirty()) {
-    payload.edl = {
-      ranges: S.draft.filter((r) => !r.removed).map((r) => ({ source: r.source, start: +r.start.toFixed(3), end: +r.end.toFixed(3), beat: r.beat })),
-      removed: S.draft.filter((r) => r.removed).map((r) => ({ source: r.source, beat: r.beat, start: r.orig.start, end: r.orig.end })),
-      changes: S.draft.filter((r) => !r.removed && (r.start !== r.orig.start || r.end !== r.orig.end)).map((r) => ({
-        source: r.source, beat: r.beat,
-        from: { start: r.orig.start, end: r.orig.end },
-        to: { start: +r.start.toFixed(3), end: +r.end.toFixed(3) },
-      })),
-    };
-  }
+  if (edlDirty()) payload.edl = edlPayload();
   if (S.notes.length) {
     payload.notes = S.notes.map((n) => ({
       start: +n.start.toFixed(3),
@@ -1565,8 +1789,8 @@ $('btnSave').addEventListener('click', async () => {
     S.savedPending = true;
     S.notes = [];
     S.pendingIn = null;
-    S.draft = S.draft.filter((r) => !r.removed);
-    S.draft.forEach((r) => { r.orig = { start: r.start, end: r.end }; });
+    // o que foi enviado vira a referência; `orig` segue sendo o edl.json até o agente refazer
+    S.base = baseOf(S.draft);
     S.selected = -1;
     forgetHistory(); // o que foi enviado ao agente não se desfaz daqui
     renderTimeline(); renderToolbar(); refreshHeader();

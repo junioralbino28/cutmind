@@ -39,6 +39,7 @@ def digest(p: Path) -> str:
     edl = d.get("edl") or {}
     n_ch = len(edl.get("changes") or [])
     n_rm = len(edl.get("removed") or [])
+    ops = edl.get("ops") or {}
     ed = d.get("editData") or {}
 
     head = []
@@ -48,6 +49,14 @@ def digest(p: Path) -> str:
         head.append(f"{n_ch} take(s) reajustado(s)")
     if n_rm:
         head.append(f"{n_rm} take(s) removido(s)")
+    if ops.get("divisoes"):
+        head.append(f"{ops['divisoes']} divisão(ões)")
+    if ops.get("copias"):
+        head.append(f"{ops['copias']} take(s) duplicado(s)")
+    if ops.get("ordemMudou"):
+        head.append("ordem dos takes mudou")
+    if ops:  # editor que divide, copia e move: a lista inteira é a referência
+        parts.append("  edl.ranges é a lista inteira, na ordem nova — monte o edl.json por ela (SKILL.md).")
     if ed:
         head.append("inserts/gancho movidos")
     if not head:
