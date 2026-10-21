@@ -163,6 +163,14 @@ button { font-family: inherit; cursor: pointer; }
   display: grid; place-items: center;
 }
 .t-mute svg { width: 16px; height: 16px; fill: currentColor; }
+.t-hist {
+  width: 36px; height: 36px; border-radius: 18px;
+  border: 0; background: transparent; color: var(--text);
+  display: grid; place-items: center;
+}
+.t-hist svg { width: 21px; height: 21px; }
+.t-hist:disabled { opacity: .28; }
+.t-hist:not(:disabled):active { background: var(--panel2); }
 
 /* ---------- linha do tempo (agulha fixa no centro) ---------- */
 .timeline {

@@ -61,6 +61,8 @@ const ICON = {
   remover: sv('<path d="M5 7h14M10 7V5.2c0-.4.3-.7.7-.7h2.6c.4 0 .7.3.7.7V7M7 7l.8 11.2c.1 1 .9 1.8 1.9 1.8h4.6c1 0 1.8-.8 1.9-1.8L17 7"/>'),
   restaurar: sv('<path d="M8.5 7 4.5 11l4 4"/><path d="M5 11h9a5 5 0 0 1 0 10h-3"/>'),
   original: sv('<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5v3.2h3.2"/>'),
+  desfazer: sv('<path d="M3.5 7.5v6h6"/><path d="M20.5 17a8.5 8.5 0 0 0-8.5-8.5 8.6 8.6 0 0 0-5.9 2.4L3.5 13.5"/>', 1.9),
+  refazer: sv('<path d="M20.5 7.5v6h-6"/><path d="M3.5 17a8.5 8.5 0 0 1 8.5-8.5 8.6 8.6 0 0 1 5.9 2.4l2.6 2.6"/>', 1.9),
   check: sv('<path d="M5 12.5l4.5 4.5L19 7.5"/>', 3),
   imagem: sv('<rect x="3" y="5" width="18" height="14" rx="2.6"/><circle cx="8.5" cy="10" r="1.6"/><path d="M4 17.5l5-4.6 3.4 3 2.4-2 5.2 4"/>'),
 };
@@ -427,6 +429,54 @@ function refreshHeader() {
   $('projectSub').textContent = S.videoDuration ? `${label} · ${fmtShort(totalT())}` : 'sem vídeo ainda';
 }
 
+// ---------- desfazer / refazer ----------
+// Antes de cada ação que muda o corte ou as marcações (aparar, tirar, restaurar,
+// original, marcar, nota), guarda uma foto do estado. Depois de Salvar, ou quando
+// chega um corte novo do agente, o histórico zera: o que foi enviado não volta daqui.
+const HIST = { past: [], future: [], max: 100 };
+function snap() {
+  return {
+    draft: S.draft.map((r) => ({ ...r, orig: { ...r.orig } })),
+    notes: S.notes.map((n) => ({ ...n })),
+    pendingIn: S.pendingIn,
+    selected: S.selected,
+  };
+}
+function remember(before) {
+  HIST.past.push(before || snap());
+  if (HIST.past.length > HIST.max) HIST.past.shift();
+  HIST.future = [];
+  renderHistory();
+}
+function forgetHistory() {
+  HIST.past = [];
+  HIST.future = [];
+  renderHistory();
+}
+function restore(s) {
+  if (S.editingNote) { S.editingNote = null; showSheet($('noteSheet'), false); }
+  S.draft = s.draft;
+  S.notes = s.notes;
+  S.pendingIn = s.pendingIn;
+  S.selected = s.selected < S.draft.length ? s.selected : -1;
+  S.t = clampT(S.t);
+  renderTimeline(); renderToolbar(); refreshHeader(); renderHistory();
+}
+function undo() {
+  if (!HIST.past.length || G.mode) return;
+  HIST.future.push(snap());
+  restore(HIST.past.pop());
+}
+function redo() {
+  if (!HIST.future.length || G.mode) return;
+  HIST.past.push(snap());
+  restore(HIST.future.pop());
+}
+function renderHistory() {
+  $('btnUndo').disabled = !HIST.past.length;
+  $('btnRedo').disabled = !HIST.future.length;
+}
+
 // ---------- dados ----------
 // Pela rede, o servidor só entrega os dados a quem abriu pelo link/QR do computador.
 const EMPTY_TEXTS = { title: $('emptyTitle').textContent, text: $('emptyText').textContent };
@@ -480,6 +530,7 @@ async function applyState(data) {
   S.rendered = ranges.map((r) => ({ source: r.source, start: +r.start, end: +r.end, beat: r.beat || '' }));
   S.draft = S.rendered.map((r) => ({ ...r, removed: false, orig: { start: r.start, end: r.end } }));
   S.selected = -1;
+  forgetHistory(); // corte novo: as fotos antigas são de outras tomadas
 
   S.style = { ...defaultStyle(), ...(S.state.style || {}) };
   S.style.elements = { ...defaultStyle().elements, ...((S.state.style || {}).elements || {}) };
@@ -826,7 +877,7 @@ timeline.addEventListener('pointerdown', (e) => {
   if (h && S.view === 'corte') {
     const i = +h.dataset.i;
     G.mode = 'trim';
-    G.trim = { i, side: h.dataset.side, x0: e.clientX, r: { ...S.draft[i] } };
+    G.trim = { i, side: h.dataset.side, x0: e.clientX, r: { ...S.draft[i] }, before: snap() };
     video.pause();
     requestPeek(S.draft[i].source, edgeT(S.draft[i], h.dataset.side));
     return;
@@ -905,6 +956,8 @@ function endPointer(e) {
     $('trimTip').classList.add('hidden');
     hidePeek();
     G.mode = null;
+    const T = G.trim, r = S.draft[T.i];
+    if (r.start !== T.r.start || r.end !== T.r.end) remember(T.before); // tocar na alça sem arrastar não conta
     renderTimeline(); renderToolbar(); refreshHeader(); // o "Original" acende depois de aparar
     return;
   }
@@ -976,6 +1029,17 @@ $('btnMute').addEventListener('click', () => {
   video.muted = !video.muted;
   $('btnMute').innerHTML = video.muted ? ICON.mute : ICON.vol;
 });
+$('btnUndo').innerHTML = ICON.desfazer;
+$('btnRedo').innerHTML = ICON.refazer;
+$('btnUndo').addEventListener('click', undo);
+$('btnRedo').addEventListener('click', redo);
+// no computador: Ctrl+Z desfaz; Ctrl+Shift+Z ou Ctrl+Y refaz (fora dos campos de texto)
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || S.styling || e.target.closest('input, textarea')) return;
+  const k = e.key.toLowerCase();
+  if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+  else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); redo(); }
+});
 
 function loop() {
   const now = performance.now() / 1000;
@@ -1041,9 +1105,9 @@ document.addEventListener('click', (e) => {
       S.t = d.out; preciseSeek(); positionTimeline(); video.play().catch(() => {});
       break;
     }
-    case 'remover': r.removed = true; renderTimeline(); renderToolbar(); refreshHeader(); break;
-    case 'restaurar': r.removed = false; renderTimeline(); renderToolbar(); refreshHeader(); break;
-    case 'original': r.start = r.orig.start; r.end = r.orig.end; r.removed = false; renderTimeline(); renderToolbar(); refreshHeader(); break;
+    case 'remover': remember(); r.removed = true; renderTimeline(); renderToolbar(); refreshHeader(); break;
+    case 'restaurar': remember(); r.removed = false; renderTimeline(); renderToolbar(); refreshHeader(); break;
+    case 'original': remember(); r.start = r.orig.start; r.end = r.orig.end; r.removed = false; renderTimeline(); renderToolbar(); refreshHeader(); break;
     default: break;
   }
 });
@@ -1134,6 +1198,7 @@ $('btnDownload').addEventListener('click', download);
 // ---------- marcar um trecho (IN → OUT → o que mudar) ----------
 function toggleMark() {
   if (S.pendingIn == null) {
+    remember();
     S.pendingIn = S.t;
     renderTimeline(); renderToolbar();
     toast('Início marcado. Arraste até o fim do trecho e toque em Fim.', 3000);
@@ -1141,6 +1206,7 @@ function toggleMark() {
   }
   const start = Math.min(S.pendingIn, S.t), end = Math.max(S.pendingIn, S.t);
   if (end - start < 0.05) { toast('Trecho curto demais — arraste a linha do tempo', 2200); return; }
+  remember();
   S.pendingIn = null;
   const note = { id: `n${Date.now()}`, start, end, text: '' };
   S.notes.push(note);
@@ -1152,6 +1218,7 @@ function openNote(id, isNew) {
   const n = S.notes.find((x) => x.id === id);
   if (!n) return;
   S.editingNote = id;
+  S.editingNew = !!isNew;
   $('noteRange').textContent = `${fmt(n.start)} → ${fmt(n.end)}`;
   $('noteText').value = n.text || '';
   $('noteDelete').classList.toggle('hidden', !!isNew);
@@ -1160,7 +1227,10 @@ function openNote(id, isNew) {
 }
 function closeNote(keep) {
   const n = S.notes.find((x) => x.id === S.editingNote);
-  if (n && keep) n.text = $('noteText').value.trim();
+  const text = $('noteText').value.trim();
+  // nota nova: a foto já foi tirada no "Fim"; aqui só conta mudar o texto de uma que já existia
+  if (n && keep && !S.editingNew && text !== n.text) remember();
+  if (n && keep) n.text = text;
   if (n && !n.text) S.notes = S.notes.filter((x) => x.id !== n.id);
   S.editingNote = null;
   showSheet($('noteSheet'), false);
@@ -1172,6 +1242,7 @@ $('noteOk').addEventListener('click', () => {
 });
 $('noteCancel').addEventListener('click', () => closeNote(false));
 $('noteDelete').addEventListener('click', () => {
+  remember();
   S.notes = S.notes.filter((x) => x.id !== S.editingNote);
   closeNote(false);
 });
@@ -1497,6 +1568,7 @@ $('btnSave').addEventListener('click', async () => {
     S.draft = S.draft.filter((r) => !r.removed);
     S.draft.forEach((r) => { r.orig = { start: r.start, end: r.end }; });
     S.selected = -1;
+    forgetHistory(); // o que foi enviado ao agente não se desfaz daqui
     renderTimeline(); renderToolbar(); refreshHeader();
     toast('Ajustes enviados. O agente refaz o corte.', 3000);
   } catch (err) {
