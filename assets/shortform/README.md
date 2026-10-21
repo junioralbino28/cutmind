@@ -117,6 +117,8 @@ Then copy `cut.mp4` into `public/` and generate the data files below.
 ## Render
 
 `npx remotion render Reels out/render.mp4`, loudnorm → `edit/final.mp4`.
+The project also has `EfeitosBase`: it is not rendered by hand. `helpers/efeitos_render.py`
+drives it to draw the editor's filters and transitions into `public/cut.mp4`.
 Verify stills at cut boundaries (no black edges) before the full render.
 `generate_sfx.py` regenerates the sfx pack if ever needed.
 

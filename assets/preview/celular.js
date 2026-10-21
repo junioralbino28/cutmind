@@ -574,6 +574,7 @@ function restore(s) {
   S.t = clampT(S.t);
   renderTimeline(); renderToolbar(); refreshHeader(); renderHistory();
   drawFrase(true);
+  fxPreparar();
   fxRedesenhar();
 }
 function undo() {
@@ -1308,7 +1309,7 @@ function loop() {
     else { S.t = clampT(renderedToDraft(video.currentTime)); positionTimeline(); }
   }
   syncLayers();
-  if (!video.requestVideoFrameCallback) fxDesenhar(video.currentTime); // sem o aviso de quadro: a cada volta
+  if (!video.requestVideoFrameCallback) fxDesenhar(video.currentTime, false); // sem o aviso de quadro: a cada volta
   requestAnimationFrame(loop);
 }
 
@@ -2845,7 +2846,7 @@ PREV.addEventListener('error', () => {
  * Transição: antes do corte, o lado A anda e o B fica parado no 1º quadro depois dele;
  * depois do corte, o A fica parado no último quadro antes dele e o B anda. Um quadro
  * com transição e filtro recebe a transição primeiro e o filtro por cima. */
-const FX = { mod: null, motores: new Map(), congelados: new Map(), fila: Promise.resolve(), pararEm: null };
+const FX = { mod: null, motores: new Map(), congelados: new Map(), fila: Promise.resolve(), pararEm: null, naTela: null };
 const fxVazio = () => ({ versao: 1, itens: [] });
 const fxSig = () => JSON.stringify(S.efeitos);
 const efeitosDirty = () => fxSig() !== S.efeitosBase;
@@ -2857,7 +2858,9 @@ function fxJanela(it) {
   if (it.tipo === 'transicao') return [it.corte - it.duracao / 2, it.corte + it.duracao / 2];
   return [it.inicio, it.inicio + it.duracao];
 }
-const fxDentro = (it, t) => { const [a, b] = fxJanela(it); return a - 1e-6 <= t && t < b - 1e-6; };
+// 1 ms de folga: os tempos vão com 3 casas (até 0,5 ms além do corte), e sem ela o filtro
+// de uma tomada pegava o 1º quadro da seguinte. A mesma conta do efeitos_render.py.
+const fxDentro = (it, t) => { const [a, b] = fxJanela(it); return a - 1e-3 <= t && t < b - 1e-3; };
 const fxCruzam = (x, y) => { const [a, b] = fxJanela(x), [c, d] = fxJanela(y); return a < d - 1e-6 && c < b - 1e-6; };
 
 async function loadEfeitos() {
@@ -2869,6 +2872,7 @@ async function loadEfeitos() {
   S.efeitos = e && Array.isArray(e.itens) ? { versao: 1, itens: e.itens } : fxVazio();
   S.efeitosBase = fxSig();
   FX.congelados.clear();
+  fxPreparar(); // com o vídeo novo ainda carregando, quem prepara é o "loadeddata"
   // o bloco na linha do tempo mostra o nome do catálogo
   if (S.efeitos.itens.length) loadFxListas().then(renderTimeline);
 }
@@ -2954,12 +2958,19 @@ function fxCongelados(tr, fps) {
   return c.pronto;
 }
 
-function fxDesenhar(mediaTime) {
+/* O número do quadro na tela. Com o carimbo do próprio quadro (aviso de quadro do vídeo),
+ * arredonda: o cut.mp4 pode vir com carimbos um pouco antes de n/fps (medido: 0,65 ms a
+ * partir de um corte), e o "piso" cairia no quadro anterior bem no corte. Sem o aviso, o
+ * tempo do vídeo pode estar no meio do quadro: piso, com 1 ms de folga para esse desvio. */
+function fxNumero(tempo, exato, fps) {
+  return exato ? Math.round(tempo * fps) : Math.floor(tempo * fps + 0.03);
+}
+function fxDesenhar(tempo, exato) {
   const cv = $('fxCanvas');
   const esconder = () => { if (!cv.classList.contains('hidden')) cv.classList.add('hidden'); };
   if (S.view !== 'corte' || S.posMode || S.styling || !video.videoWidth || G.mode === 'move') { esconder(); return; }
   const fps = S.fps || 30;
-  const n = Math.floor(mediaTime * fps + 1e-3); // o quadro do cut.mp4 que está na tela
+  const n = fxNumero(tempo, exato, fps); // o quadro do cut.mp4 que está na tela
   const t = n / fps;
   if (FX.pararEm != null && !video.paused && t >= FX.pararEm) { video.pause(); FX.pararEm = null; }
   let tr = null, fi = null;
@@ -2967,8 +2978,9 @@ function fxDesenhar(mediaTime) {
     if (!fxDentro(it, t)) continue;
     if (it.tipo === 'transicao') tr = it; else fi = it;
   }
+  FX.completo = !tr && !fi; // o desenho tem tudo o que o quadro pede (os testes esperam por isto)
   if (!tr && !fi) { esconder(); return; }
-  let fonte = video, saida = null;
+  let fonte = video, saida = null, feitos = 0;
   if (tr) {
     const m = fxMotor(tr.pacote).ef;
     const cong = fxCongelados(tr, fps);
@@ -2977,6 +2989,7 @@ function fxDesenhar(mediaTime) {
       m.desenhar({ a: antes ? video : cong.a, b: antes ? cong.b : video,
         tempo_ms: (t - (tr.corte - tr.duracao / 2)) * 1000 });
       fonte = saida = m.canvas;
+      feitos++;
     }
   }
   if (fi) {
@@ -2984,8 +2997,10 @@ function fxDesenhar(mediaTime) {
     if (m) {
       m.desenhar({ quadro: fonte, intensidade: fi.intensidade });
       saida = m.canvas;
+      feitos++;
     }
   }
+  FX.completo = feitos === (tr ? 1 : 0) + (fi ? 1 : 0);
   if (!saida) { esconder(); return; } // o pacote ainda está descendo: mostra o vídeo como está
   const { largura, altura } = fxTam();
   if (cv.width !== largura || cv.height !== altura) { cv.width = largura; cv.height = altura; }
@@ -2994,12 +3009,29 @@ function fxDesenhar(mediaTime) {
 }
 // tocando, cada quadro novo do vídeo avisa (é o quadro que está na tela, não o relógio)
 function fxQuadro(agora, meta) {
-  fxDesenhar(meta.mediaTime);
+  FX.naTela = meta.mediaTime;
+  fxDesenhar(meta.mediaTime, true);
   video.requestVideoFrameCallback(fxQuadro);
 }
 if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(fxQuadro);
-function fxRedesenhar() { if (video.paused || video.ended) fxDesenhar(video.currentTime); }
+// parado: o carimbo do último quadro mostrado, se o vídeo não saiu dele
+function fxRedesenhar() {
+  if (!(video.paused || video.ended)) return;
+  const fps = S.fps || 30;
+  if (FX.naTela != null && Math.abs(video.currentTime - FX.naTela) < 1 / fps) fxDesenhar(FX.naTela, true);
+  else fxDesenhar(video.currentTime, false);
+}
 video.addEventListener('seeked', fxRedesenhar);
+// motores e quadros parados prontos ANTES de a agulha chegar: tocando, a transição já
+// aparece no 1º quadro da janela (preparar na entrada perdia os primeiros quadros)
+function fxPreparar() {
+  if (S.view !== 'corte' || !video.videoWidth || !video.dataset.src) return; // no Final o vídeo já tem os efeitos
+  const fps = S.fps || 30;
+  const pacotes = [...new Set(S.efeitos.itens.map((it) => it.pacote))].slice(0, 4); // o limite de motores
+  for (const p of pacotes) fxMotor(p);
+  for (const it of S.efeitos.itens) if (it.tipo === 'transicao') fxCongelados(it, fps);
+}
+video.addEventListener('loadeddata', fxPreparar);
 
 function renderFxTrack(lane) {
   for (const it of S.efeitos.itens) {
@@ -3172,6 +3204,7 @@ function usarFx(id) {
   // como no app de celular: um filtro por tomada, uma transição por corte; o novo troca o que estava ali
   S.efeitos.itens = S.efeitos.itens.filter((x) => x.tipo !== novo.tipo || !fxCruzam(x, novo));
   S.efeitos.itens.push(novo);
+  fxPreparar();
   S.fxSel = novo.id;
   S.layerSel = null;
   S.selected = -1;

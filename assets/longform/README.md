@@ -41,4 +41,6 @@ Copy `cut.mp4` into `public/`, then write `public/edit-data.json`.
 ## Render
 
 `npx remotion render Longform out/render.mp4`, loudnorm → `edit/final.mp4`.
+The project also has `EfeitosBase`: it is not rendered by hand. `helpers/efeitos_render.py`
+drives it to draw the editor's filters and transitions into `public/cut.mp4`.
 Keep the last ~20s visually calm (YouTube end cards).

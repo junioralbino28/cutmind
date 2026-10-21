@@ -116,6 +116,31 @@ the layer shows.
 The agent side (images → inserts, sound → final mix) is in `references/shortform.md`,
 "Layers from the editor".
 
+## Filters and transitions
+
+**Efeitos** (after Áudio) opens **Filtros · Transições**. Both are panels with the kit
+library; the preview stays big on top. Tapping a row downloads that package (to the
+computer's cache, `pacotes.py`) and shows it **on the user's own video**: a filter on
+the take under the needle, a transition playing across the cut nearest the needle
+(from a little before to a little after, then it pauses). **Usar** puts it there. As in
+the phone apps, a take holds one filter and a cut holds one transition: a new one
+replaces the old.
+
+- The effects are a track right above the video: a filter spans its take, a
+  transition spans its window around the cut. Tap selects: **Voltar · Intensidade
+  (filter) · Excluir**. Intensidade is a 0–100% slider that redraws live.
+- The preview draws the effect over the video, in Corte only, with the same engine
+  and the same frame numbers as the final video. The engines and the frozen frames of
+  each transition are prepared as soon as the effects load, so playback shows the
+  transition from its first frame.
+- Undo/redo covers it. **Salvar** sends `efeitos`; the server validates it together
+  with the layers (nothing is written if either is wrong) and writes
+  `<edit>/efeitos.json`. A package that cannot download shows the reason and adds
+  nothing.
+
+The agent side is `efeitos_render.py` (`references/shortform.md`, "Effects from the
+editor").
+
 ## What the server enforces
 
 - Data routes (`/api`, `/media`, `/gen`) need the code unless the request comes

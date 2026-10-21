@@ -93,7 +93,7 @@ Phase 1:
 Phase 2/3 helpers (captions, face tracking, image search, music) are listed in
 the track reference you load after the gate.
 
-- **`pacotes.py listar|obter|camada|favorito|cache|atualizar`** — the kit's library (soundtracks today; effects, transitions and filters as they are converted). The catalog (`assets/pacotes/catalogo.json`) says what exists; a package downloads only when used, into a local cache (`~/.cutmind/pacotes`, 2 GB, favorites kept), checked by sha256. `pacotes.py camada <edit> <id>` puts a soundtrack on the timeline as an audio layer — the same `camadas.json` the editor writes.
+- **`pacotes.py listar|obter|camada|favorito|cache|atualizar`** — the kit's library (soundtracks, filters and transitions; effects as they are converted). Filters and transitions are zips that `pacotes.py abrir <id>` opens for the effects engine (`assets/efeitos/motor.js`, shared by the phone preview and the final render). The catalog (`assets/pacotes/catalogo.json`) says what exists; a package downloads only when used, into a local cache (`~/.cutmind/pacotes`, 2 GB, favorites kept), checked by sha256. `pacotes.py camada <edit> <id>` puts a soundtrack on the timeline as an audio layer — the same `camadas.json` the editor writes.
 
 Interface:
 - **`preview_server.py --root <edit> [--port 4820] [--host 0.0.0.0]`** — serves the standard preview interface (see the Preview interface section). App code lives at `assets/preview/` and is IMMUTABLE. `--host` opens it to the phone, with a code — only when the user asks; read `references/celular.md` first.
@@ -183,6 +183,7 @@ the layer questions in chat.
   the user's intent wins, but say so), update `edl.json`, re-render, `verify_cut.py`.
 - `editData` — insert/hook/behind timings → edit-data.json → re-render Phase 2.
 - `camadas` — images and audio the user put on the timeline (the server already wrote `<edit>/camadas.json`): images → `camadas_edit_data.py`, sound → `mixar_final.py` (`references/shortform.md`, "Layers from the editor").
+- `efeitos` — filters and transitions from the library (the server already wrote `<edit>/efeitos.json`) → `efeitos_render.py <edit>` writes `remotion/public/cut.mp4` with them, then re-render (`references/shortform.md`, "Effects from the editor").
 
 Then delete `preview_edits.json` and update `state.json`.
 

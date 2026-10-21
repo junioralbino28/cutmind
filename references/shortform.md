@@ -70,7 +70,9 @@ when the user reopens Posição), clear `awaitingStyle`, delete `preview_style.j
    cp -R <skill>/assets/shortform/. <edit>/remotion/ && cd <edit>/remotion && npm install
    ```
 2. **Generate machine data into `remotion/public/`:**
-   - `cp cut.mp4 remotion/public/`
+   - `cp cut.mp4 remotion/public/` — or, when `<edit>/efeitos.json` has items,
+     `uv run python -X utf8 helpers/efeitos_render.py <edit>` instead (it writes
+     `public/cut.mp4` with the filters and transitions; "Effects from the editor")
    - `transcribe.py cut.mp4 --edit-dir <edit>` → `transcripts/cut.json`
      (cut times are already on the output timeline — never map the source EDL)
    - `captions_for_remotion.py --transcript transcripts/cut.json -o public/captions.json`
@@ -614,6 +616,40 @@ The image card's whoosh is a Remotion `<Sfx>`: with the default `--base cut` it 
 not in the delivery. Pass `--sfx <public>/sfx/whoosh.mp3@<start>:0.09` per image
 when the card should sound.
 
+## Effects from the editor (`efeitos.json`)
+
+Filters and transitions come from the kit library (editor: **Efeitos → Filtros /
+Transições**; `references/celular.md`). The project file is `<edit>/efeitos.json`,
+times in cut.mp4 seconds, schema in `helpers/efeitos.py`: a filter covers
+`inicio`…`inicio+duracao` with an optional `intensidade` (0–1, the package's own
+when absent); a transition is centred on `corte`, the frame where two takes meet,
+for `duracao`. Every save also carries it in `preview_edits.json`.
+
+```bash
+uv run python -X utf8 helpers/efeitos_render.py <edit> [--remotion <edit>/remotion]
+```
+
+It replaces `cp cut.mp4 remotion/public/`, before the Phase 2 render, and runs again
+after every save that touches `efeitos`. It draws each frame of each window with the
+**same engine as the phone preview** (`assets/efeitos/motor.js`, through the
+`EfeitosBase` composition of the Remotion project), in blocks of 90 frames, and
+writes a new `public/cut.mp4`: the windows replaced, everything else re-encoded at
+crf 8 (measured: PSNR 54 dB against the cut, ~0.3 luma level), sound copied. The
+original `<edit>/cut.mp4` is never touched. With no items it just copies the cut.
+
+Frame rules, shared with the preview: frame n is in an effect when
+`start − 1 ms ≤ n/fps < end − 1 ms`. In a transition, `k = ⌊corte·fps + 0.5⌋`. Before
+`k`, side A is frame n and side B is frozen on frame `k`. From `k` on, A is frozen on
+`k−1` and B is frame n. A frame with both gets the transition first, then the filter.
+
+Measured on the test cut, frame by frame, the phone preview against the final frame
+is 0.5–1.0 level apart on average, while the effect itself is 25–100 levels against
+the cut. Frames outside the windows only change by the re-encode.
+
+**Same save re-cuts?** As with layers, the times belong to the cut on screen: map
+them to the new cut before running it, and drop (and tell) an effect whose moment
+was cut out.
+
 ---
 
 ## The Estilo tab (between Fase 1 and Fase 2)
@@ -702,7 +738,7 @@ skill prompt is resent every turn.
 
 ## Helpers de Fase 2/3
 
-- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte; `uv sync --extra matting`) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`pacotes.py`** (kit library: `listar --tipo trilha`, `camada <edit> <id>`) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental).
+- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte; `uv sync --extra matting`) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`pacotes.py`** (kit library: `listar --tipo trilha`, `camada <edit> <id>`, `abrir <id>`) · **`efeitos_render.py`** (filters and transitions from the editor into `public/cut.mp4`) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental).
 
 ---
 

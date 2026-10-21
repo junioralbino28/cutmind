@@ -63,6 +63,10 @@ cp -R <skill>/assets/longform/. <edit>/remotion/ && cd <edit>/remotion && npm in
 cp ../cut.mp4 public/
 ```
 
+With filters or transitions in `<edit>/efeitos.json`, write `public/cut.mp4` with
+`uv run python -X utf8 helpers/efeitos_render.py <edit>` instead of the `cp`
+(`references/shortform.md`, "Effects from the editor").
+
 Write `public/edit-data.json` (schema in `assets/longform/README.md`):
 width/height/fps/durationSec **matching cut.mp4 exactly**, accent color, and
 the four layers — graphics **punctuate, they don't saturate**:
