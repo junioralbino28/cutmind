@@ -22,6 +22,10 @@ Routes:
   /gen/thumbs/<n>.jpg   timeline filmstrip thumbs (auto-generated, 1 per 2s)
   /gen/frame?src=&t=    um quadro do vídeo de ORIGEM (edl.json "sources") no
                         tempo t — a prévia da alça ao aparar
+  /gen/frases?estilo=stacked
+                        as frases da legenda Empilhado, pelo próprio diretor
+                        (caption_style.py) sobre transcripts/cut.json — o modo
+                        "Posição das frases" mostra as mesmas frases do render
   /api/state    GET     state.json + mtimes (UI polls this to hot-reload)
   /api/celular  GET     só no computador: links + QR code para abrir no celular
   /api/save     POST    body → <edit>/preview_edits.json (atomic), or
@@ -434,6 +438,8 @@ class Handler(BaseHTTPRequestHandler):
             self._celular_info()
         elif path == "/gen/frame":
             self._frame(query)
+        elif path == "/gen/frases":
+            self._frases(query)
         elif path.startswith("/assets/"):
             p = self._safe(APP_DIR, path[len("/assets/"):])
             self._send_file(p) if p else self._json({"error": "bad path"}, 400)
@@ -569,6 +575,34 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._hdr(200, "image/jpeg", len(jpg))
         self.wfile.write(jpg)
+
+    def _frases(self, query: str) -> None:
+        """As frases do Empilhado vêm do diretor do render, não de uma cópia: ele
+        junta palavra curta, migra palavra atrasada e segura solo rápido demais, e
+        duas versões dessas regras divergiriam. Os outros estilos agrupam por regra
+        simples (ou medida na fonte) e o editor faz a conta sozinho."""
+        if (parse_qs(query).get("estilo") or [""])[0] != "stacked":
+            self._json({"error": "só o Empilhado vem do servidor"}, 400)
+            return
+        tr = self.root / "transcripts" / "cut.json"
+        if not tr.is_file():
+            self._json({"frases": []})
+            return
+        import caption_style  # mesma pasta deste arquivo
+        try:
+            cues = caption_style.build_cues(caption_style.load_words(tr))
+        except (OSError, ValueError, KeyError) as e:
+            self._json({"error": f"transcrição ilegível ({e.__class__.__name__})"}, 500)
+            return
+        # `cue` leva o que a prévia precisa para desenhar a frase como o render:
+        # tipo (pilha ou palavra sozinha), linhas, estilo e realce de cada linha
+        self._json({"frases": [{"start": c["startMs"] / 1000, "end": c["endMs"] / 1000,
+                                "text": " ".join(w["text"] for ln in c["lines"] for w in ln),
+                                "cue": {"preset": c["preset"],
+                                        "lines": [[w["text"] for w in ln] for ln in c["lines"]],
+                                        "lineStyles": c["lineStyles"], "lineBoost": c["lineBoost"],
+                                        "lineEmph": c["lineEmph"]}}
+                               for c in cues]})
 
     def _upload(self, query: str) -> None:
         """O vídeo vai, em pedaços, para a pasta dos vídeos — nunca para a memória."""

@@ -27,6 +27,7 @@ import {loadFont} from '@remotion/google-fonts/Lora';
 import {measureText} from '@remotion/layout-utils';
 import captions from '../public/captions.json';
 import editData from '../public/edit-data.json';
+import {seamAt, spotCentre, spotFor} from './captionPlace';
 
 const {fontFamily} = loadFont('normal', {weights: ['400', '600']});
 loadFont('italic', {weights: ['400', '600']});
@@ -156,19 +157,38 @@ const EXIT = 8; // frames — the cue leaves
 
 const CueView: React.FC<{cue: Cue; endFrame: number}> = ({cue, endFrame}) => {
   const frame = useCurrentFrame();
-  const {fps, height} = useVideoConfig();
+  const {fps, width, height} = useVideoConfig();
   const exitStart = endFrame - EXIT;
   const out = interpolate(frame, [exitStart, endFrame], [0, 1], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
 
+  // the user's spot for this cue → the split seam (karaoke baseline, no jitter)
+  // → the style's own offset with its hashed jitter
+  const spot = spotFor(cue.startMs / 1000, endFrame / fps);
+  const seam = spot ? null : seamAt(frame, fps);
+  let shift = `0px ${Math.round(height * (OFFSET_Y - 0.5)) + cue.drop}px`;
+  if (spot) {
+    const h = cue.lines.reduce((acc, ln) => acc + Math.max(...ln.map((p) => p.size)) * 1.03, 0);
+    const c = spotCentre(spot, SAFE_W, h, width, height);
+    shift = `${c.x - width / 2}px ${c.y - height / 2}px`;
+  } else if (seam != null) {
+    shift = '0px 0px';
+  }
+
   return (
-    <AbsoluteFill style={{justifyContent: 'center', alignItems: 'center'}}>
+    <AbsoluteFill
+      style={
+        seam == null
+          ? {justifyContent: 'center', alignItems: 'center'}
+          : {justifyContent: 'flex-end', alignItems: 'center', paddingBottom: seam}
+      }
+    >
       <div
         style={{
           width: SAFE_W,
-          translate: `0px ${Math.round(height * (OFFSET_Y - 0.5)) + cue.drop}px`,
+          translate: shift,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',

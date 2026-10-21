@@ -52,6 +52,7 @@ the Estilo tab at the end of Fase 1; every key maps to something here:
 | `headline: "none"` | **no headline at all** — `hook.enabled: false`. The template already gates on that flag, so nothing else changes |
 | `captions: "karaoke" \| "stacked" \| "scatter" \| "simples" \| "serifada" \| "classica"` | `captions.style` in edit-data.json (+ the director step for stacked) |
 | `captions: "none"` | **no captions at all** — `captions.enabled: false`. Skip `captions_for_remotion.py` too; nothing reads the file |
+| `captionPositions` | where the user dragged the caption phrases on the phone → `caption_positions.py` writes `captions.positions`. See "Where each phrase sits" |
 | `accent` (hex) | `hook.accent` + `captions.accent`. Only `realce`/`misto`/`stacked` paint it; `accentUsed:false` means the picked styles have none |
 | `elements.tracking` | `face_track.py` + `track.json`; OFF → skip it, fixed frame |
 | `elements.zoomAuto` | the slow push-in inside each segment (`+0.04/segment`) |
@@ -61,7 +62,8 @@ the Estilo tab at the end of Fase 1; every key maps to something here:
 | `note` | free text — read it, it overrides the defaults above |
 
 An unchecked box is an explicit NO, not a silence. Copy the picks into
-`state.json` as `style`, clear `awaitingStyle`, delete `preview_style.json`.
+`state.json` as `style` (`captionPositions` included: it is what the phone shows
+when the user reopens Posição), clear `awaitingStyle`, delete `preview_style.json`.
 
 1. **Scaffold (one command, never read the TSX):**
    ```bash
@@ -277,6 +279,33 @@ this often. After generating cues, sanity-check the plan (it prints a summary):
 every non-`STACK_MIXED` cue should span ≥0.34s, and the word list across all
 cues must match the transcript exactly, in order.
 
+### Where each phrase sits (`captionPositions`)
+
+On the phone the user can drag the caption over the video (Estilo → Legenda →
+**Posição**), phrase by phrase, as each of the six styles groups its own phrases:
+the drag moves only the phrase on screen; with **Todas** on, one drag moves every
+phrase; **Padrão** sends it back to the style's place.
+
+The save carries `captionPositions` in `preview_style.json`. Each phrase is
+anchored on the SOURCE moment of its first word (`source` + `at`), so a later
+re-cut does not shift it. Convert it to the cut timeline:
+
+```bash
+uv run python helpers/caption_positions.py --style <edit>/preview_style.json \
+    --edl <edit>/edl.json --edit-data <edit>/remotion/public/edit-data.json
+```
+
+It writes `captions.positions` — `all` plus `phrases[]` with `at` in cut.mp4
+seconds, x/y the block CENTRE as fractions of the frame — and lists every phrase
+whose moment was cut out. Those fall back to the style's place; tell the user
+which. **Re-run it after every Phase-1 re-render**, like `segments.json`: the
+anchors survive a re-cut, the cut-timeline seconds do not. `--style` also takes
+`state.json` (the copy under `style`).
+
+Order, in every style: the phrase's own spot → the spot for all → the split seam
+(`captions.windows`) → the style's own place. A dragged phrase is kept 40 px
+inside the frame. Nothing to tune in the template: `captionPlace.ts` reads it.
+
 ## Visual hook — static headline, first ~4s (always on)
 
 The first 1–2 seconds decide the swipe. Write `hook.lines` like a
@@ -373,8 +402,9 @@ Both pin the FACE to a fixed region and give the rest of the frame to the image.
 Data lives in `edit-data.json` `splitInserts[]` (`layout: "top" | "bottom"`); the
 component is already in the template's `CustomGraphics.tsx`. Hard cut (no fade),
 every window snapped to a take cut, consecutive images contiguous, and
-`captions.windows` moves the caption to the seam while a window is up. Full rules
-in `assets/shortform/README.md`.
+`captions.windows` moves the caption to the seam while a window is up — any of
+the six styles; a phrase the user placed by hand stays where it was put. Full
+rules in `assets/shortform/README.md`.
 
 `splitInserts[].src` accepts images and `.mp4`/`.mov`/`.webm` video. Each video
 starts at frame zero of its own window and loops when necessary. Never use the

@@ -29,6 +29,7 @@ import {loadFont as loadPlayfair} from '@remotion/google-fonts/PlayfairDisplay';
 import cues from '../public/caption-cues.json';
 import editData from '../public/edit-data.json';
 import {PencilOutline} from './PencilOutline';
+import {seamAt, spotCentre, spotFor} from './captionPlace';
 
 const poppins = loadPoppins('normal', {weights: ['400', '700', '800', '900']});
 loadPoppins('italic', {weights: ['700', '900']});
@@ -89,13 +90,35 @@ type CueData = {
   lines: Word[][];
 };
 
-const Cue: React.FC<{cue: CueData; cueDurationFrames: number}> = ({cue, cueDurationFrames}) => {
+// Rough size of a cue on screen — the same estimate fitFont sizes the lines with.
+// Good enough to keep a dragged cue inside the frame; nothing else uses it.
+function cueBox(cue: CueData, scale: number, avail: number): {w: number; h: number} {
+  if (cue.preset !== 'STACK_MIXED') {
+    const t = cue.lines[0][0].text;
+    const size = fitFont(t, cue.preset === 'SOLO_BIG' ? 150 : 118, avail / scale, 0.6) * scale;
+    return {w: Math.min(avail, t.length * size * 0.6), h: size * 1.12};
+  }
+  let w = 0;
+  let h = 0;
+  cue.lines.forEach((line, li) => {
+    const text = line.map((x) => x.text).join(' ');
+    const size = fitFont(text, 86, avail / scale, 0.58) * scale;
+    w = Math.max(w, Math.min(avail, text.length * size * 0.58));
+    h += size * (li === 0 ? 1.12 : 1.12 - 0.34);
+  });
+  return {w, h};
+}
+
+const Cue: React.FC<{cue: CueData; cueDurationFrames: number; fromFrame: number}> = ({cue, cueDurationFrames, fromFrame}) => {
   const frame = useCurrentFrame();
   const {fps, width, height} = useVideoConfig();
 
   const scale = (width / 1080) * FONT_SCALE;
   const avail = width - 180;
   const baseY = Math.round(height * OFFSET_Y);
+  // the user's spot for this cue → the split seam → the style's own offset
+  const spot = spotFor(cue.startMs / 1000, cue.endMs / 1000);
+  const seam = spot ? null : seamAt(fromFrame + frame, fps);
 
   const ENTER = Math.max(3, Math.min(8, Math.floor(cueDurationFrames * 0.45)));
   const EXIT = Math.max(2, Math.min(7, Math.floor(cueDurationFrames * 0.35)));
@@ -138,9 +161,17 @@ const Cue: React.FC<{cue: CueData; cueDurationFrames: number}> = ({cue, cueDurat
     };
   };
 
+  let dx = 0;
+  let dy = seam == null ? baseY : 0;
+  if (spot) {
+    const box = cueBox(cue, scale, avail);
+    const c = spotCentre(spot, box.w, box.h, width, height);
+    dx = c.x - width / 2;
+    dy = c.y - height / 2;
+  }
   const container: React.CSSProperties = {
     opacity: cOpacity,
-    translate: `0px ${baseY + cTranslateY}px`,
+    translate: `${dx}px ${dy + cTranslateY}px`,
     filter: cBlur > 0.25 ? `blur(${cBlur}px)` : undefined,
     textAlign: 'center',
   };
@@ -248,8 +279,15 @@ const Cue: React.FC<{cue: CueData; cueDurationFrames: number}> = ({cue, cueDurat
     );
   }
 
+  // on the seam the stack stands on the karaoke's baseline and grows upward
   return (
-    <AbsoluteFill style={{justifyContent: 'center', alignItems: 'center', padding: '0 90px'}}>
+    <AbsoluteFill
+      style={
+        seam == null
+          ? {justifyContent: 'center', alignItems: 'center', padding: '0 90px'}
+          : {justifyContent: 'flex-end', alignItems: 'center', padding: '0 90px', paddingBottom: seam}
+      }
+    >
       <div style={container}>{inner}</div>
     </AbsoluteFill>
   );
@@ -269,7 +307,7 @@ export const StackedCaptions: React.FC = () => {
         const isCircled = cue.preset === 'SOLO_OUTLINE';
         return (
           <Sequence key={cue.i} from={from} durationInFrames={dur} layout="none">
-            <Cue cue={cue} cueDurationFrames={dur} />
+            <Cue cue={cue} cueDurationFrames={dur} fromFrame={from} />
             {SFX_ON && isSolo ? (
               <Audio src={staticFile('sfx/caption-click.mp3')} volume={CLICK_VOL} />
             ) : null}

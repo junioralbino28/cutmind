@@ -58,7 +58,13 @@ Then copy `cut.mp4` into `public/` and generate the data files below.
     "paddingBottom": 420,
     // optional: ranges where the caption sits elsewhere (split screen parks it
     // on the seam). Resolved per FRAME, so a line crossing the boundary moves.
+    // Every caption style honours them.
     "windows": [{"start": 11.64, "end": 14.73, "paddingBottom": 1074}],
+    // optional: where the user dragged the phrases on the phone. Written by
+    // helpers/caption_positions.py, never by hand. x/y = block centre as fractions
+    // of the frame, `at` = the phrase's first word on the cut timeline.
+    // A phrase's own spot beats "all", and both beat the windows.
+    "positions": {"all": null, "phrases": [{"at": 12.48, "x": 0.5, "y": 0.3}]},
     "style": "karaoke"               // "karaoke" (default) | "stacked" (see below)
     // when "stacked": run caption_style.py → public/caption-cues.json, then the
     // stacked style renders (multi-font stack + pencil outline + click/scratch).
@@ -152,5 +158,7 @@ Rules that make it read as a style and not an accident:
   split blinks off for a frame or two between pictures.
 - **Captions ride the seam** while the split is up: add matching `captions.windows`
   with `paddingBottom = height - bandH - ~96`, and they drop back on their own.
+  All six caption styles ride it; a phrase the user placed by hand
+  (`captions.positions`) stays where it was put.
 - The head is re-framed by `VID_ZOOM`/`VID_FOCUS_Y` inside `HookSplitInner`;
   without it the source's headroom leaves a dead gap under the band.

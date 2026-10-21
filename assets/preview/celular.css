@@ -123,8 +123,9 @@ button { font-family: inherit; cursor: pointer; }
 .tap-play { position: absolute; inset: 0; background: transparent; border: 0; }
 /* ao aparar: quadro do vídeo de origem na alça, enquadrado como o vídeo */
 .peek { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; background: #000; z-index: 3; pointer-events: none; }
-/* fora do Estilo a prévia é só o vídeo */
-.player:not(.styling) .band, .player:not(.styling) .hl, .player:not(.styling) .cap { display: none !important; }
+/* fora do Estilo a prévia é só o vídeo (no "Posição das frases", o vídeo e a frase) */
+.player:not(.styling) .band, .player:not(.styling) .hl { display: none !important; }
+.player:not(.styling):not(.posicionando) .cap { display: none !important; }
 /* no Estilo o dedo desliza na prévia para trocar: o navegador não pode tomar o gesto */
 .player.styling .tap-play { touch-action: none; }
 /* em cima: embaixo ele cobria o título da faixa na "Tela dividida 2" e a legenda */
@@ -166,6 +167,14 @@ button { font-family: inherit; cursor: pointer; }
 .comp .hl { position: absolute; left: 0; right: 0; top: var(--hl-top); height: 30%; pointer-events: none; }
 .comp .hl .cap-demo { align-items: flex-start; } /* o render ancora a headline pelo topo */
 .comp .cap { position: absolute; left: 0; right: 0; top: calc(var(--cap-c) - 12%); height: 24%; pointer-events: none; }
+/* tela dividida: todo estilo de legenda assenta na linha do karaokê, sobre a emenda,
+   e cresce para cima (captionPlace.ts no template) */
+.comp.cap-seam .cap { top: auto; bottom: var(--cap-pb); height: 45%; }
+.comp.cap-seam .cap .cap-demo { align-items: flex-end; }
+/* frase com lugar escolhido pela pessoa: o CENTRO do bloco vai para --fx/--fy */
+.comp.cap-free .cap { top: 0; height: 100%; }
+.comp.cap-free .cap .cap-demo { inset: auto; left: var(--fx, 50%); top: var(--fy, 76%); translate: -50% -50%; width: max-content; }
+.comp.cap-free .stk-cue, .comp.cap-free .scat-cue { position: relative; }
 
 /* ---------- linha do play ---------- */
 .transport {
@@ -333,6 +342,19 @@ button { font-family: inherit; cursor: pointer; }
   position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px;
   background: var(--brand); border-radius: 2px;
 }
+/* "Posição das frases": um bloco por frase; tocar leva a agulha até ela */
+.chip.frase { pointer-events: auto; box-shadow: inset 2px 0 0 #8fb4ff; color: var(--dim); }
+.chip.frase.cur { color: var(--text); background: var(--surface2); outline: 1.5px solid #fff; outline-offset: -1.5px; }
+.chip.frase.own { box-shadow: inset 3px 0 0 var(--brand); }
+
+/* a frase que está na tela, pronta para arrastar */
+.player.posicionando .tap-play { touch-action: none; }
+.player.posicionando .cap .cap-demo::after {
+  content: ''; position: absolute; inset: -7px;
+  border: 1.5px dashed rgba(255, 255, 255, 0.85); border-radius: 6px;
+  pointer-events: none;
+}
+.player.posicionando .cap.own .cap-demo::after { border-color: var(--brand); }
 
 .trim-tip {
   position: absolute; top: 30px; left: 50%; transform: translateX(-50%);
@@ -456,6 +478,17 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 12px; font-weight: 600;
 }
 .subtab.on { background: var(--text); color: #111; }
+/* na mesma linha do filtro, à direita: abre o "Posição das frases" */
+.subtabs .pos-btn {
+  flex: none; margin-left: auto; height: 28px; padding: 0 10px 0 8px;
+  display: flex; align-items: center; gap: 5px;
+  border: 1px solid var(--line2); border-radius: 6px;
+  background: transparent; color: var(--text);
+  font-size: 12px; font-weight: 600;
+}
+.subtabs .pos-btn svg { width: 15px; height: 15px; flex: none; }
+.subtabs .pos-btn.own { border-color: var(--brand); }
+.subtabs .pos-btn:disabled { opacity: 0.4; }
 
 /* opções: cada cartão é um quadro do SEU vídeo com o estilo aplicado.
    Edição = quadro inteiro. Legenda e headline = recorte em volta do texto, 2 por

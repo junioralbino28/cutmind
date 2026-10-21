@@ -22,6 +22,7 @@ import {loadFont as loadInter} from '@remotion/google-fonts/Inter';
 import {measureText} from '@remotion/layout-utils';
 import captions from '../public/captions.json';
 import editData from '../public/edit-data.json';
+import {seamAt, spotCentre, spotFor} from './captionPlace';
 
 const POPPINS = loadPoppins('normal', {weights: ['600']}).fontFamily;
 const BASKERVILLE = loadBaskerville('normal', {weights: ['700']}).fontFamily;
@@ -145,7 +146,7 @@ function splitTwo(words: Word[], V: Variant): Word[][] {
 
 export const SimpleCaptions: React.FC<{variant: string}> = ({variant}) => {
   const frame = useCurrentFrame();
-  const {fps, durationInFrames} = useVideoConfig();
+  const {fps, durationInFrames, width, height} = useVideoConfig();
   const V = SIMPLE_VARIANTS[variant] ?? SIMPLE_VARIANTS.simples;
   const cues = buildCues(captions as Word[], V);
 
@@ -161,10 +162,22 @@ export const SimpleCaptions: React.FC<{variant: string}> = ({variant}) => {
   if (frame >= end) return null;
 
   const lines = splitTwo(cues[idx], V);
+  // the user's spot for this cue; else the split seam (same baseline as the
+  // karaoke); else the style's own band
+  const spot = spotFor(cues[idx][0].startMs / 1000, end / fps);
+  const shell: React.CSSProperties = {justifyContent: 'flex-end', alignItems: 'center', paddingBottom: seamAt(frame, fps) ?? V.bottom};
+  let place: React.CSSProperties = {};
+  if (spot) {
+    const w = Math.max(...lines.map((ln) => widthOf(ln, V)));
+    const h = lines.length * V.size * 1.18 * V.squeezeY;
+    const c = spotCentre(spot, w, h, width, height);
+    place = {position: 'absolute', left: c.x, top: c.y, translate: '-50% -50%'};
+  }
   return (
-    <AbsoluteFill style={{justifyContent: 'flex-end', alignItems: 'center', paddingBottom: V.bottom}}>
+    <AbsoluteFill style={spot ? undefined : shell}>
       <div
         style={{
+          ...place,
           textAlign: 'center',
           fontFamily: V.family,
           fontWeight: V.weight,

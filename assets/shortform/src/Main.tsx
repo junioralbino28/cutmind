@@ -34,6 +34,7 @@ import {CustomGraphics} from './CustomGraphics';
 import {StackedCaptions} from './StackedCaptions';
 import {ScatterCaptions} from './ScatterCaptions';
 import {SimpleCaptions, SIMPLE_VARIANTS} from './SimpleCaptions';
+import {spotFor, spotCentre, type Spot} from './captionPlace';
 
 const {fontFamily} = loadFont('normal', {weights: ['400', '600', '900']});
 
@@ -76,8 +77,12 @@ export type EditData = {
     safeWidth: number;
     paddingBottom: number;
     // ranges (seconds) where the caption sits somewhere else — used by the
-    // "tela dividida" style to park it on the seam between image and video
+    // "tela dividida" style to park it on the seam between image and video.
+    // Every caption style honours them (see captionPlace.ts).
     windows?: {start: number; end: number; paddingBottom: number}[];
+    // where the user dragged the phrases (helpers/caption_positions.py writes it):
+    // block centre as fractions of the frame, for all phrases and/or per phrase
+    positions?: {all?: {x: number; y: number} | null; phrases?: {at: number; x: number; y: number}[]};
     // "karaoke" (default, single line), "stacked" (multi-font stack + pencil
     // outline + click/scratch SFX, reads public/caption-cues.json) or "scatter"
     // (serif, lowercase, scattered word-by-word — reads captions.json alone).
@@ -280,10 +285,26 @@ const Word: React.FC<{caption: Caption; lineFromFrame: number}> = ({caption, lin
 // the "tela dividida" style parks it on the seam between image and video. It is
 // resolved PER FRAME, not per line: a line that starts before a window and runs
 // into it has to move mid-line, otherwise it stays stuck at the bottom.
-const CaptionShell: React.FC<{fromFrame: number; children: React.ReactNode}> = ({fromFrame, children}) => {
-  const {fps} = useVideoConfig();
+// A line the user dragged (`spot`) ignores both: it sits where it was put, kept
+// inside the frame by its visible size (boxW×boxH, after the safe-width fit).
+const CaptionShell: React.FC<{fromFrame: number; spot: Spot | null; boxW: number; boxH: number; children: React.ReactNode}> = ({
+  fromFrame,
+  spot,
+  boxW,
+  boxH,
+  children,
+}) => {
+  const {fps, width, height} = useVideoConfig();
   const local = useCurrentFrame();
   const C = D.captions;
+  if (spot) {
+    const c = spotCentre(spot, boxW, boxH, width, height);
+    return (
+      <AbsoluteFill>
+        <div style={{position: 'absolute', left: c.x, top: c.y, translate: '-50% -50%'}}>{children}</div>
+      </AbsoluteFill>
+    );
+  }
   // Compared in FRAMES, never seconds: window bounds are rounded in the JSON, and
   // an epsilon comparison there lands a frame off. +1 is the same video lag the
   // split layout compensates for (see VIDEO_LAG in CustomGraphics).
@@ -320,9 +341,10 @@ const Karaoke: React.FC = () => {
         });
         // safe-margin fit: scale down so the line clears the platform action rail
         const fit = Math.min(1, C.safeWidth / width);
+        const spot = spotFor(from / fps, nextFrom / fps);
         return (
           <Sequence key={i} from={from} durationInFrames={duration} layout="none">
-            <CaptionShell fromFrame={from}>
+            <CaptionShell fromFrame={from} spot={spot} boxW={width * fit} boxH={C.fontSize * fit}>
               <div
                 style={{
                   fontFamily,

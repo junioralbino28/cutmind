@@ -226,3 +226,21 @@ def test_quadro_da_fonte_do_edl(srv):
     r, corpo = pedir(srv.port, "GET", "/gen/frame?src=take1&t=0.5&h=120", remoto=True, cookie=CODIGO)
     assert r.status == 200 and r.getheader("Content-Type") == "image/jpeg"
     assert corpo[:2] == b"\xff\xd8"
+
+
+# ---- frases do Empilhado (modo "Posição das frases") ----
+def test_frases_do_empilhado_saem_do_diretor(srv):
+    pasta = srv.edit / "transcripts"
+    pasta.mkdir()
+    falas = [("Ação", 0.0), ("rápida", 0.4), ("é", 0.8), ("tudo.", 1.2), ("Agora", 2.5), ("vai", 2.9)]
+    palavras = [{"type": "word", "text": t, "start": s, "end": s + 0.3} for t, s in falas]
+    (pasta / "cut.json").write_text(json.dumps({"words": palavras}, ensure_ascii=False), encoding="utf-8")
+    r, corpo = pedir(srv.port, "GET", "/gen/frases?estilo=stacked")
+    assert r.status == 200
+    frases = json.loads(corpo)["frases"]
+    assert frases[0]["text"].startswith("Ação")  # lido em UTF-8 até sem o modo UTF-8 do Python
+    import caption_style
+    cues = caption_style.build_cues(caption_style.load_words(pasta / "cut.json"))
+    assert [f["start"] for f in frases] == [c["startMs"] / 1000 for c in cues]  # as do diretor, não uma cópia
+    assert pedir(srv.port, "GET", "/gen/frases?estilo=karaoke")[0].status == 400
+    assert pedir(srv.port, "GET", "/gen/frases?estilo=stacked", remoto=True)[0].status == 403  # dado: só com o código

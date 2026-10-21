@@ -88,6 +88,14 @@ def style_digest(p: Path) -> str:
         f'  · headline: {d.get("headlineName") or d.get("headline")}',
         f'  · legenda: {d.get("captionsName") or d.get("captions")}',
     ]
+    # frases arrastadas no celular: o lugar delas vale mais que o do estilo e o da emenda
+    pos = d.get("captionPositions") or {}
+    n = len(pos.get("phrases") or [])
+    if pos.get("all") or n:
+        bits = (["todas as frases num lugar escolhido"] if pos.get("all") else []) + \
+               ([f"{n} frase(s) com lugar próprio"] if n else [])
+        out.append(f'  · posição da legenda: {", ".join(bits)} → caption_positions.py grava '
+                   'captions.positions (references/shortform.md)')
     # Only worth reporting when the chosen styles actually paint an accent —
     # naming a colour that nothing uses reads as an instruction to go find a
     # place for it.

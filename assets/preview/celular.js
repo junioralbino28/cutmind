@@ -71,6 +71,8 @@ const ICON = {
   desfazer: sv('<path d="M3.5 7.5v6h6"/><path d="M20.5 17a8.5 8.5 0 0 0-8.5-8.5 8.6 8.6 0 0 0-5.9 2.4L3.5 13.5"/>', 1.9),
   refazer: sv('<path d="M20.5 7.5v6h-6"/><path d="M3.5 17a8.5 8.5 0 0 1 8.5-8.5 8.6 8.6 0 0 1 5.9 2.4l2.6 2.6"/>', 1.9),
   check: sv('<path d="M5 12.5l4.5 4.5L19 7.5"/>', 3),
+  mover: sv('<path d="M12 3.5v17M3.5 12h17"/><path d="M9.5 6 12 3.5 14.5 6M9.5 18l2.5 2.5 2.5-2.5M6 9.5 3.5 12 6 14.5M18 9.5l2.5 2.5-2.5 2.5"/>'),
+  todas: sv('<rect x="4" y="5" width="16" height="4" rx="1.4"/><rect x="4" y="11" width="16" height="4" rx="1.4"/><path d="M7 19.5h10"/>'),
   imagem: sv('<rect x="3" y="5" width="18" height="14" rx="2.6"/><circle cx="8.5" cy="10" r="1.6"/><path d="M4 17.5l5-4.6 3.4 3 2.4-2 5.2 4"/>'),
 };
 
@@ -80,7 +82,7 @@ const ICON = {
  * editor de PC ficam de fora: aqui cada opção aparece sobre um quadro do vídeo. */
 const {
   STYLE_CATALOG, ACCENT_USERS, ACCENT_DEFAULT, CAP_TEXT, HEADLINE_TEXT, HL_STYLES, STATIC_VARIANTS, ORPHAN_PT,
-  CAP_BUILDERS, buildHeadlineDemo, buildStaticDemo,
+  CAP_BUILDERS, buildHeadlineDemo, buildStaticDemo, capPhrases,
 } = CennoEstilos;
 
 // o "Nenhum" mais claro que o do PC: aqui ele fica sobre o vídeo, não sobre fundo liso
@@ -94,8 +96,9 @@ const NONE_MARK = '<svg viewBox="0 0 64 34" style="width:56%;height:auto">'
  * Fonte (mudou lá, muda aqui), tudo em px do quadro 1080x1920:
  *  - CustomGraphics.tsx: tela dividida, faixa de 750 e LAYOUT top/bottom (zoom, focusY)
  *  - references/shortform.md: legenda na emenda, paddingBottom 1074 / 790
- *  - Main.tsx: HL_STYLES.top da headline; CaptionShell do karaokê (o ÚNICO estilo de
- *    legenda que obedece captions.windows e vai para a emenda na tela dividida)
+ *  - Main.tsx: HL_STYLES.top da headline; captionPlace.ts: na tela dividida TODO estilo
+ *    de legenda assenta na linha do karaokê (captions.windows), e a frase que a pessoa
+ *    arrastou (captions.positions) fica onde foi posta
  *  - StackedCaptions / ScatterCaptions / SimpleCaptions: posição de cada legenda
  * O edit-data.json do projeto sobrepõe os padrões (paddingBottom, stackedOffsetY…).
  * Dois momentos do vídeo, que no render NUNCA aparecem juntos:
@@ -142,7 +145,7 @@ function hookText() {
 }
 
 const pct = (f) => `${(f * 100).toFixed(3)}%`;
-const GEOM_VARS = ['--win-top', '--win-h', '--m-left', '--m-top', '--m-w', '--m-h', '--band-top', '--band-h', '--hl-top', '--cap-c'];
+const GEOM_VARS = ['--win-top', '--win-h', '--m-left', '--m-top', '--m-w', '--m-h', '--band-top', '--band-h', '--hl-top', '--cap-c', '--cap-pb', '--fx', '--fy'];
 function applyGeom(node, look, moment) {
   const g = moment === 'meio' ? SPLIT_GEOM[look.edit] : null;
   for (const k of GEOM_VARS) node.style.removeProperty(k);
@@ -162,6 +165,10 @@ function applyGeom(node, look, moment) {
   node.style.setProperty('--cap-c', pct(capCenter(look, moment)));
   node.classList.toggle('is-split', !!g);
   node.classList.toggle('band-top', !!g && g.band === 'top');
+  // tela dividida: todo estilo de legenda na linha do karaokê, sobre a emenda
+  node.classList.toggle('cap-seam', !!g);
+  node.classList.remove('cap-free');
+  if (g) node.style.setProperty('--cap-pb', pct(g.capPB / FRAME_H));
 }
 function fillText(node, look, moment, anims, only) {
   const hl = node.querySelector('.hl');
@@ -194,7 +201,7 @@ async function loadCutWords() {
       const d = await r.json();
       S.cutWords = (d.words || [])
         .filter((w) => w.type !== 'spacing' && String(w.text || '').trim())
-        .map((w) => ({ t: String(w.text).trim(), s: +w.start, e: +w.end }));
+        .map((w) => ({ t: String(w.text).trim(), s: +w.start, e: +w.end, k: w.type }));
     }
   } catch (e) { /* sem transcrição do corte */ }
   return S.cutWords;
@@ -311,6 +318,12 @@ const S = {
   styleTab: 'edit',
   capFilter: 'uma',   // filtro da aba Legenda: 'uma' ou 'varias' (linhas)
   swipeTaught: false, // a dica "Deslize para trocar" já apareceu nesta visita
+  posMode: false,     // "Posição das frases": toca na frase sobre o vídeo e arrasta
+  frases: [],         // as frases da legenda escolhida, no relógio do cut.mp4
+  frasesFor: '',      // estilo e corte para os quais S.frases foi montado
+  fraseShown: null,   // a frase desenhada na prévia agora (a que está debaixo da agulha)
+  todas: false,       // botão "Todas": mexer em uma mexe em todas
+  posTaught: false,   // a dica "Toque na frase e arraste" já apareceu
   frameUrl: null,
   bandUrl: null,      // um quadro da imagem de apoio do projeto (cartões)
   bandFor: '',
@@ -481,8 +494,9 @@ function refreshHeader() {
 
 // ---------- desfazer / refazer ----------
 // Antes de cada ação que muda o corte ou as marcações (aparar, tirar, restaurar,
-// original, marcar, nota), guarda uma foto do estado. Depois de Salvar, ou quando
-// chega um corte novo do agente, o histórico zera: o que foi enviado não volta daqui.
+// original, marcar, nota, posição de frase), guarda uma foto do estado. Depois de
+// Salvar, ou quando chega um corte novo do agente, o histórico zera: o que foi
+// enviado não volta daqui.
 const HIST = { past: [], future: [], max: 100 };
 function snap() {
   return {
@@ -490,6 +504,7 @@ function snap() {
     notes: S.notes.map((n) => ({ ...n })),
     pendingIn: S.pendingIn,
     selected: S.selected,
+    pos: S.style ? JSON.parse(JSON.stringify(capPos())) : null,
   };
 }
 function remember(before) {
@@ -509,8 +524,10 @@ function restore(s) {
   S.notes = s.notes;
   S.pendingIn = s.pendingIn;
   S.selected = s.selected < S.draft.length ? s.selected : -1;
+  if (S.style && s.pos) S.style.captionPositions = JSON.parse(JSON.stringify(s.pos));
   S.t = clampT(S.t);
   renderTimeline(); renderToolbar(); refreshHeader(); renderHistory();
+  drawFrase(true);
 }
 function undo() {
   if (!HIST.past.length || G.mode) return;
@@ -661,6 +678,7 @@ function trackPlan() {
   const hasTxt = S.insertsDraft.some(isText);
   const hasIns = S.insertsDraft.some((c) => !isText(c));
   return [
+    { id: 'frases', h: 22, show: S.posMode && S.frases.length > 0 },
     { id: 'notes', h: 14, show: S.notes.length > 0 || S.pendingIn != null },
     { id: 'caps', h: 18, show: fin && S.captions.length > 0 },
     { id: 'text', h: 18, show: fin && hasTxt },
@@ -694,6 +712,7 @@ function renderTimeline() {
     lane.dataset.track = tr.id;
     lanes.push(lane);
     if (tr.id === 'video') renderTakes(lane);
+    else if (tr.id === 'frases') renderFrases(lane);
     else if (tr.id === 'notes') renderNotes(lane);
     else if (tr.id === 'caps') {
       for (const c of S.captions) {
@@ -716,6 +735,7 @@ function renderTimeline() {
   }
   sizeCanvases();
   positionTimeline();
+  if (S.posMode) markFrases();
 }
 
 function renderTakes(lane) {
@@ -806,6 +826,7 @@ function positionTimeline() {
   drawWave();
   $('tNow').textContent = fmt(S.t);
   $('tTotal').textContent = fmt(totalT());
+  drawFrase(); // no "Posição das frases": a frase debaixo da agulha (só refaz quando muda)
 }
 
 function drawRuler() {
@@ -954,7 +975,7 @@ timeline.addEventListener('pointerdown', (e) => {
   G.wasPlaying = !video.paused;
   // segurar uma tomada sem arrastar: ela sai da faixa e vai para onde o dedo levar
   const tk = e.target.closest('.take');
-  if (tk && S.view === 'corte') G.lp = setTimeout(() => startMove(+tk.dataset.i, e.clientX), 450);
+  if (tk && S.view === 'corte' && !S.posMode) G.lp = setTimeout(() => startMove(+tk.dataset.i, e.clientX), 450);
 });
 
 timeline.addEventListener('pointermove', (e) => {
@@ -1119,6 +1140,13 @@ function startMomentum(v) {
 }
 
 function tapAt(target) {
+  if (S.posMode) {
+    // no "Posição das frases" o toque na faixa leva a agulha até a frase; tomada não é escolhida
+    const fr = target && target.closest && target.closest('.chip.frase');
+    const f = fr && S.frases[+fr.dataset.i];
+    if (f) { S.t = clampT(renderedToDraft(f.start) + 0.02); positionTimeline(); preciseSeek(); }
+    return;
+  }
   if (target && target.closest && target.closest('.add-tile')) { $('fileInput').click(); return; }
   const note = target && target.closest && target.closest('.chip.note');
   if (note) { openNote(note.dataset.id, false); return; }
@@ -1159,8 +1187,10 @@ function togglePlay() {
   } else video.pause();
 }
 $('btnPlay').addEventListener('click', togglePlay);
-// logo depois de deslizar para trocar o estilo, o clique que o navegador manda junto não dá play
-$('tapPlay').addEventListener('click', () => { if (performance.now() - swipe.at > 400) togglePlay(); });
+// logo depois de deslizar para trocar o estilo, ou de mexer numa frase, o clique que o
+// navegador manda junto não dá play
+const tapGuard = { until: 0 };
+$('tapPlay').addEventListener('click', () => { if (performance.now() > tapGuard.until) togglePlay(); });
 video.addEventListener('play', () => { $('btnPlay').innerHTML = ICON.pause; });
 video.addEventListener('pause', () => { $('btnPlay').innerHTML = ICON.play; });
 video.addEventListener('ended', () => { $('btnPlay').innerHTML = ICON.play; });
@@ -1230,6 +1260,15 @@ function renderToolbar() {
     b.innerHTML = `${opts.icon || ICON[id]}<span>${label}</span>`;
     return b;
   };
+  if (S.posMode) { // "Posição das frases": a barra é do modo
+    tb.classList.add('hidden');
+    ctx.classList.remove('hidden');
+    ctx.innerHTML = '';
+    tool(ctx, 'pronto', 'Pronto', { icon: ICON.check, cls: 'back' });
+    tool(ctx, 'todas', 'Todas', { icon: ICON.todas, on: S.todas });
+    tool(ctx, 'padrao', 'Padrão', { icon: ICON.original });
+    return;
+  }
   tb.innerHTML = '';
   // Corte/Final virou o seletor do topo; Enviar virou o "+" no fim da faixa
   tool(tb, 'cortar', 'Cortar', { icon: ICON.corte, disabled: !hasVideo });
@@ -1269,6 +1308,13 @@ document.addEventListener('click', (e) => {
       break;
     }
     case 'original': remember(); r.start = r.orig.start; r.end = r.orig.end; renderTimeline(); renderToolbar(); refreshHeader(); break;
+    case 'pronto': exitPosMode(); break;
+    case 'todas':
+      S.todas = !S.todas;
+      renderToolbar();
+      flashName(`<span>${S.todas ? 'Todas: mexer em uma mexe em todas' : 'Só a frase que está na tela'}</span>`, 1800);
+      break;
+    case 'padrao': resetSpot(); break;
     default: break;
   }
 });
@@ -1509,7 +1555,7 @@ function closeStyle() {
   S.cardAnims = [];
   S.liveAnims = [];
   app.classList.remove('styling');
-  player.classList.remove('styling', 'is-split', 'band-top', 'sw-next', 'sw-prev');
+  player.classList.remove('styling', 'is-split', 'band-top', 'sw-next', 'sw-prev', 'cap-seam', 'cap-free');
   $('swipeName').classList.remove('on');
   for (const k of GEOM_VARS) player.style.removeProperty(k);
   setBand($('ovBand'), false);
@@ -1604,6 +1650,13 @@ function renderCapFilter(body) {
     b.dataset.f = id;
     b.textContent = label;
   }
+  // "Posição das frases": a borda laranja diz que já há frase fora do lugar do estilo
+  const p = capPos();
+  const pos = el('button', `pos-btn${p.all || p.phrases.length ? ' own' : ''}`, row);
+  pos.type = 'button';
+  pos.disabled = !S.style.captions || S.style.captions === 'none';
+  pos.innerHTML = `${ICON.mover}<span>Posição</span>`;
+  pos.setAttribute('aria-label', 'Posição das frases');
 }
 
 const CARD_ZOOM = 1.15; // nos cartões de legenda e headline o quadro aparece um pouco ampliado
@@ -1713,6 +1766,9 @@ function applyLive() {
   setBand($('ovBand'), player.classList.contains('is-split'), true);
   S.liveAnims = [];
   fillText(player, S.style, moment, S.liveAnims);
+  // a frase debaixo da agulha no lugar escolhido no "Posição das frases", se houver
+  const sp = S.frasesFor.startsWith(`${S.style.captions}|`) ? spotOf(fraseAt(draftToRendered(S.t))) : capPos().all;
+  if (sp) placeCap(player, sp);
 }
 
 function updateSummary() {
@@ -1746,6 +1802,8 @@ function pickStyle(key, id) {
   for (const c of card.parentNode.children) c.classList.toggle('on', c === card);
   const hint = $('sheetBody').querySelector('.sheet-hint');
   if (hint) hint.textContent = styleHint();
+  const pos = $('sheetBody').querySelector('.pos-btn');
+  if (pos) pos.disabled = S.style.captions === 'none';
   updateSummary();
   applyLive();
 }
@@ -1781,7 +1839,7 @@ function flashName(html, ms = 900) {
   clearTimeout(flashTimer);
   flashTimer = setTimeout(() => pill.classList.remove('on'), ms);
 }
-const swipe = { id: null, x: 0, y: 0, at: 0 };
+const swipe = { id: null, x: 0, y: 0 };
 player.addEventListener('pointerdown', (e) => {
   if (!S.styling || !SWIPE_TABS[S.styleTab]) return;
   swipe.id = e.pointerId; swipe.x = e.clientX; swipe.y = e.clientY;
@@ -1792,7 +1850,7 @@ window.addEventListener('pointerup', (e) => {
   swipe.id = null;
   const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
   if (Math.abs(dx) < 36 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
-  swipe.at = performance.now(); // o clique que vem junto não pode dar play
+  tapGuard.until = performance.now() + 400; // o clique que vem junto não pode dar play
   stepStyle(dx < 0 ? 1 : -1);
 });
 window.addEventListener('pointercancel', (e) => { if (e.pointerId === swipe.id) swipe.id = null; });
@@ -1802,6 +1860,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 $('sheetBody').addEventListener('click', (e) => {
+  if (e.target.closest('.pos-btn')) { enterPosMode(); return; }
   const sub = e.target.closest('.subtab');
   if (sub) {
     S.capFilter = sub.dataset.f;
@@ -1838,6 +1897,8 @@ $('sheetApply').addEventListener('click', async () => {
     elements: { ...S.style.elements },
     elementNames: STYLE_CATALOG.elements.filter((e) => S.style.elements[e.id]).map((e) => e.name),
     note: (S.style.note || '').trim(),
+    // frases arrastadas no "Posição das frases", ancoradas na gravação (caption_positions.py)
+    captionPositions: capPos(),
   };
   try {
     const res = await fetch('/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -1849,6 +1910,230 @@ $('sheetApply').addEventListener('click', async () => {
   } catch (err) {
     toast('Não consegui enviar — o editor ainda está ligado no computador?', 4000);
   }
+});
+
+// ---------- posição das frases (legenda livre) ----------
+/* Frase por frase, como no CapCut e no Edits: toca na frase sobre o vídeo e arrasta,
+ * e só ela muda; com "Todas" ligado, mexer em uma mexe em todas. Cada frase fica
+ * ancorada no MOMENTO DA GRAVAÇÃO da primeira palavra (source + at): um recorte feito
+ * depois não a desloca, e se aquele momento for cortado a frase volta ao lugar do
+ * estilo. O agente leva isso ao relógio do corte (helpers/caption_positions.py) e o
+ * template põe cada frase onde ela foi deixada (captionPlace.ts). */
+const noPos = () => ({ all: null, phrases: [] });
+function capPos() {
+  const p = S.style.captionPositions;
+  if (!p || typeof p !== 'object') return (S.style.captionPositions = noPos());
+  if (!(p.all && isFinite(p.all.x) && isFinite(p.all.y))) p.all = null;
+  if (!Array.isArray(p.phrases)) p.phrases = [];
+  return p;
+}
+// instante do cut.mp4 → momento da gravação, pela IMAGEM de cada tomada (como o render)
+function cutToSource(rt) {
+  const rl = renderedLayout();
+  for (let i = rl.length - 1; i >= 0; i--) {
+    if (rt + 1e-6 < rl[i].out) continue;
+    const R = S.rendered[i];
+    return { source: R.source, at: +(R.start + jcutGeom(i).lead + Math.min(rt - rl[i].out, rl[i].dur)).toFixed(3) };
+  }
+  return null;
+}
+// o contrário: todo lugar do cut.mp4 onde aquele momento aparece (tomada duplicada: mais de um)
+function sourceToCut(source, at) {
+  const out = [];
+  renderedLayout().forEach((L, i) => {
+    const R = S.rendered[i];
+    const v0 = R.start + jcutGeom(i).lead;
+    if (R.source === source && at >= v0 - 1e-3 && at < v0 + L.dur) out.push(L.out + (at - v0));
+  });
+  return out;
+}
+// as marcas que caem dentro da frase — a regra do template (captionPlace.ts): a mesma
+// folga nas duas pontas, senão a marca da frase seguinte também cai nesta
+const anchorsIn = (f) => capPos().phrases.filter((p) => sourceToCut(p.source, p.at).some((t) => t >= f.start - 0.05 && t < f.end - 0.05));
+// onde a frase fica: a marca dela → a de todas → null (o lugar do estilo)
+function spotOf(f) {
+  const own = f && anchorsIn(f)[0];
+  return own ? { x: own.x, y: own.y } : capPos().all;
+}
+const fraseAt = (rt) => S.frases.find((f) => rt >= f.start && rt < f.end) || null;
+
+async function loadFrases() {
+  const id = S.style.captions;
+  const key = `${id}|${S.mtimes.video || 0}`;
+  if (S.frasesFor === key) return S.frases;
+  let frases = [];
+  if (id === 'stacked') {
+    // as do diretor do render, servidas pelo PC (caption_style.py)
+    try { frases = (await (await fetch('/gen/frases?estilo=stacked')).json()).frases || []; } catch (e) { frases = []; }
+  } else if (id && id !== 'none') {
+    const words = await loadCutWords();
+    if (words && words.length) {
+      if (document.fonts && document.fonts.ready) await document.fonts.ready; // os estáticos agrupam pela largura NA FONTE
+      const ws = words.filter((w) => !w.k || w.k === 'word').map((w) => ({ text: w.t, start: w.s, end: w.e }));
+      frases = capPhrases(id, ws, { maxWords: capsCfg().maxWords });
+    }
+  }
+  S.frases = frases;
+  S.frasesFor = key;
+  return frases;
+}
+
+// o bloco nunca sai do quadro: 40 px do quadro 1080x1920 de folga, como no template
+function clampSpot(s, box) {
+  const P = player.getBoundingClientRect(), b = box.getBoundingClientRect();
+  const mx = 40 / FRAME_W + b.width / P.width / 2, my = 40 / FRAME_H + b.height / P.height / 2;
+  return {
+    x: mx >= 0.5 ? 0.5 : Math.min(Math.max(s.x, mx), 1 - mx),
+    y: my >= 0.5 ? 0.5 : Math.min(Math.max(s.y, my), 1 - my),
+  };
+}
+function placeCap(node, spot) {
+  const cap = node.querySelector('.cap');
+  const box = cap && cap.querySelector('.cap-demo');
+  node.classList.add('cap-free');
+  if (!box) return;
+  const s = spot || { x: 0.5, y: capCenter(S.style, 'abertura') }; // sem marca: o lugar do estilo
+  if (spot) node.classList.remove('cap-seam'); // o lugar escolhido vale mais que a emenda
+  const c = clampSpot(s, box);
+  node.style.setProperty('--fx', pct(c.x));
+  node.style.setProperty('--fy', pct(c.y));
+  cap.classList.toggle('own', !!spot);
+}
+// desenha a frase que está debaixo da agulha (só refaz quando ela muda)
+function drawFrase(force) {
+  if (!S.posMode) return;
+  const f = fraseAt(draftToRendered(S.t));
+  if (!force && f === S.fraseShown) return;
+  S.fraseShown = f;
+  const cap = $('ovCap');
+  cap.innerHTML = '';
+  cap.classList.remove('own');
+  if (f) {
+    const c = STYLE_CATALOG.captions.find((o) => o.id === S.style.captions) || {};
+    if (c.demo === 'stacked') CAP_BUILDERS.stacked(cap, f.text, true, f.cue || null);
+    else if (c.demo === 'scatter') CAP_BUILDERS.scatter(cap, f.text.toLowerCase(), true, f.gi ?? 1);
+    else if (c.demo) CAP_BUILDERS[c.demo](cap, f.text, true);
+    else if (c.stat) buildStaticDemo(cap, c.stat, f.text);
+    placeCap(player, spotOf(f));
+  }
+  markFrases();
+}
+function markFrases() {
+  for (const chip of tracksEl.querySelectorAll('.chip.frase')) {
+    const f = S.frases[+chip.dataset.i];
+    chip.classList.toggle('cur', f === S.fraseShown);
+    chip.classList.toggle('own', !!f && anchorsIn(f).length > 0);
+  }
+}
+function renderFrases(lane) {
+  S.frases.forEach((f, i) => {
+    const a = renderedToDraft(f.start), b = renderedToDraft(f.end);
+    const chip = el('div', 'chip frase', lane);
+    chip.dataset.i = i;
+    chip.style.left = `${a * S.pps}px`;
+    chip.style.width = `${Math.max((b - a) * S.pps - 2, 4)}px`;
+    chip.textContent = f.text;
+  });
+}
+
+// a frase vai para `spot`; com "Todas", todas vão (e as marcas próprias saem)
+function setSpot(f, spot) {
+  const p = capPos();
+  const s = { x: +spot.x.toFixed(4), y: +spot.y.toFixed(4) };
+  if (S.todas) {
+    p.all = s;
+    p.phrases = [];
+  } else {
+    const a = cutToSource(f.start);
+    if (!a) return;
+    const old = new Set(anchorsIn(f));
+    p.phrases = p.phrases.filter((q) => !old.has(q));
+    p.phrases.push({ ...a, ...s, text: f.text });
+  }
+  drawFrase(true);
+}
+function resetSpot() {
+  const p = capPos();
+  if (S.todas) {
+    if (!p.all && !p.phrases.length) { toast('Todas já estão no lugar do estilo', 2200); return; }
+    remember();
+    S.style.captionPositions = noPos();
+  } else {
+    const f = S.fraseShown;
+    const own = f ? anchorsIn(f) : [];
+    if (!own.length) {
+      toast(p.all ? 'Esta frase segue a posição de todas. Ligue "Todas" para mexer nelas.' : 'Esta frase já está no lugar do estilo', 2800);
+      return;
+    }
+    remember();
+    p.phrases = p.phrases.filter((q) => !own.includes(q));
+  }
+  drawFrase(true);
+}
+
+async function enterPosMode() {
+  if (!S.style.captions || S.style.captions === 'none') return;
+  if (edlDirty()) { toast('Salve os cortes antes: as frases saem do vídeo já cortado.', 3200); return; }
+  const frases = await loadFrases();
+  if (!frases.length) { toast('Ainda não há transcrição do corte para montar as frases.', 3200); return; }
+  closeStyle();
+  if (S.view !== 'corte') switchView('corte');
+  S.posMode = true;
+  S.selected = -1;
+  S.fraseShown = undefined;
+  app.classList.add('posicionando');
+  player.classList.add('posicionando');
+  applyGeom(player, S.style, 'abertura');
+  renderTimeline();
+  renderToolbar();
+  drawFrase(true);
+  if (!S.posTaught) { S.posTaught = true; flashName('<span>Toque na frase e arraste</span>', 2200); }
+}
+function exitPosMode() {
+  S.posMode = false;
+  S.fraseShown = undefined;
+  app.classList.remove('posicionando');
+  player.classList.remove('posicionando', 'cap-free', 'cap-seam');
+  for (const k of GEOM_VARS) player.style.removeProperty(k);
+  $('ovCap').innerHTML = '';
+  renderTimeline();
+  renderToolbar();
+  openStyle('captions');
+}
+
+// arrastar a frase na prévia (no resto da prévia, tocar continua dando play)
+const capDrag = { id: null };
+player.addEventListener('pointerdown', (e) => {
+  if (!S.posMode || !S.fraseShown) return;
+  const box = $('ovCap').querySelector('.cap-demo');
+  if (!box) return;
+  const b = box.getBoundingClientRect();
+  const pad = 14; // a moldura tracejada e um pouco mais: frase curta é alvo pequeno
+  if (e.clientX < b.left - pad || e.clientX > b.right + pad || e.clientY < b.top - pad || e.clientY > b.bottom + pad) return;
+  const P = player.getBoundingClientRect();
+  const c = clampSpot(spotOf(S.fraseShown) || { x: 0.5, y: capCenter(S.style, 'abertura') }, box);
+  Object.assign(capDrag, { id: e.pointerId, x0: e.clientX, y0: e.clientY, fx: c.x, fy: c.y, w: P.width, h: P.height, moved: false, spot: c, before: snap() });
+  video.pause();
+});
+window.addEventListener('pointermove', (e) => {
+  if (e.pointerId !== capDrag.id) return;
+  const dx = e.clientX - capDrag.x0, dy = e.clientY - capDrag.y0;
+  if (!capDrag.moved && Math.hypot(dx, dy) < 5) return;
+  capDrag.moved = true;
+  capDrag.spot = clampSpot({ x: capDrag.fx + dx / capDrag.w, y: capDrag.fy + dy / capDrag.h }, $('ovCap').querySelector('.cap-demo'));
+  player.style.setProperty('--fx', pct(capDrag.spot.x));
+  player.style.setProperty('--fy', pct(capDrag.spot.y));
+});
+window.addEventListener('pointerup', (e) => {
+  if (e.pointerId !== capDrag.id) return;
+  capDrag.id = null;
+  tapGuard.until = performance.now() + 400; // tocar ou arrastar a frase não dá play
+  if (!capDrag.moved || !S.fraseShown) return;
+  remember(capDrag.before);
+  setSpot(S.fraseShown, capDrag.spot);
+});
+window.addEventListener('pointercancel', (e) => {
+  if (e.pointerId === capDrag.id) { capDrag.id = null; drawFrase(true); }
 });
 
 // ---------- salvar ajustes do corte (os campos do editor de PC + take e ops) ----------

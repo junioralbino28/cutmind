@@ -29,6 +29,20 @@ restored takes, "Original", the start/end marks and the notes. The history is
 cleared after **Salvar** and whenever a new cut arrives from the agent, because
 what was already sent cannot be taken back from the phone.
 
+## Placing the captions
+
+Estilo → Legenda → **Posição** switches the Corte view to placing mode: the
+phrase under the needle shows over the video, a lane lists every phrase of the
+picked style, and the toolbar becomes **Pronto · Todas · Padrão**. Dragging moves
+only that phrase; with **Todas** on, one drag moves all of them and clears the
+per-phrase spots; **Padrão** sends the phrase (or, with Todas, every phrase) back
+to the style's place. A phrase with its own spot has an orange mark on its chip.
+Undo/redo covers it too.
+
+It opens only with the cut saved (the phrases come from the rendered cut) and a
+transcript of it. The spots travel in `preview_style.json` as `captionPositions`;
+the agent side is in `references/shortform.md` ("Where each phrase sits").
+
 ## Turning it on
 
 1. Only when the user asks ("abre no celular", "quero editar pelo celular"). The

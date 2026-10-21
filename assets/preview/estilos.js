@@ -191,13 +191,16 @@
 
   // Karaoke: lines of ≤3 words (captions.maxWords), Poppins 900 white, each word
   // rises 34px and fades in over 7 frames; the line is replaced by the next one.
-  function buildKaraokeDemo(host, text = CAP_TEXT) {
+  // `still`: the phrase as it stands once every word is in, on one line, no loop —
+  // the phone editor's "Posição das frases" drags it, it is not there to be watched.
+  function buildKaraokeDemo(host, text = CAP_TEXT, still = false) {
     const s = host.clientWidth / 1080;
     host.innerHTML = '';
     const wrap = el('div', 'cap-demo', host);
     const words = wordsOf(text);
     const lines = [];
-    for (let i = 0; i < words.length; i += 3) lines.push(words.slice(i, i + 3));
+    const per = still ? Math.max(1, words.length) : 3;
+    for (let i = 0; i < words.length; i += per) lines.push(words.slice(i, i + per));
 
     const STEP = 0.26, ENTER = 7 / FPS_REF, HOLD = 0.6;
     const rise = 34 * s;
@@ -216,6 +219,7 @@
       t = start + (ln.length - 1) * STEP + ENTER + HOLD;
       built.push({ box, spans, start, end: t });
     }
+    if (still) return null;
     const cycle = t + 0.3;
 
     return (now) => {
@@ -241,6 +245,29 @@
     { words: ['que', 'sua', 'legenda'], style: 1 },
     { words: ['irá', 'aparecer'], style: 2 },
   ];
+  // A cue from the director itself (caption_style.py, served by the preview at
+  // /gen/frases): its own lines, line styles and sizes, as StackedCaptions sizes
+  // them — fitFont at 1080 wide times FONT_SCALE 0.8, then the per-style tweaks.
+  const stkFit = (t, base, factor) => {
+    const n = Math.max(1, String(t).trim().length);
+    return (n * base * factor > 1125 ? Math.floor(1125 / (n * factor)) : base) * 0.8;
+  };
+  function cueLines(cue) {
+    if (cue.preset !== 'STACK_MIXED') {
+      const w = cue.lines[0][0];
+      const big = cue.preset === 'SOLO_BIG';
+      return [{ words: [w], style: big ? 0 : 3, size: stkFit(w, big ? 150 : 118, 0.6) }];
+    }
+    return cue.lines.map((ws, li) => {
+      const style = (cue.lineStyles || [])[li] ?? li % 4;
+      let size = stkFit(ws.join(' '), 86, 0.58);
+      if (style === 1) size *= 0.72;
+      if (style === 2) size *= 0.95;
+      if ((cue.lineEmph || [])[li]) size *= 1.12;
+      if ((cue.lineBoost || [])[li]) size *= 1.35;
+      return { words: ws, style, size: Math.round(size) };
+    });
+  }
   // Texto próprio: as mesmas linhas de 2, 3 e 2 palavras, girando os três estilos.
   function stackedLines(text) {
     if (text == null) return STK_LINES;
@@ -254,7 +281,7 @@
     }
     return lines;
   }
-  function buildStackedDemo(host, text) {
+  function buildStackedDemo(host, text, still = false, dirCue = null) {
     const s = host.clientWidth / 1080;
     host.innerHTML = '';
     const wrap = el('div', 'cap-demo', host);
@@ -265,11 +292,11 @@
     const shadow = `drop-shadow(0 ${(5 * s).toFixed(2)}px ${(9 * s).toFixed(2)}px rgba(0,0,0,0.5))`;
     const all = [];
     let idx = 0;
-    for (const L of stackedLines(text)) {
+    for (const L of dirCue ? cueLines(dirCue) : stackedLines(text)) {
       const row = el('div', 'stk-line', cue);
-      let size = 69;
-      if (L.style === 1) size = Math.round(size * 0.72);
-      if (L.style === 2) size = Math.round(size * 0.95);
+      let size = L.size || 69;
+      if (!L.size && L.style === 1) size = Math.round(size * 0.72);
+      if (!L.size && L.style === 2) size = Math.round(size * 0.95);
       row.style.fontSize = `${size * s}px`;
       L.words.forEach((w, i) => {
         // the face/gradient belongs to the WORD, like the template's `...ls` spread
@@ -278,6 +305,10 @@
         all.push({ sp, start: idx * STEP });
         idx++;
       });
+    }
+    if (still) {
+      for (const w of all) w.sp.style.filter = shadow;
+      return null;
     }
     const exitStart = (idx - 1) * STEP + ENTER + HOLD;
     // short gap after the exit: side by side with the karaoke card, a preview that
@@ -410,7 +441,9 @@
   const SCAT = { base: 58, hiScale: 1.62, gap: 12, spread: 0.45, safeW: 820 };
   const scatHash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 
-  function buildScatterDemo(host, text = CAP_TEXT) {
+  // `gi`: the cue's index in the video — the template hashes line breaks and offsets
+  // off it, so a real phrase breaks where the render breaks it (the cards use 1).
+  function buildScatterDemo(host, text = CAP_TEXT, still = false, gi = 1) {
     const s = host.clientWidth / 1080;
     host.innerHTML = '';
     const wrap = el('div', 'cap-demo', host);
@@ -432,7 +465,7 @@
         return;
       }
       line.push({ w, i, hi: false });
-      if (line.length >= (scatHash(31 + i) > 0.5 ? 4 : 3)) { lines.push(line); line = []; }
+      if (line.length >= (scatHash(gi * 31 + i) > 0.5 ? 4 : 3)) { lines.push(line); line = []; }
     });
     if (line.length) lines.push(line);
 
@@ -450,8 +483,9 @@
         w += sp.offsetWidth + SCAT.gap * s;
       }
       const room = Math.max(0, (SCAT.safeW * s - w) / 2) * SCAT.spread;
-      row.style.translate = `${((scatHash(17 + li * 5 + 3) * 2 - 1) * room).toFixed(1)}px 0px`;
+      row.style.translate = `${((scatHash(gi * 17 + li * 5 + 3) * 2 - 1) * room).toFixed(1)}px 0px`;
     });
+    if (still) return null; // every word in, the highlighted one already sharp
 
     const exitStart = (words.length - 1) * STEP + ENTER + HOLD;
     const cycle = exitStart + EXIT + 0.35;
@@ -539,6 +573,53 @@
     };
   }
 
+  /* ---------- the phrases of a real video: the template's own cue rules --------
+   * `words`: [{text, start, end}] in seconds (transcripts/cut.json — the words of
+   * captions.json). Returns [{gi, start, end, text}], `end` being when the next
+   * phrase takes over, exactly where each component switches cue:
+   *   karaoke  Main.tsx buildLines        — maxWords, or punctuation
+   *   scatter  ScatterCaptions buildCues  — 6 words, punctuation, or a 400ms gap
+   *   static   SimpleCaptions buildCues   — measured width, maxWords, punctuation, 450ms gap
+   * Stacked is not here: its director (caption_style.py) is served by the preview.
+   */
+  const capClean = (t) => String(t).replace(/[.,!?…]+$/, '');
+  const capBreak = (t) => /[.,!?…]$/.test(t);
+  function capPhrases(id, words, opts = {}) {
+    const groups = [];
+    let cur = [];
+    if (id === 'karaoke') {
+      const max = opts.maxWords || 3;
+      for (const w of words) {
+        cur.push(w);
+        if (cur.length >= max || capBreak(w.text)) { groups.push(cur); cur = []; }
+      }
+    } else if (id === 'scatter') {
+      words.forEach((w, i) => {
+        cur.push(w);
+        const nx = words[i + 1];
+        if (cur.length >= 6 || capBreak(w.text) || (nx ? nx.start - w.end : Infinity) > 0.4) { groups.push(cur); cur = []; }
+      });
+    } else if (STATIC_VARIANTS[id]) {
+      const V = STATIC_VARIANTS[id];
+      const wOf = (ws) => measureType(ws.map((x) => capClean(x.text)).join(' '), V.size, V.weight, V.family, V.tracking) * V.sx;
+      words.forEach((w, i) => {
+        const trial = [...cur, w];
+        if (cur.length && (trial.length > V.maxWords || wOf(trial) > V.maxW * V.lines)) { groups.push(cur); cur = [w]; } else cur = trial;
+        const nx = words[i + 1];
+        if (cur.length && (capBreak(w.text) || (nx ? nx.start - w.end : 0) > 0.45)) { groups.push(cur); cur = []; }
+      });
+    } else {
+      return [];
+    }
+    if (cur.length) groups.push(cur);
+    return groups.map((g, gi) => ({
+      gi,
+      start: g[0].start,
+      end: groups[gi + 1] ? groups[gi + 1][0].start : g[g.length - 1].end + 1,
+      text: g.map((w) => capClean(w.text)).join(' '),
+    }));
+  }
+
   const CAP_BUILDERS = { karaoke: buildKaraokeDemo, stacked: buildStackedDemo, scatter: buildScatterDemo };
 
   window.CennoEstilos = Object.freeze({
@@ -547,6 +628,6 @@
     bez, easeOutCubic, easeStack, clamp01,
     measureType, hlTwoLines, hlFit,
     buildKaraokeDemo, buildStackedDemo, buildHeadlineDemo, buildScatterDemo, buildStaticDemo,
-    CAP_BUILDERS,
+    CAP_BUILDERS, capPhrases,
   });
 })();
