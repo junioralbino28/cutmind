@@ -38,6 +38,7 @@ COR = ("scale=in_range=full:out_range=limited,format=yuv420p,"
        "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv")
 LOUDNORM = "loudnorm=I=-14:TP=-1:LRA=11"
 FADE_ITEM = 0.015  # entrada e saída curtinhas em cada camada: sem estalo no corte
+FADE_TRILHA = (0.4, 1.5)  # trilha da biblioteca: entra e sai como música, igual à soundtrack
 
 
 class CamadasNoMix(ValueError):
@@ -64,7 +65,7 @@ def montar(edit: Path, render: Path, saida: Path, vd: float, base: str = "cut",
     entradas: list[Path] = [Path(render)]
     partes = [f"[0:v]{COR}[vid]", f"anullsrc=r=48000:cl=stereo,atrim=duration={_n(vd)}[base]"]
     soma = ["[base]"]  # silêncio do tamanho do vídeo: a soma nunca fica vazia nem mais curta
-    resumo = {"voz": "fora", "trilha": False, "camadas": 0, "efeitos": 0}
+    resumo = {"voz": "fora", "trilha": False, "camadas": 0, "biblioteca": 0, "efeitos": 0}
 
     def entrada(p: Path) -> int:
         entradas.append(Path(p))
@@ -97,12 +98,14 @@ def montar(edit: Path, render: Path, saida: Path, vd: float, base: str = "cut",
         cadeia = [f"atrim=start={_n(it['corte'])}:duration={_n(d)}", "asetpts=PTS-STARTPTS"]
         if it["melhorar"]:
             cadeia.append(MELHORAR)
-        cadeia += [f"volume={_n(it['volume'])}", f"afade=t=in:st=0:d={FADE_ITEM}",
-                   f"afade=t=out:st={_n(max(0.0, d - FADE_ITEM))}:d={FADE_ITEM}",
+        fi, fo = (min(FADE_TRILHA[0], d / 2), min(FADE_TRILHA[1], d / 2)) if it.get("trilha") else (FADE_ITEM, FADE_ITEM)
+        cadeia += [f"volume={_n(it['volume'])}", f"afade=t=in:st=0:d={_n(fi)}",
+                   f"afade=t=out:st={_n(max(0.0, d - fo))}:d={_n(fo)}",
                    f"adelay={round(it['inicio'] * 1000) + lag}:all=1", FMT]
         partes.append(f"[{k}:a]{','.join(cadeia)}[c{n}]")
         soma.append(f"[c{n}]")
         resumo["camadas"] += 1
+        resumo["biblioteca"] += bool(it.get("trilha"))
 
     for n, (arq, t, vol) in enumerate(sfx):
         k = entrada(arq)
@@ -171,8 +174,9 @@ def main() -> int:
         print(subprocess.list2cmdline(cmd))
         return 0
     subprocess.run(cmd, check=True)
-    print(f"{saida.name}: voz {resumo['voz']}, trilha {'sim' if resumo['trilha'] else 'não'}, "
-          f"{resumo['camadas']} camada(s) de áudio, {resumo['efeitos']} efeito(s) · {verificar(saida)}")
+    bib = f" ({resumo['biblioteca']} trilha(s) da biblioteca)" if resumo["biblioteca"] else ""
+    print(f"{saida.name}: voz {resumo['voz']}, trilha do edit-data {'sim' if resumo['trilha'] else 'não'}, "
+          f"{resumo['camadas']} camada(s) de áudio{bib}, {resumo['efeitos']} efeito(s) · {verificar(saida)}")
     return 0
 
 

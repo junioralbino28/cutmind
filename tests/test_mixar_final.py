@@ -71,6 +71,17 @@ def test_camada_de_audio_entra_no_tempo_com_corte_volume_e_melhorar(tmp_path):
     assert resumo["camadas"] == 1
 
 
+def test_trilha_da_biblioteca_entra_e_sai_suave(tmp_path):
+    trilha = _aud("a1", "midia/calma-01.m4a", 0.0, 9.0, volume=0.15)
+    trilha["itens"][0]["trilha"] = "calma-01"
+    edit, _ = _projeto(tmp_path, {"video": {"mudo": False}, "faixas": [trilha, _aud("a2", "midia/voz.m4a", 1.0, 2.0)]})
+    cmd, resumo = montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0)
+    f = _filtro(cmd)
+    assert resumo["camadas"] == 2 and resumo["biblioteca"] == 1
+    assert "afade=t=in:st=0:d=0.400,afade=t=out:st=7.500:d=1.500" in f  # música: entra e sai devagar
+    assert "afade=t=in:st=0:d=0.015,afade=t=out:st=1.985:d=0.015" in f  # gravação: os 15 ms de sempre
+
+
 def test_som_do_video_desligado_tira_a_voz(tmp_path):
     edit, _ = _projeto(tmp_path, {"video": {"mudo": True}, "faixas": []})
     cmd, resumo = montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0)

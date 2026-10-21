@@ -309,3 +309,82 @@ def test_camadas_com_arquivo_de_fora_sao_recusadas(srv):
         assert r.status == 400 and "camadas" in json.loads(dados)["error"], arquivo
     assert not (srv.edit / "camadas.json").exists()
     assert not (srv.edit / "preview_edits.json").exists()
+
+
+# ---- biblioteca de trilhas: o celular escolhe, o servidor baixa ----
+@pytest.fixture
+def trilhas(srv, tmp_path):
+    """Uma Release local com uma trilha, e o servidor usando esse catálogo."""
+    import hashlib
+    from functools import partial
+    from http.server import SimpleHTTPRequestHandler
+
+    import pacotes as pk
+
+    raiz = tmp_path / "release"
+    (raiz / "trilhas-1").mkdir(parents=True)
+    musica, previa = b"M" * 3000, b"m" * 300
+    (raiz / "trilhas-1" / "calma-01.m4a").write_bytes(musica)
+    (raiz / "trilhas-1" / "calma-01.previa.m4a").write_bytes(previa)
+    rel = ps.ThreadingHTTPServer(("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=str(raiz)))
+    threading.Thread(target=partial(rel.serve_forever, poll_interval=0.05), daemon=True).start()
+    sha = lambda b: hashlib.sha256(b).hexdigest()  # noqa: E731
+    cat = pk.validar({"base": f"http://127.0.0.1:{rel.server_address[1]}", "pacotes": [
+        {"id": "calma-01", "tipo": "trilha", "nome": "Manhã leve", "clima": "calma", "duracao": 61.0,
+         "release": "trilhas-1", "arquivo": "calma-01.m4a", "tamanho": len(musica), "sha256": sha(musica),
+         "previa": {"arquivo": "calma-01.previa.m4a", "tamanho": len(previa), "sha256": sha(previa)}}]})
+    ps.Handler.pacotes = pk.Pacotes(cat, tmp_path / "cache", 10**9)
+    yield SimpleNamespace(musica=musica, previa=previa)
+    ps.Handler.pacotes = None
+    rel.shutdown()
+    rel.server_close()
+
+
+def _post_json(srv, caminho, corpo, **kw):
+    return pedir(srv.port, "POST", caminho, corpo=json.dumps(corpo).encode("utf-8"), **kw)
+
+
+def test_lista_de_trilhas_com_o_que_ja_baixou(srv, trilhas):
+    r, corpo = pedir(srv.port, "GET", "/api/pacotes?tipo=trilha", remoto=True, cookie=CODIGO)
+    dados = json.loads(corpo)
+    assert r.status == 200
+    assert [(p["id"], p["nome"], p["baixado"], p["favorito"]) for p in dados["pacotes"]] == [
+        ("calma-01", "Manhã leve", False, False)]
+
+
+def test_previa_da_trilha_sai_pelo_servidor(srv, trilhas):
+    r, corpo = pedir(srv.port, "GET", "/gen/pacote-previa?id=calma-01", remoto=True, cookie=CODIGO)
+    assert r.status == 200 and corpo == trilhas.previa and r.getheader("Content-Type") == "audio/mp4"
+    r, corpo = pedir(srv.port, "GET", "/gen/pacote-previa?id=nao-existe", remoto=True, cookie=CODIGO)
+    assert r.status == 404 and "error" in json.loads(corpo)
+
+
+def test_usar_trilha_poe_o_arquivo_na_midia_do_projeto(srv, trilhas):
+    r, corpo = _post_json(srv, "/api/pacotes/usar", {"id": "calma-01"}, remoto=True, cookie=CODIGO)
+    dados = json.loads(corpo)
+    assert r.status == 200, corpo
+    assert dados == {"arquivo": "midia/calma-01.m4a", "id": "calma-01", "nome": "Manhã leve", "duracao": 61.0}
+    assert (srv.edit / "midia" / "calma-01.m4a").read_bytes() == trilhas.musica
+    r, corpo = pedir(srv.port, "GET", "/api/pacotes?tipo=trilha", remoto=True, cookie=CODIGO)
+    assert json.loads(corpo)["pacotes"][0]["baixado"] is True
+
+
+def test_favoritar_trilha(srv, trilhas):
+    r, _ = _post_json(srv, "/api/pacotes/favorito", {"id": "calma-01", "on": True}, remoto=True, cookie=CODIGO)
+    assert r.status == 200
+    r, corpo = pedir(srv.port, "GET", "/api/pacotes", remoto=True, cookie=CODIGO)
+    assert json.loads(corpo)["pacotes"][0]["favorito"] is True
+
+
+def test_trilhas_sem_codigo_sao_barradas(srv, trilhas):
+    assert pedir(srv.port, "GET", "/api/pacotes", remoto=True)[0].status == 403
+    assert pedir(srv.port, "GET", "/gen/pacote-previa?id=calma-01", remoto=True)[0].status == 403
+    assert _post_json(srv, "/api/pacotes/usar", {"id": "calma-01"}, remoto=True)[0].status == 403
+    assert not (srv.edit / "midia").exists()
+
+
+def test_usar_pacote_desconhecido_ou_pedido_torto(srv, trilhas):
+    r, corpo = _post_json(srv, "/api/pacotes/usar", {"id": "nao-existe"}, remoto=True, cookie=CODIGO)
+    assert r.status == 404 and "desconhecido" in json.loads(corpo)["error"]
+    r, corpo = _post_json(srv, "/api/pacotes/usar", ["não", "é", "objeto"], remoto=True, cookie=CODIGO)
+    assert r.status == 400

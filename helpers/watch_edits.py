@@ -103,7 +103,8 @@ def camadas_linhas(c: dict) -> list[str]:
                     bits.append("melhorar")
                 if f.get("mudo"):
                     bits.append("silenciada: fica fora")
-                out.append(f'  · áudio "{nome}" de {fmt(ini)} a {fmt(ini + dur)}, {", ".join(bits)}')
+                rotulo = f'trilha "{it["trilha"]}" (biblioteca)' if it.get("trilha") else f'áudio "{nome}"'
+                out.append(f'  · {rotulo} de {fmt(ini)} a {fmt(ini + dur)}, {", ".join(bits)}')
             else:
                 fora = ", escondida: fica fora" if f.get("oculto") else ""
                 out.append(f'  · imagem "{nome}" de {fmt(ini)} a {fmt(ini + dur)}{fora}')

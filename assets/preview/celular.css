@@ -389,6 +389,9 @@ button { font-family: inherit; cursor: pointer; }
 .chip.layer .l-tag { flex: none; color: var(--brand); }
 .chip.layer.sel { overflow: visible; outline: 2px solid #fff; outline-offset: -1px; z-index: 3; }
 .track.mudo .chip.layer, .track.oculto .chip.layer { opacity: 0.4; }
+/* trilha da biblioteca: outra cor que a gravação, para achar a música de olho */
+.chip.layer.mus { background: #1b2433; box-shadow: inset 2px 0 0 #6aa8f0; }
+.chip.layer.mus .l-ico { color: #6aa8f0; }
 .track.travado .chip.layer { background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0 4px, transparent 4px 8px); }
 .lh {
   position: absolute; top: 0; bottom: 0;
@@ -523,6 +526,33 @@ button { font-family: inherit; cursor: pointer; }
   border-top: 1px solid var(--line);
 }
 .sheet-sum { display: none; }
+
+/* biblioteca de trilhas: uma linha por música; tocar na linha ouve, a escolhida mostra Usar */
+.sh-title { flex: 1; font-size: 14px; font-weight: 700; padding: 12px 6px 13px; }
+.tr-filtros { flex: none; padding-top: 12px; }
+.tr-lista { padding-top: 0; }
+.tr-row { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 10px 8px 14px; }
+.tr-row.on { background: var(--surface3); }
+.tr-play {
+  width: 44px; height: 44px; flex: none;
+  border: 0; border-radius: 8px;
+  background: var(--surface3); color: var(--text);
+  display: grid; place-items: center;
+}
+.tr-row.on .tr-play { background: var(--text); color: #111; }
+.tr-play svg { width: 15px; height: 15px; display: block; fill: currentColor; }
+.tr-play:disabled { opacity: 0.35; }
+.tr-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.tr-txt b { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr-txt span { font-size: 11.5px; color: var(--dim); }
+.tr-fav {
+  width: 40px; height: 40px; flex: none;
+  border: 0; background: transparent; color: var(--dim);
+  display: grid; place-items: center;
+}
+.tr-fav.on { color: var(--brand); }
+.tr-fav svg { width: 21px; height: 21px; display: block; }
+.tr-usar { height: 36px; padding: 0 16px; font-size: 13px; flex: none; }
 
 /* filtro dentro de uma aba (ex.: legenda de uma linha ou de várias) */
 .subtabs { display: flex; gap: 8px; padding: 0 14px 12px; overflow-x: auto; scrollbar-width: none; }

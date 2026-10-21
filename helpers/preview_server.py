@@ -35,6 +35,11 @@ Routes:
   /api/upload   POST    ?name=<arquivo>, corpo = o arquivo. Vídeo → pasta dos
                         vídeos (pai do <edit>) + aviso em <edit>/preview_upload.json;
                         imagem e áudio → <edit>/midia/ (camadas do projeto)
+  /api/pacotes  GET     ?tipo=trilha: a biblioteca do kit (pacotes.py), com o que já
+                        está baixado neste computador e os favoritos
+  /gen/pacote-previa?id=  a prévia de um pacote (baixa na primeira vez)
+  /api/pacotes/usar      POST {id}: baixa o pacote e copia para <edit>/midia/
+  /api/pacotes/favorito  POST {id, on}: favorito fica no cache, mesmo cheio
 
 Quem entra: por padrão o servidor ouve só em 127.0.0.1 e atende só este
 computador (e o celular ligado por `adb reverse`, que chega como 127.0.0.1).
@@ -70,6 +75,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote
 
 import camadas as cam  # mesma pasta deste arquivo
+import pacotes as pk  # mesma pasta deste arquivo
 
 APP_DIR = Path(__file__).resolve().parent.parent / "assets" / "preview"
 PEAKS_PER_SEC = 40
@@ -294,6 +300,7 @@ class Handler(BaseHTTPRequestHandler):
     upload_dir: Path | None = None
     max_upload: int = 8 * 1024 ** 3
     bind_host: str = "127.0.0.1"
+    pacotes: pk.Pacotes | None = None  # a biblioteca; nasce no primeiro pedido
     protocol_version = "HTTP/1.1"
     # Envio parado (celular saiu do Wi-Fi) não segura uma thread e um .parte para sempre.
     timeout = 300
@@ -483,6 +490,10 @@ class Handler(BaseHTTPRequestHandler):
             self._state()
         elif path == "/api/midia":
             self._midia()
+        elif path == "/api/pacotes":
+            self._pacotes_lista(query)
+        elif path == "/gen/pacote-previa":
+            self._pacote_previa(query)
         else:
             self._json({"error": "unknown route"}, 404)
 
@@ -492,6 +503,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/upload":
             self._upload(query)
+            return
+        if path in ("/api/pacotes/usar", "/api/pacotes/favorito"):
+            self._pacote_post(path)
             return
         if path != "/api/save":
             self._fail(404, "unknown route")
@@ -736,6 +750,69 @@ class Handler(BaseHTTPRequestHandler):
                     itens.append({"arquivo": f"{cam.MIDIA_DIR}/{f.name}", "nome": f.name,
                                   "tipo": tipo, "bytes": f.stat().st_size})
         self._json({"midia": itens})
+
+    # ---- biblioteca (pacotes.py) ----
+    def _biblioteca(self) -> pk.Pacotes | None:
+        cls = type(self)
+        if cls.pacotes is None:
+            try:
+                cls.pacotes = pk.Pacotes.do_ambiente()
+            except pk.PacoteErro as e:
+                self._json({"error": f"biblioteca: {e}"}, 500)
+                return None
+        return cls.pacotes
+
+    def _pacotes_lista(self, query: str) -> None:
+        pac = self._biblioteca()
+        if pac:
+            tipo = (parse_qs(query).get("tipo") or [None])[0]
+            self._json({"pacotes": pac.listar(tipo=tipo)})
+
+    def _pacote_previa(self, query: str) -> None:
+        pac = self._biblioteca()
+        if not pac:
+            return
+        try:
+            self._send_file(pac.previa((parse_qs(query).get("id") or [""])[0]))
+        except (pk.PacoteIndisponivel, pk.PacoteCorrompido) as e:
+            self._json({"error": str(e)}, 502)
+        except pk.PacoteErro as e:
+            self._json({"error": str(e)}, 404)
+
+    def _pacote_post(self, path: str) -> None:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self._fail(400, "invalid Content-Length")
+            return
+        if length > 10_000:
+            self._fail(413, "pedido grande demais")
+            return
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, json.JSONDecodeError):
+            body = None
+        if not isinstance(body, dict) or not isinstance(body.get("id"), str):
+            self._json({"error": "pedido sem id"}, 400)
+            return
+        pac = self._biblioteca()
+        if not pac:
+            return
+        try:
+            if path.endswith("/favorito"):
+                pac.favorito(body["id"], bool(body.get("on", True)))
+                self._json({"ok": True})
+                return
+            p = pac.pacote(body["id"])
+            dest = pac.obter(p["id"], para=self.root / cam.MIDIA_DIR)
+        except (pk.PacoteIndisponivel, pk.PacoteCorrompido) as e:
+            self._json({"error": str(e)}, 502)
+            return
+        except pk.PacoteErro as e:
+            self._json({"error": str(e)}, 404)
+            return
+        self._json({"arquivo": f"{cam.MIDIA_DIR}/{dest.name}", "id": p["id"], "nome": p["nome"],
+                    "duracao": p["duracao"]})
 
     # ---- dynamic bits ----
     def _state(self) -> None:

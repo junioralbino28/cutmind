@@ -85,6 +85,8 @@ const ICON = {
   cadeadoAberto: sv('<rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 6.6-1.6"/>'),
   melhorar: sv('<path d="M3.5 12h2.2M7.7 8.5v7M11.9 5.5v13M16.1 8.5v7M20.3 12h-2.2"/>'),
   volume: sv('<path d="M4.5 9.5v5h3.2l4.8 4V5.5l-4.8 4z"/><path d="M15.8 9a4 4 0 0 1 0 6"/>'),
+  estrela: sv('<path d="M12 3.8l2.5 5.1 5.6.8-4 3.9.9 5.6L12 16.6l-5 2.6.9-5.6-4-3.9 5.6-.8z"/>'),
+  estrelaCheia: sv('<path d="M12 3.8l2.5 5.1 5.6.8-4 3.9.9 5.6L12 16.6l-5 2.6.9-5.6-4-3.9 5.6-.8z" fill="currentColor"/>'),
 };
 
 /* ---------- catálogo de estilos e amostras: estilos.js ----------
@@ -347,6 +349,9 @@ const S = {
   layerSel: null,     // id do item de camada escolhido
   mudoUsuario: false, // o alto-falante da linha do play (só a prévia; não vai para o vídeo)
   midiaDur: {},       // duração de cada áudio de midia/, lida do arquivo
+  audioMenu: false,   // Áudio tocado: a barra mostra Trilhas / Do celular
+  trilhas: null,      // a biblioteca do kit (lista do servidor), carregada ao abrir
+  trilhaNomes: {},    // id da trilha → nome, para o bloco na linha do tempo
 };
 
 const fmt = (t) => {
@@ -1301,8 +1306,10 @@ function renderToolbar() {
   const ctx = $('ctxbar');
   const lsel = S.layerSel ? camItem(S.layerSel) : null;
   const sel = !lsel && S.selected >= 0 && S.view === 'corte' ? S.draft[S.selected] : null;
-  tb.classList.toggle('hidden', !!(sel || lsel));
-  ctx.classList.toggle('hidden', !(sel || lsel));
+  if (sel || lsel) S.audioMenu = false;
+  const amenu = S.audioMenu;
+  tb.classList.toggle('hidden', !!(sel || lsel || amenu));
+  ctx.classList.toggle('hidden', !(sel || lsel || amenu));
   const hasVideo = S.videoDuration > 0;
   const tool = (host, id, label, opts = {}) => {
     const b = el('button', `tool${opts.on ? ' on' : ''}${opts.armed ? ' armed' : ''}${opts.cls ? ` ${opts.cls}` : ''}`, host);
@@ -1332,12 +1339,19 @@ function renderToolbar() {
   tool(tb, 'marcar', S.pendingIn != null ? 'Fim' : 'Marcar', { armed: S.pendingIn != null, disabled: !hasVideo });
 
   ctx.innerHTML = '';
+  if (amenu) { // Áudio: uma trilha da biblioteca do kit ou um arquivo do celular
+    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
+    tool(ctx, 'trilhas', 'Trilhas', { icon: ICON.audio });
+    tool(ctx, 'do-celular', 'Do celular', { icon: ICON.enviar });
+    return;
+  }
   if (lsel) { // um item de camada escolhido
     const aud = lsel.f.tipo === 'audio';
     tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
     if (aud) {
       tool(ctx, 'volume', `${Math.round(lsel.it.volume * 100)}%`);
-      tool(ctx, 'melhorar', 'Melhorar', { on: lsel.it.melhorar });
+      // Melhorar é a cadeia de voz (tira ruído): numa música da biblioteca só estragaria
+      if (!lsel.it.trilha) tool(ctx, 'melhorar', 'Melhorar', { on: lsel.it.melhorar });
     }
     tool(ctx, 'excluir', 'Excluir', { icon: ICON.remover });
     return;
@@ -1363,9 +1377,11 @@ document.addEventListener('click', (e) => {
     case 'estilo': openStyle('edit'); break;
     case 'legenda': openStyle('captions'); break;
     case 'marcar': toggleMark(); break;
-    case 'audio': $('fileAudio').click(); break;
+    case 'audio': S.audioMenu = true; renderToolbar(); break;
+    case 'trilhas': S.audioMenu = false; renderToolbar(); openTrilhas(); break;
+    case 'do-celular': S.audioMenu = false; renderToolbar(); $('fileAudio').click(); break;
     case 'imagem': $('fileImagem').click(); break;
-    case 'voltar': S.selected = -1; S.layerSel = null; renderTimeline(); renderToolbar(); break;
+    case 'voltar': S.selected = -1; S.layerSel = null; S.audioMenu = false; renderTimeline(); renderToolbar(); break;
     case 'dividir': splitSelected(); break;
     case 'duplicar': duplicateSelected(); break;
     case 'excluir': if (S.layerSel) deleteLayerSel(); else deleteSelected(); break;
@@ -2300,6 +2316,8 @@ async function loadCamadas() {
   S.camadas = c && Array.isArray(c.faixas) ? { versao: 1, video: { mudo: !!(c.video && c.video.mudo) }, faixas: c.faixas } : camVazio();
   S.camadasBase = camSig();
   applyMute();
+  // trilha da biblioteca aparece pelo nome do catálogo, não pelo nome do arquivo
+  if (!S.trilhas && S.camadas.faixas.some((f) => f.itens.some((it) => it.trilha))) loadTrilhas().then(renderTimeline);
 }
 const nomeMidia = (arq) => String(arq || '').replace(/^midia\//, '');
 function newFaixaId(letra) {
@@ -2323,7 +2341,7 @@ function midiaDuration(arq) {
     a.src = `/media/${arq}`;
   });
 }
-async function addLayer(tipo, arquivo) {
+async function addLayer(tipo, arquivo, extra = {}) {
   const total = S.videoDuration || totalT();
   const inicio = +Math.min(draftToRendered(S.t), Math.max(0, total - 0.5)).toFixed(3);
   const resto = Math.max(0.5, total - inicio);
@@ -2333,7 +2351,7 @@ async function addLayer(tipo, arquivo) {
   const letra = tipo === 'audio' ? 'a' : 'i';
   const fid = newFaixaId(letra);
   const item = { id: `${fid}-1`, arquivo, inicio, duracao: +dur.toFixed(3) };
-  if (tipo === 'audio') Object.assign(item, { corte: 0, volume: 1, melhorar: false });
+  if (tipo === 'audio') Object.assign(item, { corte: 0, volume: 1, melhorar: false }, extra);
   const faixa = { id: fid, tipo, travado: false, itens: [item] };
   faixa[tipo === 'audio' ? 'mudo' : 'oculto'] = false;
   S.camadas.faixas.push(faixa);
@@ -2365,7 +2383,7 @@ function renderLayerTrack(track, lane, f) {
   track.classList.toggle('travado', f.travado);
   for (const it of f.itens) {
     const a = renderedToDraft(it.inicio), b = renderedToDraft(it.inicio + it.duracao);
-    const chip = el('div', `chip layer ${f.tipo === 'audio' ? 'aud' : 'img'}`, lane);
+    const chip = el('div', `chip layer ${f.tipo === 'audio' ? 'aud' : 'img'}${it.trilha ? ' mus' : ''}`, lane);
     chip.dataset.id = it.id;
     chip.style.left = `${a * S.pps}px`;
     chip.style.width = `${Math.max((b - a) * S.pps, 8)}px`;
@@ -2377,7 +2395,7 @@ function renderLayerTrack(track, lane, f) {
     } else {
       el('span', 'l-ico', chip).innerHTML = ICON.audio;
     }
-    el('span', 'l-name', chip).textContent = nomeMidia(it.arquivo);
+    el('span', 'l-name', chip).textContent = it.trilha ? (S.trilhaNomes[it.trilha] || it.trilha) : nomeMidia(it.arquivo);
     if (it.melhorar) el('span', 'l-tag', chip).innerHTML = ICON.melhorar;
     if (it.id === S.layerSel) {
       chip.classList.add('sel');
@@ -2576,6 +2594,166 @@ function syncLayers() {
     e.target.value = '';
     if (f) sendVideo(f); // o servidor separa: vídeo para a pasta dos vídeos, o resto para midia/
   });
+});
+
+/* ---------- trilhas: a biblioteca do kit (helpers/pacotes.py) ----------
+ * A lista vem do catálogo do kit, sem internet. A prévia e a trilha só descem
+ * quando a pessoa toca: o servidor baixa para o cache do computador e copia a
+ * trilha para midia/. Ela entra na agulha como camada de áudio, com volume de
+ * fundo, e a partir daí é uma camada como as outras (mover, aparar, volume). */
+const TRILHA_VOLUME = 0.15; // o mesmo do pacotes.py: embaixo da voz
+const PREV = new Audio();
+let trFiltro = 'todas', trSel = null, trBaixando = null;
+const trAberto = () => $('trilhaSheet').classList.contains('open');
+const fmtDur = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+async function loadTrilhas() {
+  try {
+    const r = await fetch('/api/pacotes?tipo=trilha');
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || `erro ${r.status}`);
+    S.trilhas = d.pacotes;
+  } catch (e) {
+    S.trilhas = S.trilhas || [];
+  }
+  for (const p of S.trilhas) S.trilhaNomes[p.id] = p.nome;
+}
+async function openTrilhas() {
+  video.pause();
+  if (!S.trilhas) $('trilhaLista').innerHTML = '<p class="sheet-hint">Carregando…</p>';
+  showSheet($('trilhaSheet'), true);
+  await loadTrilhas();
+  renderTrilhas();
+}
+function closeTrilhas() {
+  PREV.pause();
+  trSel = null;
+  showSheet($('trilhaSheet'), false);
+}
+function renderTrilhas() {
+  const lista = S.trilhas || [];
+  const climas = [...new Set(lista.map((p) => p.clima).filter(Boolean))];
+  const filtros = $('trilhaFiltros');
+  filtros.innerHTML = '';
+  for (const [id, nome] of [['todas', 'Todas'], ['favoritas', 'Favoritas'],
+    ...climas.map((c) => [c, c[0].toUpperCase() + c.slice(1)])]) {
+    const b = el('button', `subtab${trFiltro === id ? ' on' : ''}`, filtros);
+    b.type = 'button';
+    b.dataset.filtro = id;
+    b.textContent = nome;
+  }
+  const box = $('trilhaLista');
+  box.innerHTML = '';
+  const vis = lista.filter((p) => trFiltro === 'todas' || (trFiltro === 'favoritas' ? p.favorito : p.clima === trFiltro));
+  if (!vis.length) {
+    el('p', 'sheet-hint', box).textContent = !lista.length
+      ? 'A biblioteca deste kit ainda está vazia. Para usar uma música sua: Áudio → Do celular.'
+      : trFiltro === 'favoritas'
+        ? 'Toque na estrela de uma trilha para guardá-la aqui. A favorita fica neste computador.'
+        : 'Nenhuma trilha aqui.';
+    return;
+  }
+  const tocando = !PREV.paused && PREV.dataset.id;
+  for (const p of vis) {
+    const row = el('div', `tr-row${trSel === p.id ? ' on' : ''}`, box);
+    row.dataset.id = p.id;
+    const play = el('button', 'tr-play', row);
+    play.type = 'button';
+    play.dataset.act = 'ouvir';
+    play.disabled = !p.previa;
+    play.innerHTML = tocando === p.id ? ICON.pause : ICON.play;
+    play.setAttribute('aria-label', `${tocando === p.id ? 'Parar' : 'Ouvir'} ${p.nome}`);
+    const txt = el('div', 'tr-txt', row);
+    el('b', null, txt).textContent = p.nome;
+    const info = [p.clima, fmtDur(p.duracao)];
+    if (p.baixado) info.push('no computador');
+    el('span', null, txt).textContent = info.filter(Boolean).join(' · ');
+    const fav = el('button', `tr-fav${p.favorito ? ' on' : ''}`, row);
+    fav.type = 'button';
+    fav.dataset.act = 'favorito';
+    fav.innerHTML = p.favorito ? ICON.estrelaCheia : ICON.estrela;
+    fav.setAttribute('aria-label', p.favorito ? 'Tirar dos favoritos' : 'Favoritar');
+    fav.setAttribute('aria-pressed', String(!!p.favorito));
+    if (trSel === p.id) { // a escolhida mostra Usar, como no app de celular
+      const usar = el('button', 'tb-btn primary tr-usar', row);
+      usar.type = 'button';
+      usar.dataset.act = 'usar';
+      usar.textContent = trBaixando === p.id ? 'Baixando…' : 'Usar';
+      usar.disabled = !!trBaixando;
+    }
+  }
+}
+function ouvirTrilha(id) {
+  const p = (S.trilhas || []).find((x) => x.id === id);
+  if (!p) return;
+  if (trSel === id && !PREV.paused) { PREV.pause(); return; }
+  trSel = id;
+  if (p.previa) {
+    if (PREV.dataset.id !== id) {
+      PREV.src = `/gen/pacote-previa?id=${encodeURIComponent(id)}`;
+      PREV.dataset.id = id;
+    }
+    PREV.muted = S.mudoUsuario;
+    PREV.play().catch(() => {});
+  }
+  renderTrilhas();
+}
+async function favTrilha(id) {
+  const p = (S.trilhas || []).find((x) => x.id === id);
+  if (!p) return;
+  p.favorito = !p.favorito;
+  renderTrilhas();
+  try {
+    const r = await fetch('/api/pacotes/favorito', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, on: p.favorito }) });
+    if (!r.ok) throw new Error(String(r.status));
+  } catch (e) {
+    p.favorito = !p.favorito;
+    if (trAberto()) renderTrilhas();
+    toast('Não deu para favoritar agora', 2200);
+  }
+}
+async function usarTrilha(id) {
+  if (trBaixando) return;
+  trBaixando = id;
+  renderTrilhas();
+  try {
+    const r = await fetch('/api/pacotes/usar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || `erro ${r.status}`);
+    const p = S.trilhas.find((x) => x.id === id);
+    if (p) p.baixado = true;
+    S.trilhaNomes[id] = d.nome;
+    trBaixando = null;
+    closeTrilhas();
+    await addLayer('audio', d.arquivo, { volume: TRILHA_VOLUME, trilha: id });
+    toast(`"${d.nome}" entrou na agulha, com volume de fundo (${Math.round(TRILHA_VOLUME * 100)}%)`, 2600);
+  } catch (e) {
+    trBaixando = null;
+    if (trAberto()) renderTrilhas();
+    toast(`A trilha não baixou: ${e.message}`, 3600);
+  }
+}
+$('trilhaClose').innerHTML = ICON.fechar;
+$('trilhaClose').addEventListener('click', closeTrilhas);
+$('trilhaFiltros').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-filtro]');
+  if (!b) return;
+  trFiltro = b.dataset.filtro;
+  renderTrilhas();
+});
+$('trilhaLista').addEventListener('click', (e) => {
+  const row = e.target.closest('.tr-row');
+  if (!row) return;
+  const btn = e.target.closest('[data-act]');
+  const act = btn ? btn.dataset.act : 'ouvir'; // tocar na linha ouve, como no app
+  if (act === 'favorito') favTrilha(row.dataset.id);
+  else if (act === 'usar') usarTrilha(row.dataset.id);
+  else ouvirTrilha(row.dataset.id);
+});
+['play', 'pause'].forEach((ev) => PREV.addEventListener(ev, () => { if (trAberto()) renderTrilhas(); }));
+PREV.addEventListener('error', () => {
+  if (PREV.dataset.id && trAberto()) toast('A prévia não carregou. Confira a internet do computador.', 3000);
 });
 
 // ---------- avisos ----------

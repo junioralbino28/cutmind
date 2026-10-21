@@ -15,7 +15,9 @@ viram `inserts` no edit-data, `camadas_edit_data.py`) e o som do vídeo final
         "itens": [{"id": "i1-1", "arquivo": "midia/print.jpg", "inicio": 5.0, "duracao": 3.0}]}]}
 
 Cada faixa é uma camada: áudio tem "mudo", imagem tem "oculto", as duas têm "travado".
-`corte` é de onde o arquivo de áudio começa a tocar; `volume` vai de 0 a 2.
+`corte` é de onde o arquivo de áudio começa a tocar; `volume` vai de 0 a 2. Um áudio que
+veio da biblioteca de trilhas leva `"trilha": "<id do catálogo>"` (pacotes.py): o som
+final dá a ele a entrada e a saída lentas de música.
 """
 from __future__ import annotations
 
@@ -114,6 +116,8 @@ def normalize(obj: object) -> dict:
                 item["corte"] = _num(it.get("corte", 0), "corte")
                 item["volume"] = _num(it.get("volume", 1), "volume", 0.0, 2.0)
                 item["melhorar"] = bool(it.get("melhorar", False))
+                if it.get("trilha") is not None:
+                    item["trilha"] = _id(it.get("trilha"), "trilha")
             itens.append(item)
         faixa = {"id": fid, "tipo": tipo, "travado": bool(f.get("travado", False)), "itens": itens}
         faixa["mudo" if tipo == "audio" else "oculto"] = bool(f.get("mudo" if tipo == "audio" else "oculto", False))

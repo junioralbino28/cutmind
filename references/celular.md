@@ -72,17 +72,28 @@ and the disk is never filled past its last 512 MB.
 
 ## Images and audio (layers)
 
-**Áudio** and **Imagem** in the toolbar pick a file; it streams into `<edit>/midia/`
+**Imagem** in the toolbar picks a file; **Áudio** opens a second bar: **Trilhas**
+(the kit library) or **Do celular** (a file). A file streams into `<edit>/midia/`
 (never overwriting) and becomes a new layer at the needle: an image for 3 s, an
-audio for its own length (cut at the end of the video). Each layer is a track, as in
-any editor:
+audio for its own length (cut at the end of the video).
+
+**Trilhas** is a panel with mood filters (Todas, Favoritas, then each mood in the
+catalog). Tapping a row plays its 20 s preview (only the preview downloads) and
+shows **Usar**; the star keeps it as a favorite on the computer. **Usar** asks the
+server to download the track (`helpers/pacotes.py`, cached on the computer) and copy
+it to `midia/`; it lands at the needle as an audio layer marked `trilha`, at 15%,
+named as in the catalog and colored apart from recordings. A track that cannot
+download shows the reason and adds nothing.
+
+Each layer is a track, as in any editor:
 
 - A header pinned at the left: speaker (audio) or eye (image), plus a lock. The
   video track gets a speaker too: it turns the original sound off (in Corte). The
   speaker in the play row only mutes the phone's preview, nothing else.
 - Tap selects: **Voltar · Volume · Melhorar · Excluir** for audio (volume 0–200%;
-  Melhorar asks the agent to clean the noise and run the voice chain), **Voltar ·
-  Excluir** for an image. Hold and drag moves it; the white handles trim (audio
+  Melhorar asks the agent to clean the noise and run the voice chain — not offered on
+  a library track, where it would only damage the music), **Voltar · Excluir** for an
+  image. Hold and drag moves it; the white handles trim (audio
   cannot stretch past its file). A locked layer cannot be selected or moved.
 - Images are tracks above the video, audio below the original sound. The timeline
   grows with the layers up to a ceiling, then the tracks get thinner.

@@ -126,6 +126,16 @@
   </footer>
 </section>
 
+<!-- biblioteca de trilhas do kit: a prévia e a trilha só descem quando a pessoa toca -->
+<section class="sheet" id="trilhaSheet" aria-hidden="true">
+  <div class="sheet-head">
+    <button class="sh-close" id="trilhaClose" type="button" aria-label="Fechar"></button>
+    <b class="sh-title">Trilhas</b>
+  </div>
+  <div class="subtabs tr-filtros" id="trilhaFiltros"></div>
+  <div class="sheet-body tr-lista" id="trilhaLista"></div>
+</section>
+
 <input type="file" id="fileInput" accept="video/*" hidden>
 <input type="file" id="fileAudio" accept="audio/*" hidden>
 <input type="file" id="fileImagem" accept="image/*" hidden>

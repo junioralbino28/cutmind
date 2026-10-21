@@ -33,6 +33,8 @@ def test_completa_os_padroes_e_arredonda():
     {"faixas": [{"id": "a b", "tipo": "audio", "itens": []}]},
     {"faixas": [{"id": "a1", "tipo": "video", "itens": []}]},
     {"faixas": [_audio(), _audio()]},
+    {"faixas": [_audio(trilha="../fora")]},
+    {"faixas": [_audio(trilha=7)]},
     "não é objeto",
 ])
 def test_recusa_o_que_nao_presta(ruim):
@@ -55,3 +57,10 @@ def test_sem_arquivo_sao_camadas_vazias(tmp_path):
     assert cam.load(tmp_path / "camadas.json") == cam.vazio()
     cam.save(tmp_path / "camadas.json", {"faixas": [_audio()]})
     assert cam.load(tmp_path / "camadas.json")["faixas"][0]["itens"][0]["arquivo"] == "midia/v.mp3"
+
+
+def test_trilha_do_catalogo_fica_marcada_no_item():
+    comum = {"id": "a2", "tipo": "audio", "itens": [{"id": "a2-1", "arquivo": "midia/v.mp3", "duracao": 2, "trilha": None}]}
+    c = cam.normalize({"faixas": [_audio(trilha="calma-01"), comum]})
+    assert c["faixas"][0]["itens"][0]["trilha"] == "calma-01"
+    assert "trilha" not in c["faixas"][1]["itens"][0]  # áudio comum não ganha o campo

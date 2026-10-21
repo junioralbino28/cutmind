@@ -466,7 +466,26 @@ licensing to the user for logos/celebrities). Keep photographer credits.
 
 ## Phase 3 — soundtrack (short-form)
 
-Ask: **AI-generated** (Treblo) or **local file** (copy to `public/trilha.mp3`).
+Ask: **from the kit library** (first: no key, nothing to install), **AI-generated**
+(Treblo) or **local file** (copy to `public/trilha.mp3`).
+
+**From the kit library.** `uv run python -X utf8 helpers/pacotes.py listar --tipo trilha
+--busca <mood>` lists the soundtracks with mood (`calma`, `animada`…), length and name;
+pick by the energy of the cut transcript, then:
+```bash
+uv run python -X utf8 helpers/pacotes.py camada <edit> <id> [--inicio 0]
+```
+It downloads the track once (local cache, sha256 checked), copies it to
+`<edit>/midia/` and appends an audio layer marked `"trilha": "<id>"` to
+`camadas.json`, from `--inicio` to the end of the track or of the video, at volume
+**15%**. Library tracks are normalized to −14 LUFS, so 15% sits ~16 dB under the
+voice (measured in the proof mix: −20.6 dB of the total). It is a layer like any
+other: the user sees it on the phone (Áudio → Trilhas does the same thing there),
+can move, trim or change its volume, and `mixar_final.py` mixes it ("Layers from the
+editor") with a music fade: 0.4 s in, 1.5 s out. Do **not** also enable `soundtrack`
+in edit-data for the same music — it would play twice. Library empty or no internet
+(`erro: … não está no servidor de pacotes` / `sem conexão`) → fall back to Treblo or
+a local file.
 
 **Writing the Treblo prompt — derive it from the video's context, and ask for
 MUSIC, not a texture.** Read the cut transcript: what's the topic, energy and
@@ -575,7 +594,8 @@ cut.mp4 seconds, schema in `helpers/camadas.py`; every save also carries it in
    video's sound off —, the soundtrack when enabled, then every audio layer that
    plays (trim `corte`/`duracao`, volume 0–200%, `melhorar` → the
    `melhorar_audio.py` chain: noise reduction + the voice chain), delayed like the
-   voice so it stays where the user heard it. Effects go in composition time with
+   voice so it stays where the user heard it. A layer marked `trilha` (library
+   soundtrack) fades like music, 0.4 s in and 1.5 s out; the others keep 15 ms. Effects go in composition time with
    `--sfx <file>@<seconds>[:volume]`. Sum without normalizing, then loudnorm.
    `--base render` keeps Remotion's own audio (the stacked captions' SFX, see
    above) and only adds the layers; it refuses when the video's sound is off,
@@ -682,7 +702,7 @@ skill prompt is resent every turn.
 
 ## Helpers de Fase 2/3
 
-- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte; `uv sync --extra matting`) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental).
+- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte; `uv sync --extra matting`) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`pacotes.py`** (kit library: `listar --tipo trilha`, `camada <edit> <id>`) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental).
 
 ---
 

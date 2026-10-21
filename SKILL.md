@@ -93,6 +93,8 @@ Phase 1:
 Phase 2/3 helpers (captions, face tracking, image search, music) are listed in
 the track reference you load after the gate.
 
+- **`pacotes.py listar|obter|camada|favorito|cache|atualizar`** — the kit's library (soundtracks today; effects, transitions and filters as they are converted). The catalog (`assets/pacotes/catalogo.json`) says what exists; a package downloads only when used, into a local cache (`~/.cenno-edit/pacotes`, 2 GB, favorites kept), checked by sha256. `pacotes.py camada <edit> <id>` puts a soundtrack on the timeline as an audio layer — the same `camadas.json` the editor writes.
+
 Interface:
 - **`preview_server.py --root <edit> [--port 4820] [--host 0.0.0.0]`** — serves the standard preview interface (see the Preview interface section). App code lives at `assets/preview/` and is IMMUTABLE. `--host` opens it to the phone, with a code — only when the user asks; read `references/celular.md` first.
 

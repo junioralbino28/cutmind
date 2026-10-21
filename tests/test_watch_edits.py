@@ -64,6 +64,16 @@ def test_corte_e_camadas_no_mesmo_salvar_pede_remapear(tmp_path):
     assert "corte ANTIGO" not in digest(p)
 
 
+def test_aviso_diz_que_e_trilha_da_biblioteca(tmp_path):
+    p = tmp_path / "preview_edits.json"
+    camadas = {"video": {"mudo": False}, "faixas": [{"id": "a1", "tipo": "audio", "mudo": False, "itens": [
+        {"id": "a1-1", "arquivo": "midia/calma-01.m4a", "inicio": 0, "duracao": 30, "volume": 0.15,
+         "trilha": "calma-01"}]}]}
+    p.write_text(json.dumps({"type": "timeline-edits", "camadas": camadas}), encoding="utf-8")
+    aviso = digest(p)
+    assert 'trilha "calma-01" (biblioteca) de 0:00.00' in aviso and "volume 15%" in aviso
+
+
 def test_aviso_de_camadas_vazias(tmp_path):
     p = tmp_path / "preview_edits.json"
     p.write_text(json.dumps({"type": "timeline-edits", "camadas": {"video": {"mudo": False}, "faixas": []}}), encoding="utf-8")
