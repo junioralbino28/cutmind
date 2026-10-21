@@ -18,7 +18,9 @@ shell snippets:
   - It finds the agent by itself — Claude Code, Codex, or anything else with a
     skills directory — instead of asking the user which one they run.
   - It verifies ffmpeg and Node afterwards and prints the exact install command
-    for THEIR platform when something is missing.
+    for THEIR platform when something is missing. Node.js (Phase 2) it installs by
+    itself when absent — winget on Windows, Homebrew on macOS — because "install
+    Node first" was the step people skipped; an existing Node is never touched.
 
 Deliberately stdlib-only: it has to run before anything is installed.
 """
@@ -27,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -70,6 +73,10 @@ AGENT_DIRS: list[tuple[str, Path]] = [
 # which should leak into ~/.claude/skills or ~/.codex/skills. Keeping the
 # payload explicit also makes a future accidental large commit harmless to the
 # installed copy.
+# Remotion 4 needs Node 18+. Below that we warn and do not upgrade on our own:
+# the same Node runs the user's other projects.
+NODE_MIN = 18
+
 SKILL_PAYLOAD = (
     "README.md",
     "SKILL.md",
@@ -330,6 +337,75 @@ def hint(tool: str) -> str:
             "git": "sudo apt install git"}[tool]
 
 
+def node_version(exe: str | None = None) -> int | None:
+    """The major version of `node` (or of `exe`), or None when absent/unreadable."""
+    exe = exe or shutil.which("node")
+    if not exe:
+        return None
+    try:
+        out = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    m = re.match(r"\s*v(\d+)\.", out or "")
+    return int(m.group(1)) if m else None
+
+
+def _node_apos_instalar() -> str | None:
+    """winget and brew only reach the PATH of NEW terminals, so this one may not
+    see the fresh node: look where they put it."""
+    cands = [shutil.which("node")]
+    if sys.platform == "win32":
+        for base in (os.environ.get("ProgramFiles"), os.environ.get("ProgramW6432")):
+            if base:
+                cands.append(os.path.join(base, "nodejs", "node.exe"))
+    elif sys.platform == "darwin":
+        cands += ["/opt/homebrew/bin/node", "/usr/local/bin/node"]
+    return next((c for c in cands if c and os.path.isfile(c)), None)
+
+
+def install_node() -> str | None:
+    """Node.js LTS by the system's own package manager, with no questions asked.
+
+    Linux is left to the hint on purpose: apt asks for a password and the
+    distribution's nodejs is often older than 18. Returns the node path or None.
+    """
+    if sys.platform == "win32" and shutil.which("winget"):
+        cmd = ["winget", "install", "--id", "OpenJS.NodeJS.LTS", "-e", "--silent",
+               "--accept-package-agreements", "--accept-source-agreements"]
+        log("  Node.js não encontrado: instalando a versão LTS pelo winget (Fase 2).")
+        log("  O Windows pode pedir permissão: é o instalador oficial do Node.js.")
+    elif sys.platform == "darwin" and shutil.which("brew"):
+        cmd = ["brew", "install", "node"]
+        log("  Node.js não encontrado: instalando pelo Homebrew (Fase 2)…")
+    else:
+        return None
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=1200)
+    except (OSError, subprocess.SubprocessError) as e:
+        log(f"  ! a instalação do Node.js não rodou: {e}")
+        return None
+    exe = _node_apos_instalar()
+    if not exe and r.returncode != 0:
+        log("  ! a instalação do Node.js falhou:")
+        log("    " + ((r.stderr or "") + (r.stdout or "")).strip()[-400:])
+    return exe
+
+
+def garantir_node(pode_instalar: bool) -> tuple[str, str]:
+    """The state of Node for Phase 2: ("ok", "v24"), ("instalado", path),
+    ("velho", "v16") or ("falta", "")."""
+    v = node_version()
+    if v is not None:
+        return ("ok" if v >= NODE_MIN else "velho", f"v{v}")
+    if pode_instalar:
+        exe = install_node()
+        v2 = node_version(exe) if exe else None
+        if v2 is not None and v2 >= NODE_MIN:
+            return "instalado", exe
+    return "falta", ""
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         prog="cenno-edit-install",
@@ -344,7 +420,9 @@ def main() -> None:
     ap.add_argument("--source", default=None,
                     help="instalar a partir de uma pasta local (um clone), sem baixar")
     ap.add_argument("--skip-deps", action="store_true",
-                    help="não rodar o uv sync (usado nos testes)")
+                    help="não rodar o uv sync nem instalar o Node.js (usado nos testes)")
+    ap.add_argument("--no-node", action="store_true",
+                    help="não instalar o Node.js sozinho quando faltar (só avisar)")
     args = ap.parse_args()
 
     log("cenno-edit — instalação")
@@ -418,13 +496,26 @@ def main() -> None:
         log(f"  x uv         — necessário: {hint('uv')}")
     else:
         log("  ok uv")
-    for tool, why in (("ffmpeg", "corte e render (Fase 1)"),
-                      ("node", "Remotion (Fase 2)")):
-        if shutil.which(tool):
-            log(f"  ok {tool}")
-        else:
-            missing.append(tool)
-            log(f"  x {tool:10} — {why}. Instale com: {hint(tool)}")
+    if shutil.which("ffmpeg"):
+        log("  ok ffmpeg")
+    else:
+        missing.append("ffmpeg")
+        log(f"  x ffmpeg     — corte e render (Fase 1). Instale com: {hint('ffmpeg')}")
+    # Node only matters for Phase 2, so --no-remotion never installs it.
+    estado, info = garantir_node(
+        pode_instalar=not (args.skip_deps or args.no_remotion or args.no_node))
+    if estado == "ok":
+        log("  ok node")
+    elif estado == "instalado":
+        log(f"  ok node       — instalado agora ({info}).")
+        log("                 Abra um terminal novo para ele entrar no PATH.")
+    elif estado == "velho":
+        missing.append("node")
+        log(f"  x node       — {info} é antigo: o Remotion (Fase 2) pede {NODE_MIN}+."
+            f" Atualize com: {hint('node')}")
+    else:
+        missing.append("node")
+        log(f"  x node       — Remotion (Fase 2). Instale com: {hint('node')}")
     # git is not an cenno-edit dependency — the install above used no git at all. But
     # Claude Code leans on it, so its absence is worth a word rather than
     # silence. Deliberately NOT added to `missing`: nothing here is blocked by it.

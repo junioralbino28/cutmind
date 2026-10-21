@@ -31,7 +31,9 @@ editing, read `SKILL.md`. Always read `helpers/` — that's where the scripts li
    normal dependency, not an extra.
 3. `ffmpeg` + `ffprobe` on PATH — Phase 1 cannot run without them.
 4. **Node.js 18+** and the `remotion-best-practices` skill — Phase 2 only. The
-   installer fetches that skill too.
+   installer fetches that skill too, and installs Node.js LTS by itself when it
+   is missing (winget on Windows, Homebrew on macOS; `--no-node` turns that off).
+   An existing Node is never upgraded, only reported when older than 18.
 **No key is part of the install.** WhisperX transcribes locally, and Phase 1 needs
 nothing else. Phase 2/3 have a few optional keys for illustrative images and the
 AI soundtrack; they live in the track reference and are asked for only when the
@@ -110,7 +112,14 @@ Do not invent a password.
 
 ### Node.js + the Remotion skill (Phase 2)
 
-The installer handles this. To do it by hand: the skill lives in a
+The installer handles both. Node.js: when `node` is absent it runs
+`winget install --id OpenJS.NodeJS.LTS -e --silent` (Windows may show its
+permission prompt — the official Node.js installer) or `brew install node`, then
+finds the new `node` even though this terminal's PATH does not have it yet; the
+user opens a new terminal afterwards. Linux gets the command only (apt asks for a
+password, and the distribution's package is often older than 18).
+
+To do the Remotion skill by hand: it lives in a
 **subdirectory** of its repo (`skills/remotion-best-practices` — upstream
 renamed it from `skills/remotion` and turned it into a router bundling a dozen
 sub-skills), so it cannot be cloned into place. The repo is small, which makes

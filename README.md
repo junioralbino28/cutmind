@@ -21,4 +21,4 @@ só entra quem abriu pelo link ou QR, que levam um código deste computador.
 
     python cenno_edit_install.py --source .
 
-Precisa de `uv`, `ffmpeg` e Node.js instalados.
+Precisa de `uv` e `ffmpeg` instalados. O Node.js (Fase 2) o instalador põe sozinho quando falta: pelo winget no Windows e pelo Homebrew no Mac. No Linux ele mostra o comando.
