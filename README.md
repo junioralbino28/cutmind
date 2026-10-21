@@ -1,4 +1,7 @@
-# CutMind
+<h1><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/preview/cutmind-logo-white.png">
+  <img src="assets/preview/cutmind-logo.png" alt="CutMind" height="44">
+</picture></h1>
 
 Edição de vídeo por conversa, no Claude Code e no Codex. Você coloca o vídeo
 bruto numa pasta, abre o agente ali e pede a edição: ele transcreve, escolhe as
