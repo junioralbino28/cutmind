@@ -9,6 +9,14 @@ sua máquina.
 
 > Em construção.
 
+## Editar pelo celular
+
+O mesmo editor abre no navegador do celular, no jeito do CapCut: linha do tempo
+com o dedo, estilo de legenda visto sobre o seu próprio vídeo, envio de vídeo da
+galeria e baixar o final. Peça ao agente "abre o editor no celular" e escaneie o
+QR que aparece no botão **Abrir no celular** do editor do computador. Pela rede,
+só entra quem abriu pelo link ou QR, que levam um código deste computador.
+
 ## Instalar a partir desta pasta
 
     python cenno_edit_install.py --source .
