@@ -5,9 +5,9 @@ O editor ancora cada frase no MOMENTO DA GRAVAÇÃO da primeira palavra dela
 (`source` + `at`, em segundos no arquivo de origem): um recorte feito depois não
 desloca a frase, e uma frase cujo momento foi cortado simplesmente some.
 
-O template precisa do relógio do cut.mp4. Este helper faz a conta pelo edl.json,
-inclusive o J-cut (`jcut_timeline`: a imagem de cada tomada começa `lead` depois
-do áudio), e grava em edit-data.json → `captions.positions`:
+O template precisa do relógio do cut.mp4. Este helper faz a conta pelo edl.json
+(tempo.py: J-cut e velocidade de cada tomada), e grava em edit-data.json →
+`captions.positions`:
 
     {"all": {"x": 0.5, "y": 0.62} | null,
      "phrases": [{"at": <segundos no cut.mp4>, "x": 0.5, "y": 0.3}, ...]}
@@ -23,34 +23,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # roda também com -I
+import tempo  # noqa: E402  (mesma pasta: o relógio do corte, com J-cut e velocidade)
 
 
 def _clamp01(v: object) -> float:
     return min(1.0, max(0.0, float(v)))  # type: ignore[arg-type]
-
-
-def picture_spans(edl: dict) -> list[dict]:
-    """Cada tomada como a IMAGEM do cut.mp4 mostra: o trecho [v_in, v_out) do
-    arquivo de origem e onde ele começa no corte (`out`)."""
-    ranges = edl.get("ranges") or []
-    jt = edl.get("jcut_timeline")
-    spans: list[dict] = []
-    if jt and len(jt) == len(ranges):
-        for r, j in zip(ranges, jt):
-            # a imagem entra `lead` depois do áudio da mesma tomada (render.py, plan_jcut)
-            lead = max(0.0, float(j["video_start_in_output"]) - float(j["audio_start_in_output"]))
-            v_in = float(r["start"]) + lead
-            spans.append({"source": r["source"], "v_in": v_in,
-                          "v_out": v_in + float(j["video_duration"]),
-                          "out": float(j["video_start_in_output"])})
-        return spans
-    out = 0.0
-    for r in ranges:
-        a, b = float(r["start"]), float(r["end"])
-        spans.append({"source": r["source"], "v_in": a, "v_out": b, "out": out})
-        out += b - a
-    return spans
 
 
 def to_cut(positions: dict, edl: dict) -> tuple[dict, list[dict]]:
@@ -58,7 +39,7 @@ def to_cut(positions: dict, edl: dict) -> tuple[dict, list[dict]]:
 
     Um momento que aparece duas vezes no corte (tomada duplicada) vale nas duas.
     """
-    spans = picture_spans(edl)
+    spans = tempo.tomadas_no_corte(edl)
     phrases: list[dict] = []
     dropped: list[dict] = []
     for p in positions.get("phrases") or []:
@@ -67,7 +48,7 @@ def to_cut(positions: dict, edl: dict) -> tuple[dict, list[dict]]:
         except (KeyError, TypeError, ValueError):
             dropped.append(p)
             continue
-        hits = [s["out"] + (at - s["v_in"]) for s in spans
+        hits = [tempo.no_corte(s, at) for s in spans
                 if s["source"] == p.get("source") and s["v_in"] - 1e-3 <= at < s["v_out"]]
         if not hits:
             dropped.append(p)

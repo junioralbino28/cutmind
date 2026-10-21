@@ -22,7 +22,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import tempo  # noqa: E402  (same folder: the cut's clock)
 
 
 def captions_from_transcript(transcript_path: Path) -> list[dict]:
@@ -53,23 +57,21 @@ def build_captions(edl: dict, edit_dir: Path) -> list[dict]:
     transcripts_dir = edit_dir / "transcripts"
     sources = edl["sources"]
     caps: list[dict] = []
-    off = 0.0  # output-timeline offset (seconds)
 
-    for r in edl["ranges"]:
+    # each range on the cut's clock (tempo.py: J-cut and the range's speed)
+    for r, span in zip(edl["ranges"], tempo.tomadas_no_corte(edl)):
         src = r["source"]
         a, b = float(r["start"]), float(r["end"])
-        dur = b - a
         tr_path = transcripts_dir / f"{src}.json"
         if not tr_path.exists():
-            off += dur
             continue
         words = [w for w in json.loads(tr_path.read_text()).get("words", [])
                  if w.get("type") == "word" and w.get("start") is not None]
         seg = [w for w in words if (a - 0.08) <= w["start"] < b]
         seg.sort(key=lambda w: w["start"])
         for w in seg:
-            t = max(0.0, w["start"] - a) + off
-            e = min(dur, max(0.0, (w.get("end") or w["start"]) - a)) + off
+            t = max(0.0, tempo.no_corte(span, max(a, w["start"])))
+            e = max(0.0, tempo.no_corte(span, min(b, max(a, w.get("end") or w["start"]))))
             if e <= t:
                 e = t + 0.12
             text = (w.get("text") or "").strip()
@@ -82,7 +84,6 @@ def build_captions(edl: dict, edit_dir: Path) -> list[dict]:
                 "timestampMs": round((t + e) / 2 * 1000),
                 "confidence": None,
             })
-        off += dur
 
     caps.sort(key=lambda c: c["startMs"])
     return caps

@@ -33,6 +33,14 @@ def test_com_jcut_a_imagem_entra_depois_do_audio():
     assert pos["phrases"][0]["at"] == round(9.9 + (6.5 - 5.1667), 3)
 
 
+def test_tomada_acelerada_leva_a_frase_para_o_lugar_certo():
+    edl = {**EDL, "ranges": [dict(EDL["ranges"][0], velocidade=2), dict(EDL["ranges"][1], velocidade=0.5)]}
+    pos, _ = to_cut({"phrases": [{"source": "A", "at": 14.0, "x": 0.5, "y": 0.3},
+                                 {"source": "B", "at": 6.5, "x": 0.5, "y": 0.3}]}, edl)
+    # A a 2×: 10 s viram 5; 4 s dentro viram 2. B a 0,5×: 1,5 s dentro viram 3, depois dos 5
+    assert [p["at"] for p in pos["phrases"]] == [2.0, 8.0]
+
+
 def test_momento_cortado_some_e_tomada_duplicada_vale_duas_vezes():
     edl = {**EDL, "ranges": EDL["ranges"] + [{"source": "A", "start": 10.0, "end": 12.0}]}
     pos, perdidas = to_cut({"phrases": [

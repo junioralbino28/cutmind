@@ -31,6 +31,8 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import tempo  # same directory: the cut's clock (each range's speed)
+
 try:
     from grade import get_preset, auto_grade_for_clip  # same directory
 except Exception:
@@ -248,6 +250,19 @@ def shortform_target_fps(video: Path) -> str:
 # -------- Per-segment extraction (Rule 2 + Rule 3) --------------------------
 
 
+def atempo_cadeia(vel: float) -> list[float]:
+    """Os fatores do `atempo` para uma velocidade, cada um entre 0,5 e 2: fora disso o
+    ffmpeg aceita, mas o som perde qualidade. 0,25 vira 0,5 × 0,5; 4 vira 2 × 2."""
+    fatores: list[float] = []
+    while vel < 0.5:
+        fatores.append(0.5)
+        vel /= 0.5
+    while vel > 2.0:
+        fatores.append(2.0)
+        vel /= 2.0
+    return fatores + [round(vel, 6)]
+
+
 def extract_segment(
     source: Path,
     seg_start: float,
@@ -259,8 +274,13 @@ def extract_segment(
     keep_resolution: bool = False,
     gain_db: float = 0.0,
     streams: str = "av",
+    velocidade: float = 1.0,
 ) -> None:
     """Extract a cut range as its own MP4 with grade + 30ms audio fades baked in.
+
+    `duration` is in the SOURCE; with `velocidade` (the phone editor's Speed) the
+    clip plays that much faster and lasts duration ÷ velocidade: picture by
+    `setpts`, sound by `atempo` (the voice keeps its pitch), fades on the new length.
 
     `streams` selects what lands in the file: "av" (default), "v" (video only) or
     "a" (audio only, PCM when the path ends in .wav). The split exists for the
@@ -289,6 +309,12 @@ def extract_segment(
         scale = "scale=-2:1920" if portrait else "scale=1920:-2"
 
     vf_parts: list[str] = []
+    if velocidade != 1.0:
+        # the frame-rate conversion goes INSIDE the filter, right after setpts: left to
+        # the output `-r`, a 2× take showed the flash 2.5 frames late and a 0.5× one
+        # 1 frame early (measured on a source with flashes and beeps at known instants)
+        fps = source_fps(source) if keep_resolution else shortform_target_fps(source)
+        vf_parts.append(f"setpts=(PTS-STARTPTS)/{velocidade:g},fps={fps}")
     if is_hdr_source(source):
         vf_parts.append(TONEMAP_CHAIN)
     else:
@@ -319,8 +345,12 @@ def extract_segment(
         if gain_db > 0:
             af_parts.append("alimiter=level_in=1:level_out=1:limit=0.95")
 
+    out_dur = duration / velocidade
+    if velocidade != 1.0:
+        af_parts += [f"atempo={x:g}" for x in atempo_cadeia(velocidade)]
+
     # 30ms audio fades at both edges (Rule 3) — prevent pops
-    fade_out_start = max(0.0, duration - 0.03)
+    fade_out_start = max(0.0, out_dur - 0.03)
     af_parts.append("afade=t=in:st=0:d=0.03")
     af_parts.append(f"afade=t=out:st={fade_out_start:.3f}:d=0.03")
     af = ",".join(af_parts)
@@ -336,7 +366,7 @@ def extract_segment(
         "ffmpeg", "-y",
         "-ss", f"{seg_start:.6f}",
         "-i", str(source),
-        "-t", f"{duration:.6f}",
+        "-t", f"{out_dur:.6f}",
     ]
     if streams != "a":
         if vf:
@@ -384,11 +414,13 @@ def snap_ranges_to_frames(edl: dict, fps: int) -> int:
     barely visible at the start, half a second adrift by the end.
 
     Snapping UP only ever extends a range into its trailing pad (≤1 frame), so it
-    cannot clip a word. Returns how many ranges were changed.
+    cannot clip a word. Returns how many ranges were changed. A range with a
+    `velocidade` is snapped so its length IN THE CUT (÷ velocidade) is whole frames.
     """
     changed = 0
     for r in edl.get("ranges", []):
-        dur = r["end"] - r["start"]
+        vel = tempo.velocidade(r)
+        dur = (r["end"] - r["start"]) / vel
         # Round the frame count to 4 decimals BEFORE ceiling. `end` is persisted to
         # 6 decimals, so a duration that is already a whole number of frames comes
         # back as e.g. 1.866667 → 1.866667*30 = 56.00001, which a bare ceil() turns
@@ -396,7 +428,7 @@ def snap_ranges_to_frames(edl: dict, fps: int) -> int:
         # EDL grew the affected ranges by one more frame, and since this function
         # rewrites edl.json the drift persisted.
         frames = math.ceil(round(dur * fps, 4))
-        snapped = r["start"] + frames / fps
+        snapped = r["start"] + frames * vel / fps
         if abs(snapped - r["end"]) > 1e-6:
             r["end"] = round(snapped, 6)
             changed += 1
@@ -456,15 +488,17 @@ def extract_all_segments(
             seg_filter = resolved
 
         gain_db = float(r.get("gain_db", 0.0) or 0.0)
+        vel = tempo.velocidade(r)
 
         note = r.get("beat") or r.get("note") or ""
         grade_note = f"  grade: {seg_filter or '(none)'}" if is_auto else ""
         gain_note = f"  gain: {gain_db:+.1f}dB" if abs(gain_db) > 0.05 else ""
-        print(f"  [{i:02d}] {src_name}  {start:7.2f}-{end:7.2f}  ({duration:5.2f}s)  {note}{grade_note}{gain_note}", flush=True)
+        vel_note = f"  {vel:g}x" if vel != 1.0 else ""
+        print(f"  [{i:02d}] {src_name}  {start:7.2f}-{end:7.2f}  ({duration:5.2f}s)  {note}{grade_note}{gain_note}{vel_note}", flush=True)
         extract_segment(
             src_path, start, duration, seg_filter, out_path,
             preview=preview, draft=draft, keep_resolution=keep_resolution,
-            gain_db=gain_db,
+            gain_db=gain_db, velocidade=vel,
         )
         return out_path
 
@@ -588,26 +622,30 @@ def plan_jcut(edl: dict, edit_dir: Path, cfg: dict) -> list[dict]:
     for i, r in enumerate(ranges):
         src = resolve_path(sources[r["source"]], edit_dir)
         start, end = float(r["start"]), float(r["end"])
+        # a_*/v_* are SOURCE times; lead, the tail frames and the offsets are CUT time.
+        # A take at `vel` covers vel seconds of source per second of cut, so the lead
+        # it skips and the tail it trims are vel times longer in the source.
+        vel = tempo.velocidade(r)
 
         tail = 0.0
         avail = trailing_silence(src, start, end) if i < n - 1 else None
         if avail is not None and cfg["tail_trim_frames"]:
             budget = max(0.0, avail - 0.010)          # keep 10ms of room tone
-            usable_frames = min(cfg["tail_trim_frames"], int(budget * fps))
-            tail = usable_frames / fps
+            usable_frames = min(cfg["tail_trim_frames"], int(budget / vel * fps))
+            tail = usable_frames * vel / fps
 
         a_in, a_out = start, end - tail
-        v_in = start + (lead if i > 0 else 0.0)
+        v_in = start + (lead * vel if i > 0 else 0.0)
         v_out = a_out
         plan.append({
-            "i": i, "src": src, "range": r,
+            "i": i, "src": src, "range": r, "vel": vel,
             "a_in": a_in, "a_out": a_out, "a_off": a_off,
             "v_in": v_in, "v_out": v_out, "v_off": v_off,
-            "tail_frames": round(tail * fps),
+            "tail_frames": round(tail / vel * fps),
             "silence_avail_ms": round(avail * 1000) if avail is not None else None,
         })
-        v_off += v_out - v_in
-        a_off += (a_out - a_in) - lead
+        v_off += (v_out - v_in) / vel
+        a_off += (a_out - a_in) / vel - lead
     return plan
 
 
@@ -642,7 +680,7 @@ def assemble_jcut(plan: list[dict], out_path: Path, edit_dir: Path) -> None:
          f"alimiter=limit=0.95[a]", "-map", "[a]", "-c:a", "pcm_s16le",
          str(audio_only)], quiet=True)
 
-    total = sum(p["v_out"] - p["v_in"] for p in plan)
+    total = sum((p["v_out"] - p["v_in"]) / p["vel"] for p in plan)  # cut time, not source time
     # NO -shortest here: a sub-millisecond audio shortfall would truncate video.
     run(["ffmpeg", "-y", "-i", str(video_only), "-i", str(audio_only),
          "-map", "0:v", "-map", "1:a", "-c:v", "copy",
@@ -692,11 +730,11 @@ def extract_and_assemble_jcut(
         apath = clips_dir / f"seg_{i:02d}_{r['source']}_a.wav"
         extract_segment(p["src"], p["v_in"], p["v_out"] - p["v_in"], seg_filter,
                         vpath, preview=preview, draft=draft,
-                        keep_resolution=keep_resolution, streams="v")
+                        keep_resolution=keep_resolution, streams="v", velocidade=p["vel"])
         extract_segment(p["src"], p["a_in"], p["a_out"] - p["a_in"], "",
                         apath, preview=preview, draft=draft,
                         keep_resolution=keep_resolution, gain_db=gain_db,
-                        streams="a")
+                        streams="a", velocidade=p["vel"])
         p["video_path"], p["audio_path"] = vpath, apath
 
         tail_note = ""
@@ -706,9 +744,10 @@ def extract_and_assemble_jcut(
         elif p["silence_avail_ms"] is not None:
             tail_note = f"  cauda 0f (só {p['silence_avail_ms']}ms de silêncio)"
         gain_note = f"  gain: {gain_db:+.1f}dB" if abs(gain_db) > 0.05 else ""
+        vel_note = f"  {p['vel']:g}x" if p["vel"] != 1.0 else ""
         print(f"  [{i:02d}] {r['source']}  v {p['v_in']:7.2f}-{p['v_out']:7.2f}"
               f"  a {p['a_in']:7.2f}-{p['a_out']:7.2f}"
-              f"  {r.get('beat') or ''}{tail_note}{gain_note}", flush=True)
+              f"  {r.get('beat') or ''}{tail_note}{gain_note}{vel_note}", flush=True)
         return p
 
     if jobs == 1 or len(plan) == 1:
@@ -755,24 +794,22 @@ def build_master_srt(edl: dict, edit_dir: Path, out_path: Path) -> None:
 
     - 2-word chunks (break on any punctuation in between)
     - UPPERCASE text
-    - Output times computed as word.start - segment_start + segment_offset
+    - Output times on the cut's clock (tempo.py: J-cut and each range's speed)
     """
     transcripts_dir = edit_dir / "transcripts"
     sources = edl["sources"]
 
     entries: list[tuple[float, float, str]] = []
-    seg_offset = 0.0
 
-    for r in edl["ranges"]:
+    # each range on the cut's clock (tempo.py: J-cut and the range's speed)
+    for r, span in zip(edl["ranges"], tempo.tomadas_no_corte(edl)):
         src_name = r["source"]
         seg_start = float(r["start"])
         seg_end = float(r["end"])
-        seg_duration = seg_end - seg_start
 
         tr_path = transcripts_dir / f"{src_name}.json"
         if not tr_path.exists():
             print(f"  no transcript for {src_name}, skipping captions for this segment")
-            seg_offset += seg_duration
             continue
 
         transcript = json.loads(tr_path.read_text())
@@ -797,8 +834,8 @@ def build_master_srt(edl: dict, edit_dir: Path, out_path: Path) -> None:
         for chunk in chunks:
             local_start = max(seg_start, chunk[0].get("start", seg_start))
             local_end = min(seg_end, chunk[-1].get("end", seg_end))
-            out_start = max(0.0, local_start - seg_start) + seg_offset
-            out_end = max(0.0, local_end - seg_start) + seg_offset
+            out_start = max(0.0, tempo.no_corte(span, local_start))
+            out_end = max(0.0, tempo.no_corte(span, local_end))
             if out_end <= out_start:
                 out_end = out_start + 0.4
             text = " ".join((w.get("text") or "").strip() for w in chunk)
@@ -807,8 +844,6 @@ def build_master_srt(edl: dict, edit_dir: Path, out_path: Path) -> None:
             text = text.rstrip(",;:")
             text = text.upper()
             entries.append((out_start, out_end, text))
-
-        seg_offset += seg_duration
 
     # Sort and write as SRT
     entries.sort(key=lambda e: e[0])
@@ -1224,8 +1259,10 @@ def main() -> None:
     edl = json.loads(edl_path.read_text())
     edit_dir = edl_path.parent
     out_path = args.output.resolve()
-    try:  # volume errado para antes de qualquer extração, não depois de minutos de render
+    try:  # volume ou velocidade errados param antes de qualquer extração, não depois de minutos de render
         volumes = [volume_da_tomada(r) for r in edl.get("ranges", [])]
+        for r in edl.get("ranges", []):
+            tempo.velocidade(r)
     except ValueError as e:
         sys.exit(f"edl.json: {e}")
 
@@ -1236,7 +1273,7 @@ def main() -> None:
     target_fps = int(shortform_target_fps(Path(first_src))) if (first_src and not args.keep_resolution) else 30
     snapped = snap_ranges_to_frames(edl, target_fps)
     if snapped:
-        edl["total_duration_s"] = round(sum(r["end"] - r["start"] for r in edl["ranges"]), 3)
+        edl["total_duration_s"] = round(sum(tempo.dur_no_corte(r) for r in edl["ranges"]), 3)
         edl_path.write_text(json.dumps(edl, ensure_ascii=False, indent=2))
         print(f"  frame-aligned {snapped} range(s) to {target_fps}fps → edl.json updated")
 
@@ -1268,18 +1305,19 @@ def main() -> None:
         edl["jcut_timeline"] = [
             {"beat": p["range"].get("beat"), "source": p["range"]["source"],
              "video_start_in_output": round(p["v_off"], 6),
-             "video_duration": round(p["v_out"] - p["v_in"], 6),
+             "video_duration": round((p["v_out"] - p["v_in"]) / p["vel"], 6),
              "audio_start_in_output": round(p["a_off"], 6),
-             "audio_duration": round(p["a_out"] - p["a_in"], 6),
-             "tail_trim_frames": p["tail_frames"]}
+             "audio_duration": round((p["a_out"] - p["a_in"]) / p["vel"], 6),
+             "tail_trim_frames": p["tail_frames"],
+             **({"velocidade": p["vel"]} if p["vel"] != 1.0 else {})}
             for p in plan
         ]
         edl["total_duration_s"] = round(
-            sum(p["v_out"] - p["v_in"] for p in plan), 3)
+            sum((p["v_out"] - p["v_in"]) / p["vel"] for p in plan), 3)
         edl_path.write_text(json.dumps(edl, ensure_ascii=False, indent=2))
         print(f"  timeline J-cut: {edl['total_duration_s']}s → edl.json atualizado")
         # onde o SOM de cada tomada está na saída (entra antes da imagem, no J-cut)
-        janelas = [(p["a_off"], p["a_off"] + p["a_out"] - p["a_in"], v) for p, v in zip(plan, volumes)]
+        janelas = [(p["a_off"], p["a_off"] + (p["a_out"] - p["a_in"]) / p["vel"], v) for p, v in zip(plan, volumes)]
     else:
         # 1. Extract per-segment (auto-grade per range if EDL grade is "auto")
         segment_paths = extract_all_segments(
@@ -1293,13 +1331,10 @@ def main() -> None:
         # (verify_cut, the preview lanes, Phase-2 offsets) keeps trusting it.
         if edl.pop("jcut_timeline", None) is not None:
             edl["total_duration_s"] = round(
-                sum(r["end"] - r["start"] for r in edl["ranges"]), 3)
+                sum(tempo.dur_no_corte(r) for r in edl["ranges"]), 3)
             edl_path.write_text(json.dumps(edl, ensure_ascii=False, indent=2))
             print("  J-cut desligado → jcut_timeline removido do edl.json")
-        janelas, t = [], 0.0
-        for r, v in zip(edl["ranges"], volumes):
-            janelas.append((t, t + r["end"] - r["start"], v))
-            t += r["end"] - r["start"]
+        janelas = [(s["out"], s["out"] + s["dur"], v) for s, v in zip(tempo.tomadas_no_corte(edl), volumes)]
 
     # 3. Subtitles: build if requested, resolve final path
     subs_path: Path | None = None

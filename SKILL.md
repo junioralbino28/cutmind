@@ -371,6 +371,14 @@ global compressor, which would pump the good takes to rescue the bad one.
 Cap around +12 dB: past that the room tone rises with the voice and the take
 starts sounding like a different microphone.
 
+`velocidade`: the take's speed, 0.25 to 4 (1 = as is). The take lasts
+(end − start) ÷ velocidade in the cut: picture by `setpts` + an in-filter `fps`, sound
+by `atempo` (the voice keeps its pitch). `render.py` snaps the range so that length is
+whole frames, and the J-cut lead/tail count in cut frames. Every helper that maps source
+time to cut time goes through `helpers/tempo.py` (`tomadas_no_corte`, `no_corte`);
+never sum `end − start` by hand. Measured: a flash and its beep stay ≤ 1 frame apart
+at 2× and 0.5×, and a 1 kHz beep stays 1 kHz.
+
 `volume`: the take's volume from the phone editor, 0 to 4 (1 = as is, 0 = silent).
 `render.py` applies it LAST, on the finished cut after voice master and loudnorm,
 ramping across each junction and with a −1 dBFS limiter when a take goes above 100%.

@@ -28,6 +28,9 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import tempo  # noqa: E402  (same folder: the cut's clock)
+
 POP_DB = -8.0     # junction window louder than this → suspected pop
 HOT_DB = -6.0     # pre/post window louder than this → suspected clipped word
 # A range this far under the median range reads as "I can't hear that bit" on a
@@ -157,14 +160,8 @@ def main() -> None:
         aud_seams = [(j["audio_start_in_output"], jt[i]["audio_start_in_output"]
                       + jt[i]["audio_duration"]) for i, j in enumerate(jt[1:])]
     else:
-        durs = [float(r["end"]) - float(r["start"]) for r in ranges]
-        expected = sum(durs)
-        junctions = []
-        out_spans = []
-        t = 0.0
-        for d in durs:
-            out_spans.append((t, d))
-            t += d
+        out_spans = [(s["out"], s["dur"]) for s in tempo.tomadas_no_corte(edl)]  # com a velocidade
+        expected = sum(d for _, d in out_spans)
         junctions = [s for s, _ in out_spans[1:]]
         aud_seams = []
 

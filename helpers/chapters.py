@@ -5,8 +5,8 @@ that opens each section:
 
     {"source": "A", "start": 12.0, "end": 40.0, "beat": "INTRO", "chapter": "O que é X"}
 
-The chapter's timestamp is its position on the OUTPUT timeline (sum of prior range
-durations), so it lines up with the rendered cut.
+The chapter's timestamp is its position on the OUTPUT timeline (tempo.py: J-cut and
+each range's speed included), so it lines up with the rendered cut.
 
 YouTube's rules (enforced here): the first stamp must be `00:00`, there must be
 ≥ 3 chapters, and each must be ≥ 10s. Warnings print if the EDL violates them.
@@ -18,7 +18,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import tempo  # noqa: E402  (same folder: the cut's clock)
 
 
 def fmt(sec: float, long: bool) -> str:
@@ -40,14 +44,12 @@ def main() -> None:
     ranges = edl["ranges"]
 
     chapters: list[tuple[float, str]] = []
-    t = 0.0
-    for r in ranges:
-        dur = float(r["end"]) - float(r["start"])
+    spans = tempo.tomadas_no_corte(edl)
+    for r, s in zip(ranges, spans):
         title = (r.get("chapter") or "").strip()
         if title:
-            chapters.append((t, title))
-        t += dur
-    total = t
+            chapters.append((s["out"], title))
+    total = spans[-1]["out"] + spans[-1]["dur"] if spans else 0.0
 
     if not chapters:
         raise SystemExit(
