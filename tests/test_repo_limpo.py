@@ -1,4 +1,4 @@
-"""Nada de segredo, caminho absoluto de usuário ou mídia pesada no repositório.
+"""Nada de segredo, e-mail de gente, caminho absoluto de usuário ou mídia pesada no repositório.
 Lê só arquivos VERSIONADOS: um arquivo novo é conferido depois do `git add`."""
 from __future__ import annotations
 
@@ -12,6 +12,10 @@ PADROES: list[tuple[str, str]] = [
     (r"sk-ant-[A-Za-z0-9_-]{10}|ghp_[A-Za-z0-9]{20}|github_pat_[A-Za-z0-9_]{20}"
      r"|AKIA[0-9A-Z]{16}|xox[abpr]-[A-Za-z0-9-]{10}", "segredo"),
 ]
+# o repositório é público: e-mail de gente não entra. Passam só o endereço privado do
+# GitHub, o coautor e os exemplos; pacote@1.2.3 não é e-mail.
+EMAIL = re.compile(r"[\w.+-]+@[\w-]+(\.[\w-]+)+")
+EMAIL_OK = re.compile(r"users\.noreply\.github\.com$|^noreply@anthropic\.com$|@example\.(com|org|net)$|^[\w.+-]+@\d")
 EXTENSOES_TEXTO = {".py", ".md", ".ts", ".tsx", ".js", ".mjs", ".json", ".css",
                    ".html", ".toml", ".yaml", ".yml", ".txt", ".sh", ".ps1", ".bat", ".cfg"}
 ISENTOS = {"tests/test_repo_limpo.py"}
@@ -25,13 +29,19 @@ def versionados() -> list[str]:
 
 
 def achados(texto: str) -> list[str]:
-    return [motivo for padrao, motivo in PADROES if re.search(padrao, texto)]
+    motivos = [motivo for padrao, motivo in PADROES if re.search(padrao, texto)]
+    if any(not EMAIL_OK.search(m.group(0)) for m in EMAIL.finditer(texto)):
+        motivos.append("e-mail")
+    return motivos
 
 
 def test_detector_pega_o_que_deve():
     assert "caminho absoluto de usuário" in achados("C:/Users/fulano/video.mp4")
     assert "segredo" in achados("ghp_" + "a" * 24)
+    assert "e-mail" in achados("fale com fulano" + "@" + "gmail.com")  # em pedaços: o arquivo não traz o endereço
     assert achados(r"C:\Users\<voce>\Videos") == []
+    assert achados("Co-Authored-By: Claude <noreply@anthropic.com>") == []
+    assert achados("1+fulano@users.noreply.github.com e remotion@4.0.482") == []
     assert achados("texto limpo") == []
 
 
