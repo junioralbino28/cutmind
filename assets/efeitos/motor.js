@@ -198,7 +198,11 @@ async function motorCena(base, manifesto, largura, altura) {
     },
     destruir() {
       const r = cena.renderer;
-      if (typeof cena.destroy === 'function') cena.destroy();
+      // o destroy do script pode chamar o que o Three.js oficial não tem (scene.dispose, medido
+      // na "Zoom central"): o contexto WebGL é liberado mesmo assim, senão fica preso
+      try {
+        if (typeof cena.destroy === 'function') cena.destroy();
+      } catch (e) { /* segue para liberar o contexto */ }
       if (r) { r.dispose(); r.forceContextLoss(); }
     },
   };
