@@ -160,6 +160,19 @@
   </footer>
 </section>
 
+<!-- painel pequeno: Ajustar a cor da tomada; a prévia redesenha enquanto a régua anda -->
+<section class="sheet small" id="ajSheet" aria-hidden="true">
+  <div class="sheet-grip"></div>
+  <div class="note-head"><b id="ajNome">Brilho</b><span id="ajVal">0</span></div>
+  <div class="aj-regua"><input class="vol-range" id="ajRange" type="range" min="-100" max="100" step="1" value="0" aria-label="Brilho"></div>
+  <div class="subtabs aj-params" id="ajParams"></div>
+  <footer class="sheet-foot">
+    <button class="tb-btn ghost" id="ajReset" type="button">Redefinir</button>
+    <div class="t-spacer"></div>
+    <button class="tb-btn primary" id="ajOk" type="button">Pronto</button>
+  </footer>
+</section>
+
 <input type="file" id="fileInput" accept="video/*" hidden>
 <input type="file" id="fileAudio" accept="audio/*" hidden>
 <input type="file" id="fileImagem" accept="image/*" hidden>

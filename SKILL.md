@@ -185,7 +185,7 @@ the layer questions in chat.
   the user's intent wins, but say so), update `edl.json`, re-render, `verify_cut.py`.
 - `editData` — insert/hook/behind timings → edit-data.json → re-render Phase 2.
 - `camadas` — images and audio the user put on the timeline (the server already wrote `<edit>/camadas.json`): images → `camadas_edit_data.py`, sound → `mixar_final.py` (`references/shortform.md`, "Layers from the editor").
-- `efeitos` — filters and transitions from the library (the server already wrote `<edit>/efeitos.json`) → `efeitos_render.py <edit>` writes `remotion/public/cut.mp4` with them, then re-render (`references/shortform.md`, "Effects from the editor").
+- `efeitos` — filters and transitions from the library, plus each take's Ajustar (`ajuste`) (the server already wrote `<edit>/efeitos.json`) → `efeitos_render.py <edit>` writes `remotion/public/cut.mp4` with them, then re-render (`references/shortform.md`, "Effects from the editor").
 
 Then delete `preview_edits.json` and update `state.json`.
 

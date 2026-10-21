@@ -94,6 +94,7 @@ const ICON = {
   efeitos: sv('<circle cx="9" cy="9.6" r="5"/><circle cx="15" cy="9.6" r="5"/><circle cx="12" cy="14.8" r="5"/>'),
   filtro: sv('<circle cx="12" cy="12" r="7.5"/><path d="M12 4.5a7.5 7.5 0 0 1 0 15z" fill="currentColor" stroke="none"/>'),
   transicao: sv('<rect x="2.5" y="6.5" width="7" height="11" rx="1.6"/><rect x="14.5" y="6.5" width="7" height="11" rx="1.6"/><path d="M12 9.4l2.6 2.6-2.6 2.6-2.6-2.6z" fill="currentColor" stroke="none"/>'),
+  ajustar: sv('<path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2.2" fill="currentColor"/><circle cx="15.5" cy="12" r="2.2" fill="currentColor"/><circle cx="7.5" cy="17" r="2.2" fill="currentColor"/>'),
   intensidade: sv('<path d="M4 12h16"/><circle cx="14.5" cy="12" r="2.6" fill="currentColor"/>'),
 };
 
@@ -742,8 +743,10 @@ function trackPlan() {
     { id: 'text', h: 18, show: fin && hasTxt },
     { id: 'ins', h: 18, show: fin && hasIns },
     ...fx.filter((f) => f.tipo === 'imagem').reverse().map(layer), // a mais nova fica no alto, como no editor do PC
-    // filtros e transições valem para o corte: no Final já estão no vídeo
-    { id: 'fx', h: 22, show: !fin && !S.posMode && S.efeitos.itens.length > 0 },
+    // filtros, transições e ajustes valem para o corte: no Final já estão no vídeo. O ajuste
+    // tem faixa própria, como no CapCut: na mesma tomada de um filtro, os dois ficariam um em cima do outro
+    { id: 'fx', h: 22, show: !fin && !S.posMode && S.efeitos.itens.some((it) => it.tipo !== 'ajuste') },
+    { id: 'aj', h: 22, show: !fin && !S.posMode && S.efeitos.itens.some((it) => it.tipo === 'ajuste') },
     { id: 'video', h: VIDEO_TRACK_H, show: true },
     { id: 'audio', h: 30, show: true },
     ...fx.filter((f) => f.tipo === 'audio').map(layer),
@@ -783,7 +786,8 @@ function renderTimeline() {
     if (tr.faixa) { renderLayerTrack(track, lane, tr.faixa); continue; }
     if (tr.id === 'video') { renderTakes(lane); if (S.view === 'corte' && !S.posMode) trackHead(track, null); }
     else if (tr.id === 'frases') renderFrases(lane);
-    else if (tr.id === 'fx') renderFxTrack(lane);
+    else if (tr.id === 'fx') renderFxTrack(lane, false);
+    else if (tr.id === 'aj') renderFxTrack(lane, true);
     else if (tr.id === 'notes') renderNotes(lane);
     else if (tr.id === 'caps') {
       for (const c of S.captions) {
@@ -1403,6 +1407,7 @@ function renderToolbar() {
   if (fsel) { // um efeito escolhido na linha do tempo
     tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
     if (fsel.tipo === 'filtro') tool(ctx, 'intensidade', `${Math.round(fxIntensidade(fsel) * 100)}%`);
+    if (fsel.tipo === 'ajuste') tool(ctx, 'ajustar', 'Ajustar');
     tool(ctx, 'excluir', 'Excluir', { icon: ICON.remover });
     return;
   }
@@ -1422,6 +1427,7 @@ function renderToolbar() {
     tool(ctx, 'dividir', 'Dividir');
     tool(ctx, 'duplicar', 'Duplicar');
     tool(ctx, 'volume', `${Math.round(sel.vol * 100)}%`);
+    tool(ctx, 'ajustar', 'Ajustar');
     tool(ctx, 'excluir', 'Excluir', { icon: ICON.remover, disabled: S.draft.length < 2 });
     tool(ctx, 'ouvir', 'Ouvir');
     // "Original" volta às bordas que o agente cortou; pedaço novo não tem
@@ -1444,6 +1450,7 @@ document.addEventListener('click', (e) => {
     case 'filtros': S.fxMenu = false; renderToolbar(); openFx('filtro'); break;
     case 'transicoes': S.fxMenu = false; renderToolbar(); openFx('transicao'); break;
     case 'intensidade': openIntensidade(); break;
+    case 'ajustar': openAjuste(); break;
     case 'imp-video': S.importMenu = false; renderToolbar(); $('fileInput').click(); break;
     case 'imp-imagem': S.importMenu = false; renderToolbar(); $('fileImagem').click(); break;
     case 'imp-audio': S.importMenu = false; renderToolbar(); $('fileAudio').click(); break;
@@ -2940,7 +2947,7 @@ PREV.addEventListener('error', () => {
  * Transição: antes do corte, o lado A anda e o B fica parado no 1º quadro depois dele;
  * depois do corte, o A fica parado no último quadro antes dele e o B anda. Um quadro
  * com transição e filtro recebe a transição primeiro e o filtro por cima. */
-const FX = { mod: null, motores: new Map(), congelados: new Map(), fila: Promise.resolve(), pararEm: null, naTela: null };
+const FX = { mod: null, motores: new Map(), congelados: new Map(), fila: Promise.resolve(), pararEm: null, naTela: null, aj: null };
 const fxVazio = () => ({ versao: 1, itens: [] });
 const fxSig = () => JSON.stringify(S.efeitos);
 const efeitosDirty = () => fxSig() !== S.efeitosBase;
@@ -3007,6 +3014,21 @@ function fxMotor(pacote) {
   return m;
 }
 
+// o ajuste não tem pacote: um motor só, o shader do próprio motor.js, refeito se o tamanho do vídeo mudar
+function fxAjuste() {
+  const { largura, altura } = fxTam();
+  const chave = `${largura}x${altura}`;
+  if (!FX.aj || FX.aj.chave !== chave) {
+    const velho = FX.aj;
+    const m = { chave, ef: null };
+    FX.aj = m;
+    FX.mod = FX.mod || import('/efeitos/motor.js');
+    FX.mod.then((mod) => { if (FX.aj === m) { m.ef = mod.criarAjuste({ largura, altura }); fxRedesenhar(); } });
+    if (velho && velho.ef) velho.ef.destruir();
+  }
+  return FX.aj.ef;
+}
+
 // os quadros parados da transição saem de um segundo vídeo, para não mexer no que está na tela
 const fxVid = document.createElement('video');
 fxVid.muted = true;
@@ -3067,13 +3089,13 @@ function fxDesenhar(tempo, exato) {
   const n = fxNumero(tempo, exato, fps); // o quadro do cut.mp4 que está na tela
   const t = n / fps;
   if (FX.pararEm != null && !video.paused && t >= FX.pararEm) { video.pause(); FX.pararEm = null; }
-  let tr = null, fi = null;
+  let tr = null, fi = null, aj = null;
   for (const it of S.fxTeste ? [...S.efeitos.itens, S.fxTeste] : S.efeitos.itens) { // o de teste vale por último
     if (!fxDentro(it, t)) continue;
-    if (it.tipo === 'transicao') tr = it; else fi = it;
+    if (it.tipo === 'transicao') tr = it; else if (it.tipo === 'ajuste') aj = it; else fi = it;
   }
-  FX.completo = !tr && !fi; // o desenho tem tudo o que o quadro pede (os testes esperam por isto)
-  if (!tr && !fi) { esconder(); return; }
+  FX.completo = !tr && !fi && !aj; // o desenho tem tudo o que o quadro pede (os testes esperam por isto)
+  if (!tr && !fi && !aj) { esconder(); return; }
   let fonte = video, saida = null, feitos = 0;
   if (tr) {
     const m = fxMotor(tr.pacote).ef;
@@ -3090,11 +3112,19 @@ function fxDesenhar(tempo, exato) {
     const m = fxMotor(fi.pacote).ef;
     if (m) {
       m.desenhar({ quadro: fonte, intensidade: fi.intensidade });
+      fonte = saida = m.canvas;
+      feitos++;
+    }
+  }
+  if (aj) { // o ajuste por último, por cima do filtro: a mesma ordem do vídeo final
+    const m = fxAjuste();
+    if (m) {
+      m.desenhar({ quadro: fonte, ajustes: aj.ajustes });
       saida = m.canvas;
       feitos++;
     }
   }
-  FX.completo = feitos === (tr ? 1 : 0) + (fi ? 1 : 0);
+  FX.completo = feitos === (tr ? 1 : 0) + (fi ? 1 : 0) + (aj ? 1 : 0);
   if (!saida) { esconder(); return; } // o pacote ainda está descendo: mostra o vídeo como está
   const { largura, altura } = fxTam();
   if (cv.width !== largura || cv.height !== altura) { cv.width = largura; cv.height = altura; }
@@ -3121,22 +3151,25 @@ video.addEventListener('seeked', fxRedesenhar);
 function fxPreparar() {
   if (S.view !== 'corte' || !video.videoWidth || !video.dataset.src) return; // no Final o vídeo já tem os efeitos
   const fps = S.fps || 30;
-  const pacotes = [...new Set(S.efeitos.itens.map((it) => it.pacote))].slice(0, 4); // o limite de motores
+  const pacotes = [...new Set(S.efeitos.itens.filter((it) => it.pacote).map((it) => it.pacote))].slice(0, 4); // o limite de motores
   for (const p of pacotes) fxMotor(p);
+  if (S.efeitos.itens.some((it) => it.tipo === 'ajuste')) fxAjuste();
   for (const it of S.efeitos.itens) if (it.tipo === 'transicao') fxCongelados(it, fps);
 }
 video.addEventListener('loadeddata', fxPreparar);
 
-function renderFxTrack(lane) {
+function renderFxTrack(lane, ajustes) {
   for (const it of S.efeitos.itens) {
+    if ((it.tipo === 'ajuste') !== ajustes) continue;
     const [a0, b0] = fxJanela(it);
     const a = renderedToDraft(Math.max(0, a0)), b = renderedToDraft(b0);
-    const chip = el('div', `chip fx ${it.tipo === 'filtro' ? 'fi' : 'tr'}${it.id === S.fxSel ? ' sel' : ''}`, lane);
+    const cls = { filtro: 'fi', transicao: 'tr', ajuste: 'aj' }[it.tipo];
+    const chip = el('div', `chip fx ${cls}${it.id === S.fxSel ? ' sel' : ''}`, lane);
     chip.dataset.id = it.id;
     chip.style.left = `${a * S.pps}px`;
     chip.style.width = `${Math.max((b - a) * S.pps, 12)}px`;
-    el('span', 'l-ico', chip).innerHTML = it.tipo === 'filtro' ? ICON.filtro : ICON.transicao;
-    el('span', 'l-name', chip).textContent = S.fxNomes[it.pacote] || it.pacote;
+    el('span', 'l-ico', chip).innerHTML = { filtro: ICON.filtro, transicao: ICON.transicao, ajuste: ICON.ajustar }[it.tipo];
+    el('span', 'l-name', chip).textContent = it.tipo === 'ajuste' ? 'Ajuste' : S.fxNomes[it.pacote] || it.pacote;
   }
 }
 function tapFx(id) {
@@ -3183,6 +3216,99 @@ $('fxIntOk').addEventListener('click', () => {
   if (intBefore && JSON.stringify(intBefore.fx) !== fxSig()) remember(intBefore);
   intBefore = null;
   renderToolbar(); refreshHeader();
+});
+
+/* Ajustar: a cor da tomada (brilho, contraste…), no shader do próprio motor.js, sem pacote.
+ * Fica em efeitos.json como `ajuste` na janela da tomada (relógio do cut.mp4, como o filtro),
+ * um por tomada; a prévia desenha ao vivo enquanto a régua anda, por cima do filtro. Valor
+ * perto de zero encosta no zero (no dedo, acertar o 0 exato é difícil); tudo em zero tira o
+ * ajuste no Pronto. As chaves são as do helpers/efeitos.py. */
+const AJ_NOMES = { brilho: 'Brilho', contraste: 'Contraste', saturacao: 'Saturação', exposicao: 'Exposição',
+  temperatura: 'Temperatura', matiz: 'Matiz', realces: 'Realces', sombras: 'Sombras', vinheta: 'Vinheta' };
+const AJ = { id: null, k: 'brilho', antes: null };
+const ajTexto = (v) => (v > 0 ? `+${v}` : `${v}`);
+function openAjuste() {
+  const antes = snap();
+  let it = fxItem(S.fxSel);
+  if (!it || it.tipo !== 'ajuste') {
+    const r = S.draft[S.selected];
+    const L = r && renderedLayout()[r.from]; // a tomada no cut.mp4, como o filtro
+    if (!L) return;
+    const jan = { tipo: 'ajuste', inicio: +L.out.toFixed(3), duracao: +L.dur.toFixed(3) };
+    it = S.efeitos.itens.find((x) => x.tipo === 'ajuste' && fxCruzam(x, jan));
+    if (!it) {
+      it = { id: novoFxId('a'), ...jan, ajustes: {} };
+      S.efeitos.itens.push(it);
+    }
+  }
+  AJ.id = it.id;
+  AJ.antes = antes;
+  AJ.k = Object.keys(AJ_NOMES).find((k) => it.ajustes[k]) || 'brilho'; // abre no que já foi mexido
+  // a agulha vai para dentro da tomada: a prévia mostra o que a régua faz
+  video.pause();
+  const [a, b] = fxJanela(it);
+  const rt = draftToRendered(S.t);
+  if (!(rt >= a && rt < b - 1e-3)) {
+    S.t = clampT(renderedToDraft(a + Math.min(0.5, (b - a) / 2)));
+    positionTimeline();
+    preciseSeek();
+  }
+  renderAjuste();
+  showSheet($('ajSheet'), true);
+  fxPreparar();
+  fxRedesenhar();
+}
+function renderAjuste() {
+  const it = fxItem(AJ.id);
+  if (!it) return;
+  const v = it.ajustes[AJ.k] || 0;
+  $('ajNome').textContent = AJ_NOMES[AJ.k];
+  $('ajVal').textContent = ajTexto(v);
+  $('ajRange').value = v;
+  $('ajRange').setAttribute('aria-label', AJ_NOMES[AJ.k]);
+  const box = $('ajParams');
+  box.innerHTML = '';
+  for (const k of Object.keys(AJ_NOMES)) {
+    const b = el('button', `subtab aj-p${k === AJ.k ? ' on' : ''}${it.ajustes[k] ? ' mexido' : ''}`, box);
+    b.type = 'button';
+    b.dataset.k = k;
+    b.textContent = AJ_NOMES[k];
+  }
+}
+$('ajParams').addEventListener('click', (e) => {
+  const b = e.target.closest('.aj-p');
+  if (!b) return;
+  AJ.k = b.dataset.k;
+  renderAjuste();
+});
+$('ajRange').addEventListener('input', () => {
+  const it = fxItem(AJ.id);
+  if (!it) return;
+  const v0 = Math.round(+$('ajRange').value);
+  const v = Math.abs(v0) <= 3 ? 0 : v0;
+  if (v) it.ajustes[AJ.k] = v; else delete it.ajustes[AJ.k];
+  $('ajVal').textContent = ajTexto(v);
+  const b = $('ajParams').querySelector(`[data-k="${AJ.k}"]`);
+  if (b) b.classList.toggle('mexido', !!v);
+  fxRedesenhar();
+});
+$('ajReset').addEventListener('click', () => {
+  const it = fxItem(AJ.id);
+  if (!it) return;
+  it.ajustes = {};
+  renderAjuste();
+  fxRedesenhar();
+});
+$('ajOk').addEventListener('click', () => {
+  const it = fxItem(AJ.id);
+  if (it && !Object.keys(it.ajustes).length) S.efeitos.itens = S.efeitos.itens.filter((x) => x !== it); // tudo neutro: sai
+  if (S.fxSel && !fxItem(S.fxSel)) S.fxSel = null;
+  showSheet($('ajSheet'), false);
+  if (AJ.antes && JSON.stringify(AJ.antes.fx) !== fxSig()) remember(AJ.antes);
+  AJ.id = null;
+  AJ.antes = null;
+  renderTimeline(); renderToolbar(); refreshHeader();
+  fxRedesenhar();
 });
 
 /* Miniatura de cada filtro: o quadro debaixo da agulha já com o filtro, como no app de

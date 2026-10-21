@@ -8,14 +8,20 @@ com o mesmo motor da prévia (assets/efeitos/motor.js). Tempos em segundos do cu
      "itens": [
        {"id": "f1", "tipo": "filtro", "pacote": "filme-pb", "inicio": 2.0, "duracao": 3.5,
         "intensidade": 0.8},
-       {"id": "t1", "tipo": "transicao", "pacote": "zoom-central", "corte": 4.2, "duracao": 1.1}]}
+       {"id": "t1", "tipo": "transicao", "pacote": "zoom-central", "corte": 4.2, "duracao": 1.1},
+       {"id": "a1", "tipo": "ajuste", "inicio": 2.0, "duracao": 3.5,
+        "ajustes": {"brilho": 20, "vinheta": -35}}]}
 
 Filtro: de `inicio` por `duracao`; `intensidade` de 0 a 1 (sem ela, vale a do pacote).
+Ajuste (a ferramenta Ajustar da tomada): de `inicio` por `duracao`, sem pacote: é um
+shader do próprio motor. Cada valor de AJUSTES vai de −100 a 100, inteiro; 0 é neutro e
+não é gravado, e um ajuste todo neutro sai do arquivo. Um por tomada.
 Transição: centrada no `corte` (o encontro de duas tomadas), por `duracao`. Antes do
 corte, o lado A é o vídeo andando e o B fica parado no primeiro quadro depois do corte;
 depois do corte, o A fica parado no último quadro antes dele e o B anda.
-Um quadro que cai numa transição e num filtro recebe a transição primeiro e o filtro
-por cima, na prévia e no vídeo final. Neste primeiro passo, um filtro por vez.
+Um quadro que cai numa transição, num filtro e num ajuste recebe a transição primeiro, o
+filtro por cima e o ajuste por último, na prévia e no vídeo final. Neste primeiro passo,
+um filtro por vez.
 """
 from __future__ import annotations
 
@@ -27,6 +33,8 @@ from pathlib import Path
 MAX_ITENS = 100
 MAX_T = 6 * 3600.0
 TRANSICAO_MIN, TRANSICAO_MAX = 0.1, 5.0
+# a ordem é a da fileira de ferramentas do editor; o motor (assets/efeitos/motor.js) lê as mesmas chaves
+AJUSTES = ("brilho", "contraste", "saturacao", "exposicao", "temperatura", "matiz", "realces", "sombras", "vinheta")
 
 _ID = re.compile(r"[A-Za-z0-9_-]{1,40}")
 _PACOTE = re.compile(r"[a-z0-9][a-z0-9-]{0,60}")  # o id do catálogo (pacotes.py)
@@ -83,8 +91,14 @@ def normalize(obj: object) -> dict:
             raise EfeitosInvalidos(f"id inválido ou repetido: {str(iid)[:40]!r}")
         ids.add(iid)
         tipo = it.get("tipo")
-        if tipo not in ("filtro", "transicao"):
-            raise EfeitosInvalidos("tipo do efeito: filtro ou transicao")
+        if tipo not in ("filtro", "transicao", "ajuste"):
+            raise EfeitosInvalidos("tipo do efeito: filtro, transicao ou ajuste")
+        if tipo == "ajuste":
+            item = {"id": iid, "tipo": tipo, "inicio": _num(it.get("inicio", 0), "inicio"),
+                    "duracao": _num(it.get("duracao", 0), "duracao", 0.05), "ajustes": _ajustes(it.get("ajustes"))}
+            if item["ajustes"]:  # todo neutro: não muda nada, não fica no arquivo
+                itens.append(item)
+            continue
         pacote = it.get("pacote")
         if not isinstance(pacote, str) or not _PACOTE.fullmatch(pacote):
             raise EfeitosInvalidos("pacote inválido")
@@ -100,7 +114,19 @@ def normalize(obj: object) -> dict:
         itens.append(item)
     _sem_sobrepor(itens, "filtro", "dois filtros ao mesmo tempo: neste passo, um filtro por vez")
     _sem_sobrepor(itens, "transicao", "duas transições se cruzam")
+    _sem_sobrepor(itens, "ajuste", "dois ajustes ao mesmo tempo: um por tomada")
     return {"versao": 1, "itens": itens}
+
+
+def _ajustes(obj: object) -> dict:
+    """Os valores do Ajustar, inteiros de −100 a 100, sem os neutros, na ordem de AJUSTES."""
+    if not isinstance(obj, dict):
+        raise EfeitosInvalidos("ajustes não é um objeto")
+    fora = set(obj) - set(AJUSTES)
+    if fora:
+        raise EfeitosInvalidos(f"ajuste desconhecido: {sorted(fora)[0][:20]!r}")
+    vals = {k: round(_num(obj[k], k, -100.0, 100.0)) for k in AJUSTES if k in obj}
+    return {k: v for k, v in vals.items() if v}
 
 
 def load(path: Path) -> dict:

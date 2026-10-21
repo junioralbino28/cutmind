@@ -164,6 +164,23 @@ Transitions keep the icon.
   `<edit>/efeitos.json`. A package that cannot download shows the reason and adds
   nothing.
 
+## Ajustar (the take's color)
+
+A selected take has **Ajustar** next to its volume. It opens a small panel with a
+−100…100 slider (zero marked in the middle, values within 3 of zero snap to it) and a
+row of nine: Brilho, Contraste, Saturação, Exposição, Temperatura, Matiz, Realces,
+Sombras, Vinheta. One that was moved gets an orange dot; the panel reopens on the first
+one moved. The needle jumps into the take and the preview redraws while the slider
+moves. **Redefinir** zeroes all nine; **Pronto** with everything at zero removes the
+adjustment.
+
+It is an `ajuste` item in `efeitos.json` over the take's window in `cut.mp4`, like a
+filter, one per take, with its own track above the video (a filter on the same take
+would sit on top of it otherwise); tap it for **Voltar · Ajustar · Excluir**. There is
+no package: the shader lives in `motor.js` (`criarAjuste`), the same in the preview and
+in `EfeitosBase`, drawn after the transition and the filter. Undo/redo and Salvar work
+as for filters.
+
 The agent side is `efeitos_render.py` (`references/shortform.md`, "Effects from the
 editor").
 

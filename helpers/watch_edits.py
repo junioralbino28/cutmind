@@ -134,10 +134,12 @@ def efeitos_resumo(e: dict) -> str:
     itens = e.get("itens") or []
     n_f = sum(1 for it in itens if it.get("tipo") == "filtro")
     n_t = sum(1 for it in itens if it.get("tipo") == "transicao")
-    if not n_f and not n_t:
+    n_a = sum(1 for it in itens if it.get("tipo") == "ajuste")
+    if not n_f and not n_t and not n_a:
         return "nenhum"
     return ", ".join(x for x in (n_f and _plural(n_f, "filtro", "filtros"),
-                                 n_t and _plural(n_t, "transição", "transições")) if x)
+                                 n_t and _plural(n_t, "transição", "transições"),
+                                 n_a and _plural(n_a, "ajuste", "ajustes")) if x)
 
 
 def efeitos_linhas(e: dict) -> list[str]:
@@ -148,6 +150,10 @@ def efeitos_linhas(e: dict) -> list[str]:
             forca = (f", intensidade {round(float(it['intensidade']) * 100)}%"
                      if it.get("intensidade") is not None else "")
             out.append(f'  · filtro "{it.get("pacote")}" de {fmt(ini)} a {fmt(ini + dur)}{forca}')
+        elif it.get("tipo") == "ajuste":
+            ini, dur = float(it.get("inicio", 0)), float(it.get("duracao", 0))
+            vals = ", ".join(f"{k} {int(v):+d}" for k, v in (it.get("ajustes") or {}).items())
+            out.append(f"  · ajuste de {fmt(ini)} a {fmt(ini + dur)}: {vals}")
         else:
             out.append(f'  · transição "{it.get("pacote")}" no corte de {fmt(float(it.get("corte", 0)))} '
                        f'({float(it.get("duracao", 0)):.1f} s)')

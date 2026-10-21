@@ -80,6 +80,33 @@ def test_janela_da_transicao_fica_centrada_no_corte():
     assert ef.janela(BOM["itens"][0]) == pytest.approx((2.0, 5.5))
 
 
+AJ = {"id": "a1", "tipo": "ajuste", "inicio": 2.0, "duracao": 3.5, "ajustes": {"brilho": 20, "vinheta": -35}}
+
+
+def test_ajuste_da_tomada_passa_sem_pacote_e_sem_zeros():
+    e = _copia()
+    e["itens"].append(dict(AJ, pacote="nao-fica", ajustes={"brilho": 20.4, "contraste": 0, "vinheta": -35}))
+    n = ef.normalize(e)
+    assert n["itens"][2] == AJ  # inteiros, sem pacote, o zero (neutro) não vai
+    assert ef.janela(n["itens"][2]) == pytest.approx((2.0, 5.5))
+    # junto com um filtro na mesma tomada pode; dois ajustes na mesma tomada não
+    e["itens"].append(dict(AJ, id="a2", inicio=5.0))
+    with pytest.raises(ef.EfeitosInvalidos, match="dois ajustes"):
+        ef.normalize(e)
+
+
+def test_ajuste_todo_neutro_sai_do_arquivo():
+    e = {"versao": 1, "itens": [dict(AJ, ajustes={"brilho": 0, "saturacao": 0})]}
+    assert ef.normalize(e)["itens"] == []
+
+
+@pytest.mark.parametrize("ajustes", [{"nitidez": 10}, {"brilho": 101}, {"brilho": -100.6}, {"brilho": True},
+                                     {"brilho": "alto"}, {"brilho": float("nan")}, [], "x"])
+def test_ajuste_com_defeito_e_recusado(ajustes):
+    with pytest.raises(ef.EfeitosInvalidos):
+        ef.normalize({"versao": 1, "itens": [dict(AJ, ajustes=ajustes)]})
+
+
 def test_salvar_e_ler_o_arquivo_do_projeto(tmp_path):
     p = tmp_path / "efeitos.json"
     assert ef.load(p) == {"versao": 1, "itens": []}

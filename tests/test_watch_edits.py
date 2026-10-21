@@ -98,6 +98,12 @@ def test_aviso_conta_os_efeitos_e_diz_quem_aplica(tmp_path):
     p.write_text(json.dumps({"type": "timeline-edits", "efeitos": efeitos,
                              "edl": {"ranges": [], "changes": [{}], "removed": []}}), encoding="utf-8")
     assert "corte ANTIGO" in digest(p)
+    efeitos["itens"].append({"id": "a1", "tipo": "ajuste", "inicio": 2, "duracao": 3.5,
+                             "ajustes": {"brilho": 20, "vinheta": -35}})
+    p.write_text(json.dumps({"type": "timeline-edits", "efeitos": efeitos}), encoding="utf-8")
+    aviso = digest(p)
+    assert "efeitos: 1 filtro, 1 transição, 1 ajuste" in aviso
+    assert "ajuste de 0:02.00 a 0:05.50: brilho +20, vinheta -35" in aviso
 
 
 def test_aviso_de_camadas_vazias(tmp_path):

@@ -5,6 +5,8 @@
 //   ef.desenhar({ quadro: video, intensidade: 0.8 });           // filtro
 //   ef.desenhar({ a: videoA, b: quadroB, tempo_ms: 300 });       // transição
 //   ef.canvas  → o resultado; ef.destruir() libera o WebGL.
+//   const aj = criarAjuste({ largura: 1080, altura: 1920 });   // Ajustar da tomada, sem pacote
+//   aj.desenhar({ quadro: video, ajustes: { brilho: 20, vinheta: -35 } });
 //
 // Fontes aceitas: <video>, <img>, <canvas>. Cor sem conversão: entra e sai nos mesmos valores.
 import * as THREE from './vendor/three.module.min.js';
@@ -208,6 +210,97 @@ async function motorCena(base, manifesto, largura, altura) {
         if (typeof cena.destroy === 'function') cena.destroy();
       } catch (e) { /* segue para liberar o contexto */ }
       if (r) { r.dispose(); r.forceContextLoss(); }
+    },
+  };
+}
+
+// ---------- ajuste: a ferramenta Ajustar da tomada, um shader nosso, sem pacote ----------
+// As chaves e a faixa (−100 a 100, 0 neutro) são as do helpers/efeitos.py (AJUSTES). Cada
+// passo só roda com o valor dele diferente de zero: tudo neutro devolve o quadro como entrou.
+// Ordem: exposição, brilho, contraste, realces e sombras, saturação, temperatura e matiz,
+// vinheta. Cores no valor do arquivo (sem conversão), como nos filtros.
+
+export const AJUSTES = ['brilho', 'contraste', 'saturacao', 'exposicao', 'temperatura', 'matiz', 'realces', 'sombras', 'vinheta'];
+
+const AJUSTE_VERT = `precision highp float;
+attribute vec3 a_posicao;
+attribute vec2 a_uv;
+varying vec2 uv0;
+void main() { gl_Position = vec4(a_posicao, 1.0); uv0 = a_uv; }`;
+
+const AJUSTE_FRAG = `precision highp float;
+varying vec2 uv0;
+uniform sampler2D u_quadro;
+uniform float u_brilho, u_contraste, u_saturacao, u_exposicao, u_temperatura, u_matiz, u_realces, u_sombras, u_vinheta;
+const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+void main() {
+  vec3 c = texture2D(u_quadro, uv0).rgb;
+  // exposição: ±1 ponto de luz, contado na luz (desfaz a curva do arquivo, multiplica, refaz)
+  if (u_exposicao != 0.0) c = pow(pow(c, vec3(2.2)) * exp2(u_exposicao), vec3(1.0 / 2.2));
+  // brilho: curva que mexe nos meios e deixa o preto e o branco no lugar
+  if (u_brilho != 0.0) c = pow(c, vec3(exp2(-0.7 * u_brilho)));
+  // contraste: em volta do cinza médio, de 0,5× a 2×
+  if (u_contraste != 0.0) c = (c - 0.5) * exp2(u_contraste) + 0.5;
+  // realces e sombras: subir puxa para o branco, descer multiplica (aprofunda sem esmagar no preto)
+  if (u_realces != 0.0 || u_sombras != 0.0) {
+    float y = clamp(dot(c, LUMA), 0.0, 1.0);
+    float wc = smoothstep(0.5, 1.0, y), we = 1.0 - smoothstep(0.0, 0.5, y);
+    c = u_realces > 0.0 ? mix(c, vec3(1.0), 0.4 * u_realces * wc) : c * (1.0 + 0.4 * u_realces * wc);
+    c = u_sombras > 0.0 ? mix(c, vec3(1.0), 0.3 * u_sombras * we) : c * (1.0 + 0.5 * u_sombras * we);
+  }
+  // saturação: −100 é preto e branco, 100 é o dobro
+  if (u_saturacao != 0.0) c = mix(vec3(dot(c, LUMA)), c, 1.0 + u_saturacao);
+  // temperatura: mais quente puxa o vermelho e tira o azul; matiz: mais é magenta, menos é verde
+  if (u_temperatura != 0.0) c *= vec3(1.0 + 0.2 * u_temperatura, 1.0, 1.0 - 0.2 * u_temperatura);
+  if (u_matiz != 0.0) c *= vec3(1.0, 1.0 - 0.2 * u_matiz, 1.0);
+  // vinheta: escurece (ou clareia, abaixo de zero) as bordas, na forma do quadro
+  if (u_vinheta != 0.0) {
+    float w = smoothstep(0.35, 1.0, length(uv0 - 0.5) * 1.41421356);
+    c = u_vinheta > 0.0 ? c * (1.0 - 0.8 * u_vinheta * w) : mix(c, vec3(1.0), -0.5 * u_vinheta * w);
+  }
+  gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+}`;
+
+export function criarAjuste({ largura, altura }) {
+  if (!(largura > 0 && altura > 0)) throw new Error('ajuste: largura e altura são obrigatórias');
+  const renderer = new THREE.WebGLRenderer({ preserveDrawingBuffer: true, alpha: false });
+  renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+  renderer.setPixelRatio(1);
+  renderer.setSize(largura, altura, false);
+  const quadro = texturaDeEntrada(largura, altura);
+  quadro.flipY = false;
+  quadro.generateMipmaps = false;
+  quadro.minFilter = THREE.LinearFilter;
+  const uniforms = { u_quadro: { value: quadro } };
+  for (const k of AJUSTES) uniforms[`u_${k}`] = { value: 0 };
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('a_posicao', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 1, -1, 0, -1, 1, 0, 1, 1, 0]), 3));
+  g.setAttribute('a_uv', new THREE.BufferAttribute(new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]), 2));
+  g.setIndex([0, 1, 2, 2, 1, 3]);
+  const material = new THREE.RawShaderMaterial({ vertexShader: AJUSTE_VERT, fragmentShader: AJUSTE_FRAG, uniforms });
+  const malha = new THREE.Mesh(g, material);
+  malha.frustumCulled = false;
+  const cena = new THREE.Scene();
+  cena.add(malha);
+  const camera = new THREE.Camera();
+  renderer.initTexture(quadro);
+  return {
+    tipo: 'ajuste',
+    canvas: renderer.domElement,
+    desenhar({ quadro: fonte, ajustes }) {
+      trocar(quadro, fonte);
+      for (const k of AJUSTES) {
+        const v = Number((ajustes || {})[k]) || 0;
+        uniforms[`u_${k}`].value = Math.max(-100, Math.min(100, v)) / 100;
+      }
+      renderer.render(cena, camera);
+    },
+    destruir() {
+      g.dispose();
+      material.dispose();
+      quadro.dispose();
+      renderer.dispose();
+      renderer.forceContextLoss();
     },
   };
 }

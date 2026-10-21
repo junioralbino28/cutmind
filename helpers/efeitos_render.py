@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""O vídeo final com os filtros e as transições do editor (efeitos.json).
+"""O vídeo final com os filtros, as transições e os ajustes do editor (efeitos.json).
 
 Desenha cada quadro das janelas com o MESMO motor da prévia (assets/efeitos/motor.js),
 pela composição EfeitosBase do projeto Remotion, e grava um cut.mp4 novo em
@@ -18,7 +18,7 @@ dos tempos gravados, que punha o 1º quadro da tomada seguinte dentro do filtro)
 na transição, k = ⌊corte·fps + 0,5⌋ é o
 1º quadro depois do corte; antes dele o lado A é o quadro n e o B é o k; dali em diante o
 A é o k−1 e o B é o n; tempo_ms = (n/fps − (corte − duração/2))·1000. Primeiro a
-transição, depois o filtro por cima.
+transição, depois o filtro por cima e o ajuste por último.
 
 Em blocos de até 90 quadros: as entradas de um bloco saem do cut.mp4 em PNG, o Remotion
 desenha, o resultado entra no vídeo novo e os PNGs são apagados. Um filtro numa tomada
@@ -62,7 +62,8 @@ def quadros(ini: float, fim: float, fps: float, total: int) -> list[int]:
 
 
 def receitas(efeitos: dict, fps: float, total: int) -> list[dict]:
-    """Uma receita por quadro tocado: {n, tr?: {pacote, tempo_ms, a, b}, fi?: {pacote, intensidade}}."""
+    """Uma receita por quadro tocado:
+    {n, tr?: {pacote, tempo_ms, a, b}, fi?: {pacote, intensidade}, aj?: {ajustes}}."""
     por_n: dict[int, dict] = {}
     for it in efeitos["itens"]:
         ini, fim = ef.janela(it)
@@ -73,6 +74,8 @@ def receitas(efeitos: dict, fps: float, total: int) -> list[dict]:
                 a, b = (n, k) if n < k else (k - 1, n)
                 r["tr"] = {"pacote": it["pacote"], "tempo_ms": (n / fps - ini) * 1000,
                            "a": max(0, a), "b": min(total - 1, b)}
+            elif it["tipo"] == "ajuste":
+                r["aj"] = {"ajustes": it["ajustes"]}
             else:
                 r["fi"] = {"pacote": it["pacote"], "intensidade": it.get("intensidade")}
     return [por_n[n] for n in sorted(por_n)]

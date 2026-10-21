@@ -632,7 +632,10 @@ Transições**; `references/celular.md`). The project file is `<edit>/efeitos.js
 times in cut.mp4 seconds, schema in `helpers/efeitos.py`: a filter covers
 `inicio`…`inicio+duracao` with an optional `intensidade` (0–1, the package's own
 when absent); a transition is centred on `corte`, the frame where two takes meet,
-for `duracao`. Every save also carries it in `preview_edits.json`.
+for `duracao`; an `ajuste` (the take's **Ajustar**: brilho, contraste, saturacao,
+exposicao, temperatura, matiz, realces, sombras, vinheta, each −100…100) covers its
+take like a filter, has no package (it is a shader inside `motor.js`), and one take
+holds one. Every save also carries it in `preview_edits.json`.
 
 ```bash
 uv run python -X utf8 helpers/efeitos_render.py <edit> [--remotion <edit>/remotion]
@@ -649,7 +652,8 @@ original `<edit>/cut.mp4` is never touched. With no items it just copies the cut
 Frame rules, shared with the preview: frame n is in an effect when
 `start − 1 ms ≤ n/fps < end − 1 ms`. In a transition, `k = ⌊corte·fps + 0.5⌋`. Before
 `k`, side A is frame n and side B is frozen on frame `k`. From `k` on, A is frozen on
-`k−1` and B is frame n. A frame with both gets the transition first, then the filter.
+`k−1` and B is frame n. A frame with several gets the transition first, then the
+filter, then the ajuste.
 
 Measured on the test cut, frame by frame, the phone preview against the final frame
 is 0.5–1.0 level apart on average, while the effect itself is 25–100 levels against

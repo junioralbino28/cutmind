@@ -8,12 +8,14 @@ import {AbsoluteFill, cancelRender, continueRender, delayRender, staticFile, use
 //   n   o quadro do cut.mp4 que sai daqui
 //   tr  transição: pacote, tempo_ms e os quadros dos lados a e b
 //   fi  filtro: pacote e intensidade (sem ela, a do pacote)
-// Primeiro a transição, depois o filtro por cima: a mesma ordem da prévia.
+//   aj  ajuste (Ajustar da tomada): os valores, num shader do próprio motor
+// Primeiro a transição, depois o filtro por cima e o ajuste por último: a mesma ordem da prévia.
 
 export type Receita = {
   n: number;
   tr?: {pacote: string; tempo_ms: number; a: number; b: number};
   fi?: {pacote: string; intensidade?: number | null};
+  aj?: {ajustes: Record<string, number>};
 };
 export type EfeitosProps = {largura: number; altura: number; receitas: Receita[]};
 
@@ -22,9 +24,11 @@ type Efeito = {canvas: HTMLCanvasElement; desenhar: (o: Record<string, unknown>)
 // import() de verdade, fora do webpack: o motor é o arquivo de public/, não uma cópia empacotada
 const importar = new Function('u', 'return import(u)') as (u: string) => Promise<{
   carregarEfeito: (base: string, tam: {largura: number; altura: number}) => Promise<Efeito>;
+  criarAjuste: (tam: {largura: number; altura: number}) => Efeito;
 }>;
 let motorMod: ReturnType<typeof importar> | null = null;
 const motores = new Map<string, Promise<Efeito>>();
+let ajusteMotor: Promise<Efeito> | null = null;
 const pasta = (arquivo: string) => staticFile(arquivo).replace(/[^/]*$/, '');
 
 const motor = (pacote: string, largura: number, altura: number) => {
@@ -35,6 +39,12 @@ const motor = (pacote: string, largura: number, altura: number) => {
     motores.set(pacote, m);
   }
   return m;
+};
+
+const ajuste = (largura: number, altura: number) => {
+  motorMod = motorMod || importar(staticFile('efeitos/motor.js'));
+  ajusteMotor = ajusteMotor || motorMod.then((mod) => mod.criarAjuste({largura, altura}));
+  return ajusteMotor;
 };
 
 const imagem = async (n: number) => {
@@ -62,6 +72,11 @@ export const EfeitosBase: React.FC<EfeitosProps> = ({largura, altura, receitas})
       if (r.fi) {
         const m = await motor(r.fi.pacote, largura, altura);
         m.desenhar({quadro: fonte, intensidade: r.fi.intensidade ?? undefined});
+        fonte = saida = m.canvas;
+      }
+      if (r.aj) {
+        const m = await ajuste(largura, altura);
+        m.desenhar({quadro: fonte, ajustes: r.aj.ajustes});
         saida = m.canvas;
       }
       ref.current!.getContext('2d')!.drawImage(saida, 0, 0, largura, altura);

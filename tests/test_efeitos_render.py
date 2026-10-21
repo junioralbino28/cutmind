@@ -44,6 +44,14 @@ def test_receita_do_filtro_e_ordem():
     assert rs[0]["fi"] == {"pacote": "filme-pb", "intensidade": 0.2} and "tr" not in rs[0]
 
 
+def test_receita_do_ajuste_vai_junto_com_o_filtro_e_sem_pacote():
+    ef = {"versao": 1, "itens": [
+        EF["itens"][0], {"id": "a1", "tipo": "ajuste", "inicio": 0.5, "duracao": 1.0, "ajustes": {"brilho": 30}}]}
+    rs = {r["n"]: r for r in er.receitas(ef, 30, 100)}
+    assert rs[20]["fi"]["pacote"] == "filme-pb" and rs[20]["aj"] == {"ajustes": {"brilho": 30}}
+    assert "aj" not in rs[14] and "fi" not in rs[40] and rs[40]["aj"]["ajustes"] == {"brilho": 30}
+
+
 def test_corte_com_carimbo_um_pouco_antes_cai_no_quadro_certo():
     """O corte vem de video_start_in_output (60.666666): k é 1820, não 1819."""
     ef = {"versao": 1, "itens": [{"id": "t1", "tipo": "transicao", "pacote": "x", "corte": 60.667, "duracao": 1.1}]}

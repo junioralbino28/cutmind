@@ -410,6 +410,8 @@ button { font-family: inherit; cursor: pointer; }
 .chip.fx .l-ico svg { width: 13px; height: 13px; display: block; }
 .chip.fx .l-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 .chip.fx.sel { overflow: visible; outline: 2px solid #fff; outline-offset: -1px; z-index: 3; }
+.chip.fx.aj { background: #18261d; box-shadow: inset 2px 0 0 #3fbf74; }
+.chip.fx.aj .l-ico { color: #3fbf74; }
 .fx-ico { color: var(--brand); }
 .tr-play.fx-ico svg { width: 20px; height: 20px; fill: none; } /* o ícone é de traço; o play das trilhas é cheio */
 .tr-row.on .tr-play.fx-ico { background: var(--surface3); color: var(--brand); }
@@ -429,6 +431,19 @@ button { font-family: inherit; cursor: pointer; }
 .lh.r { right: -12px; border-radius: 0 3px 3px 0; }
 .vol-range { width: calc(100% - 32px); margin: 16px 16px 8px; accent-color: var(--brand); }
 .vol-nota { margin: 0 16px 6px; font-size: 12px; line-height: 1.4; color: var(--dim); }
+/* Ajustar: o zero da régua marcado no meio; a ferramenta mexida ganha um ponto */
+.aj-regua { position: relative; }
+.aj-regua .vol-range { display: block; margin: 12px 16px; }
+.aj-regua::after {
+  content: ''; position: absolute; left: 50%; top: 50%; translate: -50% -50%;
+  width: 2px; height: 14px; border-radius: 1px; background: var(--dim); pointer-events: none;
+}
+.aj-params { padding-top: 4px; }
+.aj-p { position: relative; }
+.aj-p.mexido::after {
+  content: ''; position: absolute; top: 3px; right: 3px;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--brand);
+}
 
 /* a frase que está na tela, pronta para arrastar */
 .player.posicionando .tap-play { touch-action: none; }
