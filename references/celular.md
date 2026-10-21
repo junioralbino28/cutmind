@@ -12,11 +12,17 @@ changes — only how the user reaches the server.
 | Tailscale | away from home, Tailscale on PC and phone | same `--host 0.0.0.0`; add `--allow-host .ts.net` for the MagicDNS name | yes |
 | Cable (Android) | phone on USB with debugging on | server as usual (127.0.0.1) + `adb reverse tcp:<port> tcp:<port>`, open `http://127.0.0.1:<port>/celular` | no: it arrives as 127.0.0.1 |
 
-"Add to home screen" ships a manifest and icons. Chrome's documentation asks for
-https to install as a full-screen app; 127.0.0.1 (the cable) counts as secure.
-Over plain http on Wi-Fi it may become a shortcut with the browser bar — not yet
-confirmed on a phone (desktop Chromium reported no installability error either
-way, so it does not settle it).
+"Add to home screen" ships a manifest and icons. Over the cable it is confirmed:
+on an Android phone with Chrome 155 the page is a secure context and Chrome reports no
+installability error. Chrome's documentation asks for https to install as a
+full-screen app, so over plain http on Wi-Fi it may become a shortcut with the
+browser bar — not confirmed on a phone yet (desktop Chromium reported no error
+either way, so it does not settle it).
+
+Tested on that phone over the cable: picking a take, trimming with the finger
+(the source frame shows under the handle), the caption sample with the spoken
+words, **Enviar** opening Android's photo picker, and an 84 MB upload with the
+progress bar.
 
 ## Turning it on
 
