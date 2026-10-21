@@ -293,7 +293,8 @@ async function applyState(data) {
   // SHORTER than end-start and the takes do not simply abut. Without this the
   // filmstrip and the needle drift a little further at each junction.
   S.jcut = (data.edl && data.edl.jcut_timeline) || null;
-  S.rendered = ranges.map((r) => ({ source: r.source, start: +r.start, end: +r.end, beat: r.beat || '' }));
+  // `volume` vem do editor do celular; o PC não mexe nele, só o leva adiante no Salvar
+  S.rendered = ranges.map((r) => ({ source: r.source, start: +r.start, end: +r.end, beat: r.beat || '', volume: r.volume }));
   S.draft = S.rendered.map((r) => ({ ...r, removed: false, orig: { start: r.start, end: r.end } }));
   S.selected = -1;
 
@@ -1322,6 +1323,7 @@ $('btnSave').addEventListener('click', async () => {
     payload.edl = {
       ranges: S.draft.filter((r) => !r.removed).map((r) => ({
         source: r.source, start: +r.start.toFixed(3), end: +r.end.toFixed(3), beat: r.beat,
+        ...(r.volume != null && +r.volume !== 1 ? { volume: +r.volume } : {}),
       })),
       removed: S.draft.filter((r) => r.removed).map((r) => ({ source: r.source, beat: r.beat, start: r.orig.start, end: r.orig.end })),
       changes: S.draft.filter((r) => !r.removed && (r.start !== r.orig.start || r.end !== r.orig.end)).map((r) => ({

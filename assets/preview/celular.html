@@ -118,11 +118,12 @@
   </footer>
 </section>
 
-<!-- painel pequeno: volume da camada de áudio escolhida -->
+<!-- painel pequeno: volume da camada de áudio ou da tomada escolhida -->
 <section class="sheet small" id="volSheet" aria-hidden="true">
   <div class="sheet-grip"></div>
   <div class="note-head"><b>Volume</b><span id="volVal">100%</span></div>
   <input class="vol-range" id="volRange" type="range" min="0" max="200" step="5" value="100" aria-label="Volume da camada">
+  <p class="vol-nota hidden" id="volNota">A prévia toca no máximo no volume original. O vídeo final sai mais alto, até o limite sem distorcer.</p>
   <footer class="sheet-foot">
     <div class="t-spacer"></div>
     <button class="tb-btn primary" id="volOk" type="button">Pronto</button>

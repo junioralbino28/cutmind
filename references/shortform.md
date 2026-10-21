@@ -569,6 +569,13 @@ delivered voice against `cut.mp4` at three points — the offset must be CONSTAN
 a drift that is not there. Drop this re-mux ONLY if Phase 2 baked SFX into the
 audio (stacked captions' click/scratch), and then verify sync by hand.
 
+**A take with its own `volume` in `edl.json` (the phone editor's Volume) → use
+`mixar_final.py`, not these hand re-muxes** (it works with no layers). The one-pass
+`loudnorm` here is dynamic: it lifts a take the user lowered back up (measured on 21/10:
+a take at 50% came back to 0.0 dB). `mixar_final.py` sees the volume and normalizes
+linearly instead: it measures the mix, applies one fixed gain to −14 LUFS and a −1 dBFS
+limiter, so every take keeps the level the user chose.
+
 If the video has no soundtrack, the same shape without input 2:
 
 ```bash
@@ -599,7 +606,8 @@ cut.mp4 seconds, schema in `helpers/camadas.py`; every save also carries it in
    `melhorar_audio.py` chain: noise reduction + the voice chain), delayed like the
    voice so it stays where the user heard it. A layer marked `trilha` (library
    soundtrack) fades like music, 0.4 s in and 1.5 s out; the others keep 15 ms. Effects go in composition time with
-   `--sfx <file>@<seconds>[:volume]`. Sum without normalizing, then loudnorm.
+   `--sfx <file>@<seconds>[:volume]`. Sum without normalizing, then loudnorm (linear
+   when a take has its own `volume`, see above).
    `--base render` keeps Remotion's own audio (the stacked captions' SFX, see
    above) and only adds the layers; it refuses when the video's sound is off,
    because voice and SFX come mixed there. `--mostrar` prints the command. It

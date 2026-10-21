@@ -37,6 +37,8 @@ FMT = "aformat=sample_rates=48000:channel_layouts=stereo"
 COR = ("scale=in_range=full:out_range=limited,format=yuv420p,"
        "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv")
 LOUDNORM = "loudnorm=I=-14:TP=-1:LRA=11"
+ALVO_LUFS = -14.0
+LIMITE_LINEAR = 0.891  # −1 dBFS, o mesmo teto do loudnorm
 FADE_ITEM = 0.015  # entrada e saída curtinhas em cada camada: sem estalo no corte
 FADE_TRILHA = (0.4, 1.5)  # trilha da biblioteca: entra e sai como música, igual à soundtrack
 
@@ -49,9 +51,24 @@ def _n(x: float) -> str:
     return f"{x:.3f}"
 
 
+def tem_volume_de_tomada(edit: Path, state: dict) -> bool:
+    """Alguma tomada do edl.json com volume próprio (régua de Volume do editor do celular)?
+    Então o loudnorm de uma passada não serve: ele é dinâmico e levanta de volta a tomada
+    que a pessoa baixou (medido em 21/10: a tomada a 50% voltou a 0,0 dB no final)."""
+    try:
+        edl = json.loads((edit / (state.get("edl") or "edl.json")).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return any(r.get("volume") is not None and float(r["volume"]) != 1.0 for r in edl.get("ranges") or [])
+
+
 def montar(edit: Path, render: Path, saida: Path, vd: float, base: str = "cut",
-           sfx: list[tuple[Path, float, float]] = ()) -> tuple[list[str], dict]:
-    """O comando ffmpeg e um resumo do que entrou. vd = duração do vídeo do render."""
+           sfx: list[tuple[Path, float, float]] = (), norma: str | None = None,
+           medir: bool = False) -> tuple[list[str], dict]:
+    """O comando ffmpeg e um resumo do que entrou. vd = duração do vídeo do render.
+
+    `norma` troca o loudnorm do fim (a normalização linear, quando há volume de tomada);
+    `medir` devolve só a medição da soma (sem imagem, saída nula, loudnorm em JSON)."""
     edit = Path(edit)
     state = json.loads((edit / "state.json").read_text(encoding="utf-8"))
     fps = float(state.get("fps") or 30)
@@ -65,7 +82,8 @@ def montar(edit: Path, render: Path, saida: Path, vd: float, base: str = "cut",
     entradas: list[Path] = [Path(render)]
     partes = [f"[0:v]{COR}[vid]", f"anullsrc=r=48000:cl=stereo,atrim=duration={_n(vd)}[base]"]
     soma = ["[base]"]  # silêncio do tamanho do vídeo: a soma nunca fica vazia nem mais curta
-    resumo = {"voz": "fora", "trilha": False, "camadas": 0, "biblioteca": 0, "efeitos": 0}
+    resumo = {"voz": "fora", "trilha": False, "camadas": 0, "biblioteca": 0, "efeitos": 0,
+              "linear": tem_volume_de_tomada(edit, state)}
 
     def entrada(p: Path) -> int:
         entradas.append(Path(p))
@@ -113,7 +131,14 @@ def montar(edit: Path, render: Path, saida: Path, vd: float, base: str = "cut",
         soma.append(f"[s{n}]")
         resumo["efeitos"] += 1
 
-    partes.append(f"{''.join(soma)}amix=inputs={len(soma)}:duration=first:normalize=0,{LOUDNORM}[out]")
+    fim = f"{LOUDNORM}:print_format=json" if medir else (norma or LOUDNORM)
+    partes.append(f"{''.join(soma)}amix=inputs={len(soma)}:duration=first:normalize=0,{fim}[out]")
+    if medir:  # só o som: a imagem não entra na conta e não custa o tempo da conversão
+        cmd = ["ffmpeg", "-hide_banner", "-nostats", "-y"]
+        for e in entradas:
+            cmd += ["-i", str(e)]
+        return cmd + ["-filter_complex", ";".join(partes[1:]), "-map", "[out]", "-t", _n(vd),
+                      "-f", "null", "-"], resumo
     cmd = ["ffmpeg", "-v", "error", "-y"]
     for e in entradas:
         cmd += ["-i", str(e)]
@@ -128,6 +153,17 @@ def _duracao_video(p: Path) -> float:
     out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration",
                           "-of", "default=nw=1:nk=1", str(p)], capture_output=True, text=True, check=True).stdout
     return float(out.strip())
+
+
+def _lufs(medir: list[str]) -> float:
+    """O volume integrado (LUFS) da soma, pelo JSON que o loudnorm imprime no fim."""
+    err = subprocess.run(medir, capture_output=True, text=True, encoding="utf-8", errors="replace").stderr
+    bloco = err[err.rfind("{"):err.rfind("}") + 1]
+    try:
+        i = float(json.loads(bloco)["input_i"])
+    except (ValueError, KeyError):
+        raise SystemExit(f"não consegui medir o volume da soma:\n{err[-800:]}") from None
+    return i if i > -70 else ALVO_LUFS  # soma em silêncio: nada a normalizar
 
 
 def _sfx(texto: str) -> tuple[Path, float, float]:
@@ -170,6 +206,18 @@ def main() -> int:
     if faltando:
         print("faltam arquivos: " + ", ".join(faltando), file=sys.stderr)
         return 1
+    if resumo["linear"]:
+        # volume de tomada: mede a soma e aplica um ganho fixo + limitador (normalização
+        # linear), para a tomada que a pessoa baixou continuar mais baixa no vídeo final
+        medir, _ = montar(edit, a.render, saida, _duracao_video(a.render), a.base, a.sfx, medir=True)
+        if a.mostrar:
+            print(subprocess.list2cmdline(medir))
+            print("(o ganho do volume=…dB sai dessa medição)")
+            return 0
+        ganho = ALVO_LUFS - _lufs(medir)
+        cmd, resumo = montar(edit, a.render, saida, _duracao_video(a.render), a.base, a.sfx,
+                             norma=f"volume={ganho:+.2f}dB,alimiter=limit={LIMITE_LINEAR}:level=false:latency=true")
+        print(f"normalização linear (há tomada com volume próprio): ganho {ganho:+.2f} dB")
     if a.mostrar:
         print(subprocess.list2cmdline(cmd))
         return 0

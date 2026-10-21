@@ -24,6 +24,16 @@ def test_aviso_conta_divisao_copia_e_ordem(tmp_path):
     assert "lista inteira" in aviso  # o agente monta o edl.json pela lista, não por changes/removed
 
 
+def test_aviso_conta_o_volume_das_tomadas(tmp_path):
+    aviso = _salvo(tmp_path, {"ranges": [{"source": "A", "beat": "HOOK", "volume": 0.5},
+                                         {"source": "A", "beat": "CTA"},
+                                         {"source": "B", "volume": 2}],
+                              "changes": [], "removed": [], "ops": {"volume": 2}})
+    assert "volume mudado em 2 take(s)" in aviso
+    assert "take 1 (HOOK): 50%" in aviso and "take 3 (B): 200%" in aviso
+    assert "take 2" not in aviso  # sem `volume`: 100%, nada a dizer
+
+
 def test_aviso_do_editor_de_pc_continua_igual(tmp_path):
     aviso = _salvo(tmp_path, {"ranges": [], "changes": [{}], "removed": [{}]})
     assert "1 take(s) reajustado(s), 1 take(s) removido(s)" in aviso

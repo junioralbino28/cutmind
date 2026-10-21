@@ -55,8 +55,17 @@ def digest(p: Path) -> str:
         head.append(f"{ops['copias']} take(s) duplicado(s)")
     if ops.get("ordemMudou"):
         head.append("ordem dos takes mudou")
+    if ops.get("volume"):
+        head.append(f"volume mudado em {ops['volume']} take(s)")
     if ops:  # editor que divide, copia e move: a lista inteira é a referência
         parts.append("  edl.ranges é a lista inteira, na ordem nova — monte o edl.json por ela (SKILL.md).")
+    vols = [(i, r) for i, r in enumerate(edl.get("ranges") or [], 1) if r.get("volume") is not None]
+    if vols:
+        parts.append("  volume por take (vai para o edl.json como está; sem `volume` = 100%; o render.py "
+                     "aplica no fim e o final.mp4 sai pelo mixar_final.py):")
+        for i, r in vols:
+            parts.append(f'  · take {i} ({r.get("beat") or r.get("source", "")}): '
+                         f'{round(float(r["volume"]) * 100)}%')
     if ed:
         head.append("inserts/gancho movidos")
     if "camadas" in d:

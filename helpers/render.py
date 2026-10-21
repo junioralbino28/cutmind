@@ -613,7 +613,9 @@ def plan_jcut(edl: dict, edit_dir: Path, cfg: dict) -> list[dict]:
 
 def assemble_jcut(plan: list[dict], out_path: Path, edit_dir: Path) -> None:
     """Concat the video track, sum the offset audio tracks, mux them together."""
-    work = edit_dir / "clips_graded"
+    # the folder the takes were extracted to (clips_draft / clips_preview / clips_graded):
+    # a fixed clips_graded only existed after a final render, so draft/preview broke
+    work = plan[0]["video_path"].parent
     vlist = edit_dir / "_concat_jcut.txt"
     vlist.write_text("".join(f"file '{p['video_path'].resolve()}'\n" for p in plan))
 
@@ -1054,6 +1056,93 @@ def build_final_composite(
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
 
+# -------- Volume da tomada (editor do celular) ---------------------------------
+# `volume` em cada range é a régua de Volume do editor do celular: 0 a 4 (0–400%),
+# 1 = como está. Entra no FIM da cadeia, sobre o corte já masterizado e normalizado.
+# Posto na extração, o loudnorm dinâmico e o compressor do voice master o desfaziam:
+# medido em 21/10, uma tomada a 50% saiu só 1,3 dB mais baixa e a vizinha a 100% caiu
+# 2,4 dB. No fim, o vídeo final é o que a prévia do celular toca: o corte vezes o
+# volume. Sem nenhum volume diferente de 1, nada disto roda e o render é o de antes.
+VOLUME_MAX = 4.0
+RAMPA_VOLUME_S = 0.02  # emenda seca: a troca de volume leva 20 ms, sem estalo
+LIMITE_VOLUME = 0.891  # −1 dBFS, o teto do loudnorm: acima de 100% o limitador segura o pico
+
+
+def volume_da_tomada(r: dict) -> float:
+    """O `volume` do range (1 sem ele). Fora de 0–4, ou não numérico, é recusado."""
+    vol = r.get("volume")
+    if vol is None:
+        return 1.0
+    try:
+        vol = float(vol)
+    except (TypeError, ValueError):
+        raise ValueError(f"volume inválido: {vol!r}") from None
+    if not 0.0 <= vol <= VOLUME_MAX:  # recusa NaN também
+        raise ValueError(f"volume fora de 0–{VOLUME_MAX:g}: {vol!r}")
+    return vol
+
+
+def pontos_de_volume(janelas: list[tuple[float, float, float]]) -> list[tuple[float, float]]:
+    """(início, fim, volume) de cada tomada no áudio de saída → pontos (t, ganho) de uma
+    curva por partes. Na sobreposição do J-cut o ganho passa de uma tomada à outra em
+    rampa; numa emenda seca, a rampa tem RAMPA_VOLUME_S centrada na emenda. Lista vazia
+    quando toda tomada está a 100%."""
+    if all(v == 1.0 for _, _, v in janelas):
+        return []
+    pts = [(janelas[0][0], janelas[0][2])]
+    for (_, e, v), (s, _, v2) in zip(janelas, janelas[1:]):
+        if v == v2:
+            continue
+        a, b = min(s, e), max(s, e)  # a sobreposição do J-cut (ou a emenda, quando a = b)
+        if b - a < RAMPA_VOLUME_S:
+            c = (a + b) / 2
+            a, b = c - RAMPA_VOLUME_S / 2, c + RAMPA_VOLUME_S / 2
+        pts += [(a, v), (b, v2)]
+    pts.append((janelas[-1][1], janelas[-1][2]))
+    # tomada mais curta que as rampas das duas pontas: os pontos nunca voltam no tempo
+    for i in range(1, len(pts)):
+        if pts[i][0] < pts[i - 1][0]:
+            pts[i] = (pts[i - 1][0], pts[i][1])
+    return pts
+
+
+def expressao_de_volume(pts: list[tuple[float, float]]) -> str:
+    """A curva como expressão do filtro `volume` do ffmpeg (avaliada por quadro de áudio)."""
+    expr = f"{pts[-1][1]:.4f}"
+    for (t0, g0), (t1, g1) in reversed(list(zip(pts, pts[1:]))):
+        trecho = f"{g0:.4f}" if g0 == g1 else f"{g0:.4f}+({g1 - g0:.4f})*(t-{t0:.4f})/{t1 - t0:.4f}"
+        expr = f"if(lt(t,{t1:.4f}),{trecho},{expr})"
+    return f"if(lt(t,{pts[0][0]:.4f}),{pts[0][1]:.4f},{expr})"
+
+
+def aplicar_volume_das_tomadas(path: Path, janelas: list[tuple[float, float, float]]) -> bool:
+    """Último passo do render: o áudio de `path` vezes a curva de volume das tomadas.
+    Vídeo copiado; o áudio vai em quadros de 256 amostras (5 ms) para a rampa não andar
+    em degraus de 21 ms. Devolve False (e não toca no arquivo) sem volume a aplicar."""
+    pts = pontos_de_volume(janelas)
+    if not pts:
+        return False
+    af = f"asetnsamples=n=256:p=0,volume='{expressao_de_volume(pts)}':eval=frame"
+    if max(v for _, _, v in janelas) > 1.0:
+        af += f",alimiter=limit={LIMITE_VOLUME}:level=false:latency=true"
+    tmp = path.with_suffix(".volume.mp4")
+    cmd = [
+        "ffmpeg", "-y", "-hide_banner", "-nostats",
+        "-i", str(path),
+        "-map", "0:v", "-map", "0:a",
+        "-c:v", "copy",
+        "-af", af,
+        "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+        "-movflags", "+faststart",
+        str(tmp),
+    ]
+    n = sum(1 for _, _, v in janelas if v != 1.0)
+    print(f"volume das tomadas: {n} com volume próprio, aplicado no fim da cadeia")
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    tmp.replace(path)
+    return True
+
+
 # -------- Main ---------------------------------------------------------------
 
 
@@ -1135,6 +1224,10 @@ def main() -> None:
     edl = json.loads(edl_path.read_text())
     edit_dir = edl_path.parent
     out_path = args.output.resolve()
+    try:  # volume errado para antes de qualquer extração, não depois de minutos de render
+        volumes = [volume_da_tomada(r) for r in edl.get("ranges", [])]
+    except ValueError as e:
+        sys.exit(f"edl.json: {e}")
 
     # Frame-align every range BEFORE extraction, and persist it: the EDL, the
     # preview timeline and segments.json must all describe the same cut as the
@@ -1185,6 +1278,8 @@ def main() -> None:
             sum(p["v_out"] - p["v_in"] for p in plan), 3)
         edl_path.write_text(json.dumps(edl, ensure_ascii=False, indent=2))
         print(f"  timeline J-cut: {edl['total_duration_s']}s → edl.json atualizado")
+        # onde o SOM de cada tomada está na saída (entra antes da imagem, no J-cut)
+        janelas = [(p["a_off"], p["a_off"] + p["a_out"] - p["a_in"], v) for p, v in zip(plan, volumes)]
     else:
         # 1. Extract per-segment (auto-grade per range if EDL grade is "auto")
         segment_paths = extract_all_segments(
@@ -1201,6 +1296,10 @@ def main() -> None:
                 sum(r["end"] - r["start"] for r in edl["ranges"]), 3)
             edl_path.write_text(json.dumps(edl, ensure_ascii=False, indent=2))
             print("  J-cut desligado → jcut_timeline removido do edl.json")
+        janelas, t = [], 0.0
+        for r, v in zip(edl["ranges"], volumes):
+            janelas.append((t, t + r["end"] - r["start"], v))
+            t += r["end"] - r["start"]
 
     # 3. Subtitles: build if requested, resolve final path
     subs_path: Path | None = None
@@ -1245,6 +1344,9 @@ def main() -> None:
 
         for t in temps:
             t.unlink(missing_ok=True)
+
+    # 5. Volume de cada tomada (régua do editor do celular): por último, sobre o normalizado
+    aplicar_volume_das_tomadas(out_path, janelas)
 
     size_mb = out_path.stat().st_size / (1024 * 1024)
     print(f"\ndone: {out_path} ({size_mb:.1f} MB)")

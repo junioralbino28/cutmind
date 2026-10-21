@@ -492,15 +492,15 @@ function buildInsertsDraft() {
 const isText = (c) => c.kind === 'hook' || c.kind === 'word';
 
 // ---------- o que mudou e ainda não foi salvo ----------
-// comparado com o último corte recebido (ou o último Salvar): aparada, nova, excluída, ordem
-const baseOf = (draft) => draft.map(({ uid, start, end }) => ({ uid, start, end }));
+// comparado com o último corte recebido (ou o último Salvar): aparada, nova, excluída, ordem, volume
+const baseOf = (draft) => draft.map(({ uid, start, end, vol }) => ({ uid, start, end, vol }));
 function diffBase() {
   const base = new Map(S.base.map((b) => [b.uid, b]));
   const now = new Set(S.draft.map((r) => r.uid));
   let mudou = 0;
   for (const r of S.draft) {
     const b = base.get(r.uid);
-    if (!b || b.start !== r.start || b.end !== r.end) mudou++;
+    if (!b || b.start !== r.start || b.end !== r.end || b.vol !== r.vol) mudou++;
   }
   mudou += S.base.filter((b) => !now.has(b.uid)).length;
   const antes = S.base.map((b) => b.uid).filter((u) => now.has(u));
@@ -514,7 +514,7 @@ function dirtyCount() {
 }
 const isChanged = (r) => {
   const b = S.base.find((x) => x.uid === r.uid);
-  return !b || b.start !== r.start || b.end !== r.end;
+  return !b || b.start !== r.start || b.end !== r.end || b.vol !== r.vol;
 };
 function refreshHeader() {
   const n = dirtyCount();
@@ -642,7 +642,8 @@ async function applyState(data) {
 
   const ranges = (data.edl && data.edl.ranges) || [];
   S.jcut = (data.edl && data.edl.jcut_timeline) || null;
-  S.rendered = ranges.map((r) => ({ source: r.source, start: +r.start, end: +r.end, beat: r.beat || '' }));
+  // `vol` é o volume da tomada (1 = como está); o cut.mp4 já sai com o do edl.json
+  S.rendered = ranges.map((r) => ({ source: r.source, start: +r.start, end: +r.end, beat: r.beat || '', vol: r.volume == null ? 1 : +r.volume }));
   S.draft = S.rendered.map((r, i) => ({ ...r, uid: `o${i}`, from: i, orig: { start: r.start, end: r.end } }));
   S.base = baseOf(S.draft);
   S.selected = -1;
@@ -843,6 +844,7 @@ function renderTakes(lane) {
       }
     }
     el('div', 't-label', c).textContent = r.beat || r.source || `tomada ${i + 1}`;
+    if (r.vol !== 1 && !movendo) el('div', 't-vol', c).innerHTML = `${ICON.vol}${Math.round(r.vol * 100)}%`;
     if (editable && i === S.selected) {
       const l = el('div', 'handle l', c);
       l.dataset.i = i; l.dataset.side = 'l';
@@ -1309,6 +1311,7 @@ function loop() {
     else { S.t = clampT(renderedToDraft(video.currentTime)); positionTimeline(); }
   }
   syncLayers();
+  syncVolTomada();
   if (!video.requestVideoFrameCallback) fxDesenhar(video.currentTime, false); // sem o aviso de quadro: a cada volta
   requestAnimationFrame(loop);
 }
@@ -1418,6 +1421,7 @@ function renderToolbar() {
     tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
     tool(ctx, 'dividir', 'Dividir');
     tool(ctx, 'duplicar', 'Duplicar');
+    tool(ctx, 'volume', `${Math.round(sel.vol * 100)}%`);
     tool(ctx, 'excluir', 'Excluir', { icon: ICON.remover, disabled: S.draft.length < 2 });
     tool(ctx, 'ouvir', 'Ouvir');
     // "Original" volta às bordas que o agente cortou; pedaço novo não tem
@@ -1500,7 +1504,7 @@ function splitSelected() {
   const r = S.draft[i];
   const s = +(r.start + (d.lead || 0) + (S.t - d.out)).toFixed(3); // instante do arquivo de origem
   remember();
-  S.draft.splice(i + 1, 0, { uid: `n${++S.seq}`, from: r.from, kind: 'split', source: r.source, start: s, end: r.end, beat: r.beat, orig: null });
+  S.draft.splice(i + 1, 0, { uid: `n${++S.seq}`, from: r.from, kind: 'split', source: r.source, start: s, end: r.end, beat: r.beat, vol: r.vol, orig: null });
   r.end = s;
   renderTimeline(); renderToolbar(); refreshHeader();
 }
@@ -1509,7 +1513,7 @@ function duplicateSelected() {
   const i = S.selected;
   const r = S.draft[i];
   remember();
-  S.draft.splice(i + 1, 0, { uid: `n${++S.seq}`, from: r.from, kind: 'dup', source: r.source, start: r.start, end: r.end, beat: r.beat, orig: null });
+  S.draft.splice(i + 1, 0, { uid: `n${++S.seq}`, from: r.from, kind: 'dup', source: r.source, start: r.start, end: r.end, beat: r.beat, vol: r.vol, orig: null });
   S.selected = i + 1;
   renderTimeline(); renderToolbar(); refreshHeader();
 }
@@ -2308,7 +2312,9 @@ function edlPayload() {
   const novos = S.draft.filter((r) => !r.orig);
   const ordem = S.draft.filter((r) => r.orig).map((r) => r.from);
   return {
-    ranges: S.draft.map((r) => ({ source: r.source, start: +r.start.toFixed(3), end: +r.end.toFixed(3), beat: r.beat, take: r.from })),
+    // `volume` só quando não é 100%: sem ele, a tomada sai como está (o agente não herda o do edl.json)
+    ranges: S.draft.map((r) => ({ source: r.source, start: +r.start.toFixed(3), end: +r.end.toFixed(3), beat: r.beat, take: r.from,
+      ...(r.vol !== 1 ? { volume: r.vol } : {}) })),
     removed: S.rendered.map((r, i) => ({ r, i })).filter(({ i }) => !tem.has(`o${i}`))
       .map(({ r, i }) => ({ source: r.source, beat: r.beat, start: r.start, end: r.end, take: i })),
     changes: S.draft.filter((r) => r.orig && (r.start !== r.orig.start || r.end !== r.orig.end)).map((r) => ({
@@ -2320,6 +2326,7 @@ function edlPayload() {
       divisoes: novos.filter((r) => r.kind === 'split').length,
       copias: novos.filter((r) => r.kind === 'dup').length,
       ordemMudou: ordem.some((v, k) => k > 0 && v < ordem[k - 1]),
+      volume: S.draft.filter((r) => r.vol !== volCorte(r)).length, // tomadas com volume diferente do corte atual
     },
   };
 }
@@ -2597,28 +2604,64 @@ function toggleMelhorar() {
   toast(hit.it.melhorar ? 'O agente melhora este áudio: tira o ruído e acerta o volume' : 'Este áudio entra como está', 2600);
   renderTimeline(); renderToolbar(); refreshHeader();
 }
-// volume: um painel pequeno com a régua; 100% é o arquivo como veio
+/* volume: um painel pequeno com a régua; 100% é o arquivo como veio. Serve à camada de
+ * áudio escolhida (até 200%) e à tomada escolhida (até 400%, como no CapCut). */
 let volBefore = null;
+function volAlvo() {
+  const hit = S.layerSel ? camItem(S.layerSel) : null;
+  if (hit) return { max: 200, nome: 'camada', get: () => hit.it.volume, set: (v) => { hit.it.volume = v; } };
+  const r = S.selected >= 0 && S.view === 'corte' ? S.draft[S.selected] : null;
+  if (r) return { max: 400, nome: 'tomada', get: () => r.vol, set: (v) => { r.vol = v; }, tomada: r };
+  return null;
+}
+function volMostrar(a) {
+  const v = a.get();
+  $('volVal').textContent = `${Math.round(v * 100)}%`;
+  // a prévia toca o vídeo e os áudios no máximo no volume do arquivo; o vídeo final leva o ganho
+  $('volNota').classList.toggle('hidden', !(v > (a.tomada ? volCorte(a.tomada) : 1)));
+}
 function openVolume() {
-  const hit = camItem(S.layerSel);
-  if (!hit) return;
+  const a = volAlvo();
+  if (!a) return;
   volBefore = snap();
-  $('volRange').value = Math.round(hit.it.volume * 100);
-  $('volVal').textContent = `${Math.round(hit.it.volume * 100)}%`;
+  $('volRange').max = a.max;
+  $('volRange').value = Math.round(a.get() * 100);
+  $('volRange').setAttribute('aria-label', `Volume da ${a.nome}`);
+  volMostrar(a);
   showSheet($('volSheet'), true);
 }
 $('volRange').addEventListener('input', () => {
-  const hit = camItem(S.layerSel);
-  if (!hit) return;
-  hit.it.volume = +($('volRange').value / 100).toFixed(2);
-  $('volVal').textContent = `${$('volRange').value}%`;
+  const a = volAlvo();
+  if (!a) return;
+  a.set(+($('volRange').value / 100).toFixed(2));
+  volMostrar(a);
 });
 $('volOk').addEventListener('click', () => {
   showSheet($('volSheet'), false);
-  if (volBefore && JSON.stringify(volBefore.cam) !== camSig()) remember(volBefore);
+  if (volBefore && (JSON.stringify(volBefore.cam) !== camSig()
+      || volBefore.draft.some((r, k) => S.draft[k] && r.vol !== S.draft[k].vol))) remember(volBefore);
   volBefore = null;
-  renderToolbar(); refreshHeader();
+  renderTimeline(); renderToolbar(); refreshHeader();
 });
+/* Volume da tomada na prévia: o cut.mp4 já sai com o volume que o edl.json tinha
+ * (`volCorte`), então a prévia toca a razão entre o pedido e o que já está no arquivo.
+ * Acima do que o arquivo tem, fica no máximo (a prévia não aumenta, o final sim). */
+const volCorte = (r) => (S.rendered[r.from] ? S.rendered[r.from].vol : 1);
+function volPrevia(r) {
+  const base = volCorte(r);
+  if (!(base > 0)) return r.vol > 0 ? 1 : 0; // trecho mudo no cut.mp4: não há o que tocar mais alto
+  return Math.max(0, Math.min(1, r.vol / base));
+}
+// no Final o vídeo já é o que o agente montou, com o volume de cada tomada dentro
+function syncVolTomada() {
+  let v = 1;
+  if (S.view === 'corte' && S.draft.length) {
+    const dl = draftLayout();
+    const k = itemAt(dl, S.t);
+    if (k >= 0) v = volPrevia(dl[k]);
+  }
+  if (video.volume !== v) video.volume = v;
+}
 
 // prévia: o som do vídeo, o som de cada camada e a imagem por cima
 function applyMute() {

@@ -116,6 +116,22 @@ def test_efeito_sonoro_entra_no_tempo_do_video_final(tmp_path):
     assert resumo["efeitos"] == 1
 
 
+def test_volume_de_tomada_troca_o_loudnorm_pela_normalizacao_linear(tmp_path):
+    edit, _ = _projeto(tmp_path, {"video": {"mudo": False}, "faixas": []})
+    _, resumo = montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0)
+    assert resumo["linear"] is False  # sem edl.json: a receita de sempre
+    (edit / "edl.json").write_text(json.dumps({"ranges": [{"volume": 1}, {}]}), encoding="utf-8")
+    cmd, resumo = montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0)
+    assert resumo["linear"] is False and _filtro(cmd).endswith("loudnorm=I=-14:TP=-1:LRA=11[out]")
+    (edit / "edl.json").write_text(json.dumps({"ranges": [{"volume": 0.5}, {}]}), encoding="utf-8")
+    medir, resumo = montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0, medir=True)
+    assert resumo["linear"] is True
+    f = _filtro(medir)
+    assert "print_format=json" in f and "[vid]" not in f and medir[-3:] == ["-f", "null", "-"]
+    cmd, _ = montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0, norma="volume=+1.00dB,alimiter=limit=0.891")
+    assert _filtro(cmd).endswith("normalize=0,volume=+1.00dB,alimiter=limit=0.891[out]") and "loudnorm" not in _filtro(cmd)
+
+
 # ---- o vídeo de verdade: quem toca, quando ----
 def _goertzel(amostras, taxa, freq):
     k = 2 * math.cos(2 * math.pi * freq / taxa)
@@ -168,3 +184,28 @@ def test_no_video_final_a_camada_toca_no_tempo_e_a_silenciada_nao(tmp_path, vide
                            capture_output=True, text=True, check=True).stdout.split()
     assert dict(c.split("=") for c in cores) == {"color_range": "tv", "color_space": "bt709",
                                                  "color_transfer": "bt709", "color_primaries": "bt709"}
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="sem ffmpeg")
+def test_no_video_final_a_tomada_mais_baixa_continua_mais_baixa(tmp_path):
+    """O cut.mp4 já sai do render.py com o volume da tomada (aqui: 1ª metade a 50%). O
+    loudnorm de uma passada levantava essa metade de volta; a normalização linear não."""
+    edit, _ = _projeto(tmp_path, {"video": {"mudo": False}, "faixas": []})
+    (edit / "edl.json").write_text(json.dumps({"ranges": [{"volume": 0.5}, {}]}), encoding="utf-8")
+    ff = ["ffmpeg", "-v", "error", "-y"]
+    subprocess.run(ff + ["-f", "lavfi", "-i", "color=c=gray:s=108x192:d=6:r=30", "-pix_fmt", "yuvj420p",
+                         "-c:v", "libx264", str(edit / "render.mp4")], check=True)
+    subprocess.run(ff + ["-f", "lavfi", "-i", "color=c=black:s=108x192:d=6:r=30", "-f", "lavfi", "-i", "sine=f=440:d=6",
+                         "-af", "volume='if(lt(t,3),0.05,0.1)':eval=frame", "-shortest", "-c:v", "libx264", "-c:a", "aac",
+                         str(edit / "cut.mp4")], check=True)
+    r = subprocess.run([sys.executable, "-X", "utf8", str(HELPERS / "mixar_final.py"), str(edit), "--render", str(edit / "render.mp4"),
+                        "-o", str(edit / "final.mp4")], capture_output=True, text=True, encoding="utf-8")
+    assert r.returncode == 0, r.stderr + r.stdout
+    assert "normalização linear" in r.stdout
+
+    def media(ini, dur):
+        p = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-ss", str(ini), "-t", str(dur), "-i", str(edit / "final.mp4"),
+                            "-vn", "-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True)
+        return float(next(ln.split("mean_volume:")[1].split()[0] for ln in p.stderr.splitlines() if "mean_volume:" in ln))
+    dif = media(0.5, 2.0) - media(3.5, 2.0)
+    assert abs(dif - (-6.02)) < 0.5, dif

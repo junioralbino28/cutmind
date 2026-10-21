@@ -174,7 +174,9 @@ the layer questions in chat.
   (two ranges from the same take), duplicates (the same span twice), deletions and
   a new order are already applied. Rebuild `edl.json` `ranges` from it. `take`
   (when present) is the index of the range in the current `edl.json` it came from:
-  copy `quote`, `reason` and `gain_db` from there. Two consecutive ranges from the
+  copy `quote`, `reason` and `gain_db` from there. `volume` (0–4, the take's volume
+  slider: 0.5 = 50%) is the user's, not the old range's: write it as it comes, and
+  leave it out when it is absent (100%). Two consecutive ranges from the
   same source where one ends exactly where the next starts are a split the user kept
   as is — merge them back before rendering, or the J-cut doubles the audio there.
   `edl.ops` counts splits, duplicates and whether the order changed.
@@ -368,6 +370,17 @@ inside a quiet take cannot clip. This is the fix for an under-level take — not
 global compressor, which would pump the good takes to rescue the bad one.
 Cap around +12 dB: past that the room tone rises with the voice and the take
 starts sounding like a different microphone.
+
+`volume`: the take's volume from the phone editor, 0 to 4 (1 = as is, 0 = silent).
+`render.py` applies it LAST, on the finished cut after voice master and loudnorm,
+ramping across each junction and with a −1 dBFS limiter when a take goes above 100%.
+That is what the phone preview plays (the current cut times the volume); applied at
+extraction, the dynamic loudnorm undid it. Above 100% the gain stops at the headroom:
+on a normalized cut, 200% measured +4.1 dB, the limiter holding the peaks. Phase 3 must
+keep it too: with any `volume` in the EDL, build `final.mp4` with `mixar_final.py`
+(linear normalization), never the one-pass loudnorm re-mux. It is the user's choice, so
+never resize it to fix a level: that is `gain_db`'s job. A value outside 0–4 stops the
+render up front.
 
 ---
 

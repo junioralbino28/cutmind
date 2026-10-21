@@ -25,9 +25,21 @@ words, **Enviar** opening Android's photo picker, an 84 MB upload with the
 progress bar, and undo/redo (↶ ↷ in the play row) with real taps.
 
 Undo/redo covers what the user changes before **Salvar**: trims, removed and
-restored takes, "Original", the start/end marks and the notes. The history is
-cleared after **Salvar** and whenever a new cut arrives from the agent, because
-what was already sent cannot be taken back from the phone.
+restored takes, "Original", take volumes, the start/end marks and the notes. The
+history is cleared after **Salvar** and whenever a new cut arrives from the agent,
+because what was already sent cannot be taken back from the phone.
+
+## Take volume
+
+A selected take shows its volume in the toolbar (100% by default); tapping it opens
+a slider from 0 to 400%. A take with its own volume carries the value in its top
+corner. The preview plays the cut at that level, up to the level already in
+`cut.mp4`; above it the preview stays at the file's level and a note says the final
+video comes out louder, up to the level that does not distort (200% measured +4.1 dB
+on a normalized cut). Split and duplicate keep the volume. **Salvar** sends it
+as `volume` in each `edl.ranges` item (only when not 100%), and `render.py` applies it
+as the last step, after loudnorm, so the final video matches the preview (SKILL.md,
+"EDL format"). The PC editor does not edit it, but carries it through its own save.
 
 ## Placing the captions
 
