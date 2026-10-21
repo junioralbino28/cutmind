@@ -21,8 +21,13 @@ either way, so it does not settle it).
 
 Tested on that phone over the cable: picking a take, trimming with the finger
 (the source frame shows under the handle), the caption sample with the spoken
-words, **Enviar** opening Android's photo picker, and an 84 MB upload with the
-progress bar.
+words, **Enviar** opening Android's photo picker, an 84 MB upload with the
+progress bar, and undo/redo (↶ ↷ in the play row) with real taps.
+
+Undo/redo covers what the user changes before **Salvar**: trims, removed and
+restored takes, "Original", the start/end marks and the notes. The history is
+cleared after **Salvar** and whenever a new cut arrives from the agent, because
+what was already sent cannot be taken back from the phone.
 
 ## Turning it on
 
