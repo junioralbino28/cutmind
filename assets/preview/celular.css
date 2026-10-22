@@ -529,6 +529,7 @@ button { font-family: inherit; cursor: pointer; }
 .desk-col { display: none; }
 .desk-only { display: none !important; }
 .desk .desk-only { display: inline-flex !important; }
+.desk .desk-only.hidden { display: none !important; } /* o que só aparece às vezes (Descartar) */
 
 /* quadros no meio da tela (abrir no celular, atalhos): só o computador abre */
 .modal { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(4, 5, 8, 0.62); }

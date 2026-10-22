@@ -9,10 +9,12 @@ from __future__ import annotations
 import argparse
 import http.client
 import json
+import os
 import shutil
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -140,6 +142,25 @@ def test_editor_unico_traz_o_que_so_a_desktop_tinha():
         assert f'id="{id_}"' in html, id_
     assert "S.state.message" in js and "fetch('/api/celular')" in js
     assert "payload.editData = {" in js and "splitInserts:" in js and "wordAccents:" in js
+
+
+def test_video_sendo_baixado_nao_impede_o_agente_de_troca_lo(srv):
+    """O navegador baixa o vídeo devagar. Se o servidor ficasse com o arquivo aberto a
+    transmissão inteira, no Windows o agente não conseguiria trocar o cut.mp4 por cima
+    (os.replace dá PermissionError) enquanto o editor estivesse aberto."""
+    video = srv.edit / "cut.mp4"
+    video.write_bytes(bytes(8 << 20))  # maior que o que o socket aceita sem a outra ponta ler
+    conn = http.client.HTTPConnection("127.0.0.1", srv.port, timeout=15)
+    conn.request("GET", "/media/cut.mp4")
+    r = conn.getresponse()
+    assert r.status == 200
+    r.read(1024)  # começou a baixar e parou de ler, como o navegador com o buffer cheio
+    time.sleep(0.3)
+    novo = srv.edit / "cut.novo.mp4"
+    novo.write_bytes(b"corte novo")
+    os.replace(novo, video)  # no Windows, com o arquivo preso, isto dava PermissionError
+    conn.close()
+    assert video.read_bytes() == b"corte novo"
 
 
 def test_codigo_errado_e_barrado(srv):

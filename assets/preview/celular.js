@@ -582,6 +582,7 @@ function refreshHeader() {
   const hasVideo = S.videoDuration > 0;
   // um botão principal no canto: Salvar quando há ajuste; sem ajuste, Baixar
   $('btnSave').classList.toggle('hidden', n === 0);
+  $('btnDiscard').classList.toggle('hidden', n === 0);
   $('btnDownload').classList.toggle('hidden', n > 0 || !hasVideo);
   $('dirtyCount').textContent = n;
   $('sentPill').classList.toggle('hidden', !(S.savedPending && n === 0));
@@ -682,20 +683,25 @@ async function poll() {
     if (res.status === 403) { setLocked(true); setTimeout(poll, 4000); return; }
     setLocked(false);
     const data = await res.json();
-    const sig = JSON.stringify([data.state, data.edl, data.mtimes, data.videoDuration]);
+    S.lastData = data; // o Descartar volta a ela
+    const sig = assinatura(data);
     if (sig !== S.lastSig) {
       if (dirtyCount() === 0 && !S.styling) {
         S.lastSig = sig;
         await applyState(data);
-      } else if (!S.newStateWarned) {
+      } else if (!S.newStateWarned) { // uma vez só, até a versão nova entrar
         S.newStateWarned = true;
-        toast('Chegou uma versão nova — salve seus ajustes para ver', 4000);
+        toast(S.styling ? 'Chegou uma versão nova: ela aparece quando você fechar o Estilo.'
+          : isDesk() ? 'Chegou uma versão nova do agente. Salve ou descarte seus ajustes para ver.'
+            : 'Chegou uma versão nova — salve seus ajustes para ver', 4500);
       }
     }
   } catch (e) { /* servidor reiniciando: continua tentando */ }
   setTimeout(poll, 2000);
 }
 
+// o que, mudando, traz o editor para a versão nova do agente (com o envio ainda pendente ou não)
+const assinatura = (data) => JSON.stringify([data.state, data.edl, data.mtimes, data.videoDuration, !!data.hasPendingEdits]);
 async function applyState(data) {
   S.newStateWarned = false;
   S.state = data.state || {};
@@ -742,6 +748,7 @@ async function applyState(data) {
   }
   S.layerSel = null;
   S.fxSel = null;
+  S.insSel = -1;
   S.fxTeste = null;
   await loadCamadas();
   await loadEfeitos();
@@ -1758,6 +1765,20 @@ function deleteSelected() {
   S.t = clampT(S.t);
   renderTimeline(); renderToolbar(); refreshHeader();
 }
+
+// Descartar (computador, como a desktop antiga): tudo volta ao último vídeo do agente, e se
+// chegou uma versão nova ela já entra. Não tem desfazer, por isso pergunta antes.
+$('btnDiscard').addEventListener('click', async () => {
+  const n = dirtyCount();
+  if (!n || !S.lastData) return;
+  if (!confirm(`Descartar ${n} ajuste${n > 1 ? 's' : ''}? O editor volta ao último vídeo do agente, e isso não se desfaz.`)) return;
+  if (S.editingNote) { S.editingNote = null; showSheet($('noteSheet'), false); }
+  S.notes = [];
+  S.pendingIn = null;
+  S.lastSig = assinatura(S.lastData);
+  await applyState(S.lastData);
+  toast('Ajustes descartados', 2000);
+});
 
 $('btnMode').addEventListener('click', () => {
   if (!hasFinal()) return;

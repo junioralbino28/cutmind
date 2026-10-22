@@ -436,18 +436,25 @@ class Handler(BaseHTTPRequestHandler):
         length = end - start + 1
         extra = {"Content-Range": f"bytes {start}-{end}/{size}"} if code == 206 else None
         self._hdr(code, ctype, length, extra)
-        with open(path, "rb") as f:
-            f.seek(start)
-            remaining = length
-            while remaining > 0:
-                chunk = f.read(min(1 << 16, remaining))
-                if not chunk:
-                    break
-                try:
-                    self.wfile.write(chunk)
-                except (BrokenPipeError, ConnectionResetError):
-                    return
-                remaining -= len(chunk)
+        # Um pedaço por vez, abrindo e fechando o arquivo. O navegador baixa o vídeo devagar, e
+        # no Windows um arquivo aberto o tempo todo impede o agente de trocar o cut.mp4 por cima
+        # (os.replace dá PermissionError enquanto alguém o tiver aberto, mesmo compartilhando).
+        pos, remaining = start, length
+        while remaining > 0:
+            try:
+                with open(path, "rb") as f:
+                    f.seek(pos)
+                    chunk = f.read(min(1 << 20, remaining))
+            except OSError:
+                return
+            if not chunk:
+                break
+            try:
+                self.wfile.write(chunk)
+            except (BrokenPipeError, ConnectionResetError):
+                return
+            pos += len(chunk)
+            remaining -= len(chunk)
 
     def _safe(self, base: Path, rel: str) -> Path | None:
         # Por partes do caminho, não pelo começo do texto: "edit-x" começa com
