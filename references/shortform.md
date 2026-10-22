@@ -11,18 +11,18 @@ approved. Everything here rides on the **data-driven template** at
   `render.py` picks this automatically for `cut.mp4` — then set `edit-data.json`
   `fps` to the SAME value as `cut.mp4` (ffprobe it) so the Remotion render matches.
 - **Base:** 1080×1920 (fps per the rule above), `<OffthreadVideo src=cut.mp4>` with the **dynamic
-  camera**, whose three parts are separate picks on the Estilo tab: hard zoom per
+  camera**, whose three parts are separate picks on the Estilo panel: hard zoom per
   cut segment (`zoomCuts`, ~1.10–1.22, cycles), slow push-in (`zoomAuto`,
   +0.04/segment), clamped eye-tracking (`tracking`, target upper third, never
   reveals an edge). `zoomCuts` is what makes a talking head feel edited — if the
   user turns everything off, say what they lose and build it anyway.
 - **Visual hook (first ~4s):** static copywriting headline, **always two lines**
   with the size fitted to them (see "Headline styles"). On by default, but the
-  Estilo tab offers "Nenhum" — respect it and set `hook.enabled: false`.
+  Estilo panel offers "Nenhum" — respect it and set `hook.enabled: false`.
 - **Captions:** six styles — three animated (**karaoke**, **stacked**, **scatter**)
   and three static (**simples**, **serifada**, **classica**) — plus "Nenhum",
   which is `captions.enabled: false` and no caption generation at all. The user already
-  picked one on the Estilo tab; see the "Caption style" section.
+  picked one on the Estilo panel; see the "Caption style" section.
   Karaoke: one line ≤3 words, words rise from below, Poppins Black, lower third,
   `measureText` fit into **SAFE_WIDTH 720** (~180px each side — clears
   Instagram/TikTok's right action rail; verified on a real screenshot). Never
@@ -42,7 +42,7 @@ approved. Everything here rides on the **data-driven template** at
 ## Workflow
 
 **Read `<edit>/preview_style.json` first — it IS the brief.** The user chose it on
-the Estilo tab at the end of Fase 1; every key maps to something here:
+the Estilo panel at the end of Fase 1; every key maps to something here:
 
 | Pick | What it means |
 |---|---|
@@ -76,7 +76,7 @@ when the user reopens Posição), clear `awaitingStyle`, delete `preview_style.j
    - `transcribe.py cut.mp4 --edit-dir <edit>` → `transcripts/cut.json`
      (cut times are already on the output timeline — never map the source EDL)
    - `captions_for_remotion.py --transcript transcripts/cut.json -o public/captions.json`
-   - **Caption style** — from the Estilo tab pick. `stacked` ALSO needs
+   - **Caption style** — from the Estilo panel pick. `stacked` ALSO needs
      `caption_style.py --transcript transcripts/cut.json -o public/caption-cues.json`
      plus `captions.style:"stacked"` (see the "Caption style" section).
    - `face_track.py cut.mp4 -o public/track.json` — **only when
@@ -165,7 +165,7 @@ Never edit `src/Main.tsx`. Bespoke graphics go in `src/CustomGraphics.tsx`
 
 ## Headline styles — always two lines
 
-Four looks via `hook.style`, picked by the user on the Estilo tab: **`outline`**
+Four looks via `hook.style`, picked by the user on the Estilo panel: **`outline`**
 (default, white + thick black stroke), **`card`** (dark rounded card, UPPERCASE,
 optional logo row), **`realce`** (each line on a solid accent marker block),
 **`misto`** (line 1 light white, line 2 heavy accent).
@@ -173,7 +173,7 @@ optional logo row), **`realce`** (each line on a solid accent marker block),
 ### The accent colour (`accent` in preview_style.json)
 
 `realce`, `misto` and the `stacked` caption are the only things that paint an
-accent; the default is `#ff5200`. The user picks it on the Estilo tab and it
+accent; the default is `#ff5200`. The user picks it on the Estilo panel and it
 arrives as a hex — set it on **`hook.accent`** and **`captions.accent`** in
 edit-data.json so headline and caption stay the same colour. `preview_style.json`
 also carries `accentUsed`: when it is `false`, the picked styles have no accent
@@ -195,8 +195,8 @@ the type and costs the glance the headline exists to win.
   back to three lines. Measured, not guessed — the uppercase `card` style did
   exactly that at an inherited `fontSizePx: 66`.
 - Per-style geometry (weights, cap, safeWidth, lineHeight, paddingTop) lives in
-  `HL_STYLES` in `src/Main.tsx` **and is mirrored in the preview's `app.js`** so
-  the Estilo tab shows the real break at the real size. Change one, change both.
+  `HL_STYLES` in `src/Main.tsx` **and is mirrored in the editor's `assets/preview/estilos.js`** so
+  the Estilo panel shows the real break at the real size. Change one, change both.
 - In a split layout, `paddingTop` still has to follow the seam — see the split
   section.
 
@@ -394,7 +394,7 @@ Two consequences of the frame never being split, both easy to miss:
   previous render shoves the caption up for no reason.
 
 **This is the default** (`STYLE_CATALOG.edits[0]`), so it is also what a user who
-never opens the Estilo tab gets. Split inserts are opted INTO, not out of. It is a
+never opens the Estilo panel gets. Split inserts are opted INTO, not out of. It is a
 legitimate final look — a talking-head cut, images to be placed by hand later, or
 simply no B-roll worth showing — not a placeholder.
 
@@ -665,7 +665,7 @@ was cut out.
 
 ---
 
-## The Estilo tab (between Fase 1 and Fase 2)
+## The Estilo panel (between Fase 1 and Fase 2)
 
 The cut is approved and nothing about the LOOK of Fase 2 is decided yet. **Do not
 ask the style questions in chat** — set `"awaitingStyle": true` in `state.json`
@@ -703,7 +703,7 @@ a caption style or tick one more element, and save again. That save arrives with
 `"rerender": true` and the watcher says **REFAÇA a Fase 2** — re-render with the
 new choices, don't treat it as a first pick.
 
-**The catalog lives in `STYLE_CATALOG` (app.js), not in a session.** A new editing
+**The catalog lives in `STYLE_CATALOG` (`assets/preview/estilos.js`), not in a session.** A new editing
 or caption style is one entry there plus its implementation in the track
 reference; adding it in chat only, for one project, makes it invisible to every
 other project. What is in it today is the **short-form** vocabulary (tela
@@ -725,12 +725,12 @@ skill prompt is resent every turn.
 - Treating an unchecked element as "não pediu". It is an explicit NO: the user
   looked at "Movimento de tracking" and left it off. `watch_edits.py` prints the
   `fora:` line for exactly this reason.
-- Hardcoding `#ff5200` (or any accent) in the template. The Estilo tab lets the
+- Hardcoding `#ff5200` (or any accent) in the template. The Estilo panel lets the
   user pick it, so a literal makes the preview show their colour and the render
   show orange — worse than not offering the choice. Feed `accent` into
   `hook.accent` + `captions.accent`.
 - Changing a caption's look in the template without changing its preview in
-  `app.js` (`buildKaraokeDemo` / `buildStackedDemo`). The gate's previews render
+  `estilos.js` (`buildKaraokeDemo` / `buildStackedDemo`). The gate's previews render
   the real faces, sizes and motion, scaled from 1080-wide — that is the whole
   reason the user can choose by looking. A preview that lies about the style is
   worse than no preview.

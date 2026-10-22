@@ -98,12 +98,12 @@ chat you need a path on this computer. Proven by `tests/test_camadas.py`,
 | Editor tool | Chat request | What to write |
 |---|---|---|
 | hook / insert / word blocks (move, trim) | "o gancho até 3 s", "a tela dividida 2 entra mais cedo" | `edit-data.json` directly: `hook.endSec`; `inserts[]`, `splitInserts[]`, `splitVideos[]`, `wordAccents[]` `start`/`end`; `behind[]` `start`/`dur`. Re-render Phase 2 |
-| `estilo` / `legenda` | "muda a legenda para empilhado" | when the user NAMES the style, write it in `state.json` `style` and rebuild Phase 2 (`references/shortform.md`). When they only ask "qual fica melhor?", open the Estilo tab instead (`awaitingStyle`): the gate exists so they see each style on their own frame |
+| `estilo` / `legenda` | "muda a legenda para empilhado" | when the user NAMES the style, write it in `state.json` `style` and rebuild Phase 2 (`references/shortform.md`). When they only ask "qual fica melhor?", open the Estilo panel instead (`awaitingStyle`): the gate exists so they see each style on their own frame |
 | Phase 2 soundtrack (the read-only block under the audio in Final) | "abaixa a trilha", "tira a música" | `soundtrack` in `edit-data.json`: `volume` (linear, 0.0445 when absent) or `enabled: false`; then `mixar_final.py`. The editor only shows it, so this one is always from the chat |
 | caption position (`todas`, `padrao`) | "a legenda mais para cima" | `captionPositions` in `state.json` `style` (`all` for every phrase, `phrases[]` anchored on the source moment), then `caption_positions.py --style <edit>/state.json ...` (`references/shortform.md`, "Where each phrase sits"); `padrao` = leave it out |
 
 Phase 2 is short-form only for the style gate; on longform ask the layer questions in
-chat (`SKILL.md`, "The Estilo tab"). Caption positions are proven by
+chat (`SKILL.md`, "The Estilo panel"). Caption positions are proven by
 `tests/test_caption_positions.py`.
 
 ## Editor-only controls (no file behind them)

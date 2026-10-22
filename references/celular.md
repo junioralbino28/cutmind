@@ -1,6 +1,7 @@
 # Editing from the phone
 
-The phone editor is the same app at `/celular`: same `state.json`, same
+The phone uses the same editor as the computer (`/` or `/celular`; the layout follows
+the screen): same `state.json`, same
 `preview_edits.json` / `preview_style.json`, same watcher. Nothing about the edit
 changes — only how the user reaches the server.
 
@@ -39,7 +40,7 @@ video comes out louder, up to the level that does not distort (200% measured +4.
 on a normalized cut). Split and duplicate keep the volume. **Salvar** sends it
 as `volume` in each `edl.ranges` item (only when not 100%), and `render.py` applies it
 as the last step, after loudnorm, so the final video matches the preview (SKILL.md,
-"EDL format"). The PC editor does not edit it, but carries it through its own save.
+"EDL format").
 
 ## Placing the captions
 
@@ -62,7 +63,7 @@ the agent side is in `references/shortform.md` ("Where each phrase sits").
 2. Stop the running preview and start it again with `--host 0.0.0.0` (same
    port). `start_preview.py` prints one link per network ("Wi-Fi de casa",
    "Tailscale (fora de casa)"). Give the user the link, or tell them to click
-   **Abrir no celular** in the PC editor and scan the QR.
+   **Abrir no celular** at the top of the editor on the computer and scan the QR.
 3. **Windows asks once.** The first time Python listens on the network, Windows
    Firewall shows a dialog. Tell the user to allow it on **private networks**. If
    the phone loads nothing, that dialog (or a network marked as public) is the
@@ -177,8 +178,7 @@ Split, duplicate and the trim handles count in the recording at that speed. **Sa
 sends `velocidade` in each `edl.ranges` item (only when not 1×); `render.py` applies it
 and every helper maps time through `helpers/tempo.py`. Effects and layers are on the
 `cut.mp4` clock, so they stay where they are until the agent re-cuts (the save notice
-already says when the cut changed in the same save). The PC editor does not edit speed,
-but sizes those takes by it and carries it through its own save.
+already says when the cut changed in the same save).
 
 The sheet has two tabs, **Normal** (the slider above) and **Curva**: a row with Nenhuma
 and the seven CapCut curves (Personalizar, Montagem, Herói, Bala, Salto, Entrada rápida,

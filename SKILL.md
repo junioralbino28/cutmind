@@ -100,7 +100,7 @@ Interface:
 
 ## Preview interface (standard — launch it at the start of every edit)
 
-Every edit session gets the same interactive interface in the user's preview panel: a video-editor timeline (video track with filmstrip + audio track with waveform), a live playhead that scrubs the render in real time, per-take trim handles and take removal, and — from Phase 2 — caption and insert tracks. The layout follows the source aspect on its own: **vertical** sources put a tall player on the right with the transport + timeline on the left; **horizontal** sources keep the player stacked above the timeline. Dark glass, CutMind brand. **Never build a UI per session** — feed the standard interface with `state.json`. Editing `assets/preview/` is allowed only when the user asks for a UI change; it is shared, so the improvement lands for every project.
+Every edit session gets the same interactive editor in the user's browser: ONE app (`assets/preview/celular.*`, served at `/` and `/celular`) for the computer and the phone, with the same files behind both. The layout follows the screen. On a computer (wide window, mouse) it is laid out like CapCut desktop: library and panels on the left, the player in the middle, the chosen take's properties on the right, the toolbar and the multi-track timeline below, and the **needle moves** (click the ruler; the wheel scrolls the view). On a phone it is the CapCut-mobile layout with the needle fixed in the centre. Tracks: video with filmstrip, audio with waveform, A1/A2 (J-cut), effects, image and audio layers, markers and, in the Final view, captions, the Phase 2 blocks and the soundtrack. The player keeps the source aspect, vertical or horizontal. CutMind brand. **Never build a UI per session** — feed the standard interface with `state.json`. Editing `assets/preview/` is allowed only when the user asks for a UI change; it is shared, so the improvement lands for every project.
 
 **Launch (do this when a session starts, even before the first render — the UI shows a waiting state):**
 1. Write `<edit>/state.json`:
@@ -113,7 +113,7 @@ Every edit session gets the same interactive interface in the user's preview pan
     "style": {"edit": "split", "captions": "karaoke",
               "elements": {"tracking": false, "zoomAuto": true, "zoomCuts": true, "musicAI": false}}}
    ```
-   (`captions`/`editData`/`finalVideo` only when they exist; the Fase-2 tab plays `finalVideo` — the render WITH captions/inserts — while Fase 1 plays the clean cut; `sourceDurations` lets the UI clamp take extensions; `awaitingStyle`/`style` drive the Estilo tab below.)
+   (`captions`/`editData`/`finalVideo` only when they exist; the **Final** view plays `finalVideo` — the render WITH captions/inserts — while **Corte** plays the clean cut; `sourceDurations` lets the UI clamp take extensions; `awaitingStyle`/`style` drive the Estilo panel below.)
 2. Select the runtime adapter; never invoke another host's tools.
 
    - **Claude Code:** ensure `.claude/launch.json` has the config (adjust `--root` per session). The server takes the port by flag only, so pass the harness-assigned `$PORT` and set `autoPort`: `{"name": "cutmind-preview", "runtimeExecutable": "sh", "runtimeArgs": ["-c", "exec python3 <skill>/helpers/preview_server.py --root '<edit>' --port \"$PORT\""], "autoPort": true, "port": 4820}`. Run `preview_start` with name `cutmind-preview`, then arm `Monitor(command="python3 <skill>/helpers/watch_edits.py '<edit>'", description="escolhas e marcações salvas no preview", persistent=true)` **in the same turn**. **If this host has no `preview_start` tool (e.g. Claude Code in the VS Code extension on Windows — check before assuming), fall back to the Codex path below:** `uv run python -X utf8 helpers/start_preview.py --root '<edit>' --port 4820`, print the URL for the user to open, and arm the same `Monitor` with `uv run python -X utf8 <skill>/helpers/watch_edits.py '<edit>'` — a bare `python3` misses the `.venv` and does not exist on Windows.
@@ -121,7 +121,7 @@ Every edit session gets the same interactive interface in the user's preview pan
 
    A preview save must always lead to an agent-visible action: Claude Code uses the persistent watcher; Codex uses the user's next task message as the notification boundary.
 
-   **Phone:** the same editor runs at `/celular` (CapCut-style, same files). When the user wants to edit on the phone, read `references/celular.md`: Wi-Fi or Tailscale with `--host 0.0.0.0` and a code in the link (the PC editor's **Abrir no celular** shows the QR), or by USB cable with `adb reverse`.
+   **Phone:** it is the same editor; nothing changes but how the phone reaches the server. When the user wants to edit on the phone, read `references/celular.md`: Wi-Fi or Tailscale with `--host 0.0.0.0` and a code in the link (**Abrir no celular**, at the top of the editor on the computer, shows the QR), or by USB cable with `adb reverse`.
 
 **Preview aberto e vazio para sempre = permissão, não render.** On macOS the
 privacy layer guards `~/Documents`, `~/Desktop`, `~/Downloads` and iCloud Drive:
@@ -144,18 +144,22 @@ of data simply will not appear.
 only appears when the EDL carries a `jcut_timeline`. The hatched orange head on a
 block is the lead — how much voice arrives before that take's picture.
 
-**What the user can do in the UI:** scrub, trim take edges, delete takes, drag
-insert/hook chips — and **mark correction ranges**: park the needle, press `M`
-(or the IN button), move to the end of the problem, press `M` again — the note box
-opens centred over the timeline — then type what should change. Many ranges per pass. Zoom: the slider is anchored on the needle, trackpad pinch
-on the pointer. Shortcuts live behind the **?** button at the bottom right.
+**What the user can do in the UI:** scrub; trim, split, duplicate, move and delete
+takes; take volume, speed and speed curves; colour (Ajustar), filters and transitions;
+image and audio layers and soundtracks; move and trim the Phase 2 blocks; pick and
+see the styles on their own frame — and **mark correction ranges**: park the needle,
+press `M` (or **Marcar**), move to the end of the problem, press `M` again, then type
+what should change. Many ranges per pass. On the computer: click the ruler to move the
+needle (drag it to scrub), the wheel scrolls the view, Ctrl+wheel or a trackpad pinch
+zooms on the pointer, the zoom slider holds the needle, **Ajustar** shows the whole
+video. Shortcuts live behind the **?** button at the top right.
 
-### The Estilo tab (between Fase 1 and Fase 2)
+### The Estilo panel (between Fase 1 and Fase 2)
 
 The cut is approved and nothing about the LOOK of Fase 2 is decided. **Do not ask
 the style questions in chat** — the gate screen exists so the user SEES what each
 style does, and a chat list of names asks them to choose blind. Set
-`"awaitingStyle": true` in `state.json`; the UI opens its own tab and
+`"awaitingStyle": true` in `state.json`; the editor opens the Estilo panel by itself and
 `watch_edits.py` notifies you when they save `<edit>/preview_style.json`.
 
 The catalog of options and what each pick means is in the track reference, which
@@ -167,7 +171,7 @@ the layer questions in chat.
 (never touches edl.json) and `watch_edits.py` notifies you automatically. To apply:
 - `notes[]` — free-text correction requests, each with `start`/`end` on the draft
   timeline plus `renderedStart`/`renderedEnd` on the current `cut.mp4`, and the
-  `phase` tab the user was on. Use the RENDERED pair to find the moment in the
+  `phase` view the user was on (1 = Corte, 2 = Final). Use the RENDERED pair to find the moment in the
   existing render. These are instructions in the user's words — read them, then do
   the edit they describe (re-cut, re-grade, swap an insert, fix a caption…).
 - `edl.ranges` — the FULL new list of takes, in the user's order: trims, splits
@@ -227,9 +231,9 @@ Goal: best take of every beat, cut on silence, graded image, clean `cut.mp4` for
 6. **Execute.** Produce `edl.json` (schema below; editor sub-agent brief for multi-take). Set cut edges from `speech_regions.py`, not raw Whisper times. Render: `render.py edl.json -o cut.mp4 --no-subtitles` (+`--voice-master` if wanted; longform: `--keep-resolution`). **The J-cut runs by default** — see below; you do not ask for it and you do not configure it per project.
 7. **Self-eval (numeric first).** `verify_cut.py edl.json cut.mp4` (longform: `--min-silence 1.2`). Clean → done. Flags → `timeline_view` ONLY the flagged junctions, fix, re-render. Cap 3 loops, then surface remaining flags to the user.
 8. **Show `cut.mp4` and wait for approval.** The phase gate.
-9. **Open the Estilo tab** — `"awaitingStyle": true` in `state.json`, and let the
+9. **Open the Estilo panel** — `"awaitingStyle": true` in `state.json`, and let the
    user pick the editing style, the caption style and the edit elements in the UI
-   (see "The Estilo tab"). Do NOT ask this in chat. Only then read the track
+   (see "The Estilo panel"). Do NOT ask this in chat. Only then read the track
    reference: **`references/shortform.md`** or **`references/longform.md`**.
 
 ## J-cut — the default Phase-1 cleanup
