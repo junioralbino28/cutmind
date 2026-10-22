@@ -337,6 +337,7 @@ const S = {
   captions: [],
   editData: null,
   insertsDraft: [],
+  insSel: -1,         // o bloco da Fase 2 escolhido na vista Final (índice em insertsDraft)
   notes: [],
   pendingIn: null,
   editingNote: null,
@@ -535,15 +536,21 @@ function groupCaptions(caps) {
 function buildInsertsDraft() {
   const d = S.editData || {};
   const list = [];
-  if (d.hook && d.hook.enabled) list.push({ kind: 'hook', label: (d.hook.lines || []).join(' / '), start: 0, end: d.hook.endSec || 4 });
+  // o texto do gancho vem em `lines` (modelo antigo) ou em `text`, com quebra de linha
+  const gancho = (h) => (h.lines || (h.text ? String(h.text).split('\n') : [])).join(' / ') || 'Gancho';
+  if (d.hook && d.hook.enabled) list.push({ kind: 'hook', label: gancho(d.hook), start: 0, end: d.hook.endSec || 4 });
   (d.inserts || []).forEach((it, i) => list.push({ kind: 'insert', label: (it.src || '').split('/').pop(), start: +it.start, end: +it.end, ref: i }));
   (d.splitInserts || []).forEach((it, i) => list.push({ kind: 'split', label: it.label || (it.src || '').split('/').pop(), start: +it.start, end: +it.end, ref: i }));
   (d.splitVideos || []).forEach((it, i) => list.push({ kind: 'splitvideo', label: it.label || (it.src || '').split('/').pop(), start: +it.start, end: +it.end, ref: i }));
   (d.behind || []).forEach((b, i) => list.push({ kind: 'behind', label: b.kind === 'words' ? (b.words || []).map((w) => w.t).join(' ') : (b.src || '').split('/').pop(), start: +b.start, end: +b.start + +b.dur, ref: i }));
   (d.wordAccents || []).forEach((w, i) => list.push({ kind: 'word', label: w.text, start: +w.start, end: +w.end, ref: i }));
   S.insertsDraft = list.map((c) => ({ ...c, orig: { start: c.start, end: c.end } }));
+  S.insSel = -1;
 }
 const isText = (c) => c.kind === 'hook' || c.kind === 'word';
+// o bloco andou ou foi aparado desde o último vídeo do agente (ou o último Salvar)
+const insMudou = (c) => c.start !== c.orig.start || c.end !== c.orig.end;
+const insertsDirty = () => S.insertsDraft.some(insMudou);
 
 // ---------- o que mudou e ainda não foi salvo ----------
 // comparado com o último corte recebido (ou o último Salvar): aparada, nova, excluída, ordem, volume
@@ -564,7 +571,7 @@ function diffBase() {
 }
 const edlDirty = () => diffBase() > 0;
 function dirtyCount() {
-  return diffBase() + S.notes.length + (camadasDirty() ? 1 : 0) + (efeitosDirty() ? 1 : 0);
+  return diffBase() + S.notes.length + S.insertsDraft.filter(insMudou).length + (camadasDirty() ? 1 : 0) + (efeitosDirty() ? 1 : 0);
 }
 const isChanged = (r) => {
   const b = S.base.find((x) => x.uid === r.uid);
@@ -600,6 +607,8 @@ function snap() {
     layerSel: S.layerSel,
     fx: JSON.parse(JSON.stringify(S.efeitos)),
     fxSel: S.fxSel,
+    ins: S.insertsDraft.map((c) => ({ start: c.start, end: c.end })),
+    insSel: S.insSel,
   };
 }
 function remember(before) {
@@ -624,6 +633,9 @@ function restore(s) {
   S.layerSel = s.layerSel && camItem(s.layerSel) ? s.layerSel : null;
   if (s.fx) S.efeitos = s.fx;
   S.fxSel = s.fxSel && fxItem(s.fxSel) ? s.fxSel : null;
+  // os blocos da Fase 2 são os mesmos objetos (o agente manda outros junto com um histórico zerado)
+  if (s.ins && s.ins.length === S.insertsDraft.length) s.ins.forEach((v, k) => Object.assign(S.insertsDraft[k], v));
+  S.insSel = s.insSel != null && s.insSel < S.insertsDraft.length ? s.insSel : -1;
   applyMute();
   S.t = clampT(S.t);
   renderTimeline(); renderToolbar(); refreshHeader(); renderHistory();
@@ -866,13 +878,20 @@ function renderTimeline() {
       }
     } else {
       const want = tr.id === 'text';
-      for (const c of S.insertsDraft) {
-        if (isText(c) !== want) continue;
-        const chip = el('div', `chip ${want ? 'txt' : 'ins'}`, lane);
+      S.insertsDraft.forEach((c, i) => {
+        if (isText(c) !== want) return;
+        const chip = el('div', `chip f2 ${want ? 'txt' : 'ins'}`, lane);
+        chip.dataset.i = i;
         chip.style.left = `${c.start * S.pps}px`;
         chip.style.width = `${Math.max((c.end - c.start) * S.pps, 6)}px`;
-        chip.textContent = c.label;
-      }
+        el('span', 'l-name', chip).textContent = c.label; // escolhido, o bloco mostra as alças por fora: o nome corta dentro
+        if (insMudou(c)) chip.classList.add('dirty');
+        if (i === S.insSel) {
+          chip.classList.add('sel');
+          if (c.kind !== 'hook') el('div', 'lh l', chip).dataset.side = 'l'; // o gancho começa no 0
+          el('div', 'lh r', chip).dataset.side = 'r';
+        }
+      });
     }
   }
   sizeCanvases();
@@ -1112,7 +1131,7 @@ timeline.addEventListener('pointerdown', (e) => {
   stopMomentum();
   clearTimeout(G.lp);
   if (G.pts.size === 2) {
-    if (G.mode === 'move' || G.mode === 'layer') return; // movendo uma tomada ou camada, o segundo dedo não vira pinça
+    if (G.mode === 'move' || G.mode === 'layer' || G.mode === 'ins') return; // movendo uma tomada, camada ou bloco, o segundo dedo não vira pinça
     const [a, b] = [...G.pts.values()];
     G.mode = 'pinch';
     G.d0 = Math.hypot(a.x - b.x, a.y - b.y) || 1;
@@ -1130,7 +1149,8 @@ timeline.addEventListener('pointerdown', (e) => {
     return;
   }
   const lh = e.target.closest('.lh');
-  if (lh && startLayerDrag(e.clientX, 'trim', lh.dataset.side)) return;
+  if (lh && lh.closest('.chip.f2')) { if (startInsDrag(e.clientX, 'trim', lh.dataset.side)) return; }
+  else if (lh && startLayerDrag(e.clientX, 'trim', lh.dataset.side)) return;
   G.mode = 'pan';
   G.x0 = e.clientX; G.t0 = S.t; G.moved = false;
   G.lastX = e.clientX; G.lastT = performance.now(); G.vel = 0;
@@ -1143,6 +1163,9 @@ timeline.addEventListener('pointerdown', (e) => {
   // segurar um item de camada: ele passa a andar com o dedo
   const lc = e.target.closest('.chip.layer');
   if (lc) G.lp = setTimeout(() => holdLayer(lc.dataset.id, e.clientX), 450);
+  // segurar um bloco da Fase 2 (vista Final): ele anda com o dedo
+  const f2 = e.target.closest('.chip.f2');
+  if (f2 && S.view === 'final') G.lp = setTimeout(() => holdIns(+f2.dataset.i, e.clientX), 450);
 });
 
 timeline.addEventListener('pointermove', (e) => {
@@ -1185,6 +1208,7 @@ timeline.addEventListener('pointermove', (e) => {
   }
   if (G.mode === 'move') { G.mv.x = e.clientX; updateMove(); return; }
   if (G.mode === 'layer') { dragLayer(e.clientX); return; }
+  if (G.mode === 'ins') { dragIns(e.clientX); return; }
   if (G.mode === 'pan') {
     const dx = e.clientX - G.x0;
     if (!G.moved && Math.abs(dx) > 6) {
@@ -1209,6 +1233,7 @@ function endPointer(e) {
   clearTimeout(G.lp);
   if (G.mode === 'move') { if (G.pts.size === 0) endMove(e.type === 'pointerup'); return; }
   if (G.mode === 'layer') { if (G.pts.size === 0) endLayerDrag(); return; }
+  if (G.mode === 'ins') { if (G.pts.size === 0) endInsDrag(); return; }
   if (G.mode === 'pinch') {
     if (G.pts.size === 1) { // sobrou um dedo: ele passa a arrastar, sem pulo
       const [p] = [...G.pts.values()];
@@ -1329,8 +1354,11 @@ function tapAt(target) {
   if (lc) { S.fxSel = null; tapLayer(lc.dataset.id); return; }
   const fc = target && target.closest && target.closest('.chip.fx');
   if (fc) { tapFx(fc.dataset.id); return; }
+  const f2 = target && target.closest && target.closest('.chip.f2');
+  if (f2 && S.view === 'final') { tapIns(+f2.dataset.i); return; }
   S.layerSel = null;
   S.fxSel = null;
+  S.insSel = -1;
   const take = target && target.closest && target.closest('.take');
   if (take && S.view === 'corte') {
     const i = +take.dataset.i;
@@ -1525,10 +1553,11 @@ function renderToolbar() {
   const lsel = S.layerSel ? camItem(S.layerSel) : null;
   const fsel = !lsel && S.fxSel && S.view === 'corte' ? fxItem(S.fxSel) : null;
   const sel = !lsel && !fsel && S.selected >= 0 && S.view === 'corte' ? S.draft[S.selected] : null;
-  if (sel || lsel || fsel) { S.audioMenu = false; S.importMenu = false; S.fxMenu = false; }
+  const isel = !lsel && !fsel && S.view === 'final' && S.insSel >= 0 ? S.insertsDraft[S.insSel] || null : null;
+  if (sel || lsel || fsel || isel) { S.audioMenu = false; S.importMenu = false; S.fxMenu = false; }
   const amenu = S.audioMenu, imenu = S.importMenu, fmenu = S.fxMenu;
-  tb.classList.toggle('hidden', !!(sel || lsel || fsel || amenu || imenu || fmenu));
-  ctx.classList.toggle('hidden', !(sel || lsel || fsel || amenu || imenu || fmenu));
+  tb.classList.toggle('hidden', !!(sel || lsel || fsel || isel || amenu || imenu || fmenu));
+  ctx.classList.toggle('hidden', !(sel || lsel || fsel || isel || amenu || imenu || fmenu));
   const hasVideo = S.videoDuration > 0;
   const tool = (host, id, label, opts = {}) => {
     const b = el('button', `tool${opts.on ? ' on' : ''}${opts.armed ? ' armed' : ''}${opts.cls ? ` ${opts.cls}` : ''}`, host);
@@ -1585,6 +1614,11 @@ function renderToolbar() {
     if (fsel.tipo === 'filtro') tool(ctx, 'intensidade', `${Math.round(fxIntensidade(fsel) * 100)}%`);
     if (fsel.tipo === 'ajuste') tool(ctx, 'ajustar', 'Ajustar');
     tool(ctx, 'excluir', 'Excluir', { icon: ICON.remover });
+    return;
+  }
+  if (isel) { // um bloco da Fase 2: segurar move, as alças aparam; "Original" volta ao tempo do agente
+    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
+    tool(ctx, 'f2-original', 'Original', { icon: ICON.original, disabled: !insMudou(isel) });
     return;
   }
   if (lsel) { // um item de camada escolhido
@@ -1651,6 +1685,11 @@ document.addEventListener('click', (e) => {
       break;
     }
     case 'original': remember(); r.start = r.orig.start; r.end = r.orig.end; renderTimeline(); renderToolbar(); refreshHeader(); break;
+    case 'f2-original': {
+      const c = S.insertsDraft[S.insSel];
+      if (c) { remember(); c.start = c.orig.start; c.end = c.orig.end; renderTimeline(); renderToolbar(); refreshHeader(); }
+      break;
+    }
     case 'pronto': exitPosMode(); break;
     case 'todas':
       S.todas = !S.todas;
@@ -1663,7 +1702,7 @@ document.addEventListener('click', (e) => {
 });
 
 function soltaEscolha() {
-  S.selected = -1; S.layerSel = null; S.fxSel = null;
+  S.selected = -1; S.layerSel = null; S.fxSel = null; S.insSel = -1;
   S.audioMenu = false; S.importMenu = false; S.fxMenu = false;
   renderTimeline(); renderToolbar();
 }
@@ -1732,6 +1771,7 @@ function switchView(v) {
   S.view = v;
   S.selected = -1;
   S.layerSel = null;
+  S.insSel = -1;
   applyMute(); // o silenciar do som do vídeo vale no corte; o final já sai mixado
   setVideoSrc(v);
   renderTimeline();
@@ -2596,6 +2636,19 @@ $('btnSave').addEventListener('click', async () => {
   const payload = { type: 'timeline-edits' };
   const soCamadas = !edlDirty() && !S.notes.length;
   if (edlDirty()) payload.edl = edlPayload();
+  const comBlocos = insertsDirty();
+  if (comBlocos) { // blocos da Fase 2: todos os de cada tipo, pelo `ref`, como a desktop antiga mandava
+    const de = (k) => S.insertsDraft.filter((c) => c.kind === k);
+    const t = (v) => +v.toFixed(3);
+    payload.editData = {
+      inserts: de('insert').map((c) => ({ ref: c.ref, start: t(c.start), end: t(c.end) })),
+      splitInserts: de('split').map((c) => ({ ref: c.ref, label: c.label, start: t(c.start), end: t(c.end) })),
+      splitVideos: de('splitvideo').map((c) => ({ ref: c.ref, label: c.label, start: t(c.start), end: t(c.end) })),
+      hook: de('hook').map((c) => ({ endSec: t(c.end) }))[0] || null,
+      behind: de('behind').map((c) => ({ ref: c.ref, start: t(c.start), dur: t(c.end - c.start) })),
+      wordAccents: de('word').map((c) => ({ ref: c.ref, text: c.label, start: t(c.start), end: t(c.end) })),
+    };
+  }
   if (camadasDirty()) payload.camadas = S.camadas;
   const comEfeitos = efeitosDirty();
   if (comEfeitos) payload.efeitos = S.efeitos;
@@ -2625,13 +2678,18 @@ $('btnSave').addEventListener('click', async () => {
     const comCamadas = 'camadas' in payload;
     S.camadasBase = camSig();
     S.efeitosBase = fxSig();
+    S.insertsDraft.forEach((c) => { c.orig = { start: c.start, end: c.end }; });
     S.selected = -1;
     S.layerSel = null;
     S.fxSel = null;
+    S.insSel = -1;
     forgetHistory(); // o que foi enviado ao agente não se desfaz daqui
     renderTimeline(); renderToolbar(); refreshHeader();
     const oque = comEfeitos ? (comCamadas ? 'Camadas e efeitos salvos' : 'Efeitos salvos') : 'Camadas salvas';
-    toast(soCamadas ? `${oque}. O agente põe no vídeo final.` : 'Ajustes enviados. O agente refaz o corte.', 3000);
+    const aviso = !soCamadas ? 'Ajustes enviados. O agente refaz o corte.'
+      : comBlocos ? 'Blocos enviados. O agente refaz o vídeo final.'
+        : `${oque}. O agente põe no vídeo final.`;
+    toast(aviso, 3000);
   } catch (err) {
     toast('Não consegui salvar — o editor ainda está ligado no computador?', 4000);
   }
@@ -2762,6 +2820,7 @@ function tapLayer(id) {
   if (hit.f.travado) { toast('Camada travada: toque no cadeado para soltar', 2200); return; }
   S.layerSel = S.layerSel === id ? null : id;
   S.selected = -1;
+  S.insSel = -1;
   renderTimeline();
   renderToolbar();
 }
@@ -2846,6 +2905,69 @@ function endLayerDrag() {
   $('trimTip').classList.add('hidden');
   const hit = camItem(L.id);
   if (hit && JSON.stringify(hit.it) !== JSON.stringify(L.it0)) remember(L.before); // tocar sem arrastar não conta
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+
+// ---------- blocos da Fase 2 (inserts, gancho, palavras) na vista Final ----------
+/* Como os itens de camada: tocar escolhe, as alças aparam, segurar leva com o dedo (ou o
+ * mouse). O tempo é o do vídeo final. O Salvar manda tudo em `editData`, no formato da
+ * desktop antiga, e o agente acerta o edit-data.json pelo `ref` de cada bloco. */
+const MIN_INS = 0.15;
+function tapIns(i) {
+  if (!S.insertsDraft[i]) return;
+  S.insSel = S.insSel === i ? -1 : i;
+  S.selected = -1; S.layerSel = null; S.fxSel = null;
+  renderTimeline();
+  renderToolbar();
+}
+function startInsDrag(x, kind, side) {
+  const c = S.insertsDraft[S.insSel];
+  if (!c || S.view !== 'final' || (kind === 'move' && c.kind === 'hook')) return false;
+  G.mode = 'ins';
+  G.ins = { i: S.insSel, kind, side, x0: x, c0: { start: c.start, end: c.end }, before: snap() };
+  video.pause();
+  return true;
+}
+function holdIns(i, x) {
+  if (G.mode !== 'pan' || G.moved) return;
+  const c = S.insertsDraft[i];
+  if (!c) return;
+  // o gancho abre o vídeo: ele não anda, só a ponta da direita apara
+  if (c.kind === 'hook') { toast('O gancho começa no início do vídeo: puxe a ponta da direita', 2400); return; }
+  const before = snap();
+  S.insSel = i; S.selected = -1; S.layerSel = null; S.fxSel = null;
+  if (navigator.vibrate) navigator.vibrate(12);
+  startInsDrag(x, 'move');
+  G.ins.before = before; // desfazer volta também a escolha de antes
+  renderTimeline(); renderToolbar();
+}
+function dragIns(x) {
+  const D = G.ins, c = S.insertsDraft[D.i], o = D.c0;
+  if (!c) return;
+  const dt = (x - D.x0) / S.pps;
+  const fim = S.videoDuration || totalT();
+  if (D.kind === 'move') {
+    const dur = o.end - o.start;
+    c.start = +Math.max(0, Math.min(o.start + dt, fim - dur)).toFixed(3);
+    c.end = +(c.start + dur).toFixed(3);
+  } else if (D.side === 'l') {
+    c.start = +Math.min(Math.max(0, o.start + dt), o.end - MIN_INS).toFixed(3);
+  } else {
+    c.end = +Math.min(fim, Math.max(o.end + dt, o.start + MIN_INS)).toFixed(3);
+  }
+  const tip = $('trimTip');
+  tip.textContent = `${fmt(c.start)} → ${fmt(c.end)}`;
+  tip.classList.remove('hidden');
+  if (!G.insQueued) {
+    G.insQueued = true;
+    requestAnimationFrame(() => { G.insQueued = false; renderTimeline(); refreshHeader(); });
+  }
+}
+function endInsDrag() {
+  const D = G.ins, c = S.insertsDraft[D.i];
+  G.mode = null;
+  $('trimTip').classList.add('hidden');
+  if (c && (c.start !== D.c0.start || c.end !== D.c0.end)) remember(D.before); // tocar sem arrastar não conta
   renderTimeline(); renderToolbar(); refreshHeader();
 }
 
@@ -3650,6 +3772,7 @@ function tapFx(id) {
   S.fxSel = S.fxSel === id ? null : id;
   S.layerSel = null;
   S.selected = -1;
+  S.insSel = -1;
   renderTimeline();
   renderToolbar();
 }

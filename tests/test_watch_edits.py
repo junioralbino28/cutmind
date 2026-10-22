@@ -140,3 +140,13 @@ def test_aviso_de_estilo_conta_as_frases_posicionadas(tmp_path):
     assert "caption_positions.py" in aviso
     p.write_text(json.dumps({**base, "captionPositions": {"all": None, "phrases": []}}), encoding="utf-8")
     assert "posição da legenda" not in style_digest(p)  # nada arrastado: nada a dizer
+
+
+def test_aviso_dos_blocos_da_fase_2(tmp_path):
+    """Só blocos da Fase 2 movidos (editor único, vista Final): o aviso diz isso ao agente."""
+    p = tmp_path / "preview_edits.json"
+    p.write_text(json.dumps({"type": "timeline-edits", "editData": {
+        "inserts": [], "splitInserts": [{"ref": 0, "label": None, "start": 5.0, "end": 8.0}],
+        "splitVideos": [], "hook": {"endSec": 3.25}, "behind": [], "wordAccents": []}}), encoding="utf-8")
+    aviso = digest(p)
+    assert "inserts/gancho movidos" in aviso

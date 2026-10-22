@@ -130,7 +130,8 @@ def test_um_editor_so_no_computador_e_no_celular(srv):
 def test_editor_unico_traz_o_que_so_a_desktop_tinha():
     """O que antes só existia na desktop antiga. Etapa 1: o nome do projeto e a mensagem do
     agente no cabeçalho (o laço com o agente) e o "Abrir no celular" com o QR. Etapa 2: o
-    quadro de atalhos do teclado e a régua de zoom com "Ajustar"."""
+    quadro de atalhos do teclado e a régua de zoom com "Ajustar". Etapa 3: mover e aparar os
+    blocos da Fase 2 vai no Salvar como `editData`, o que o watch_edits avisa ao agente."""
     app = Path(ps.APP_DIR)
     html = (app / "celular.html").read_text(encoding="utf-8")
     js = (app / "celular.js").read_text(encoding="utf-8")
@@ -138,6 +139,7 @@ def test_editor_unico_traz_o_que_so_a_desktop_tinha():
                 "btnHelp", "helpModal", "zoomRange", "zoomFit"):
         assert f'id="{id_}"' in html, id_
     assert "S.state.message" in js and "fetch('/api/celular')" in js
+    assert "payload.editData = {" in js and "splitInserts:" in js and "wordAccents:" in js
 
 
 def test_codigo_errado_e_barrado(srv):

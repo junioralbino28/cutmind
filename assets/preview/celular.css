@@ -420,6 +420,11 @@ button { font-family: inherit; cursor: pointer; }
 .tr-play.fx-ico svg { width: 20px; height: 20px; fill: none; } /* o ícone é de traço; o play das trilhas é cheio */
 .tr-row.on .tr-play.fx-ico { background: var(--surface3); color: var(--brand); }
 .chip.layer.mus { background: #1b2433; box-shadow: inset 2px 0 0 #6aa8f0; }
+/* blocos da Fase 2 (inserts, gancho, palavras) na vista Final: escolhem, aparam e andam como a camada */
+.chip.f2 { pointer-events: auto; }
+.chip.f2 .l-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.chip.f2.sel { overflow: visible; outline: 2px solid #fff; outline-offset: -1px; z-index: 3; }
+.chip.f2.dirty::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--brand); }
 .chip.layer.mus .l-ico { color: #6aa8f0; }
 .track.travado .chip.layer { background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0 4px, transparent 4px 8px); }
 .lh {
