@@ -104,6 +104,7 @@ button { font-family: inherit; cursor: pointer; }
 .stage {
   flex: 1;
   min-height: 0;
+  container-type: size; /* a prévia se mede por ela (cqw, cqh) */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -111,9 +112,12 @@ button { font-family: inherit; cursor: pointer; }
 }
 .player {
   --ar: 9 / 16;
+  --arn: 0.5625; /* a mesma proporção, em número, para a conta da largura */
   position: relative;
-  height: 100%;
-  max-width: 100%;
+  /* na proporção do vídeo e cabendo pelos dois lados. Com height:100% + max-width, a largura
+     era cortada e a altura não acompanhava: a caixa saía com outra proporção e o vídeo
+     (object-fit: cover) perdia as bordas sem aviso. Num vídeo deitado no celular, quase metade. */
+  width: min(100cqw, calc(100cqh * var(--arn)));
   aspect-ratio: var(--ar);
   border-radius: 4px;
   overflow: hidden;

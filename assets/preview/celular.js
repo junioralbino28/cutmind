@@ -791,6 +791,7 @@ async function loadThumbsMeta() {
 video.addEventListener('loadedmetadata', () => {
   if (!video.videoWidth || !video.videoHeight) return;
   player.style.setProperty('--ar', `${video.videoWidth} / ${video.videoHeight}`);
+  player.style.setProperty('--arn', (video.videoWidth / video.videoHeight).toFixed(6));
   if (S.draft.length) renderTimeline(); // a largura dos quadros da tira depende da proporção
 });
 
