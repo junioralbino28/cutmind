@@ -786,6 +786,7 @@ function fitZoom() {
   // computador a linha do tempo é larga e o mouse é preciso: ~40 s
   S.pps = Math.min(S.maxPps, Math.max(S.minPps, w / (isDesk() ? 40 : 14)));
   S.fitted = true;
+  syncZoom();
 }
 
 function trackPlan() {
@@ -992,7 +993,10 @@ function drawRuler() {
   for (let t = Math.max(0, Math.floor(t0 / step) * step); t <= Math.min(t1, end); t += step) {
     const x = Math.round(hw + (t - S.t) * S.pps) + 0.5;
     ctx.beginPath(); ctx.moveTo(x, h - 7); ctx.lineTo(x, h); ctx.stroke();
-    ctx.fillText(fmtShort(t), x + 3, h - 8);
+    // com zoom alto as marcas caem no meio do segundo: elas mostram a fração (.25, .5, .75),
+    // senão a régua repetiria "0:00 0:00 0:00 0:01"
+    const inteiro = Math.abs(t - Math.round(t)) < 1e-6;
+    ctx.fillText(inteiro ? fmtShort(Math.round(t)) : `.${String(Math.round((t % 1) * 100)).replace(/0$/, '')}`, x + 3, h - 8);
     for (let m = 1; m < 4; m++) {
       const tm = t + (m * step) / 4;
       if (tm > end) break;
@@ -1032,8 +1036,17 @@ function drawWave() {
 
 function setZoom(pps) {
   S.pps = Math.min(S.maxPps, Math.max(S.minPps, pps));
+  syncZoom();
   renderTimeline();
 }
+// régua de zoom do computador: escala logarítmica entre o vídeo inteiro e o zoom máximo
+const zoomDe = (v) => S.minPps * Math.pow(S.maxPps / S.minPps, v / 100);
+const syncZoom = () => {
+  const v = Math.round((100 * Math.log(S.pps / S.minPps)) / Math.log(S.maxPps / S.minPps));
+  $('zoomRange').value = Number.isFinite(v) ? v : 0;
+};
+$('zoomRange').addEventListener('input', (e) => setZoom(zoomDe(+e.target.value)));
+$('zoomFit').addEventListener('click', () => setZoom(S.minPps));
 
 // ---------- busca no vídeo enquanto o dedo arrasta ----------
 let seekQueued = false;
@@ -1092,8 +1105,8 @@ let momentum = null;
 function stopMomentum() { if (momentum) { cancelAnimationFrame(momentum); momentum = null; } }
 
 timeline.addEventListener('pointerdown', (e) => {
-  // os botões do cabeçalho da faixa recebem o próprio clique: capturar o toque o roubaria
-  if (e.target.closest('.th')) return;
+  // os botões do cabeçalho da faixa e a régua de zoom recebem o próprio clique: capturar o toque o roubaria
+  if (e.target.closest('.th, .tl-zoom')) return;
   try { timeline.setPointerCapture(e.pointerId); } catch (err) { /* toque sintético */ }
   G.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
   stopMomentum();
@@ -1379,6 +1392,79 @@ document.addEventListener('keydown', (e) => {
   else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); redo(); }
 });
 
+/* ---------- teclado: os atalhos do CapCut desktop que cabem aqui ----------
+ * Fora dos campos de texto. Com o Estilo aberto ou no modo Posição, só Espaço e Esc. */
+const emCampo = (e) => !!(e.target.closest && e.target.closest('input, textarea, select, [contenteditable]'));
+function passo(seg) {
+  if (!S.videoDuration) return;
+  video.pause();
+  S.t = clampT(S.t + seg);
+  positionTimeline();
+  preciseSeek();
+}
+// Esc fecha o painel aberto como o botão dele: o Estilo sem aplicar, a nota sem guardar,
+// os de régua no Pronto (a régua já mudou ao vivo)
+const FECHA_PAINEL = { sheet: 'sheetClose', noteSheet: 'noteCancel', volSheet: 'volOk', velSheet: 'velOk', ajSheet: 'ajOk',
+  fxIntSheet: 'fxIntOk', trilhaSheet: 'trilhaClose', fxSheet: 'fxClose' };
+function fechaPainel() {
+  const aberto = document.querySelector('.sheet.open');
+  if (!aberto || !FECHA_PAINEL[aberto.id]) return false;
+  $(FECHA_PAINEL[aberto.id]).click();
+  return true;
+}
+function mostraAjuda(abre) { $('helpModal').classList.toggle('hidden', !abre); }
+document.addEventListener('keydown', (e) => {
+  if (e.defaultPrevented || e.altKey || emCampo(e)) return;
+  const k = e.key, ctrl = e.ctrlKey || e.metaKey;
+  if (!$('phoneModal').classList.contains('hidden')) { // o quadro do QR por cima de tudo
+    if (k === 'Escape') fechaCelular();
+    return;
+  }
+  const ajuda = !$('helpModal').classList.contains('hidden');
+  if (k === '?' && !ctrl) { e.preventDefault(); mostraAjuda(!ajuda); return; }
+  if (k === 'Escape') {
+    if (ajuda) mostraAjuda(false);
+    else if (S.posMode) exitPosMode();
+    else if (fechaPainel()) { /* fechou o painel */ }
+    else if (S.pendingIn != null) { S.pendingIn = null; renderTimeline(); renderToolbar(); toast('Marcação cancelada', 1600); }
+    else soltaEscolha();
+    return;
+  }
+  if (ajuda || !S.videoDuration) return;
+  if ((k === ' ' || e.code === 'Space') && !ctrl) {
+    e.preventDefault();
+    // o botão com foco "clicaria" de novo ao soltar a tecla
+    if (document.activeElement && document.activeElement.tagName === 'BUTTON') document.activeElement.blur();
+    togglePlay();
+    return;
+  }
+  if (S.styling || S.posMode) return;
+  const kl = k.toLowerCase();
+  if ((k === 'ArrowLeft' || k === 'ArrowRight') && !ctrl) {
+    e.preventDefault();
+    const seg = e.shiftKey ? 1 : 1 / (S.fps || 30);
+    passo(k === 'ArrowRight' ? seg : -seg);
+  } else if (kl === 'm' && !ctrl) {
+    toggleMark();
+  } else if (k === 'Delete' || k === 'Backspace') {
+    e.preventDefault();
+    if (S.layerSel) deleteLayerSel();
+    else if (S.fxSel) deleteFxSel();
+    else if (S.selected >= 0 && S.view === 'corte') deleteSelected();
+  } else if (ctrl && kl === 'b') { // dividir: sem nada escolhido, a tomada debaixo da agulha (CapCut)
+    e.preventDefault();
+    if (S.layerSel || S.fxSel) return;
+    if (S.selected < 0 || S.view !== 'corte') selectUnderNeedle();
+    if (S.selected >= 0) splitSelected();
+  } else if (ctrl && kl === 'd') { // no navegador seria "favoritar"
+    e.preventDefault();
+    if (S.selected >= 0 && S.view === 'corte') duplicateSelected();
+  }
+});
+$('btnHelp').addEventListener('click', () => mostraAjuda(true));
+$('helpClose').addEventListener('click', () => mostraAjuda(false));
+$('helpModal').addEventListener('click', (e) => { if (e.target === $('helpModal')) mostraAjuda(false); });
+
 function loop() {
   const now = performance.now() / 1000;
   for (const f of S.cardAnims) f(now);
@@ -1430,6 +1516,9 @@ function followDraft() {
 }
 
 // ---------- barra de ferramentas ----------
+/* dica ao passar o mouse: o nome da ferramenta (quando o rótulo é um valor, como "100%") e o atalho */
+const ATALHO = { dividir: 'Ctrl+B', duplicar: 'Ctrl+D', excluir: 'Delete', marcar: 'M', voltar: 'Esc' };
+const DICA = { volume: 'Volume', velocidade: 'Velocidade e curva', intensidade: 'Intensidade do filtro' };
 function renderToolbar() {
   const tb = $('toolbar');
   const ctx = $('ctxbar');
@@ -1447,6 +1536,7 @@ function renderToolbar() {
     b.dataset.tool = id;
     b.disabled = !!opts.disabled;
     b.innerHTML = `${opts.icon || ICON[id]}<span>${label}</span>`;
+    b.title = (DICA[id] || label) + (ATALHO[id] ? ` (${ATALHO[id]})` : '');
     return b;
   };
   if (S.posMode) { // "Posição das frases": a barra é do modo
@@ -1544,11 +1634,7 @@ document.addEventListener('click', (e) => {
     case 'audio': S.audioMenu = true; S.importMenu = false; S.fxMenu = false; renderToolbar(); break;
     case 'trilhas': S.audioMenu = false; renderToolbar(); openTrilhas(); break;
     case 'do-celular': S.audioMenu = false; renderToolbar(); $('fileAudio').click(); break;
-    case 'voltar':
-      S.selected = -1; S.layerSel = null; S.fxSel = null;
-      S.audioMenu = false; S.importMenu = false; S.fxMenu = false;
-      renderTimeline(); renderToolbar();
-      break;
+    case 'voltar': soltaEscolha(); break;
     case 'dividir': splitSelected(); break;
     case 'duplicar': duplicateSelected(); break;
     case 'excluir':
@@ -1575,6 +1661,12 @@ document.addEventListener('click', (e) => {
     default: break;
   }
 });
+
+function soltaEscolha() {
+  S.selected = -1; S.layerSel = null; S.fxSel = null;
+  S.audioMenu = false; S.importMenu = false; S.fxMenu = false;
+  renderTimeline(); renderToolbar();
+}
 
 // "Cortar": escolhe a tomada que está debaixo da agulha (no corte) e abre as ferramentas dela
 function selectUnderNeedle() {
@@ -1775,9 +1867,6 @@ const fechaCelular = () => $('phoneModal').classList.add('hidden');
 $('btnPhone').addEventListener('click', abrirNoCelular);
 $('phoneClose').addEventListener('click', fechaCelular);
 $('phoneModal').addEventListener('click', (e) => { if (e.target === $('phoneModal')) fechaCelular(); });
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !$('phoneModal').classList.contains('hidden')) fechaCelular();
-});
 
 // ---------- marcar um trecho (IN → OUT → o que mudar) ----------
 function toggleMark() {
@@ -1825,6 +1914,10 @@ $('noteOk').addEventListener('click', () => {
   closeNote(true);
 });
 $('noteCancel').addEventListener('click', () => closeNote(false));
+$('noteText').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { e.preventDefault(); closeNote(false); }
+  else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('noteOk').click(); }
+});
 $('noteDelete').addEventListener('click', () => {
   remember();
   S.notes = S.notes.filter((x) => x.id !== S.editingNote);

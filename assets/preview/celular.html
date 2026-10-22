@@ -37,7 +37,8 @@
     <div class="t-spacer"></div>
     <span class="pill sent hidden" id="sentPill">enviado</span>
     <!-- no computador: o QR que abre este mesmo editor no celular -->
-    <button class="tb-btn desk-only" id="btnPhone" type="button"><span class="tb-ico" id="phoneIco"></span>Abrir no celular</button>
+    <button class="tb-btn desk-only" id="btnHelp" type="button" title="Atalhos do teclado (?)" aria-label="Atalhos do teclado">?</button>
+    <button class="tb-btn desk-only" id="btnPhone" type="button" title="Mostrar o QR para abrir no celular"><span class="tb-ico" id="phoneIco"></span>Abrir no celular</button>
     <!-- um botão principal no canto de cima: Salvar quando há ajuste, Baixar quando não há -->
     <button class="tb-btn primary hidden" id="btnSave" type="button">Salvar <b id="dirtyCount">0</b></button>
     <button class="tb-btn primary hidden" id="btnDownload" type="button"><span class="tb-ico" id="downloadIco"></span>Baixar</button>
@@ -65,13 +66,13 @@
   <!-- linha do play: tela cheia e som à esquerda, play no centro, desfazer e refazer à direita -->
   <section class="transport" id="transport">
     <div class="t-side">
-      <button class="t-ico" id="btnFull" type="button" aria-label="Tela cheia"></button>
-      <button class="t-ico" id="btnMute" type="button" aria-label="Som"></button>
+      <button class="t-ico" id="btnFull" type="button" aria-label="Tela cheia" title="Tela cheia"></button>
+      <button class="t-ico" id="btnMute" type="button" aria-label="Som" title="Som da prévia"></button>
     </div>
-    <button class="t-play" id="btnPlay" type="button" aria-label="Reproduzir"></button>
+    <button class="t-play" id="btnPlay" type="button" aria-label="Reproduzir" title="Tocar / pausar (Espaço)"></button>
     <div class="t-side right">
-      <button class="t-ico" id="btnUndo" type="button" aria-label="Desfazer" disabled></button>
-      <button class="t-ico" id="btnRedo" type="button" aria-label="Refazer" disabled></button>
+      <button class="t-ico" id="btnUndo" type="button" aria-label="Desfazer" title="Desfazer (Ctrl+Z)" disabled></button>
+      <button class="t-ico" id="btnRedo" type="button" aria-label="Refazer" title="Refazer (Ctrl+Y)" disabled></button>
     </div>
   </section>
 
@@ -81,6 +82,11 @@
     <div class="tracks" id="tracks"></div>
     <div class="needle" id="needle"></div>
     <div class="trim-tip hidden" id="trimTip"></div>
+    <!-- no computador: o zoom da linha do tempo (a rodinha com Ctrl faz o mesmo) -->
+    <div class="tl-zoom desk-only" id="tlZoom">
+      <button class="tb-btn" id="zoomFit" type="button" title="Ver o vídeo inteiro">Ajustar</button>
+      <input type="range" id="zoomRange" min="0" max="100" step="1" value="0" aria-label="Zoom da linha do tempo" title="Zoom (Ctrl + rodinha)">
+    </div>
   </section>
 
   <!-- no computador: as colunas da biblioteca (esquerda) e das propriedades (direita); os
@@ -226,13 +232,35 @@
 <div class="toast hidden" id="toast" role="status"></div>
 
 <!-- abrir no celular: o servidor entrega os links (com o código) só a este computador -->
-<div class="phone-modal hidden" id="phoneModal" role="dialog" aria-modal="true" aria-labelledby="phoneTitle">
-  <div class="phone-card">
-    <div class="phone-head">
+<div class="modal hidden" id="phoneModal" role="dialog" aria-modal="true" aria-labelledby="phoneTitle">
+  <div class="modal-card">
+    <div class="modal-head">
       <h3 id="phoneTitle">Abrir no celular</h3>
       <button class="tb-btn" id="phoneClose" type="button">Fechar</button>
     </div>
     <div class="phone-body" id="phoneBody"></div>
+  </div>
+</div>
+
+<!-- atalhos do teclado (computador): abre no "?" do topo ou na tecla ? -->
+<div class="modal hidden" id="helpModal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 id="helpTitle">Atalhos do teclado</h3>
+      <button class="tb-btn" id="helpClose" type="button">Fechar</button>
+    </div>
+    <ul class="help-list">
+      <li><span><kbd>Espaço</kbd></span><span>tocar / pausar</span></li>
+      <li><span><kbd>←</kbd> <kbd>→</kbd></span><span>um quadro; com <kbd>Shift</kbd>, 1 segundo</span></li>
+      <li><span><kbd>M</kbd></span><span>marca o início e depois o fim do trecho a mudar</span></li>
+      <li><span><kbd>Ctrl</kbd>+<kbd>B</kbd></span><span>divide a tomada na agulha</span></li>
+      <li><span><kbd>Ctrl</kbd>+<kbd>D</kbd></span><span>duplica a tomada escolhida</span></li>
+      <li><span><kbd>Delete</kbd></span><span>exclui o que está escolhido</span></li>
+      <li><span><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Y</kbd></span><span>desfaz / refaz</span></li>
+      <li><span><kbd>Esc</kbd></span><span>fecha o painel ou solta a escolha</span></li>
+      <li><span>rodinha</span><span>anda na linha do tempo; com <kbd>Ctrl</kbd>, zoom</span></li>
+      <li><span><kbd>?</kbd></span><span>esta lista</span></li>
+    </ul>
   </div>
 </div>
 <script src="/assets/estilos.js"></script>
