@@ -25,6 +25,7 @@ import {
 } from 'remotion';
 import {loadFont} from '@remotion/google-fonts/Poppins';
 import {Sfx} from './Main';
+import {VIDEO_LAG} from './videoLag';
 import editData from '../public/edit-data.json';
 
 const {fontFamily} = loadFont('normal', {weights: ['400', '600', '900']});
@@ -215,13 +216,9 @@ const SplitFrame: React.FC<{
   );
 };
 
-// OffthreadVideo draws the source frame at or before frame/fps; on an exact frame
-// boundary that lands one frame LATE, so the decoded picture changes one
-// composition frame after the index says it should. Measured, not guessed: with
-// the split disabled, the camera zoom (index-driven) steps at frame 350 while the
-// take itself changes at 351. Delay the layout by the same frame or the split
-// visibly precedes the cut.
-export const VIDEO_LAG = 1;
+// VIDEO_LAG lives in videoLag.ts (measured: segments.json / edit-data.json `videoLag`).
+// Every window that has to change WITH the picture adds it.
+export {VIDEO_LAG};
 
 export const SplitScreen: React.FC<{items: SplitInsert[]}> = ({items}) => {
   const frame = useCurrentFrame();

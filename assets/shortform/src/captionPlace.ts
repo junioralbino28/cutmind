@@ -16,6 +16,7 @@
  * What the user set always wins over what the layout would do on its own.
  */
 import editData from '../public/edit-data.json';
+import {VIDEO_LAG} from './videoLag';
 
 export type Spot = {x: number; y: number};
 type Positions = {all?: Spot | null; phrases?: {at: number; x: number; y: number}[]};
@@ -37,9 +38,9 @@ export function spotFor(startSec: number, endSec: number): Spot | null {
 }
 
 // The seam window up at this GLOBAL frame, as the karaoke's CaptionShell reads it:
-// compared in frames, +1 for the split layout's VIDEO_LAG.
+// compared in frames, shifted by the same VIDEO_LAG as the split layout.
 export function seamAt(frame: number, fps: number): number | null {
-  const w = WINDOWS.find((x) => frame >= Math.round(x.start * fps) + 1 && frame < Math.round(x.end * fps) + 1);
+  const w = WINDOWS.find((x) => frame >= Math.round(x.start * fps) + VIDEO_LAG && frame < Math.round(x.end * fps) + VIDEO_LAG);
   return w ? w.paddingBottom : null;
 }
 

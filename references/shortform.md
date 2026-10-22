@@ -108,7 +108,7 @@ when the user reopens Posição), clear `awaitingStyle`, delete `preview_style.j
      error ACCUMULATES. Anything that must land on a cut then sits visibly early.
      ```bash
      python - <<'EOF'
-     import subprocess, glob, json, pathlib, sys
+     import subprocess, glob, json, math, pathlib, sys
      # TWO assertions, because globbing a directory is only as good as the
      # directory. `_v.mp4` first: the J-cut writes video-only segments and a bare
      # glob also matches butt-join leftovers. Then check the COUNT against the EDL
@@ -131,9 +131,16 @@ when the user reopens Posição), clear `awaitingStyle`, delete `preview_style.j
      if t != real:
          sys.exit(f"segments sum {t}f != cut.mp4 {real}f — do not ship this file")
      fps = 30  # match cut.mp4
+     # videoLag: how many frames the picture trails the composition in Remotion —
+     # the cut's VIDEO start time in frames, rounded UP (OffthreadVideo draws the
+     # frame at or before frame/fps). 0 when the video starts at zero.
+     st = float(subprocess.run(["ffprobe","-v","error","-select_streams","v:0",
+         "-show_entries","stream=start_time","-of","default=nw=1:nk=1","cut.mp4"],
+         capture_output=True, text=True).stdout.strip() or 0)
+     lag = max(0, math.ceil(st * fps - 1e-3))
      json.dump({"segments": [{"start": round(cum[i]/fps,4),
                               "dur": round((cum[i+1]-cum[i])/fps,4)}
-                             for i in range(len(cum)-1)]},
+                             for i in range(len(cum)-1)], "videoLag": lag},
                open("remotion/public/segments.json","w"), indent=2)
      EOF
      ```
@@ -145,10 +152,16 @@ when the user reopens Posição), clear `awaitingStyle`, delete `preview_style.j
      ffmpeg -v info -i cut.mp4 -vf "select='between(n,344,358)',setpts=N/30/TB,scdet=threshold=0" \
        -an -f null - 2>&1 | grep scd.score
      ```
-     In the RENDER the same cut lands one frame later — that is the
-     `OffthreadVideo` lag `VIDEO_LAG` exists for. Both numbers together are the
-     proof: cut spike at frame F in cut.mp4, at F+1 in the render, overlay
-     window opening at F+1.
+     In the RENDER the same cut lands `videoLag` frames later (segments.json,
+     written above): 0 when cut.mp4's video starts at zero — what the kit's
+     render.py writes — and 1 for cut.mp4 files whose video starts a fraction of
+     a frame late (0.021s and 0.033s measured on older projects). Everything
+     that must change with the picture adds it (`src/videoLag.ts`: zoom steps,
+     split windows, the caption seam, mattes) and mixar_final.py delays the
+     voice by it. Proof: cut spike at frame F in cut.mp4, at F+videoLag in the
+     render, overlay window opening at F+videoLag. With the wrong value the
+     camera zoom steps one frame after every cut — a double step that reads as
+     a bad zoom.
    - `pexels_search.py "<query>" --out-dir public/pexels --count 3 --orientation portrait`
 3. **Write `public/edit-data.json`** — the whole edit in one file (schema in
    `assets/shortform/README.md`): durationSec (exact ffprobe of cut.mp4),
@@ -566,9 +579,11 @@ a 7.6s edit: +42.7ms at the head, the tail and the whole — constant, and only 
 from the picture's own +33ms lag. There, `-map 0:a` through the same loudnorm beats
 the re-mux. Say which one you used and why.
 
-`adelay=33` is one frame at 30fps: OffthreadVideo draws the source frame one
-composition frame late (the same VIDEO_LAG the overlays compensate for), so the
-picture sits a frame behind cut.mp4's timeline and the voice must follow it.
+`adelay` is the picture's lag in ms (`videoLag` frames, 33 per frame at 30fps;
+`mixar_final.py` reads it from edit-data.json or segments.json): when cut.mp4's
+video starts late, OffthreadVideo draws every frame one composition frame late,
+the picture sits behind cut.mp4's timeline and the voice must follow it. With
+`videoLag` 0 there is nothing to follow and the delay is zero.
 `-t "$VD"` keeps the audio from outliving the video. **Verify** by correlating the
 delivered voice against `cut.mp4` at three points — the offset must be CONSTANT
 (≈+33ms). Use 15s windows: short windows lock onto the wrong syllable and report

@@ -5,8 +5,9 @@
 
   - imagem: render.mp4 do Remotion, convertido para a faixa limitada e marcado bt709
     (o Remotion sai cheio, 0–255, e marcado como PAL);
-  - voz: o áudio do cut.mp4, atrasado 1 quadro (a imagem do Remotion vem 1 quadro
-    atrás do corte). Fica FORA quando a pessoa desligou o som do vídeo no editor;
+  - voz: o áudio do cut.mp4, atrasado o mesmo tanto que a imagem do Remotion vem atrás
+    do corte (`videoLag`, ver atraso_da_imagem: 0 quando o vídeo do cut.mp4 começa em
+    zero). Fica FORA quando a pessoa desligou o som do vídeo no editor;
   - trilha: a do edit-data (`soundtrack`), quando ligada, com o volume e os fades da receita;
   - camadas de áudio: cada item que toca (faixa não silenciada, volume > 0), cortado em
     `corte`/`duracao`, com o volume dele, a cadeia do melhorar_audio.py quando `melhorar`,
@@ -62,6 +63,21 @@ def tem_volume_de_tomada(edit: Path, state: dict) -> bool:
     return any(r.get("volume") is not None and float(r["volume"]) != 1.0 for r in edl.get("ranges") or [])
 
 
+def atraso_da_imagem(ed: dict, public: Path) -> int:
+    """Quadros que a imagem do Remotion vem atrás do cut.mp4: o mesmo VIDEO_LAG do modelo
+    (videoLag.ts). edit-data.json `videoLag` > segments.json `videoLag` > 1, o que o cut.mp4
+    de render antigo pedia (vídeo começando em 0,033 s). A voz e as camadas seguem a imagem;
+    com o valor errado a voz fica um quadro fora dela (medido em 22/10/2026: vídeo do
+    cut.mp4 começando em zero = 0, e o 1 fixo deixava a voz 33 ms atrasada)."""
+    if ed.get("videoLag") is not None:
+        return int(ed["videoLag"])
+    try:
+        seg = json.loads((public / "segments.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        seg = {}
+    return int(seg["videoLag"]) if seg.get("videoLag") is not None else 1
+
+
 def montar(edit: Path, render: Path, saida: Path, vd: float, base: str = "cut",
            sfx: list[tuple[Path, float, float]] = (), norma: str | None = None,
            medir: bool = False) -> tuple[list[str], dict]:
@@ -72,12 +88,12 @@ def montar(edit: Path, render: Path, saida: Path, vd: float, base: str = "cut",
     edit = Path(edit)
     state = json.loads((edit / "state.json").read_text(encoding="utf-8"))
     fps = float(state.get("fps") or 30)
-    lag = round(1000 / fps)  # 1 quadro, em ms (33 a 30 qps)
     camadas = cam.load(edit / "camadas.json")
     ed = {}
     if state.get("editData") and (edit / state["editData"]).is_file():
         ed = json.loads((edit / state["editData"]).read_text(encoding="utf-8"))
     public = (edit / state["editData"]).parent if state.get("editData") else edit
+    lag = round(atraso_da_imagem(ed, public) * 1000 / fps)  # em ms (1 quadro = 33 a 30 qps)
 
     entradas: list[Path] = [Path(render)]
     partes = [f"[0:v]{COR}[vid]", f"anullsrc=r=48000:cl=stereo,atrim=duration={_n(vd)}[base]"]

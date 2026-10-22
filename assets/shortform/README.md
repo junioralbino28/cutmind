@@ -35,6 +35,7 @@ Then copy `cut.mp4` into `public/` and generate the data files below.
 ```jsonc
 {
   "width": 1080, "height": 1920, "fps": 30,  // MATCH cut.mp4 (ffprobe it): 30 for 30fps+ sources, else 24
+  // "videoLag": 0,                // optional override; normally measured into segments.json
   "durationSec": 87.5,              // EXACT cut.mp4 duration (ffprobe)
   "camera": {                        // hard zoom on cuts + push-in + eye track
     "enabled": true,
@@ -152,12 +153,15 @@ Rules that make it read as a style and not an accident:
   `cut.mp4` `trimBefore={a}`. Local frame `f-a` plus the offset `a` resolves back
   to global frame `f`, so the split does not replay the beginning or trail the
   base picture by a frame.
-- **`VIDEO_LAG = 1`.** OffthreadVideo draws the source frame at or before
-  `frame/fps`; on an exact frame boundary that resolves one frame late, so the
-  decoded picture changes one composition frame after the index does. Verify per
-  project rather than trusting it: disable the split, render stills either side of
-  a cut, and see which frame the picture actually changes on — the camera zoom
-  (index-driven) steps a frame earlier than the take itself.
+- **`VIDEO_LAG` is measured, not 1.** OffthreadVideo draws the source frame at or
+  before `frame/fps`, so when cut.mp4's video stream starts a fraction of a frame
+  late (older renders: 0.021–0.033s) every decoded picture lands one composition
+  frame after the index. `src/videoLag.ts` reads the value from segments.json
+  (`videoLag`, written by the segments step from ffprobe's start_time: 0 when the
+  video starts at zero, which is what the kit's render.py writes) or from
+  edit-data.json (override). Check it on one cut: the spike at F in cut.mp4 lands
+  at F+videoLag in the render. Wrong, the camera zoom steps one frame away from
+  the take — a double step at every cut — and the voice sits a frame off.
 - **Compare window bounds in FRAMES, not seconds.** Window values are rounded in
   the JSON; an epsilon comparison on seconds lands a frame off (this is what made
   the caption move one frame after the layout).

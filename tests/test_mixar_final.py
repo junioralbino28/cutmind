@@ -57,6 +57,16 @@ def test_sem_camadas_e_a_receita_da_fase_3(tmp_path):
     assert resumo["voz"] == "corte" and resumo["camadas"] == 0
 
 
+def test_atraso_da_voz_segue_o_inicio_do_video_do_corte(tmp_path):
+    # segments.json mede o atraso (vídeo do cut.mp4 começando em zero = 0); o edit-data manda
+    edit, public = _projeto(tmp_path, {"video": {"mudo": False}, "faixas": [_aud("a1", "midia/a.wav", 3.0, 2.0)]})
+    (public / "segments.json").write_text(json.dumps({"segments": [], "videoLag": 0}), encoding="utf-8")
+    f = _filtro(montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0)[0])
+    assert "[1:a]adelay=0:all=1" in f and "adelay=3000:all=1" in f
+    (public / "edit-data.json").write_text(json.dumps({"videoLag": 2}), encoding="utf-8")
+    assert "[1:a]adelay=67:all=1" in _filtro(montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0)[0])
+
+
 def test_camada_de_audio_entra_no_tempo_com_corte_volume_e_melhorar(tmp_path):
     edit, _ = _projeto(tmp_path, {"video": {"mudo": False}, "faixas": [
         _aud("a1", "midia/Gravação.m4a", 3.0, 2.0, corte=1.5, volume=1.5, melhorar=True),

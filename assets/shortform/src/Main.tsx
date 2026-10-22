@@ -31,6 +31,7 @@ import track from '../public/track.json';
 import segData from '../public/segments.json';
 import editData from '../public/edit-data.json';
 import {CustomGraphics} from './CustomGraphics';
+import {VIDEO_LAG} from './videoLag';
 import {StackedCaptions} from './StackedCaptions';
 import {ScatterCaptions} from './ScatterCaptions';
 import {SimpleCaptions, SIMPLE_VARIANTS} from './SimpleCaptions';
@@ -115,11 +116,15 @@ export const Sfx: React.FC<{src: string; volume?: number}> = ({src, volume = 0.0
 // src defaults to the base cut. frameOffset lets a windowed layer (e.g. a person
 // matte inside a <Sequence>) use the GLOBAL frame for the camera math so it stays
 // aligned with the base. transparent enables ProRes alpha (person matte).
-// children render inside the same transformed space.
-export const DynamicVideo: React.FC<{src?: string; frameOffset?: number; transparent?: boolean; children?: React.ReactNode}> = ({
+// children render inside the same transformed space. trimBefore + muted make a
+// windowed COPY of the base cut (scenes that redraw the picture): start it on the
+// window's own frame (window start - VIDEO_LAG) and keep it silent.
+export const DynamicVideo: React.FC<{src?: string; frameOffset?: number; transparent?: boolean; trimBefore?: number; muted?: boolean; children?: React.ReactNode}> = ({
   src = 'cut.mp4',
   frameOffset = 0,
   transparent = false,
+  trimBefore,
+  muted,
   children,
 }) => {
   const frame = useCurrentFrame() + frameOffset;
@@ -133,13 +138,12 @@ export const DynamicVideo: React.FC<{src?: string; frameOffset?: number; transpa
     // which cut segment is this frame in?
     const segs = segData.segments;
     let idx = 0;
-    // -1: OffthreadVideo draws the source frame at or before frame/fps, which on an
-    // exact boundary lands a frame late. Without this the hard zoom steps one frame
-    // BEFORE the picture cuts (same lag CustomGraphics compensates with VIDEO_LAG).
+    // VIDEO_LAG (videoLag.ts): the zoom must step on the frame the picture cuts.
+    // A wrong lag leaves a one-frame double step at every cut.
     for (let i = 0; i < segs.length; i++) {
-      if (frame - 1 >= Math.round(segs[i].start * fps)) idx = i;
+      if (frame - VIDEO_LAG >= Math.round(segs[i].start * fps)) idx = i;
     }
-    const segFrom = Math.round(segs[idx].start * fps) + 1;
+    const segFrom = Math.round(segs[idx].start * fps) + VIDEO_LAG;
     const segLen = Math.max(1, Math.round(segs[idx].dur * fps));
     const base = cam.zooms[idx % cam.zooms.length] ?? 1.14;
     const push = cam.pushIn * clamp01((frame - segFrom) / segLen);
@@ -163,7 +167,7 @@ export const DynamicVideo: React.FC<{src?: string; frameOffset?: number; transpa
           transform: `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) scale(${S.toFixed(4)})`,
         }}
       >
-        <OffthreadVideo src={staticFile(src)} transparent={transparent} style={{width, height}} />
+        <OffthreadVideo src={staticFile(src)} transparent={transparent} trimBefore={trimBefore} muted={muted} style={{width, height}} />
         {children}
       </div>
     </AbsoluteFill>
@@ -222,7 +226,7 @@ const BehindSubject: React.FC = () => {
   return (
     <>
       {D.behind.map((b, i) => {
-        const from = Math.round(b.start * fps);
+        const from = Math.round(b.start * fps) + VIDEO_LAG;
         const duration = Math.round(b.dur * fps);
         return (
           <Sequence key={i} from={from} durationInFrames={duration} layout="none">
@@ -306,11 +310,11 @@ const CaptionShell: React.FC<{fromFrame: number; spot: Spot | null; boxW: number
     );
   }
   // Compared in FRAMES, never seconds: window bounds are rounded in the JSON, and
-  // an epsilon comparison there lands a frame off. +1 is the same video lag the
-  // split layout compensates for (see VIDEO_LAG in CustomGraphics).
+  // an epsilon comparison there lands a frame off. VIDEO_LAG (videoLag.ts) keeps
+  // the seam on the frame the split layout changes.
   const f = fromFrame + local;
   const w = (C.windows || []).find(
-    (x) => f >= Math.round(x.start * fps) + 1 && f < Math.round(x.end * fps) + 1,
+    (x) => f >= Math.round(x.start * fps) + VIDEO_LAG && f < Math.round(x.end * fps) + VIDEO_LAG,
   );
   return (
     <AbsoluteFill
