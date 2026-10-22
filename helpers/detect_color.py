@@ -87,11 +87,15 @@ def _sample_stats(video: Path, n: int = 24) -> dict[str, float] | None:
     with tempfile.NamedTemporaryFile(mode="w+", suffix=".txt", delete=False) as f:
         meta = f.name
     try:
+        # Só o NOME do arquivo de medidas no filtro, com o ffmpeg rodando na pasta dele:
+        # no Windows o caminho completo ("C:\...") quebra a sintaxe do filtro (os
+        # dois-pontos separam opções) e o ffmpeg recusa com "Invalid argument".
         subprocess.run(
-            ["ffmpeg", "-y", "-hide_banner", "-nostats", "-i", str(video),
-             "-vf", f"fps={fps:.3f},signalstats,metadata=print:file={meta}",
+            ["ffmpeg", "-y", "-hide_banner", "-nostats", "-i", str(Path(video).resolve()),
+             "-vf", f"fps={fps:.3f},signalstats,metadata=print:file={Path(meta).name}",
              "-an", "-f", "null", "-"],
-            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            cwd=Path(meta).parent)
 
         ymin: list[float] = []
         ymax: list[float] = []
