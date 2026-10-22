@@ -1,13 +1,13 @@
-/* CutMind — catálogo de estilos e amostras, um arquivo só para os dois editores.
+/* CutMind — catálogo de estilos e amostras do editor, num arquivo só.
  *
- * O editor de PC (app.js) e o de celular (celular.js) carregam este arquivo antes
- * do próprio script e pegam daqui o que precisam:
+ * O editor (celular.js, o mesmo no computador e no celular) carrega este arquivo
+ * antes do próprio script e pega daqui o que precisa:
  *
  *   const { STYLE_CATALOG, CAP_BUILDERS, ... } = CutMindEstilos;
  *
  * Duas cópias divergem, e uma amostra que mente sobre o estilo é pior que nenhuma.
  * Mudou o visual de uma legenda ou headline no template (Main.tsx, StackedCaptions,
- * ScatterCaptions, SimpleCaptions)? Muda aqui, e os dois editores acompanham.
+ * ScatterCaptions, SimpleCaptions)? Muda aqui, e o editor acompanha.
  *
  * As amostras de legenda aceitam um texto próprio: o editor de celular passa as
  * palavras ditas no trecho do vídeo que está na tela. Sem texto, cada uma usa a

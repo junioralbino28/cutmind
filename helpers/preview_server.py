@@ -14,7 +14,6 @@ per-session it is fed by data only:
 Routes:
   /, /celular           the editor (assets/preview/celular.html): one page for the
                         computer and the phone, laid out by the screen width
-  /classico             the old desktop editor (index.html), until the switch is approved
   /c?t=<código>         entrada do celular pelo link/QR: grava o código num
                         cookie e manda para /celular
   /assets/<file>        app files (css/js/logo)
@@ -479,12 +478,9 @@ class Handler(BaseHTTPRequestHandler):
         path, _, query = self.path.partition("?")
         if not self._gate(path):
             return
-        # um editor só: o mesmo no computador e no celular, arrumado pela largura da tela;
-        # a desktop antiga fica em /classico até a troca ser aprovada
+        # um editor só: o mesmo no computador e no celular, arrumado pela largura da tela
         if path in ("/", "/celular"):
             self._send_file(APP_DIR / "celular.html")
-        elif path in ("/classico", "/index.html"):
-            self._send_file(APP_DIR / "index.html")
         elif path == "/c":
             self._enter(query)
         elif path == "/api/celular":
@@ -1032,7 +1028,7 @@ def main() -> None:
     if not root.exists():
         raise SystemExit(f"edit dir not found: {root}")
     _check_access(root)
-    if not (APP_DIR / "index.html").exists():
+    if not (APP_DIR / "celular.html").exists():
         raise SystemExit(f"app not found at {APP_DIR}")
     upload_dir = (args.upload_dir or root.parent).resolve()
     if not upload_dir.is_dir():

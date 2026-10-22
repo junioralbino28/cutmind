@@ -120,13 +120,13 @@ def test_rede_sem_codigo_ve_a_tela_mas_nao_os_dados(srv):
 
 def test_um_editor_so_no_computador_e_no_celular(srv):
     """O editor do celular é o editor único: `/` (computador) e `/celular` servem a mesma
-    página, que se arruma pela largura da tela; a desktop antiga fica em `/classico` até ser
-    aprovada a troca (PLANO-editor-unico-desktop)."""
+    página, que se arruma pela largura da tela. A desktop antiga saiu depois de aprovada a
+    troca (22/10, PLANO-editor-unico-desktop): nem o endereço nem os arquivos dela existem."""
     _, raiz = pedir(srv.port, "GET", "/")
     _, cel = pedir(srv.port, "GET", "/celular")
     assert raiz == cel and b"/assets/celular.js" in raiz
-    r, antiga = pedir(srv.port, "GET", "/classico")
-    assert r.status == 200 and b"/assets/app.js" in antiga
+    for antigo in ("/classico", "/index.html", "/assets/app.js", "/assets/app.css"):
+        assert pedir(srv.port, "GET", antigo)[0].status == 404, antigo
 
 
 def test_editor_unico_traz_o_que_so_a_desktop_tinha():
@@ -517,7 +517,7 @@ def test_motor_de_efeitos_e_interface_sem_codigo(srv):
     assert r.getheader("Content-Type").startswith("text/javascript")
     r, _ = pedir(srv.port, "GET", "/efeitos/vendor/three.module.min.js", remoto=True)
     assert r.status == 200
-    r, _ = pedir(srv.port, "GET", "/efeitos/../preview/index.html", remoto=True)
+    r, _ = pedir(srv.port, "GET", "/efeitos/../preview/celular.html", remoto=True)
     assert r.status == 400
 
 

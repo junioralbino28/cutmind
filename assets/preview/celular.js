@@ -1,6 +1,6 @@
-/* CutMind — editor de celular.
+/* CutMind — o editor (o mesmo no computador e no celular).
  *
- * MESMO backend do editor de PC — nenhum servidor novo:
+ * O backend é o preview_server.py:
  *   GET  /api/state            state.json + edl.json + mtimes
  *   GET  /media/<arquivo>      vídeo, legendas, edit-data, transcrição do corte
  *   GET  /gen/thumbs/*.jpg     miniaturas (1 a cada 2 s)
@@ -17,18 +17,20 @@
  *   GET  /efeitos/motor.js     o motor de efeitos, o mesmo do vídeo final
  * Pela rede (servidor com --host), os dados só saem para quem abriu pelo link
  * ou QR do computador; sem isso /api/state dá 403 e a tela diz o que falta.
- * O agente (Claude ou Codex) lê exatamente os arquivos que o editor de PC grava,
- * com os mesmos campos — por isso os payloads abaixo são cópia dos do app.js.
+ * É o editor único, no computador e no celular: o agente (Claude ou Codex) lê os
+ * arquivos que ele grava, nos campos que a edição antiga do PC (app.js, que saiu em
+ * 22/10) usava — por isso os payloads abaixo seguem aquele formato.
  *
- * Diferenças de propósito em relação ao app.js:
- *  - A agulha fica PARADA no centro e a linha do tempo anda por baixo dela
- *    (padrão CapCut/Edits). O gesto é próprio, não a rolagem nativa: um dedo
+ * Escolhas de propósito:
+ *  - No celular a agulha fica PARADA no centro e a linha do tempo anda por baixo dela
+ *    (padrão CapCut/Edits); no computador ela anda, como no CapCut desktop (ver
+ *    agulhaAnda). O gesto do celular é próprio, não a rolagem nativa: um dedo
  *    arrasta (com inércia), dois dedos fazem pinça, toque seleciona. Rolagem
  *    nativa e pinça brigam pelo mesmo toque — por isso touch-action:none.
  *  - O Estilo abre num painel que sobe; a prévia fica em cima e mostra a escolha
  *    AO VIVO sobre o vídeo. Ela usa o CORTE LIMPO (cut.mp4), não o render final,
  *    senão a amostra apareceria por cima da legenda já queimada no vídeo.
- *  - Catálogo e amostras vêm de estilos.js, o mesmo arquivo do editor de PC.
+ *  - Catálogo e amostras vêm de estilos.js.
  */
 'use strict';
 
@@ -112,9 +114,8 @@ const ICON = {
 };
 
 /* ---------- catálogo de estilos e amostras: estilos.js ----------
- * O mesmo arquivo do editor de PC, carregado antes deste. Os ids e nomes são o
- * contrato com a skill (preview_style.json). As miniaturas desenhadas (mock) do
- * editor de PC ficam de fora: aqui cada opção aparece sobre um quadro do vídeo. */
+ * Carregado antes deste. Os ids e nomes são o contrato com a skill
+ * (preview_style.json). Cada opção aparece sobre um quadro do próprio vídeo. */
 const {
   STYLE_CATALOG, ACCENT_USERS, ACCENT_DEFAULT, CAP_TEXT, HEADLINE_TEXT, HL_STYLES, STATIC_VARIANTS, ORPHAN_PT,
   CAP_BUILDERS, buildHeadlineDemo, buildStaticDemo, capPhrases,
@@ -226,7 +227,7 @@ function fillText(node, look, moment, anims, only) {
 /* A amostra de legenda com as palavras ditas no trecho que está na tela. Vêm da
  * transcrição do corte (transcripts/cut.json, a mesma que vira captions.json na
  * Fase 2). No primeiro portão de estilo ela pode ainda não existir: aí fica a
- * frase padrão, como no editor de PC. */
+ * frase padrão. */
 async function loadCutWords() {
   if (S.cutWords !== undefined) return S.cutWords;
   S.cutWords = null;
@@ -411,7 +412,7 @@ function defaultStyle() {
   return { edit: 'limpa', headline: 'outline', captions: 'karaoke', accent: ACCENT_DEFAULT, elements, note: '' };
 }
 
-// ---------- geometria do corte (cópia do app.js: J-cut, rascunho, render) ----------
+// ---------- geometria do corte (J-cut, rascunho, render) ----------
 function jcutGeom(i) {
   const j = S.jcut && S.jcut[i];
   if (!j) return { lead: 0, tail: 0 };
@@ -2757,7 +2758,7 @@ window.addEventListener('pointercancel', (e) => {
   if (e.pointerId === capDrag.id) { capDrag.id = null; drawFrase(true); }
 });
 
-// ---------- salvar ajustes do corte (os campos do editor de PC + take e ops) ----------
+// ---------- salvar ajustes do corte (os campos da edição antiga do PC + take e ops) ----------
 /* `ranges` é a lista INTEIRA, na ordem nova: aparos, divisões, cópias e ordem já
  * aplicados — o agente monta o edl.json a partir dela. `take` é o índice da tomada de
  * origem no edl.json (para levar quote, reason e gain_db). `changes` e `removed` resumem

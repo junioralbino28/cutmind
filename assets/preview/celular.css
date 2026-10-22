@@ -915,9 +915,9 @@ textarea:focus { box-shadow: inset 0 0 0 1px var(--line2); }
 .upload.bad .up-bar { background: #ff6b5e; }
 .upload.bad .up-pct { color: #ff9b91; }
 
-/* ---------- amostras de legenda e headline: cópia fiel do app.css ----------
+/* ---------- amostras de legenda e headline ----------
    Os números vêm do render (Main.tsx, StackedCaptions.tsx, ScatterCaptions.tsx,
-   SimpleCaptions.tsx). Mudou lá, muda aqui e no app.css. */
+   SimpleCaptions.tsx). Mudou lá, muda aqui. */
 .cap-demo { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
 .kar-line {
   position: absolute;
