@@ -180,6 +180,21 @@ and every helper maps time through `helpers/tempo.py`. Effects and layers are on
 already says when the cut changed in the same save). The PC editor does not edit speed,
 but sizes those takes by it and carries it through its own save.
 
+The sheet has two tabs, **Normal** (the slider above) and **Curva**: a row with Nenhuma
+and the seven CapCut curves (Personalizar, Montagem, Herói, Bala, Salto, Entrada rápida,
+Saída rápida), each drawn small, and under it the curve of the take, big, on a log scale
+from 0.1× to 10× with the 1× line in the middle. Tapping a curve applies it; dragging a
+point changes its speed (and, for the inner points, where it sits); **+ Ponto** adds one at
+the needle, **− Ponto** removes the chosen one, **Redefinir** goes back to the curve's
+drawing. Moving the Normal slider removes the curve, and picking a curve sets the speed
+back to 1×: the two never live together. The take carries the curve's name in its corner;
+the preview changes `playbackRate` along the take (the ratio between the draft's curve and
+the one already in `cut.mp4` at that point). Split gives each half its piece of the curve.
+**Salvar** sends `curva` ({nome, pontos}) in the range instead of `velocidade`;
+`assets/preview/tempo.js` does the same math as `helpers/tempo.py`
+(`tests/test_tempo_js.py` checks they match), so the timeline, the preview and the render
+agree.
+
 ## Ajustar (the take's color)
 
 A selected take has **Ajustar** next to its volume. It opens a small panel with a

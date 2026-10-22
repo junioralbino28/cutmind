@@ -437,6 +437,22 @@ button { font-family: inherit; cursor: pointer; }
 .vol-nota { margin: 0 16px 6px; font-size: 12px; line-height: 1.4; color: var(--dim); }
 /* Velocidade: as marcas embaixo da régua, cada uma no seu lugar da escala */
 .vel-marcas { position: relative; height: 26px; margin: 0 16px 4px; }
+.vel-modos { padding-top: 8px; padding-bottom: 4px; }
+.vel-curvas { padding-bottom: 8px; }
+.vel-curva { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: none; width: 66px; padding: 6px 4px 5px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.12); background: transparent; color: var(--text); font: inherit; font-size: 10.5px; line-height: 1.15; text-align: center; }
+.vel-curva svg { width: 54px; height: 30px; }
+.vel-curva.on { border-color: var(--brand); background: rgba(255, 255, 255, 0.06); }
+.vel-grafico { margin: 2px 16px 6px; touch-action: none; }
+.vel-grafico svg { display: block; width: 100%; height: 150px; overflow: visible; }
+.vel-grafico .linha { fill: none; stroke: var(--brand); stroke-width: 2.2; }
+.vel-grafico .guia { stroke: rgba(255, 255, 255, 0.14); stroke-width: 1; }
+.vel-grafico .guia.um { stroke-dasharray: 4 4; stroke: rgba(255, 255, 255, 0.3); }
+.vel-grafico .rotulo { fill: var(--dim); font-size: 10px; }
+.vel-grafico .agulha { stroke: #fff; stroke-width: 1.5; }
+.vel-grafico .ponto { fill: #111; stroke: #fff; stroke-width: 2; }
+.vel-grafico .ponto.on { fill: var(--brand); stroke: #fff; }
+.vel-grafico .alvo { fill: transparent; }
+.vel-ctl { display: flex; align-items: center; gap: 8px; padding: 0 14px 4px; }
 .vel-marca {
   position: absolute; top: 0; translate: -50% 0;
   border: 0; background: transparent; color: var(--dim);

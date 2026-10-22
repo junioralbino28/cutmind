@@ -164,8 +164,24 @@
 <section class="sheet small" id="velSheet" aria-hidden="true">
   <div class="sheet-grip"></div>
   <div class="note-head"><b>Velocidade</b><span id="velVal">1×</span></div>
-  <input class="vol-range" id="velRange" type="range" min="-2" max="2" step="0.01" value="0" aria-label="Velocidade da tomada">
-  <div class="vel-marcas" id="velMarcas"></div>
+  <div class="subtabs vel-modos" id="velModos" role="tablist">
+    <button class="subtab on" type="button" data-modo="normal" role="tab">Normal</button>
+    <button class="subtab" type="button" data-modo="curva" role="tab">Curva</button>
+  </div>
+  <div id="velNormal">
+    <input class="vol-range" id="velRange" type="range" min="-2" max="2" step="0.01" value="0" aria-label="Velocidade da tomada">
+    <div class="vel-marcas" id="velMarcas"></div>
+  </div>
+  <div id="velCurva" hidden>
+    <div class="subtabs vel-curvas" id="velCurvas"></div>
+    <div class="vel-grafico" id="velGrafico"></div>
+    <div class="vel-ctl">
+      <button class="tb-btn ghost" id="velMais" type="button">+ Ponto</button>
+      <button class="tb-btn ghost" id="velMenos" type="button">− Ponto</button>
+      <div class="t-spacer"></div>
+      <button class="tb-btn ghost" id="velRedefinir" type="button">Redefinir</button>
+    </div>
+  </div>
   <p class="vol-nota" id="velDur"></p>
   <footer class="sheet-foot">
     <div class="t-spacer"></div>
@@ -201,6 +217,7 @@
 </section>
 <div class="toast hidden" id="toast" role="status"></div>
 <script src="/assets/estilos.js"></script>
+<script src="/assets/tempo.js"></script>
 <script src="/assets/celular.js"></script>
 </body>
 </html>

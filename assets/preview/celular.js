@@ -402,6 +402,14 @@ function jcutGeom(i) {
 }
 // a velocidade com que a tomada i do edl.json já está no cut.mp4
 const velR = (i) => (S.rendered[i] ? S.rendered[i].vel : 1);
+/* Curva de velocidade (etapa 4d): `r.curva` = {nome, pontos [[x, y]]} ou null; com curva, `vel`
+ * fica 1. Toda conta de tempo de uma tomada com curva passa pelos pedaços do tempo.js, os
+ * mesmos do render; sem curva nenhum lado mudou, é a conta da 4c. */
+const pedsD = (r) => Tempo.pedacos(r.start, r.end, r.vel, r.curva || null);
+const pedsR = (i) => { const R = S.rendered[i]; return R ? Tempo.pedacos(R.start, R.end, R.vel, R.curva || null) : [[0, 1, 1]]; };
+const curvaKey = (r) => (r && r.curva ? `${r.curva.nome}:${JSON.stringify(r.curva.pontos)}` : '');
+const copiaCurva = (c) => (c ? { nome: c.nome, pontos: c.pontos.map((p) => [p[0], p[1]]) } : null);
+const comCurva = (d) => !!(d.curva || (S.rendered[d.from] && S.rendered[d.from].curva));
 /* Cada tomada do rascunho sabe de onde veio: `uid` (o<i> = tomada i do edl.json; n<k> =
  * nova, de uma divisão ou cópia) e `from` (a tomada do edl.json de onde sai o conteúdo).
  * Dividir, copiar e mover só mudam esta lista; o cut.mp4 continua o mesmo até o agente
@@ -413,13 +421,29 @@ function draftLayout() {
     // a sobra do J-cut é de uma tomada inteira do edl.json; pedaço novo não tem
     const g = r.orig ? jcutGeom(r.from) : { lead: 0, tail: 0 };
     // a sobra e a cauda do J-cut estão em tempo do cut.mp4: na gravação, × a velocidade dele;
-    // no rascunho, ÷ a velocidade nova da tomada (a régua de Velocidade)
-    const rv = r.orig ? velR(r.from) : 1;
-    const leadSrc = g.lead * rv;
-    const adur = Math.max(0, (r.end - r.start - g.tail * rv) / r.vel);
-    const lead = leadSrc / r.vel;
+    // no rascunho, ÷ a velocidade nova da tomada (a régua de Velocidade). Com curva, pelos pedaços.
+    const R = r.orig ? S.rendered[r.from] : null;
+    let leadSrc, tailSrc;
+    if (R && R.curva) {
+      const pR = pedsR(r.from);
+      leadSrc = Tempo.gravacaoEm(pR, g.lead) - R.start;
+      tailSrc = R.end - Tempo.gravacaoEm(pR, Tempo.corteAte(pR, R.end) - g.tail);
+    } else {
+      const rv = r.orig ? velR(r.from) : 1;
+      leadSrc = g.lead * rv;
+      tailSrc = g.tail * rv;
+    }
+    let adur, lead;
+    if (r.curva) {
+      const pD = pedsD(r);
+      adur = Math.max(0, Tempo.durTrecho(pD, r.start, r.end - tailSrc));
+      lead = Tempo.durTrecho(pD, r.start, r.start + leadSrc);
+    } else {
+      adur = Math.max(0, (r.end - r.start - tailSrc) / r.vel);
+      lead = leadSrc / r.vel;
+    }
     const dur = Math.max(0, adur - lead);
-    const item = { ...r, out: t, dur, aout: Math.max(0, at - lead), adur, lead, leadSrc };
+    const item = { ...r, out: t, dur, aout: Math.max(0, at - lead), adur, lead, leadSrc, tailSrc };
     t += dur;
     at = item.aout + adur;
     return item;
@@ -430,8 +454,8 @@ function renderedLayout() {
     return S.rendered.map((r, i) => ({ ...r, out: S.jcut[i].video_start_in_output, dur: S.jcut[i].video_duration }));
   }
   let t = 0;
-  return S.rendered.map((r) => {
-    const dur = (r.end - r.start) / r.vel;
+  return S.rendered.map((r, i) => {
+    const dur = r.curva ? Tempo.corteAte(pedsR(i), r.end) : (r.end - r.start) / r.vel;
     const item = { ...r, out: t, dur };
     t += dur;
     return item;
@@ -443,8 +467,14 @@ const totalT = () => draftTotal() || S.videoDuration || 0;
 function itemRendered(d, t, rl = renderedLayout()) {
   const R = S.rendered[d.from], L = rl[d.from];
   if (!R || !L) return Math.min(t, S.videoDuration);
-  const s = d.start + (d.leadSrc || 0) + (t - d.out) * d.vel; // instante do arquivo de origem
-  const rt = L.out + (s - (R.start + jcutGeom(d.from).lead * R.vel)) / R.vel;
+  let rt;
+  if (comCurva(d)) { // o instante da gravação pela curva do rascunho; no cut.mp4, pela dele
+    const s = Tempo.gravacaoEm(pedsD(d), (d.lead || 0) + (t - d.out));
+    rt = L.out + Tempo.corteAte(pedsR(d.from), s) - jcutGeom(d.from).lead;
+  } else {
+    const s = d.start + (d.leadSrc || 0) + (t - d.out) * d.vel; // instante do arquivo de origem
+    rt = L.out + (s - (R.start + jcutGeom(d.from).lead * R.vel)) / R.vel;
+  }
   // além do que o cut.mp4 tem (alça puxada para fora): o quadro mais perto
   return Math.max(L.out, Math.min(rt, L.out + L.dur - 0.02));
 }
@@ -468,6 +498,10 @@ function renderedToDraft(t) {
     if (t < r.out) continue;
     const d = dl.find((x) => x.uid === `o${i}`);
     if (!d) return dl.length ? Math.min(t, dl[dl.length - 1].out) : t; // tomada excluída
+    if (comCurva(d)) {
+      const s = Tempo.gravacaoEm(pedsR(i), jcutGeom(i).lead + (t - r.out));
+      return d.out + Math.max(0, Math.min(Tempo.corteAte(pedsD(d), s) - (d.lead || 0), d.dur));
+    }
     return d.out + Math.min((t - r.out) * velR(i) / d.vel, d.dur); // velocidade nova: o trecho estica ou encolhe
   }
   return t;
@@ -501,14 +535,14 @@ const isText = (c) => c.kind === 'hook' || c.kind === 'word';
 
 // ---------- o que mudou e ainda não foi salvo ----------
 // comparado com o último corte recebido (ou o último Salvar): aparada, nova, excluída, ordem, volume
-const baseOf = (draft) => draft.map(({ uid, start, end, vol, vel }) => ({ uid, start, end, vol, vel }));
+const baseOf = (draft) => draft.map((r) => ({ uid: r.uid, start: r.start, end: r.end, vol: r.vol, vel: r.vel, ck: curvaKey(r) }));
 function diffBase() {
   const base = new Map(S.base.map((b) => [b.uid, b]));
   const now = new Set(S.draft.map((r) => r.uid));
   let mudou = 0;
   for (const r of S.draft) {
     const b = base.get(r.uid);
-    if (!b || b.start !== r.start || b.end !== r.end || b.vol !== r.vol || b.vel !== r.vel) mudou++;
+    if (!b || b.start !== r.start || b.end !== r.end || b.vol !== r.vol || b.vel !== r.vel || b.ck !== curvaKey(r)) mudou++;
   }
   mudou += S.base.filter((b) => !now.has(b.uid)).length;
   const antes = S.base.map((b) => b.uid).filter((u) => now.has(u));
@@ -522,7 +556,7 @@ function dirtyCount() {
 }
 const isChanged = (r) => {
   const b = S.base.find((x) => x.uid === r.uid);
-  return !b || b.start !== r.start || b.end !== r.end || b.vol !== r.vol || b.vel !== r.vel;
+  return !b || b.start !== r.start || b.end !== r.end || b.vol !== r.vol || b.vel !== r.vel || b.ck !== curvaKey(r);
 };
 function refreshHeader() {
   const n = dirtyCount();
@@ -545,7 +579,7 @@ function refreshHeader() {
 const HIST = { past: [], future: [], max: 100 };
 function snap() {
   return {
-    draft: S.draft.map((r) => ({ ...r, orig: r.orig ? { ...r.orig } : null })),
+    draft: S.draft.map((r) => ({ ...r, orig: r.orig ? { ...r.orig } : null, curva: copiaCurva(r.curva) })),
     notes: S.notes.map((n) => ({ ...n })),
     pendingIn: S.pendingIn,
     selected: S.selected,
@@ -652,7 +686,8 @@ async function applyState(data) {
   S.jcut = (data.edl && data.edl.jcut_timeline) || null;
   // `vol` e `vel` são o volume e a velocidade da tomada (1 = como está); o cut.mp4 já sai com os do edl.json
   S.rendered = ranges.map((r) => ({ source: r.source, start: +r.start, end: +r.end, beat: r.beat || '',
-    vol: r.volume == null ? 1 : +r.volume, vel: r.velocidade == null ? 1 : +r.velocidade }));
+    vol: r.volume == null ? 1 : +r.volume, vel: r.velocidade == null ? 1 : +r.velocidade,
+    curva: r.curva && Array.isArray(r.curva.pontos) ? { nome: r.curva.nome || 'personalizar', pontos: r.curva.pontos.map((p) => [+p[0], +p[1]]) } : null }));
   S.draft = S.rendered.map((r, i) => ({ ...r, uid: `o${i}`, from: i, orig: { start: r.start, end: r.end } }));
   S.base = baseOf(S.draft);
   S.selected = -1;
@@ -856,10 +891,11 @@ function renderTakes(lane) {
       }
     }
     el('div', 't-label', c).textContent = r.beat || r.source || `tomada ${i + 1}`;
-    if ((r.vol !== 1 || r.vel !== 1) && !movendo) {
+    if ((r.vol !== 1 || r.vel !== 1 || r.curva) && !movendo) {
       const tags = el('div', 't-tags', c);
       if (r.vol !== 1) el('span', 't-vol', tags).innerHTML = `${ICON.vol}${Math.round(r.vol * 100)}%`;
-      if (r.vel !== 1) el('span', 't-vel', tags).textContent = fmtVel(r.vel);
+      if (r.curva) el('span', 't-vel', tags).textContent = nomeCurva(r.curva.nome);
+      else if (r.vel !== 1) el('span', 't-vel', tags).textContent = fmtVel(r.vel);
     }
     if (editable && i === S.selected) {
       const l = el('div', 'handle l', c);
@@ -1090,10 +1126,12 @@ timeline.addEventListener('pointermove', (e) => {
     const T = G.trim;
     const r = S.draft[T.i];
     const dt = (e.clientX - T.x0) / S.pps;
+    // dt é do corte; a borda, da gravação (com curva, pela velocidade da curva naquela ponta)
+    const vb = r.curva ? Tempo.velEm(pedsD(T.r), T.side === 'l' ? T.r.start : T.r.end - 1e-6) : r.vel;
     if (T.side === 'l') {
-      r.start = Math.min(Math.max(0, T.r.start + dt * r.vel), r.end - MIN_SEG); // dt é do corte; a borda, da gravação
+      r.start = Math.min(Math.max(0, T.r.start + dt * vb), r.end - MIN_SEG);
     } else {
-      r.end = Math.max(T.r.end + dt * r.vel, r.start + MIN_SEG);
+      r.end = Math.max(T.r.end + dt * vb, r.start + MIN_SEG);
       const srcDur = (S.state.sourceDurations || {})[r.source];
       if (srcDur) r.end = Math.min(r.end, srcDur);
     }
@@ -1341,10 +1379,20 @@ function followDraft() {
   const k = itemAt(dl, S.t);
   if (k < 0) return;
   const d = dl[k];
-  // tomada com velocidade nova: o cut.mp4 toca mais rápido ou mais devagar (o tom fica)
-  const ritmo = d.vel / velR(d.from);
+  // tomada com velocidade nova: o cut.mp4 toca mais rápido ou mais devagar (o tom fica).
+  // Com curva, o ritmo muda dentro da tomada: a razão entre as duas curvas naquele ponto.
+  let ritmo, t;
+  if (comCurva(d)) {
+    const L = renderedLayout()[d.from];
+    const pR = pedsR(d.from), pD = pedsD(d);
+    const s = Tempo.gravacaoEm(pR, jcutGeom(d.from).lead + (video.currentTime - L.out));
+    ritmo = Math.min(16, Math.max(0.0625, Tempo.velEm(pD, s) / Tempo.velEm(pR, s)));
+    t = d.out + Tempo.corteAte(pD, s) - (d.lead || 0);
+  } else {
+    ritmo = d.vel / velR(d.from);
+    t = d.out + (video.currentTime - itemRendered(d, d.out)) / ritmo;
+  }
   if (video.playbackRate !== ritmo) video.playbackRate = ritmo;
-  const t = d.out + (video.currentTime - itemRendered(d, d.out)) / ritmo;
   if (t < d.out - 0.3 || t > d.out + d.dur + 0.3) { video.currentTime = itemRendered(d, Math.min(S.t, d.out + d.dur)); return; }
   if (t >= d.out + d.dur - 0.02) {
     const nx = dl[k + 1];
@@ -1442,7 +1490,7 @@ function renderToolbar() {
     tool(ctx, 'dividir', 'Dividir');
     tool(ctx, 'duplicar', 'Duplicar');
     tool(ctx, 'volume', `${Math.round(sel.vol * 100)}%`);
-    tool(ctx, 'velocidade', fmtVel(sel.vel));
+    tool(ctx, 'velocidade', sel.curva ? nomeCurva(sel.curva.nome) : fmtVel(sel.vel));
     tool(ctx, 'ajustar', 'Ajustar');
     tool(ctx, 'excluir', 'Excluir', { icon: ICON.remover, disabled: S.draft.length < 2 });
     tool(ctx, 'ouvir', 'Ouvir');
@@ -1526,10 +1574,16 @@ function splitSelected() {
     return;
   }
   const r = S.draft[i];
-  const s = +(r.start + (d.leadSrc || 0) + (S.t - d.out) * d.vel).toFixed(3); // instante do arquivo de origem
+  const s = r.curva // instante do arquivo de origem
+    ? +Tempo.gravacaoEm(pedsD(d), (d.lead || 0) + (S.t - d.out)).toFixed(3)
+    : +(r.start + (d.leadSrc || 0) + (S.t - d.out) * d.vel).toFixed(3);
   remember();
-  S.draft.splice(i + 1, 0, { uid: `n${++S.seq}`, from: r.from, kind: 'split', source: r.source, start: s, end: r.end, beat: r.beat, vol: r.vol, vel: r.vel, orig: null });
+  // com curva, cada metade leva o seu pedaço dela: a mesma velocidade nos mesmos pontos
+  const [esq, dir] = r.curva ? Tempo.cortarCurva(r.curva.pontos, (s - r.start) / (r.end - r.start)) : [null, null];
+  S.draft.splice(i + 1, 0, { uid: `n${++S.seq}`, from: r.from, kind: 'split', source: r.source, start: s, end: r.end, beat: r.beat, vol: r.vol, vel: r.vel,
+    curva: r.curva ? { nome: r.curva.nome, pontos: dir } : null, orig: null });
   r.end = s;
+  if (r.curva) r.curva = { nome: r.curva.nome, pontos: esq };
   renderTimeline(); renderToolbar(); refreshHeader();
 }
 // Duplicar: uma cópia logo depois, já escolhida
@@ -1537,7 +1591,7 @@ function duplicateSelected() {
   const i = S.selected;
   const r = S.draft[i];
   remember();
-  S.draft.splice(i + 1, 0, { uid: `n${++S.seq}`, from: r.from, kind: 'dup', source: r.source, start: r.start, end: r.end, beat: r.beat, vol: r.vol, vel: r.vel, orig: null });
+  S.draft.splice(i + 1, 0, { uid: `n${++S.seq}`, from: r.from, kind: 'dup', source: r.source, start: r.start, end: r.end, beat: r.beat, vol: r.vol, vel: r.vel, curva: copiaCurva(r.curva), orig: null });
   S.selected = i + 1;
   renderTimeline(); renderToolbar(); refreshHeader();
 }
@@ -2123,7 +2177,8 @@ function cutToSource(rt) {
   for (let i = rl.length - 1; i >= 0; i--) {
     if (rt + 1e-6 < rl[i].out) continue;
     const R = S.rendered[i];
-    return { source: R.source, at: +(R.start + (jcutGeom(i).lead + Math.min(rt - rl[i].out, rl[i].dur)) * R.vel).toFixed(3) };
+    const tc = jcutGeom(i).lead + Math.min(rt - rl[i].out, rl[i].dur); // desde o começo da tomada, no corte
+    return { source: R.source, at: +(R.curva ? Tempo.gravacaoEm(pedsR(i), tc) : R.start + tc * R.vel).toFixed(3) };
   }
   return null;
 }
@@ -2132,7 +2187,14 @@ function sourceToCut(source, at) {
   const out = [];
   renderedLayout().forEach((L, i) => {
     const R = S.rendered[i];
-    const v0 = R.start + jcutGeom(i).lead * R.vel;
+    const lead = jcutGeom(i).lead;
+    if (R.curva) {
+      const pR = pedsR(i);
+      const v0 = Tempo.gravacaoEm(pR, lead), v1 = Tempo.gravacaoEm(pR, lead + L.dur);
+      if (R.source === source && at >= v0 - 1e-3 && at < v1) out.push(L.out + Tempo.corteAte(pR, at) - lead);
+      return;
+    }
+    const v0 = R.start + lead * R.vel;
     if (R.source === source && at >= v0 - 1e-3 && at < v0 + L.dur * R.vel) out.push(L.out + (at - v0) / R.vel);
   });
   return out;
@@ -2338,7 +2400,8 @@ function edlPayload() {
   return {
     // `volume` só quando não é 100%: sem ele, a tomada sai como está (o agente não herda o do edl.json)
     ranges: S.draft.map((r) => ({ source: r.source, start: +r.start.toFixed(3), end: +r.end.toFixed(3), beat: r.beat, take: r.from,
-      ...(r.vol !== 1 ? { volume: r.vol } : {}), ...(r.vel !== 1 ? { velocidade: r.vel } : {}) })),
+      ...(r.vol !== 1 ? { volume: r.vol } : {}),
+      ...(r.curva ? { curva: copiaCurva(r.curva) } : r.vel !== 1 ? { velocidade: r.vel } : {}) })),
     removed: S.rendered.map((r, i) => ({ r, i })).filter(({ i }) => !tem.has(`o${i}`))
       .map(({ r, i }) => ({ source: r.source, beat: r.beat, start: r.start, end: r.end, take: i })),
     changes: S.draft.filter((r) => r.orig && (r.start !== r.orig.start || r.end !== r.orig.end)).map((r) => ({
@@ -2351,7 +2414,8 @@ function edlPayload() {
       copias: novos.filter((r) => r.kind === 'dup').length,
       ordemMudou: ordem.some((v, k) => k > 0 && v < ordem[k - 1]),
       volume: S.draft.filter((r) => r.vol !== volCorte(r)).length, // tomadas com volume diferente do corte atual
-      velocidade: S.draft.filter((r) => r.vel !== velR(r.from)).length,
+      velocidade: S.draft.filter((r) => !r.curva && r.vel !== velR(r.from)).length,
+      curva: S.draft.filter((r) => curvaKey(r) !== curvaKey(S.rendered[r.from])).length,
     },
   };
 }
@@ -2688,10 +2752,11 @@ const fmtSeg = (t) => `${t.toFixed(1).replace('.', ',')} s`;
 let velBefore = null;
 function velTomada() { return S.selected >= 0 && S.view === 'corte' ? S.draft[S.selected] : null; }
 function velMostrar(r) {
-  $('velVal').textContent = fmtVel(r.vel);
+  $('velVal').textContent = r.curva ? nomeCurva(r.curva.nome) : fmtVel(r.vel);
   const d = draftLayout()[S.selected];
-  const orig = d ? d.dur * r.vel : 0; // a mesma tomada a 1×
-  $('velDur').textContent = r.vel === 1 ? `Duração: ${fmtSeg(orig)}` : `Duração: ${fmtSeg(orig)} → ${fmtSeg(d ? d.dur : 0)}`;
+  const orig = d ? r.end - r.start - (d.leadSrc || 0) - (d.tailSrc || 0) : 0; // o trecho da gravação que aparece, a 1×
+  const igual = r.vel === 1 && !r.curva;
+  $('velDur').textContent = igual ? `Duração: ${fmtSeg(orig)}` : `Duração: ${fmtSeg(orig)} → ${fmtSeg(d ? d.dur : 0)}`;
 }
 function openVelocidade() {
   const r = velTomada();
@@ -2703,6 +2768,8 @@ function openVelocidade() {
   positionTimeline();
   preciseSeek();
   $('velRange').value = Math.log2(r.vel).toFixed(2);
+  S.velPonto = null;
+  velModo(r.curva ? 'curva' : 'normal');
   velMostrar(r);
   showSheet($('velSheet'), true);
 }
@@ -2712,7 +2779,9 @@ $('velRange').addEventListener('input', () => {
   const p = +$('velRange').value;
   const marca = VEL_MARCAS.find((m) => Math.abs(Math.log2(m) - p) < 0.06); // perto de uma marca: encosta nela
   r.vel = marca || +Math.pow(2, p).toFixed(2);
+  r.curva = null; // velocidade normal e curva não convivem
   velMostrar(r);
+  velDesenhar();
   if (!G.velQueued) {
     G.velQueued = true;
     requestAnimationFrame(() => { G.velQueued = false; renderTimeline(); positionTimeline(); });
@@ -2720,7 +2789,7 @@ $('velRange').addEventListener('input', () => {
 });
 $('velOk').addEventListener('click', () => {
   showSheet($('velSheet'), false);
-  if (velBefore && velBefore.draft.some((r, k) => S.draft[k] && r.vel !== S.draft[k].vel)) remember(velBefore);
+  if (velBefore && velBefore.draft.some((r, k) => S.draft[k] && (r.vel !== S.draft[k].vel || curvaKey(r) !== curvaKey(S.draft[k])))) remember(velBefore);
   velBefore = null;
   renderTimeline(); renderToolbar(); refreshHeader();
 });
@@ -2732,6 +2801,163 @@ for (const m of VEL_MARCAS) {
   b.style.left = `${((Math.log2(m) + 2) / 4) * 100}%`;
   b.addEventListener('click', () => { $('velRange').value = Math.log2(m); $('velRange').dispatchEvent(new Event('input')); });
 }
+
+/* Curva (etapa 4d): as curvas do CapCut com os mesmos pontos (catálogo de recursos dele,
+ * tipo 37). A grade aplica; o gráfico edita: arrastar um ponto (as pontas só sobem e
+ * descem), + Ponto na agulha, − Ponto no escolhido, Redefinir volta ao desenho da curva.
+ * Escala de 0,1× a 10× em log, com a linha do 1× no meio, como no CapCut. */
+const CURVAS = [
+  ['personalizar', 'Personalizar', [[0, 1], [0.25, 1], [0.5, 1], [0.75, 1], [1, 1]]],
+  ['montagem', 'Montagem', [[0, 0.9], [0.1, 0.9], [0.5, 6.8], [0.65, 0.3], [0.8, 1], [1, 1]]],
+  ['heroi', 'Herói', [[0, 1], [0.05, 1], [0.35, 5.5], [0.45, 0.5], [0.55, 0.5], [0.65, 5.5], [0.95, 1], [1, 1]]],
+  ['bala', 'Bala', [[0, 5.2], [0.4, 5.2], [0.46, 0.5], [0.54, 0.5], [0.6, 5.2], [1, 5.2]]],
+  ['salto', 'Salto', [[0, 0.6], [0.43, 0.6], [0.5, 6], [0.57, 0.6], [1, 0.6]]],
+  ['entrada', 'Entrada rápida', [[0, 5.2], [0.4, 5.2], [0.6, 1], [1, 1]]],
+  ['saida', 'Saída rápida', [[0, 1], [0.4, 1], [0.6, 5.2], [1, 5.2]]],
+];
+const CURVA_MAX_PONTOS = 20;
+const nomeCurva = (id) => (CURVAS.find((c) => c[0] === id) || [id, 'Curva'])[1];
+// posição vertical de uma velocidade no gráfico: log10 de −1 (0,1×) a 1 (10×)
+const curvaY = (v, h) => h / 2 - Math.log10(Math.max(0.1, Math.min(10, v))) * (h / 2 - 8);
+const curvaV = (y, h) => Math.pow(10, (h / 2 - y) / (h / 2 - 8));
+function curvaPath(pontos, w, h, pad = 0) {
+  const ps = [];
+  for (let k = 0; k <= 60; k++) { // a reta entre pontos, desenhada na escala log
+    const x = k / 60;
+    let v = pontos[pontos.length - 1][1];
+    for (let j = 0; j + 1 < pontos.length; j++) {
+      const [xa, ya] = pontos[j], [xb, yb] = pontos[j + 1];
+      if (x <= xb && xb > xa) { v = ya + (yb - ya) * Math.max(0, x - xa) / (xb - xa); break; }
+    }
+    ps.push(`${(pad + x * (w - 2 * pad)).toFixed(1)},${curvaY(v, h).toFixed(1)}`);
+  }
+  return `M${ps.join('L')}`;
+}
+function velModo(m) {
+  for (const b of $('velModos').children) b.classList.toggle('on', b.dataset.modo === m);
+  $('velNormal').hidden = m !== 'normal';
+  $('velCurva').hidden = m !== 'curva';
+  if (m === 'curva') { renderCurvas(); velDesenhar(); }
+}
+for (const b of $('velModos').children) b.addEventListener('click', () => velModo(b.dataset.modo));
+function renderCurvas() {
+  const r = velTomada();
+  const box = $('velCurvas');
+  box.textContent = '';
+  for (const [id, nome, pts] of [[null, 'Nenhuma', [[0, 1], [1, 1]]], ...CURVAS]) {
+    const b = el('button', 'vel-curva', box);
+    b.type = 'button';
+    b.dataset.curva = id || '';
+    b.classList.toggle('on', r ? (r.curva ? r.curva.nome === id : id === null) : false);
+    b.innerHTML = `<svg viewBox="0 0 54 30"><path d="${curvaPath(pts, 54, 30, 2)}" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`;
+    el('span', '', b).textContent = nome;
+    b.addEventListener('click', () => aplicarCurva(id));
+  }
+}
+function velMudou(r) {
+  velMostrar(r);
+  velDesenhar();
+  if (!G.velQueued) {
+    G.velQueued = true;
+    requestAnimationFrame(() => { G.velQueued = false; renderTimeline(); positionTimeline(); });
+  }
+}
+function aplicarCurva(id) {
+  const r = velTomada();
+  if (!r) return;
+  const c = CURVAS.find((x) => x[0] === id);
+  r.curva = c ? { nome: id, pontos: c[2].map((p) => [p[0], p[1]]) } : null;
+  r.vel = 1;
+  S.velPonto = null;
+  renderCurvas();
+  velMudou(r);
+}
+// a agulha dentro da tomada, em fração da gravação (onde o + Ponto entra)
+function velAgulhaX(r) {
+  const d = draftLayout()[S.selected];
+  if (!d || !r) return null;
+  const s = Tempo.gravacaoEm(pedsD(r), (d.lead || 0) + (S.t - d.out));
+  const x = (s - r.start) / (r.end - r.start);
+  return x > 0 && x < 1 ? x : null;
+}
+function velDesenhar() {
+  const box = $('velGrafico');
+  const r = velTomada();
+  if (!r || $('velCurva').hidden) return;
+  const w = Math.max(200, box.clientWidth || 300), h = 150;
+  const pts = r.curva ? r.curva.pontos : [[0, r.vel], [1, r.vel]];
+  const X = (x) => 12 + x * (w - 24);
+  let svg = `<svg viewBox="0 0 ${w} ${h}">`;
+  for (const [v, rot] of [[10, '10×'], [1, '1×'], [0.1, '0,1×']]) {
+    const y = curvaY(v, h);
+    svg += `<line class="guia${v === 1 ? ' um' : ''}" x1="0" x2="${w}" y1="${y}" y2="${y}"/><text class="rotulo" x="2" y="${y - 3}">${rot}</text>`;
+  }
+  const xa = velAgulhaX(r);
+  if (xa != null) svg += `<line class="agulha" x1="${X(xa)}" x2="${X(xa)}" y1="0" y2="${h}"/>`;
+  svg += `<path class="linha" d="${curvaPath(pts, w, h, 12)}"/>`;
+  if (r.curva) {
+    pts.forEach(([x, v], k) => {
+      svg += `<circle class="ponto${k === S.velPonto ? ' on' : ''}" cx="${X(x)}" cy="${curvaY(v, h)}" r="6"/>`;
+      svg += `<circle class="alvo" data-k="${k}" cx="${X(x)}" cy="${curvaY(v, h)}" r="18"/>`;
+    });
+  }
+  box.innerHTML = `${svg}</svg>`;
+  $('velMais').disabled = !r.curva || xa == null || pts.length >= CURVA_MAX_PONTOS;
+  $('velMenos').disabled = !r.curva || S.velPonto == null || S.velPonto === 0 || S.velPonto === pts.length - 1;
+  $('velRedefinir').disabled = !r.curva;
+}
+// arrastar um ponto: para cima e para baixo a velocidade; para os lados, entre os vizinhos
+$('velGrafico').addEventListener('pointerdown', (e) => {
+  const alvo = e.target.closest('.alvo');
+  const r = velTomada();
+  if (!alvo || !r || !r.curva) return;
+  e.preventDefault();
+  S.velPonto = +alvo.dataset.k;
+  const box = $('velGrafico');
+  box.setPointerCapture(e.pointerId);
+  const mover = (ev) => {
+    const rect = box.getBoundingClientRect();
+    const w = rect.width, h = 150;
+    const pts = r.curva.pontos.map((p) => [p[0], p[1]]);
+    const k = S.velPonto;
+    const v = +Math.max(0.1, Math.min(10, curvaV(ev.clientY - rect.top, h))).toFixed(2);
+    let x = pts[k][0];
+    if (k > 0 && k < pts.length - 1) { // as pontas ficam no começo e no fim da tomada
+      x = (ev.clientX - rect.left - 12) / (w - 24);
+      x = +Math.max(pts[k - 1][0] + 0.01, Math.min(pts[k + 1][0] - 0.01, x)).toFixed(4);
+    }
+    pts[k] = [x, v];
+    r.curva = { nome: r.curva.nome, pontos: pts };
+    velMudou(r);
+  };
+  const soltar = () => { box.removeEventListener('pointermove', mover); box.removeEventListener('pointerup', soltar); box.removeEventListener('pointercancel', soltar); velDesenhar(); };
+  box.addEventListener('pointermove', mover);
+  box.addEventListener('pointerup', soltar);
+  box.addEventListener('pointercancel', soltar);
+  velDesenhar();
+});
+$('velMais').addEventListener('click', () => {
+  const r = velTomada();
+  const x = velAgulhaX(r);
+  if (!r || !r.curva || x == null || r.curva.pontos.length >= CURVA_MAX_PONTOS) return;
+  const pts = r.curva.pontos.map((p) => [p[0], p[1]]);
+  const j = pts.findIndex((p) => p[0] > x);
+  const [xa, ya] = pts[j - 1], [xb, yb] = pts[j];
+  if (x - xa < 0.01 || xb - x < 0.01) { toast('Já tem um ponto aí', 1800); return; }
+  pts.splice(j, 0, [+x.toFixed(4), +(ya + (yb - ya) * (x - xa) / (xb - xa)).toFixed(2)]);
+  r.curva = { nome: r.curva.nome, pontos: pts };
+  S.velPonto = j;
+  velMudou(r);
+});
+$('velMenos').addEventListener('click', () => {
+  const r = velTomada();
+  const k = S.velPonto;
+  if (!r || !r.curva || k == null || k === 0 || k === r.curva.pontos.length - 1) return;
+  r.curva = { nome: r.curva.nome, pontos: r.curva.pontos.filter((_, j) => j !== k).map((p) => [p[0], p[1]]) };
+  S.velPonto = null;
+  velMudou(r);
+});
+$('velRedefinir').addEventListener('click', () => { const r = velTomada(); if (r && r.curva) aplicarCurva(r.curva.nome); });
 
 // no Final o vídeo já é o que o agente montou, com o volume de cada tomada dentro
 function syncVolTomada() {
