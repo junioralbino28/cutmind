@@ -263,6 +263,23 @@ def suggest_gain(delta_db: float, headroom_db: float = 1.5) -> float:
 # -------- Report -------------------------------------------------------------
 
 
+def cut_from(rng: dict, sources: dict, video: Path, base: Path) -> bool:
+    """True when this EDL range is cut from `video`.
+
+    A multi-source EDL names each range's source. Measured on another source's
+    audio, a range reports a level (and a gain_db) that does not exist, so it is
+    skipped; run the helper once per source. A range with no `source` is a
+    single-source EDL and always belongs to the video given.
+    """
+    name = rng.get("source")
+    if name is None:
+        return True
+    if name in sources:
+        p = Path(sources[name])
+        return (p if p.is_absolute() else base / p).resolve() == video.resolve()
+    return name == video.stem
+
+
 def analyze(video: Path, edit_dir: Path | None, drop_db: float, edl_path: Path | None):
     times, levels = rms_timeline(video)
     floor = estimate_floor(levels)
@@ -294,9 +311,13 @@ def analyze(video: Path, edit_dir: Path | None, drop_db: float, edl_path: Path |
         r["suggest_gain_db"] = suggest_gain(r["delta_db"])
 
     edl_rows = []
+    other_source = 0
     if edl_path and edl_path.exists():
-        edl = json.loads(edl_path.read_text())
+        edl = json.loads(edl_path.read_text(encoding="utf-8"))
         for i, r in enumerate(edl.get("ranges", [])):
+            if not cut_from(r, edl.get("sources") or {}, video, edl_path.parent):
+                other_source += 1
+                continue
             r_start, r_end = float(r["start"]), float(r["end"])
             mask = (times >= r_start) & (times <= r_end)
             lvl = phrase_level(levels[mask], floor)
@@ -333,6 +354,7 @@ def analyze(video: Path, edit_dir: Path | None, drop_db: float, edl_path: Path |
         "phrases": rows,
         "low_runs": runs,
         "edl_ranges": edl_rows,
+        "edl_other_source": other_source,
     }
 
 
@@ -360,6 +382,8 @@ def print_report(rep: dict) -> None:
             print(f"  [{r['index']:02d}] {r['start']:6.2f}-{r['end']:6.2f}  "
                   f"avg {r['delta_db']:+5.1f}  worst {r['worst_delta_db']:+5.1f}{cur}  "
                   f"{r['beat']:<8}{mark}{gain}")
+    if rep.get("edl_other_source"):
+        print(f"  ({rep['edl_other_source']} range(s) cut from other sources skipped — run once per source)")
 
     runs = rep["low_runs"]
     print(f"\nlow-level speech runs ≥{MIN_RUN_S}s: {len(runs)}")

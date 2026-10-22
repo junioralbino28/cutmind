@@ -741,6 +741,17 @@ async function applyState(data) {
 
   const hasVideo = S.videoDuration > 0;
   $('empty').classList.toggle('hidden', hasVideo);
+  // ainda sem corte, mas o agente já trabalha em vídeos do computador: a tela mostra o
+  // que ele está fazendo, não o convite para enviar um vídeo do celular
+  const agente = !hasVideo && !S.locked && !!S.state.message && Object.keys(S.state.sourceDurations || {}).length > 0;
+  if (agente !== !!S.emptyAgente) {
+    S.emptyAgente = agente;
+    $('btnEmptyUpload').classList.toggle('hidden', agente);
+    $('emptyAlt').classList.toggle('hidden', agente);
+    $('emptyIco').innerHTML = agente ? ICON.corte : ICON.enviar;
+    if (!agente) { $('emptyTitle').textContent = EMPTY_TEXTS.title; $('emptyText').textContent = EMPTY_TEXTS.text; }
+  }
+  if (agente) { $('emptyTitle').textContent = 'O agente está editando'; $('emptyText').textContent = S.state.message; }
   if (!hasFinal() && S.view === 'final') S.view = 'corte';
 
   S.captions = [];
