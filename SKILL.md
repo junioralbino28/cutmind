@@ -175,8 +175,8 @@ the layer questions in chat.
   a new order are already applied. Rebuild `edl.json` `ranges` from it. `take`
   (when present) is the index of the range in the current `edl.json` it came from:
   copy `quote`, `reason` and `gain_db` from there. `volume` (0–4, the take's volume
-  slider: 0.5 = 50%) is the user's, not the old range's: write it as it comes, and
-  leave it out when it is absent (100%). Two consecutive ranges from the
+  slider: 0.5 = 50%) and `velocidade` (0.25–4, the take's speed) are the user's, not
+  the old range's: write them as they come, and leave them out when absent (100%, 1×). Two consecutive ranges from the
   same source where one ends exactly where the next starts are a split the user kept
   as is — merge them back before rendering, or the J-cut doubles the audio there.
   `edl.ops` counts splits, duplicates and whether the order changed.

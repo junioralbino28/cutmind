@@ -160,6 +160,19 @@
   </footer>
 </section>
 
+<!-- painel pequeno: velocidade da tomada (0,25× a 4×); a tomada estica ou encolhe na hora -->
+<section class="sheet small" id="velSheet" aria-hidden="true">
+  <div class="sheet-grip"></div>
+  <div class="note-head"><b>Velocidade</b><span id="velVal">1×</span></div>
+  <input class="vol-range" id="velRange" type="range" min="-2" max="2" step="0.01" value="0" aria-label="Velocidade da tomada">
+  <div class="vel-marcas" id="velMarcas"></div>
+  <p class="vol-nota" id="velDur"></p>
+  <footer class="sheet-foot">
+    <div class="t-spacer"></div>
+    <button class="tb-btn primary" id="velOk" type="button">Pronto</button>
+  </footer>
+</section>
+
 <!-- painel pequeno: Ajustar a cor da tomada; a prévia redesenha enquanto a régua anda -->
 <section class="sheet small" id="ajSheet" aria-hidden="true">
   <div class="sheet-grip"></div>

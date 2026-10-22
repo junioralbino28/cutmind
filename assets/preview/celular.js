@@ -94,6 +94,7 @@ const ICON = {
   efeitos: sv('<circle cx="9" cy="9.6" r="5"/><circle cx="15" cy="9.6" r="5"/><circle cx="12" cy="14.8" r="5"/>'),
   filtro: sv('<circle cx="12" cy="12" r="7.5"/><path d="M12 4.5a7.5 7.5 0 0 1 0 15z" fill="currentColor" stroke="none"/>'),
   transicao: sv('<rect x="2.5" y="6.5" width="7" height="11" rx="1.6"/><rect x="14.5" y="6.5" width="7" height="11" rx="1.6"/><path d="M12 9.4l2.6 2.6-2.6 2.6-2.6-2.6z" fill="currentColor" stroke="none"/>'),
+  velocidade: sv('<path d="M4.5 16.5a8 8 0 1 1 15 0"/><path d="M12 13.2l3.6-4" stroke-width="2"/><circle cx="12" cy="13.6" r="1.4" fill="currentColor"/>'),
   ajustar: sv('<path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2.2" fill="currentColor"/><circle cx="15.5" cy="12" r="2.2" fill="currentColor"/><circle cx="7.5" cy="17" r="2.2" fill="currentColor"/>'),
   intensidade: sv('<path d="M4 12h16"/><circle cx="14.5" cy="12" r="2.6" fill="currentColor"/>'),
 };
@@ -399,6 +400,8 @@ function jcutGeom(i) {
     tail: (j.tail_trim_frames || 0) / (S.fps || 30),
   };
 }
+// a velocidade com que a tomada i do edl.json já está no cut.mp4
+const velR = (i) => (S.rendered[i] ? S.rendered[i].vel : 1);
 /* Cada tomada do rascunho sabe de onde veio: `uid` (o<i> = tomada i do edl.json; n<k> =
  * nova, de uma divisão ou cópia) e `from` (a tomada do edl.json de onde sai o conteúdo).
  * Dividir, copiar e mover só mudam esta lista; o cut.mp4 continua o mesmo até o agente
@@ -409,10 +412,14 @@ function draftLayout() {
   return S.draft.map((r) => {
     // a sobra do J-cut é de uma tomada inteira do edl.json; pedaço novo não tem
     const g = r.orig ? jcutGeom(r.from) : { lead: 0, tail: 0 };
-    const span = r.end - r.start;
-    const adur = Math.max(0, span - g.tail);
-    const dur = Math.max(0, adur - g.lead);
-    const item = { ...r, out: t, dur, aout: Math.max(0, at - g.lead), adur, lead: g.lead };
+    // a sobra e a cauda do J-cut estão em tempo do cut.mp4: na gravação, × a velocidade dele;
+    // no rascunho, ÷ a velocidade nova da tomada (a régua de Velocidade)
+    const rv = r.orig ? velR(r.from) : 1;
+    const leadSrc = g.lead * rv;
+    const adur = Math.max(0, (r.end - r.start - g.tail * rv) / r.vel);
+    const lead = leadSrc / r.vel;
+    const dur = Math.max(0, adur - lead);
+    const item = { ...r, out: t, dur, aout: Math.max(0, at - lead), adur, lead, leadSrc };
     t += dur;
     at = item.aout + adur;
     return item;
@@ -424,7 +431,7 @@ function renderedLayout() {
   }
   let t = 0;
   return S.rendered.map((r) => {
-    const dur = r.end - r.start;
+    const dur = (r.end - r.start) / r.vel;
     const item = { ...r, out: t, dur };
     t += dur;
     return item;
@@ -436,8 +443,8 @@ const totalT = () => draftTotal() || S.videoDuration || 0;
 function itemRendered(d, t, rl = renderedLayout()) {
   const R = S.rendered[d.from], L = rl[d.from];
   if (!R || !L) return Math.min(t, S.videoDuration);
-  const s = d.start + (d.lead || 0) + (t - d.out);           // instante do arquivo de origem
-  const rt = L.out + (s - (R.start + jcutGeom(d.from).lead));
+  const s = d.start + (d.leadSrc || 0) + (t - d.out) * d.vel; // instante do arquivo de origem
+  const rt = L.out + (s - (R.start + jcutGeom(d.from).lead * R.vel)) / R.vel;
   // além do que o cut.mp4 tem (alça puxada para fora): o quadro mais perto
   return Math.max(L.out, Math.min(rt, L.out + L.dur - 0.02));
 }
@@ -461,7 +468,7 @@ function renderedToDraft(t) {
     if (t < r.out) continue;
     const d = dl.find((x) => x.uid === `o${i}`);
     if (!d) return dl.length ? Math.min(t, dl[dl.length - 1].out) : t; // tomada excluída
-    return d.out + Math.min(t - r.out, d.dur);
+    return d.out + Math.min((t - r.out) * velR(i) / d.vel, d.dur); // velocidade nova: o trecho estica ou encolhe
   }
   return t;
 }
@@ -494,14 +501,14 @@ const isText = (c) => c.kind === 'hook' || c.kind === 'word';
 
 // ---------- o que mudou e ainda não foi salvo ----------
 // comparado com o último corte recebido (ou o último Salvar): aparada, nova, excluída, ordem, volume
-const baseOf = (draft) => draft.map(({ uid, start, end, vol }) => ({ uid, start, end, vol }));
+const baseOf = (draft) => draft.map(({ uid, start, end, vol, vel }) => ({ uid, start, end, vol, vel }));
 function diffBase() {
   const base = new Map(S.base.map((b) => [b.uid, b]));
   const now = new Set(S.draft.map((r) => r.uid));
   let mudou = 0;
   for (const r of S.draft) {
     const b = base.get(r.uid);
-    if (!b || b.start !== r.start || b.end !== r.end || b.vol !== r.vol) mudou++;
+    if (!b || b.start !== r.start || b.end !== r.end || b.vol !== r.vol || b.vel !== r.vel) mudou++;
   }
   mudou += S.base.filter((b) => !now.has(b.uid)).length;
   const antes = S.base.map((b) => b.uid).filter((u) => now.has(u));
@@ -515,7 +522,7 @@ function dirtyCount() {
 }
 const isChanged = (r) => {
   const b = S.base.find((x) => x.uid === r.uid);
-  return !b || b.start !== r.start || b.end !== r.end || b.vol !== r.vol;
+  return !b || b.start !== r.start || b.end !== r.end || b.vol !== r.vol || b.vel !== r.vel;
 };
 function refreshHeader() {
   const n = dirtyCount();
@@ -643,8 +650,9 @@ async function applyState(data) {
 
   const ranges = (data.edl && data.edl.ranges) || [];
   S.jcut = (data.edl && data.edl.jcut_timeline) || null;
-  // `vol` é o volume da tomada (1 = como está); o cut.mp4 já sai com o do edl.json
-  S.rendered = ranges.map((r) => ({ source: r.source, start: +r.start, end: +r.end, beat: r.beat || '', vol: r.volume == null ? 1 : +r.volume }));
+  // `vol` e `vel` são o volume e a velocidade da tomada (1 = como está); o cut.mp4 já sai com os do edl.json
+  S.rendered = ranges.map((r) => ({ source: r.source, start: +r.start, end: +r.end, beat: r.beat || '',
+    vol: r.volume == null ? 1 : +r.volume, vel: r.velocidade == null ? 1 : +r.velocidade }));
   S.draft = S.rendered.map((r, i) => ({ ...r, uid: `o${i}`, from: i, orig: { start: r.start, end: r.end } }));
   S.base = baseOf(S.draft);
   S.selected = -1;
@@ -848,7 +856,11 @@ function renderTakes(lane) {
       }
     }
     el('div', 't-label', c).textContent = r.beat || r.source || `tomada ${i + 1}`;
-    if (r.vol !== 1 && !movendo) el('div', 't-vol', c).innerHTML = `${ICON.vol}${Math.round(r.vol * 100)}%`;
+    if ((r.vol !== 1 || r.vel !== 1) && !movendo) {
+      const tags = el('div', 't-tags', c);
+      if (r.vol !== 1) el('span', 't-vol', tags).innerHTML = `${ICON.vol}${Math.round(r.vol * 100)}%`;
+      if (r.vel !== 1) el('span', 't-vel', tags).textContent = fmtVel(r.vel);
+    }
     if (editable && i === S.selected) {
       const l = el('div', 'handle l', c);
       l.dataset.i = i; l.dataset.side = 'l';
@@ -1079,9 +1091,9 @@ timeline.addEventListener('pointermove', (e) => {
     const r = S.draft[T.i];
     const dt = (e.clientX - T.x0) / S.pps;
     if (T.side === 'l') {
-      r.start = Math.min(Math.max(0, T.r.start + dt), r.end - MIN_SEG);
+      r.start = Math.min(Math.max(0, T.r.start + dt * r.vel), r.end - MIN_SEG); // dt é do corte; a borda, da gravação
     } else {
-      r.end = Math.max(T.r.end + dt, r.start + MIN_SEG);
+      r.end = Math.max(T.r.end + dt * r.vel, r.start + MIN_SEG);
       const srcDur = (S.state.sourceDurations || {})[r.source];
       if (srcDur) r.end = Math.min(r.end, srcDur);
     }
@@ -1312,7 +1324,7 @@ function loop() {
   for (const f of S.liveAnims) f(now);
   if (!video.paused && !video.ended && !G.mode && !momentum) {
     if (S.view === 'corte') followDraft();
-    else { S.t = clampT(renderedToDraft(video.currentTime)); positionTimeline(); }
+    else { if (video.playbackRate !== 1) video.playbackRate = 1; S.t = clampT(renderedToDraft(video.currentTime)); positionTimeline(); }
   }
   syncLayers();
   syncVolTomada();
@@ -1329,7 +1341,10 @@ function followDraft() {
   const k = itemAt(dl, S.t);
   if (k < 0) return;
   const d = dl[k];
-  const t = d.out + (video.currentTime - itemRendered(d, d.out));
+  // tomada com velocidade nova: o cut.mp4 toca mais rápido ou mais devagar (o tom fica)
+  const ritmo = d.vel / velR(d.from);
+  if (video.playbackRate !== ritmo) video.playbackRate = ritmo;
+  const t = d.out + (video.currentTime - itemRendered(d, d.out)) / ritmo;
   if (t < d.out - 0.3 || t > d.out + d.dur + 0.3) { video.currentTime = itemRendered(d, Math.min(S.t, d.out + d.dur)); return; }
   if (t >= d.out + d.dur - 0.02) {
     const nx = dl[k + 1];
@@ -1427,6 +1442,7 @@ function renderToolbar() {
     tool(ctx, 'dividir', 'Dividir');
     tool(ctx, 'duplicar', 'Duplicar');
     tool(ctx, 'volume', `${Math.round(sel.vol * 100)}%`);
+    tool(ctx, 'velocidade', fmtVel(sel.vel));
     tool(ctx, 'ajustar', 'Ajustar');
     tool(ctx, 'excluir', 'Excluir', { icon: ICON.remover, disabled: S.draft.length < 2 });
     tool(ctx, 'ouvir', 'Ouvir');
@@ -1470,6 +1486,7 @@ document.addEventListener('click', (e) => {
       else deleteSelected();
       break;
     case 'volume': openVolume(); break;
+    case 'velocidade': openVelocidade(); break;
     case 'melhorar': toggleMelhorar(); break;
     case 'ouvir': {
       const d = draftLayout()[S.selected];
@@ -1509,9 +1526,9 @@ function splitSelected() {
     return;
   }
   const r = S.draft[i];
-  const s = +(r.start + (d.lead || 0) + (S.t - d.out)).toFixed(3); // instante do arquivo de origem
+  const s = +(r.start + (d.leadSrc || 0) + (S.t - d.out) * d.vel).toFixed(3); // instante do arquivo de origem
   remember();
-  S.draft.splice(i + 1, 0, { uid: `n${++S.seq}`, from: r.from, kind: 'split', source: r.source, start: s, end: r.end, beat: r.beat, vol: r.vol, orig: null });
+  S.draft.splice(i + 1, 0, { uid: `n${++S.seq}`, from: r.from, kind: 'split', source: r.source, start: s, end: r.end, beat: r.beat, vol: r.vol, vel: r.vel, orig: null });
   r.end = s;
   renderTimeline(); renderToolbar(); refreshHeader();
 }
@@ -1520,7 +1537,7 @@ function duplicateSelected() {
   const i = S.selected;
   const r = S.draft[i];
   remember();
-  S.draft.splice(i + 1, 0, { uid: `n${++S.seq}`, from: r.from, kind: 'dup', source: r.source, start: r.start, end: r.end, beat: r.beat, vol: r.vol, orig: null });
+  S.draft.splice(i + 1, 0, { uid: `n${++S.seq}`, from: r.from, kind: 'dup', source: r.source, start: r.start, end: r.end, beat: r.beat, vol: r.vol, vel: r.vel, orig: null });
   S.selected = i + 1;
   renderTimeline(); renderToolbar(); refreshHeader();
 }
@@ -2106,7 +2123,7 @@ function cutToSource(rt) {
   for (let i = rl.length - 1; i >= 0; i--) {
     if (rt + 1e-6 < rl[i].out) continue;
     const R = S.rendered[i];
-    return { source: R.source, at: +(R.start + jcutGeom(i).lead + Math.min(rt - rl[i].out, rl[i].dur)).toFixed(3) };
+    return { source: R.source, at: +(R.start + (jcutGeom(i).lead + Math.min(rt - rl[i].out, rl[i].dur)) * R.vel).toFixed(3) };
   }
   return null;
 }
@@ -2115,8 +2132,8 @@ function sourceToCut(source, at) {
   const out = [];
   renderedLayout().forEach((L, i) => {
     const R = S.rendered[i];
-    const v0 = R.start + jcutGeom(i).lead;
-    if (R.source === source && at >= v0 - 1e-3 && at < v0 + L.dur) out.push(L.out + (at - v0));
+    const v0 = R.start + jcutGeom(i).lead * R.vel;
+    if (R.source === source && at >= v0 - 1e-3 && at < v0 + L.dur * R.vel) out.push(L.out + (at - v0) / R.vel);
   });
   return out;
 }
@@ -2321,7 +2338,7 @@ function edlPayload() {
   return {
     // `volume` só quando não é 100%: sem ele, a tomada sai como está (o agente não herda o do edl.json)
     ranges: S.draft.map((r) => ({ source: r.source, start: +r.start.toFixed(3), end: +r.end.toFixed(3), beat: r.beat, take: r.from,
-      ...(r.vol !== 1 ? { volume: r.vol } : {}) })),
+      ...(r.vol !== 1 ? { volume: r.vol } : {}), ...(r.vel !== 1 ? { velocidade: r.vel } : {}) })),
     removed: S.rendered.map((r, i) => ({ r, i })).filter(({ i }) => !tem.has(`o${i}`))
       .map(({ r, i }) => ({ source: r.source, beat: r.beat, start: r.start, end: r.end, take: i })),
     changes: S.draft.filter((r) => r.orig && (r.start !== r.orig.start || r.end !== r.orig.end)).map((r) => ({
@@ -2334,6 +2351,7 @@ function edlPayload() {
       copias: novos.filter((r) => r.kind === 'dup').length,
       ordemMudou: ordem.some((v, k) => k > 0 && v < ordem[k - 1]),
       volume: S.draft.filter((r) => r.vol !== volCorte(r)).length, // tomadas com volume diferente do corte atual
+      velocidade: S.draft.filter((r) => r.vel !== velR(r.from)).length,
     },
   };
 }
@@ -2659,6 +2677,62 @@ function volPrevia(r) {
   if (!(base > 0)) return r.vol > 0 ? 1 : 0; // trecho mudo no cut.mp4: não há o que tocar mais alto
   return Math.max(0, Math.min(1, r.vol / base));
 }
+/* Velocidade da tomada: régua de 0,25× a 4× em escala de potências de 2 (1× no meio),
+ * com marcas em 0,5×, 1×, 1,5× e 2× que puxam o dedo. A tomada encolhe ou estica na linha
+ * do tempo na hora, e a prévia toca o mesmo cut.mp4 mais rápido ou mais devagar
+ * (playbackRate, o tom da voz fica). Efeitos e camadas estão no relógio do cut.mp4: ficam
+ * onde estão até o agente refazer o corte, como num corte refeito. */
+const VEL_MARCAS = [0.5, 1, 1.5, 2];
+const fmtVel = (v) => `${String(+v.toFixed(2)).replace('.', ',')}×`;
+const fmtSeg = (t) => `${t.toFixed(1).replace('.', ',')} s`;
+let velBefore = null;
+function velTomada() { return S.selected >= 0 && S.view === 'corte' ? S.draft[S.selected] : null; }
+function velMostrar(r) {
+  $('velVal').textContent = fmtVel(r.vel);
+  const d = draftLayout()[S.selected];
+  const orig = d ? d.dur * r.vel : 0; // a mesma tomada a 1×
+  $('velDur').textContent = r.vel === 1 ? `Duração: ${fmtSeg(orig)}` : `Duração: ${fmtSeg(orig)} → ${fmtSeg(d ? d.dur : 0)}`;
+}
+function openVelocidade() {
+  const r = velTomada();
+  if (!r) return;
+  video.pause();
+  velBefore = snap();
+  const d = draftLayout()[S.selected];
+  S.t = d.out; // a agulha no começo da tomada: ele não anda quando a tomada estica
+  positionTimeline();
+  preciseSeek();
+  $('velRange').value = Math.log2(r.vel).toFixed(2);
+  velMostrar(r);
+  showSheet($('velSheet'), true);
+}
+$('velRange').addEventListener('input', () => {
+  const r = velTomada();
+  if (!r) return;
+  const p = +$('velRange').value;
+  const marca = VEL_MARCAS.find((m) => Math.abs(Math.log2(m) - p) < 0.06); // perto de uma marca: encosta nela
+  r.vel = marca || +Math.pow(2, p).toFixed(2);
+  velMostrar(r);
+  if (!G.velQueued) {
+    G.velQueued = true;
+    requestAnimationFrame(() => { G.velQueued = false; renderTimeline(); positionTimeline(); });
+  }
+});
+$('velOk').addEventListener('click', () => {
+  showSheet($('velSheet'), false);
+  if (velBefore && velBefore.draft.some((r, k) => S.draft[k] && r.vel !== S.draft[k].vel)) remember(velBefore);
+  velBefore = null;
+  renderTimeline(); renderToolbar(); refreshHeader();
+});
+// as marcas embaixo da régua, no lugar delas na escala de potências de 2
+for (const m of VEL_MARCAS) {
+  const b = el('button', 'vel-marca', $('velMarcas'));
+  b.type = 'button';
+  b.textContent = fmtVel(m);
+  b.style.left = `${((Math.log2(m) + 2) / 4) * 100}%`;
+  b.addEventListener('click', () => { $('velRange').value = Math.log2(m); $('velRange').dispatchEvent(new Event('input')); });
+}
+
 // no Final o vídeo já é o que o agente montou, com o volume de cada tomada dentro
 function syncVolTomada() {
   let v = 1;

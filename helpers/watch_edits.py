@@ -57,6 +57,8 @@ def digest(p: Path) -> str:
         head.append("ordem dos takes mudou")
     if ops.get("volume"):
         head.append(f"volume mudado em {ops['volume']} take(s)")
+    if ops.get("velocidade"):
+        head.append(f"velocidade mudada em {ops['velocidade']} take(s)")
     if ops:  # editor que divide, copia e move: a lista inteira é a referência
         parts.append("  edl.ranges é a lista inteira, na ordem nova — monte o edl.json por ela (SKILL.md).")
     vols = [(i, r) for i, r in enumerate(edl.get("ranges") or [], 1) if r.get("volume") is not None]
@@ -66,6 +68,12 @@ def digest(p: Path) -> str:
         for i, r in vols:
             parts.append(f'  · take {i} ({r.get("beat") or r.get("source", "")}): '
                          f'{round(float(r["volume"]) * 100)}%')
+    vels = [(i, r) for i, r in enumerate(edl.get("ranges") or [], 1) if r.get("velocidade") is not None]
+    if vels:
+        parts.append("  velocidade por take (vai para o edl.json como está; sem `velocidade` = 1×; "
+                     "o render.py aplica e o tempo de tudo passa pelo tempo.py):")
+        for i, r in vels:
+            parts.append(f'  · take {i} ({r.get("beat") or r.get("source", "")}): {float(r["velocidade"]):g}×')
     if ed:
         head.append("inserts/gancho movidos")
     if "camadas" in d:

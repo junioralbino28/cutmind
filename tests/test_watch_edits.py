@@ -34,6 +34,14 @@ def test_aviso_conta_o_volume_das_tomadas(tmp_path):
     assert "take 2" not in aviso  # sem `volume`: 100%, nada a dizer
 
 
+def test_aviso_conta_a_velocidade_das_tomadas(tmp_path):
+    aviso = _salvo(tmp_path, {"ranges": [{"source": "A", "beat": "HOOK", "velocidade": 2},
+                                         {"source": "B", "velocidade": 0.5}, {"source": "A"}],
+                              "changes": [], "removed": [], "ops": {"velocidade": 2}})
+    assert "velocidade mudada em 2 take(s)" in aviso
+    assert "take 1 (HOOK): 2×" in aviso and "take 2 (B): 0.5×" in aviso and "take 3" not in aviso
+
+
 def test_aviso_do_editor_de_pc_continua_igual(tmp_path):
     aviso = _salvo(tmp_path, {"ranges": [], "changes": [{}], "removed": [{}]})
     assert "1 take(s) reajustado(s), 1 take(s) removido(s)" in aviso

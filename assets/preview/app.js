@@ -180,7 +180,7 @@ function draftLayout() {
   return S.draft.map((r, i) => {
     if (r.removed) return { ...r, out: t, dur: 0, aout: at, adur: 0 };
     const g = jcutGeom(i);
-    const span = r.end - r.start;
+    const span = (r.end - r.start) / (r.vel || 1); // no tempo do corte
     const adur = Math.max(0, span - g.tail);
     const dur = Math.max(0, adur - g.lead);
     const item = { ...r, out: t, dur, aout: Math.max(0, at - g.lead), adur, lead: g.lead };
@@ -202,7 +202,7 @@ function renderedLayout() {
   }
   let t = 0;
   return S.rendered.map((r) => {
-    const dur = r.end - r.start;
+    const dur = (r.end - r.start) / (r.vel || 1);
     const item = { ...r, out: t, dur };
     t += dur;
     return item;
@@ -293,8 +293,10 @@ async function applyState(data) {
   // SHORTER than end-start and the takes do not simply abut. Without this the
   // filmstrip and the needle drift a little further at each junction.
   S.jcut = (data.edl && data.edl.jcut_timeline) || null;
-  // `volume` vem do editor do celular; o PC não mexe nele, só o leva adiante no Salvar
-  S.rendered = ranges.map((r) => ({ source: r.source, start: +r.start, end: +r.end, beat: r.beat || '', volume: r.volume }));
+  // `volume` e `velocidade` vêm do editor do celular; o PC não mexe neles: desenha a tomada
+  // no tamanho que ela tem no corte (trecho ÷ velocidade) e os leva adiante no Salvar
+  S.rendered = ranges.map((r) => ({ source: r.source, start: +r.start, end: +r.end, beat: r.beat || '', volume: r.volume,
+    vel: r.velocidade == null ? 1 : +r.velocidade }));
   S.draft = S.rendered.map((r) => ({ ...r, removed: false, orig: { start: r.start, end: r.end } }));
   S.selected = -1;
 
@@ -1164,9 +1166,9 @@ panel.addEventListener('pointermove', (e) => {
   if (drag.type === 'trim') {
     const r = S.draft[drag.i];
     if (drag.side === 'l') {
-      r.start = Math.min(Math.max(0, drag.r.start + dt), r.end - MIN_SEG);
+      r.start = Math.min(Math.max(0, drag.r.start + dt * (r.vel || 1)), r.end - MIN_SEG); // dt é do corte; a borda, da gravação
     } else {
-      r.end = Math.max(drag.r.end + dt, r.start + MIN_SEG);
+      r.end = Math.max(drag.r.end + dt * (r.vel || 1), r.start + MIN_SEG);
       const srcDur = (S.state.sourceDurations || {})[r.source];
       if (srcDur) r.end = Math.min(r.end, srcDur);
     }
@@ -1324,6 +1326,7 @@ $('btnSave').addEventListener('click', async () => {
       ranges: S.draft.filter((r) => !r.removed).map((r) => ({
         source: r.source, start: +r.start.toFixed(3), end: +r.end.toFixed(3), beat: r.beat,
         ...(r.volume != null && +r.volume !== 1 ? { volume: +r.volume } : {}),
+        ...(r.vel && r.vel !== 1 ? { velocidade: r.vel } : {}),
       })),
       removed: S.draft.filter((r) => r.removed).map((r) => ({ source: r.source, beat: r.beat, start: r.orig.start, end: r.orig.end })),
       changes: S.draft.filter((r) => !r.removed && (r.start !== r.orig.start || r.end !== r.orig.end)).map((r) => ({

@@ -164,6 +164,22 @@ Transitions keep the icon.
   `<edit>/efeitos.json`. A package that cannot download shows the reason and adds
   nothing.
 
+## Take speed
+
+A selected take shows its speed in the toolbar (1× by default); tapping it opens a slider
+from 0.25× to 4× on a powers-of-two scale (1× in the middle), with marks at 0.5×, 1×,
+1.5× and 2× that pull the finger and can be tapped. The needle goes to the start of the
+take, the take shrinks or stretches on the timeline as the slider moves, and the line
+under it reads the new duration ("Duração: 60,7 s → 30,3 s"). The take carries the value
+in its top corner. Playing, the preview runs the same `cut.mp4` at `playbackRate` = new
+speed ÷ the speed already in the file (the voice keeps its pitch); Final plays at 1.
+Split, duplicate and the trim handles count in the recording at that speed. **Salvar**
+sends `velocidade` in each `edl.ranges` item (only when not 1×); `render.py` applies it
+and every helper maps time through `helpers/tempo.py`. Effects and layers are on the
+`cut.mp4` clock, so they stay where they are until the agent re-cuts (the save notice
+already says when the cut changed in the same save). The PC editor does not edit speed,
+but sizes those takes by it and carries it through its own save.
+
 ## Ajustar (the take's color)
 
 A selected take has **Ajustar** next to its volume. It opens a small panel with a

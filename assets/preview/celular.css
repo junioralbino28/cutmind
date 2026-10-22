@@ -279,9 +279,13 @@ button { font-family: inherit; cursor: pointer; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   pointer-events: none;
 }
-/* tomada com volume próprio: o valor no canto de cima, como no CapCut */
+/* tomada com volume ou velocidade própria: os valores no canto de cima, como no CapCut */
+.take .t-tags { position: absolute; left: 5px; top: 4px; display: flex; gap: 3px; pointer-events: none; }
+.take .t-vel {
+  font-size: 9px; font-weight: 700; font-variant-numeric: tabular-nums;
+  padding: 1px 5px; border-radius: 3px; background: rgba(10, 10, 10, 0.7);
+}
 .take .t-vol {
-  position: absolute; left: 5px; top: 4px;
   display: flex; align-items: center; gap: 3px;
   font-size: 9px; font-weight: 700; font-variant-numeric: tabular-nums;
   padding: 1px 5px 1px 3px; border-radius: 3px;
@@ -431,6 +435,13 @@ button { font-family: inherit; cursor: pointer; }
 .lh.r { right: -12px; border-radius: 0 3px 3px 0; }
 .vol-range { width: calc(100% - 32px); margin: 16px 16px 8px; accent-color: var(--brand); }
 .vol-nota { margin: 0 16px 6px; font-size: 12px; line-height: 1.4; color: var(--dim); }
+/* Velocidade: as marcas embaixo da régua, cada uma no seu lugar da escala */
+.vel-marcas { position: relative; height: 26px; margin: 0 16px 4px; }
+.vel-marca {
+  position: absolute; top: 0; translate: -50% 0;
+  border: 0; background: transparent; color: var(--dim);
+  font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; padding: 4px 6px;
+}
 /* Ajustar: o zero da régua marcado no meio; a ferramenta mexida ganha um ponto */
 .aj-regua { position: relative; }
 .aj-regua .vol-range { display: block; margin: 12px 16px; }
