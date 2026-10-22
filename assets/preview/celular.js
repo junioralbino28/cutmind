@@ -694,12 +694,15 @@ async function poll() {
     S.lastData = data; // o Descartar volta a ela
     const sig = assinatura(data);
     if (sig !== S.lastSig) {
-      if (dirtyCount() === 0 && !S.styling) {
+      // com Filtros/Transições aberto também espera: recarregar apagava a prévia tocando e a
+      // escolha, e o "Usar" seguinte não fazia nada (o agente regravando o final a cada 2 s)
+      if (dirtyCount() === 0 && !S.styling && !fxAberto()) {
         S.lastSig = sig;
         await applyState(data);
       } else if (!S.newStateWarned) { // uma vez só, até a versão nova entrar
         S.newStateWarned = true;
         toast(S.styling ? 'Chegou uma versão nova: ela aparece quando você fechar o Estilo.'
+          : fxAberto() ? 'Chegou uma versão nova: ela aparece quando você fechar este painel.'
           : isDesk() ? 'Chegou uma versão nova do agente. Salve ou descarte seus ajustes para ver.'
             : 'Chegou uma versão nova — salve seus ajustes para ver', 4500);
       }
@@ -4160,6 +4163,12 @@ async function openFx(tipo) {
   fxTipo = tipo;
   fxEscolha = null;
   S.fxTeste = null;
+  // filtros e transições moram no corte: no Final o vídeo já vem pronto, a prévia não
+  // desenha por cima e a faixa de efeitos não aparece; o "Usar" ficava invisível
+  if (S.view === 'final') {
+    switchView('corte');
+    toast('Efeitos no corte: a prévia toca aqui', 2600);
+  }
   video.pause();
   $('fxTitle').textContent = tipo === 'filtro' ? 'Filtros' : 'Transições';
   if (!S.fxLista[tipo]) $('fxLista').innerHTML = '<p class="sheet-hint">Carregando…</p>';
