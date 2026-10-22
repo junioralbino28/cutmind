@@ -374,6 +374,8 @@ const S = {
   camadas: { versao: 1, video: { mudo: false }, faixas: [] }, // imagens e áudios postos pela pessoa (camadas.json)
   camadasBase: '',    // as camadas como estavam ao abrir ou no último Salvar
   layerSel: null,     // id do item de camada escolhido
+  v0: 0,              // computador: o tempo na margem esquerda da linha do tempo (a vista rola sem mexer na agulha)
+  tVisto: null,       // o tempo da última vez que a linha do tempo foi posta no lugar
   jcutOpen: lerPref('cutmind.jcutOpen') === '1', // faixas A1/A2 do J-cut abertas (lembrado)
   mudoUsuario: false, // o alto-falante da linha do play (só a prévia; não vai para o vídeo)
   midiaDur: {},       // duração de cada áudio de midia/, lida do arquivo
@@ -803,13 +805,37 @@ video.addEventListener('loadedmetadata', () => {
 // ---------- linha do tempo ----------
 const half = () => timeline.clientWidth / 2;
 const clampT = (t) => Math.max(0, Math.min(t, totalT()));
+/* No computador a agulha ANDA, como no CapCut desktop: a vista tem rolagem própria (`S.v0`,
+ * o tempo na margem esquerda) e a agulha é desenhada no tempo atual. No celular ela fica
+ * parada no centro e a linha do tempo corre por baixo dela. */
+const DESK_MARGEM = 120; // à esquerda, debaixo do tempo e dos cabeçalhos das faixas
+const agulhaAnda = () => isDesk();
+const visivel = () => Math.max(1, (timeline.clientWidth - DESK_MARGEM - 24) / S.pps); // segundos à vista
+// o x do tempo 0 numa largura w (a da linha do tempo ou a de um canvas dela)
+const origemEm = (w) => (agulhaAnda() ? DESK_MARGEM - S.v0 * S.pps : w / 2 - S.t * S.pps);
+const xDaAgulha = () => DESK_MARGEM + (S.t - S.v0) * S.pps;
+// dá para rolar até o fim do vídeo ficar no meio da vista (o "+" de importar aparece)
+function prendeVista() { S.v0 = Math.max(0, Math.min(S.v0, Math.max(0, totalT() - visivel() * 0.5))); }
+// a agulha saiu da vista: a vista vai até ela, com um respiro à esquerda
+function seguirAgulha() {
+  const x = xDaAgulha();
+  if (x < DESK_MARGEM || x > timeline.clientWidth - 24) S.v0 = S.t - visivel() * 0.1;
+}
+function levaAgulha(x, rapido) {
+  x = Math.max(DESK_MARGEM, Math.min(x, timeline.clientWidth - 1));
+  S.t = clampT(S.v0 + (x - DESK_MARGEM) / S.pps);
+  positionTimeline();
+  scheduleSeek(rapido);
+}
+const xNaLinha = (e) => e.clientX - timeline.getBoundingClientRect().left;
 function fitZoom() {
   const w = timeline.clientWidth || 360;
   const total = Math.max(totalT(), 1);
-  S.minPps = Math.max(1.5, (w * 0.9) / total);
+  S.minPps = Math.max(1.5, (agulhaAnda() ? w - DESK_MARGEM - 40 : w * 0.9) / total);
   // ~14 s na largura da tela: dá para ver as miniaturas e acertar a alça com o dedo; no
   // computador a linha do tempo é larga e o mouse é preciso: ~40 s
   S.pps = Math.min(S.maxPps, Math.max(S.minPps, w / (isDesk() ? 40 : 14)));
+  S.v0 = 0;
   S.fitted = true;
   syncZoom();
 }
@@ -1052,7 +1078,20 @@ function sizeCanvases() {
 }
 
 function positionTimeline() {
-  const x0 = half() - S.t * S.pps;
+  if (agulhaAnda()) {
+    // a agulha andou (tocando, teclado, clique): se saiu da vista, a vista vai até ela.
+    // Rolar a vista não mexe no tempo, então não a traz de volta.
+    if (S.t !== S.tVisto && G.mode !== 'scrub') seguirAgulha();
+    prendeVista();
+  }
+  S.tVisto = S.t;
+  const x0 = origemEm(timeline.clientWidth);
+  const ag = $('needle');
+  if (agulhaAnda()) {
+    const xa = x0 + S.t * S.pps;
+    ag.style.left = `${xa}px`;
+    ag.style.visibility = xa < DESK_MARGEM - 1 || xa > timeline.clientWidth ? 'hidden' : '';
+  } else if (ag.style.left) { ag.style.left = ''; ag.style.visibility = ''; }
   const tf = `translate3d(${x0.toFixed(2)}px,0,0)`;
   // movendo uma tomada, a faixa de vídeo (em quadrados) anda pelo próprio deslocamento
   const mv = G.mode === 'move' && G.mv ? `translate3d(${G.mv.off.toFixed(2)}px,0,0)` : null;
@@ -1068,8 +1107,8 @@ function drawRuler() {
   const ctx = rulerCv.getContext('2d');
   const w = rulerCv.clientWidth, h = rulerCv.clientHeight;
   ctx.clearRect(0, 0, w, h);
-  const hw = w / 2;
-  const t0 = S.t - hw / S.pps, t1 = S.t + hw / S.pps;
+  const x0 = origemEm(w);
+  const t0 = -x0 / S.pps, t1 = (w - x0) / S.pps;
   const steps = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120];
   const step = steps.find((s) => s * S.pps >= 52) || 300;
   ctx.font = '600 9.5px Montserrat, system-ui, sans-serif';
@@ -1078,7 +1117,7 @@ function drawRuler() {
   ctx.lineWidth = 1;
   const end = totalT();
   for (let t = Math.max(0, Math.floor(t0 / step) * step); t <= Math.min(t1, end); t += step) {
-    const x = Math.round(hw + (t - S.t) * S.pps) + 0.5;
+    const x = Math.round(x0 + t * S.pps) + 0.5;
     ctx.beginPath(); ctx.moveTo(x, h - 7); ctx.lineTo(x, h); ctx.stroke();
     // com zoom alto as marcas caem no meio do segundo: elas mostram a fração (.25, .5, .75),
     // senão a régua repetiria "0:00 0:00 0:00 0:01"
@@ -1087,7 +1126,7 @@ function drawRuler() {
     for (let m = 1; m < 4; m++) {
       const tm = t + (m * step) / 4;
       if (tm > end) break;
-      const xm = Math.round(hw + (tm - S.t) * S.pps) + 0.5;
+      const xm = Math.round(x0 + tm * S.pps) + 0.5;
       ctx.beginPath(); ctx.moveTo(xm, h - 3.5); ctx.lineTo(xm, h); ctx.stroke();
     }
   }
@@ -1101,8 +1140,8 @@ function drawWave() {
   ctx.clearRect(0, 0, w, h);
   // fundo da faixa só onde existe áudio — fora do vídeo a faixa fica vazia
   const end = totalT();
-  const hw = w / 2;
-  const xa = Math.max(0, hw - S.t * S.pps), xb = Math.min(w, hw + (end - S.t) * S.pps);
+  const x0 = origemEm(w);
+  const xa = Math.max(0, x0), xb = Math.min(w, x0 + end * S.pps);
   ctx.fillStyle = 'rgba(255,255,255,0.05)';
   ctx.beginPath();
   ctx.roundRect ? ctx.roundRect(xa, 1, Math.max(0, xb - xa), h - 2, 4) : ctx.rect(xa, 1, Math.max(0, xb - xa), h - 2);
@@ -1112,7 +1151,7 @@ function drawWave() {
   ctx.fillStyle = 'rgba(214,214,214,0.6)';
   const pps = S.wave.peaksPerSec;
   for (let px = Math.floor(xa); px < xb; px++) {
-    const tDraft = S.t + (px - hw) / S.pps;
+    const tDraft = (px - x0) / S.pps;
     const idx = Math.floor(draftToRendered(tDraft) * pps);
     if (idx < 0 || idx >= S.wave.max.length) continue;
     const hi = (S.wave.max[idx] / 100) * (mid - 2);
@@ -1121,8 +1160,15 @@ function drawWave() {
   }
 }
 
-function setZoom(pps) {
+function setZoom(pps, ancora) {
+  let tA = null, xA = 0;
+  if (agulhaAnda()) {
+    const xa = xDaAgulha();
+    xA = ancora != null ? ancora : (xa >= DESK_MARGEM && xa <= timeline.clientWidth ? xa : DESK_MARGEM);
+    tA = S.v0 + (xA - DESK_MARGEM) / S.pps;
+  }
   S.pps = Math.min(S.maxPps, Math.max(S.minPps, pps));
+  if (tA != null) { S.v0 = tA - (xA - DESK_MARGEM) / S.pps; prendeVista(); }
   syncZoom();
   renderTimeline();
 }
@@ -1133,7 +1179,7 @@ const syncZoom = () => {
   $('zoomRange').value = Number.isFinite(v) ? v : 0;
 };
 $('zoomRange').addEventListener('input', (e) => setZoom(zoomDe(+e.target.value)));
-$('zoomFit').addEventListener('click', () => setZoom(S.minPps));
+$('zoomFit').addEventListener('click', () => { S.v0 = 0; setZoom(S.minPps, DESK_MARGEM); });
 
 // ---------- busca no vídeo enquanto o dedo arrasta ----------
 let seekQueued = false;
@@ -1219,8 +1265,17 @@ timeline.addEventListener('pointerdown', (e) => {
   const lh = e.target.closest('.lh');
   if (lh && lh.closest('.chip.f2')) { if (startInsDrag(e.clientX, 'trim', lh.dataset.side)) return; }
   else if (lh && startLayerDrag(e.clientX, 'trim', lh.dataset.side)) return;
+  if (agulhaAnda() && G.pts.size === 1 && e.target === rulerCv) {
+    G.mode = 'scrub'; // a régua: clicar leva a agulha, arrastar passa o vídeo
+    video.pause();
+    levaAgulha(xNaLinha(e), true);
+    return;
+  }
   G.mode = 'pan';
-  G.x0 = e.clientX; G.t0 = S.t; G.moved = false;
+  G.x0 = e.clientX; G.t0 = S.t; G.moved = false; G.v00 = S.v0;
+  // computador: a própria agulha, por cima das faixas, é agarrada só se ARRASTAR; o clique
+  // parado continua escolhendo a tomada (ou o bloco) que está debaixo dela
+  G.agulha = agulhaAnda() && G.pts.size === 1 && Math.abs(xNaLinha(e) - xDaAgulha()) <= 4;
   G.lastX = e.clientX; G.lastT = performance.now(); G.vel = 0;
   G.down = e.target;
   G.downAt = performance.now();
@@ -1274,17 +1329,26 @@ timeline.addEventListener('pointermove', (e) => {
     }
     return;
   }
+  if (G.mode === 'scrub') { levaAgulha(xNaLinha(e), true); return; }
   if (G.mode === 'move') { G.mv.x = e.clientX; updateMove(); return; }
   if (G.mode === 'layer') { dragLayer(e.clientX); return; }
   if (G.mode === 'ins') { dragIns(e.clientX); return; }
   if (G.mode === 'pan') {
     const dx = e.clientX - G.x0;
+    if (G.agulha && Math.abs(dx) > 2) {
+      G.mode = 'scrub'; G.agulha = false;
+      clearTimeout(G.lp);
+      video.pause();
+      levaAgulha(xNaLinha(e), true);
+      return;
+    }
     if (!G.moved && Math.abs(dx) > 6) {
       G.moved = true;
       clearTimeout(G.lp); // arrastou antes do tempo: é rolagem, não mover
       if (!video.paused) video.pause();
     }
     if (!G.moved) return;
+    if (agulhaAnda()) { S.v0 = G.v00 - dx / S.pps; prendeVista(); positionTimeline(); return; } // computador: arrastar rola a vista
     const now = performance.now();
     const dtMs = Math.max(1, now - G.lastT);
     G.vel = 0.8 * ((e.clientX - G.lastX) / dtMs) + 0.2 * G.vel; // px/ms, suavizada
@@ -1299,6 +1363,7 @@ function endPointer(e) {
   if (!G.pts.has(e.pointerId)) return;
   G.pts.delete(e.pointerId);
   clearTimeout(G.lp);
+  if (G.mode === 'scrub') { G.mode = null; preciseSeek(); return; }
   if (G.mode === 'move') { if (G.pts.size === 0) endMove(e.type === 'pointerup'); return; }
   if (G.mode === 'layer') { if (G.pts.size === 0) endLayerDrag(); return; }
   if (G.mode === 'ins') { if (G.pts.size === 0) endInsDrag(); return; }
@@ -1320,7 +1385,15 @@ function endPointer(e) {
   }
   if (G.mode === 'pan') {
     G.mode = null;
-    if (!G.moved && e.type === 'pointerup') { tapAt(G.down); return; }
+    if (!G.moved && e.type === 'pointerup') {
+      // computador: clicar num vão leva a agulha até ali (num item, só escolhe)
+      if (agulhaAnda() && !(G.down && G.down.closest && G.down.closest('.take, .chip, .add-tile'))) {
+        levaAgulha(G.x0 - timeline.getBoundingClientRect().left, false);
+      }
+      tapAt(G.down);
+      return;
+    }
+    if (agulhaAnda()) return; // o mouse não tem embalo
     if (performance.now() - G.lastT > 80) G.vel = 0; // o dedo parou antes de soltar
     startMomentum(G.vel);
   }
@@ -1442,8 +1515,9 @@ function tapAt(target) {
 timeline.addEventListener('wheel', (e) => {
   e.preventDefault();
   stopMomentum();
-  if (e.ctrlKey) { setZoom(S.pps * Math.exp(-e.deltaY * 0.01)); return; }
+  if (e.ctrlKey) { setZoom(S.pps * Math.exp(-e.deltaY * 0.01), agulhaAnda() ? xNaLinha(e) : undefined); return; }
   const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+  if (agulhaAnda()) { S.v0 += d / S.pps; prendeVista(); positionTimeline(); return; } // a vista rola, a agulha fica
   S.t = clampT(S.t + d / S.pps);
   positionTimeline();
   scheduleSeek(false);

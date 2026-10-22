@@ -630,6 +630,13 @@ kbd {
 .desk .toolbar { grid-area: tools; height: var(--tool-h); padding: 4px 12px; justify-content: center; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .desk .tool { max-width: 92px; min-height: 54px; }
 .desk .timeline { grid-area: tl; }
+/* a agulha anda no computador: a margem à esquerda (o tempo e os cabeçalhos das faixas) é
+   opaca, e o que rola passa por baixo dela, como a coluna de faixas do CapCut desktop */
+.desk .timeline::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 120px; z-index: 3;
+  background: linear-gradient(90deg, var(--surface) 112px, rgba(24, 24, 24, 0));
+  pointer-events: none;
+}
 .desk .desk-col {
   display: flex; align-items: center; justify-content: center;
   padding: 24px; text-align: center;

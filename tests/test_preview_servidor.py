@@ -135,7 +135,8 @@ def test_editor_unico_traz_o_que_so_a_desktop_tinha():
     quadro de atalhos do teclado e a régua de zoom com "Ajustar". Etapa 3: mover e aparar os
     blocos da Fase 2 vai no Salvar como `editData`, o que o watch_edits avisa ao agente.
     Etapa 6: as faixas A1/A2 do J-cut (abertas ou não, lembrado no navegador) e a trilha da
-    Fase 2 (`soundtrack` do edit-data) como bloco."""
+    Fase 2 (`soundtrack` do edit-data) como bloco. Etapa 6b: no computador a agulha anda (a vista
+    rola sem mexer no tempo e vai até a agulha quando ela sai), e a margem esquerda é opaca."""
     app = Path(ps.APP_DIR)
     html = (app / "celular.html").read_text(encoding="utf-8")
     js = (app / "celular.js").read_text(encoding="utf-8")
@@ -146,6 +147,9 @@ def test_editor_unico_traz_o_que_so_a_desktop_tinha():
     assert "payload.editData = {" in js and "splitInserts:" in js and "wordAccents:" in js
     assert "edl.jcut_timeline" in js and "cutmind.jcutOpen" in js and "renderJcutLane" in js
     assert "S.editData && S.editData.soundtrack" in js and "renderTrilhaF2" in js
+    css = (app / "celular.css").read_text(encoding="utf-8")
+    assert "const agulhaAnda = () => isDesk();" in js and "function seguirAgulha()" in js
+    assert ".desk .timeline::before" in css
 
 
 def test_video_sendo_baixado_nao_impede_o_agente_de_troca_lo(srv):
