@@ -56,6 +56,9 @@ Then copy `cut.mp4` into `public/` and generate the data files below.
     "enabled": true, "fontSize": 61, "maxWords": 3,
     "safeWidth": 720,                // clears the platform action rail — keep 720
     "paddingBottom": 420,
+    // static styles (simples / serifada / classica): dark outline around the
+    // letters, in px; 0 or absent = soft shadow only. 6 holds over a white shirt
+    "strokePx": 0,
     // optional: ranges where the caption sits elsewhere (split screen parks it
     // on the seam). Resolved per FRAME, so a line crossing the boundary moves.
     // Every caption style honours them.

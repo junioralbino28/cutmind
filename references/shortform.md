@@ -225,6 +225,12 @@ backwards on every long word.
   knowing before "just squashing it a bit".
 - All three sit at `bottom: 430`, the same band as the others. Lower than that
   and a 9:16 caption lands under the platform's own UI.
+- **Over light clothing or a bright background the off-white text vanishes** — the
+  soft shadow is all it has. `captions.strokePx` in edit-data.json adds a dark outline
+  painted under the fill (only the outer half shows): **6** held over a white shirt
+  and still read as the same style; 9 already looked heavy. Absent or 0 = no
+  outline, the look the Estilo panel previews. Check a still over the lightest part
+  of the frame before the full render.
 
 ### karaoke (default), STACKED or SCATTER
 

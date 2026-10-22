@@ -45,6 +45,10 @@ type Variant = {
 };
 
 const C = (editData as any).captions ?? {};
+// `captions.strokePx`: a dark outline around the letters, for footage where the
+// soft shadow alone is not enough (off-white text over a white shirt vanished).
+// Painted under the fill, so only the outer half shows. 0 or absent = no outline.
+const STROKE = Math.max(0, Math.min(16, Number(C.strokePx) || 0));
 export const SIMPLE_VARIANTS: Record<string, Variant> = {
   simples: {
     family: POPPINS,
@@ -193,6 +197,8 @@ export const SimpleCaptions: React.FC<{variant: string}> = ({variant}) => {
               ? undefined
               : `scale(${V.squeeze}, ${V.squeezeY})`,
           textShadow: '0 4px 18px rgba(0,0,0,0.55)',
+          WebkitTextStroke: STROKE ? `${STROKE}px rgba(0,0,0,0.9)` : undefined,
+          paintOrder: STROKE ? 'stroke fill' : undefined,
         }}
       >
         {lines.map((ln, i) => (
