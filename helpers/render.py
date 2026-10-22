@@ -464,7 +464,18 @@ def extract_segment(
         if not keep_resolution:
             # short-form fps: 30 if the source is 30fps+ (natural motion, matches
             # IG/TikTok/Shorts capture), else the 24 standard; longform keeps source.
-            cmd += ["-r", shortform_target_fps(source)]
+            fps_out = shortform_target_fps(source)
+            cmd += ["-r", fps_out]
+            if streams == "v":
+                # J-cut picture: exactly the planned frames. On a variable-frame-rate
+                # source (phones drop to ~41 fps in low light) `-t` + `-r` sometimes
+                # lets one extra frame in at the END. The J-cut concatenates the real
+                # frames but places the sound by the plan, so every extra frame pushed
+                # all later pictures behind the voice: 5 of 21 takes, the picture 167 ms
+                # late by the end of a real cut. A butt-joined "av" segment keeps it:
+                # there picture and sound start together in each file and the extra
+                # frame only covers the AAC tail (cutting it put the picture 45 ms late).
+                cmd += ["-frames:v", str(round(out_dur * float(fps_out)))]
     else:
         cmd += ["-vn"]
 
