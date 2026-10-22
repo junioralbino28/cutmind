@@ -190,6 +190,18 @@ the layer questions in chat.
 
 Then delete `preview_edits.json` and update `state.json`.
 
+**The same edits asked in the chat.** Every editor tool only writes a file this
+pipeline reads, so a request in words ("deixa a tomada 3 em 2×", "põe um P&B no
+começo", "o gancho até 3 s") is the same edit written by you: **`references/pelo-chat.md`**
+maps each tool to its file, field, helper and check.
+
+| The request is about | Section |
+|---|---|
+| takes: trim, remove, reorder, split, duplicate, volume, speed, speed curve | The takes (`edl.json`) |
+| colour (Ajustar), filters, transitions | Colour, filters and transitions (`efeitos.json`) |
+| images, audio, soundtracks, muting the video | Images, audio and soundtracks (`camadas.json`) |
+| hook and insert timing, caption style, caption position | Phase 2 blocks, style and captions |
+
 ---
 
 # PHASE 1 — Clean cut + color grade
