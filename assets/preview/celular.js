@@ -324,6 +324,10 @@ async function loadBandPoster() {
 // ---------- estado ----------
 const THUMB_EVERY = 2.0;
 const MIN_SEG = 0.2;
+// preferência de tela guardada no navegador (sem armazenamento, vale só nesta aba)
+const lerPref = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const gravaPref = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* sem armazenamento */ } };
+
 const S = {
   state: {},
   mtimes: {},
@@ -370,6 +374,7 @@ const S = {
   camadas: { versao: 1, video: { mudo: false }, faixas: [] }, // imagens e áudios postos pela pessoa (camadas.json)
   camadasBase: '',    // as camadas como estavam ao abrir ou no último Salvar
   layerSel: null,     // id do item de camada escolhido
+  jcutOpen: lerPref('cutmind.jcutOpen') === '1', // faixas A1/A2 do J-cut abertas (lembrado)
   mudoUsuario: false, // o alto-falante da linha do play (só a prévia; não vai para o vídeo)
   midiaDur: {},       // duração de cada áudio de midia/, lida do arquivo
   audioMenu: false,   // Áudio tocado: a barra mostra Trilhas / Do celular
@@ -830,9 +835,17 @@ function trackPlan() {
     { id: 'aj', h: 22, show: !fin && !S.posMode && S.efeitos.itens.some((it) => it.tipo === 'ajuste') },
     { id: 'video', h: VIDEO_TRACK_H, show: true },
     { id: 'audio', h: 30, show: true },
+    // J-cut: a voz de cada tomada em duas faixas alternadas, com a sobra que entra antes da imagem
+    { id: 'a1', h: 18, show: jcutAberto() },
+    { id: 'a2', h: 18, show: jcutAberto() },
+    // a trilha da Fase 2 (`soundtrack` do edit-data.json): só leitura, o vídeo inteiro
+    { id: 'trilha', h: 18, show: fin && !S.posMode && !!trilhaF2() },
     ...fx.filter((f) => f.tipo === 'audio').map(layer),
   ].filter((t) => t.show);
 }
+const temJcut = () => !!(S.jcut && S.jcut.length);
+const jcutAberto = () => S.jcutOpen && temJcut() && !S.posMode;
+const trilhaF2 = () => { const st = S.editData && S.editData.soundtrack; return st && st.enabled ? st : null; };
 // a linha do tempo cresce com as camadas até um teto; acima dele as faixas encolhem
 const TL_MIN = 178, TL_MAX = 292;
 
@@ -864,6 +877,7 @@ function renderTimeline() {
     if (tr.id === 'audio') {
       track.classList.toggle('mudo', S.view === 'corte' && S.camadas.video.mudo);
       el('canvas', 'wave', track).id = 'wave';
+      if (temJcut() && !S.posMode) jcutHead(track);
       continue;
     }
     const lane = el('div', 'lane', track);
@@ -876,6 +890,8 @@ function renderTimeline() {
     else if (tr.id === 'fx') renderFxTrack(lane, false);
     else if (tr.id === 'aj') renderFxTrack(lane, true);
     else if (tr.id === 'notes') renderNotes(lane);
+    else if (tr.id === 'a1' || tr.id === 'a2') renderJcutLane(track, lane, tr.id === 'a1' ? 0 : 1);
+    else if (tr.id === 'trilha') renderTrilhaF2(lane);
     else if (tr.id === 'caps') {
       for (const c of S.captions) {
         const a = renderedToDraft(c.start), b = renderedToDraft(c.end);
@@ -964,6 +980,50 @@ function renderTakes(lane) {
     add.style.left = `${dl.reduce((a, d) => Math.max(a, d.out + d.dur), 0) * S.pps + 10}px`;
   }
   if (G.mode === 'move') el('div', 'move-caret', lane).id = 'moveCaret'; // onde ela vai cair
+}
+
+/* Faixas A1/A2 (como na edição do PC antiga): o som de cada tomada, alternando entre as
+ * duas, onde ele toca no corte. O tracejado no começo é o J-cut, a voz que já entra
+ * enquanto a tomada anterior ainda está na tela. Sai do rascunho: anda com as aparas. */
+function jcutHead(track) {
+  const th = el('div', 'th', track);
+  const b = el('button', `th-b jcut${S.jcutOpen ? ' on' : ''}`, th);
+  b.type = 'button';
+  b.dataset.act = 'jcut';
+  b.innerHTML = ICON.seta;
+  const dica = S.jcutOpen ? 'Esconder as faixas A1 e A2 do J-cut' : 'Mostrar as faixas A1 e A2 do J-cut (a voz que entra antes da imagem)';
+  b.setAttribute('aria-label', dica);
+  b.setAttribute('aria-expanded', String(S.jcutOpen));
+  b.title = dica;
+}
+function renderJcutLane(track, lane, par) {
+  el('div', 'th th-tag', track).textContent = par ? 'A2' : 'A1';
+  const fps = S.fps || 30;
+  draftLayout().forEach((r, i) => {
+    if (i % 2 !== par || r.adur <= 0) return;
+    const b = el('div', 'ablock', lane);
+    b.style.left = `${r.aout * S.pps}px`;
+    b.style.width = `${Math.max(r.adur * S.pps, 6)}px`;
+    if (r.lead > 1e-6) el('div', 'ablock-lead', b).style.width = `${r.lead * S.pps}px`;
+    const nome = r.beat || r.source || `tomada ${i + 1}`;
+    el('span', 'ablock-label', b).textContent = nome;
+    const tf = (r.orig && S.jcut[r.from] && S.jcut[r.from].tail_trim_frames) || 0;
+    let dica = `${nome}\náudio ${r.adur.toFixed(2)} s`;
+    if (r.lead > 1e-6) dica += `\nJ-cut: a voz entra ${Math.round(r.lead * fps)} quadros (${Math.round(r.lead * 1000)} ms) antes da imagem`;
+    if (tf) dica += `\ncauda aparada: ${tf} quadros`;
+    b.title = dica;
+  });
+}
+function renderTrilhaF2(lane) {
+  const st = trilhaF2();
+  const fim = Math.min(totalT(), renderedToDraft(S.editData.durationSec || S.videoDuration || totalT()));
+  const chip = el('div', 'chip st', lane);
+  chip.style.left = '0px';
+  chip.style.width = `${Math.max(fim * S.pps, 10)}px`;
+  el('span', 'l-ico', chip).innerHTML = ICON.audio;
+  const nome = String(st.file || 'trilha.mp3').split('/').pop();
+  el('span', 'l-name', chip).textContent = st.volume != null ? `${nome} · ${Math.round(st.volume * 100)}%` : nome;
+  chip.title = 'Trilha da Fase 2. Para trocar, mudar o volume ou tirar, peça ao agente.';
 }
 
 function renderNotes(lane) {
@@ -2849,8 +2909,14 @@ function tapLayer(id) {
 document.addEventListener('click', (e) => {
   const b = e.target.closest('.th-b');
   if (!b) return;
-  remember();
   const act = b.dataset.act;
+  if (act === 'jcut') { // só mostra ou esconde: não é edição, não entra no desfazer
+    S.jcutOpen = !S.jcutOpen;
+    gravaPref('cutmind.jcutOpen', S.jcutOpen ? '1' : '0');
+    renderTimeline();
+    return;
+  }
+  remember();
   if (act === 'video-mudo') {
     S.camadas.video.mudo = !S.camadas.video.mudo;
     toast(S.camadas.video.mudo ? 'Som do vídeo desligado' : 'Som do vídeo ligado', 1600);

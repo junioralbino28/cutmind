@@ -99,6 +99,7 @@ chat you need a path on this computer. Proven by `tests/test_camadas.py`,
 |---|---|---|
 | hook / insert / word blocks (move, trim) | "o gancho até 3 s", "a tela dividida 2 entra mais cedo" | `edit-data.json` directly: `hook.endSec`; `inserts[]`, `splitInserts[]`, `splitVideos[]`, `wordAccents[]` `start`/`end`; `behind[]` `start`/`dur`. Re-render Phase 2 |
 | `estilo` / `legenda` | "muda a legenda para empilhado" | when the user NAMES the style, write it in `state.json` `style` and rebuild Phase 2 (`references/shortform.md`). When they only ask "qual fica melhor?", open the Estilo tab instead (`awaitingStyle`): the gate exists so they see each style on their own frame |
+| Phase 2 soundtrack (the read-only block under the audio in Final) | "abaixa a trilha", "tira a música" | `soundtrack` in `edit-data.json`: `volume` (linear, 0.0445 when absent) or `enabled: false`; then `mixar_final.py`. The editor only shows it, so this one is always from the chat |
 | caption position (`todas`, `padrao`) | "a legenda mais para cima" | `captionPositions` in `state.json` `style` (`all` for every phrase, `phrases[]` anchored on the source moment), then `caption_positions.py --style <edit>/state.json ...` (`references/shortform.md`, "Where each phrase sits"); `padrao` = leave it out |
 
 Phase 2 is short-form only for the style gate; on longform ask the layer questions in
@@ -107,7 +108,8 @@ chat (`SKILL.md`, "The Estilo tab"). Caption positions are proven by
 
 ## Editor-only controls (no file behind them)
 
-`voltar`, `cortar` (selects the take under the needle), `importar`, `audio` and `efeitos`
+`voltar`, `cortar` (selects the take under the needle), the A1/A2 caret on the audio track
+(shows where each take's sound plays and the J-cut lead; `jcut_timeline` is the data), `importar`, `audio` and `efeitos`
 (open their menus), `ouvir` (plays the take), `f2-original` and `pronto` (editor state),
 undo/redo, zoom, Descartar, Baixar. `marcar` is how the user talks to you from the
 editor (a note on a range, arriving through `watch_edits.py`); from the chat they just
