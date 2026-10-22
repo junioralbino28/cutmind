@@ -32,6 +32,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import tempo  # same directory: the cut's clock (each range's speed)
+import esticar  # same directory: a take with a speed curve gets its sound stretched by the clock
 
 try:
     from grade import get_preset, auto_grade_for_clip  # same directory
@@ -263,6 +264,52 @@ def atempo_cadeia(vel: float) -> list[float]:
     return fatores + [round(vel, 6)]
 
 
+def setpts_da_curva(peds: list[tuple[float, float, float]]) -> str:
+    """O `setpts` de uma tomada com curva: cada quadro vai para o relógio do corte, pedaço a
+    pedaço (`peds` em segundos desde o início do trecho). Os pedaços viram uma árvore de `if`
+    equilibrada: uma Herói tem 215 pedaços e a expressão fica com 8 níveis, não 215."""
+    cs = [0.0]
+    for a, b, v in peds[:-1]:
+        cs.append(cs[-1] + (b - a) / v)
+
+    def no(lo: int, hi: int) -> str:
+        if lo == hi:
+            a, _, v = peds[lo]
+            return f"{cs[lo]:.9f}+(ld(0)-{a:.9f})/{v:.9f}"
+        m = (lo + hi + 1) // 2
+        return f"if(lt(ld(0),{peds[m][0]:.9f}),{no(lo, m - 1)},{no(m, hi)})"
+
+    return f"st(0,(PTS-STARTPTS)*TB);({no(0, len(peds) - 1)})/TB"
+
+
+def _som_da_curva(source: Path, seg_start: float, duration: float, peds: list[tuple[float, float, float]],
+                  pre_af: list[str], out_wav: Path) -> None:
+    """O som de uma tomada com curva: a gravação em PCM (ganho já aplicado), esticada pelo
+    relógio (esticar.py), com as bordas de 30 ms, em WAV estéreo de 48 kHz."""
+    import numpy as np
+    sr = 48000
+    # Corte pelo carimbo de cada amostra (-copyts + atrim), não pelo -ss: num MKV com PCM o -ss
+    # descarta blocos inteiros e a fatia começou 20 ms depois (medido); no MP4 com AAC dá igual.
+    t0 = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=start_time", "-of", "csv=p=0",
+                               str(source)], capture_output=True, text=True).stdout.strip() or 0) or 0.0
+    corte = (f"atrim=start={t0 + seg_start:.6f}:end={t0 + seg_start + duration:.6f},asetpts=PTS-STARTPTS")
+    r = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{max(0.0, seg_start - 1.0):.6f}", "-copyts",
+                        "-i", str(source), "-vn", "-af", ",".join([corte, *pre_af]),
+                        "-ac", "2", "-ar", str(sr), "-f", "f32le", "-"], capture_output=True)
+    x = np.frombuffer(r.stdout, np.float32).reshape(-1, 2) if r.returncode == 0 else np.zeros((0, 2), np.float32)
+    precisa = int(round(duration * sr))
+    if len(x) < precisa:  # gravação sem som, ou mais curta que o trecho: o resto é silêncio
+        x = np.vstack([x, np.zeros((precisa - len(x), 2), np.float32)])
+    y = esticar.esticar(x[:precisa], sr, peds)
+    borda = min(int(0.03 * sr), len(y) // 2)
+    if borda:
+        rampa = np.linspace(0.0, 1.0, borda, dtype=np.float32)[:, None]
+        y[:borda] *= rampa
+        y[len(y) - borda:] *= rampa[::-1]
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "f32le", "-ar", str(sr), "-ac", "2", "-i", "-",
+                    "-c:a", "pcm_s16le", str(out_wav)], input=y.astype(np.float32).tobytes(), check=True)
+
+
 def extract_segment(
     source: Path,
     seg_start: float,
@@ -275,12 +322,17 @@ def extract_segment(
     gain_db: float = 0.0,
     streams: str = "av",
     velocidade: float = 1.0,
+    pedacos: list[tuple[float, float, float]] | None = None,
+    _vf_curva: str | None = None,
+    _dur_curva: float | None = None,
 ) -> None:
     """Extract a cut range as its own MP4 with grade + 30ms audio fades baked in.
 
     `duration` is in the SOURCE; with `velocidade` (the phone editor's Speed) the
     clip plays that much faster and lasts duration ÷ velocidade: picture by
     `setpts`, sound by `atempo` (the voice keeps its pitch), fades on the new length.
+    `pedacos` (tempo.pedacos of the take, cut to this stretch) carries a speed CURVE: the
+    picture by a per-piece `setpts`, the sound by esticar.py. One piece = `velocidade`.
 
     `streams` selects what lands in the file: "av" (default), "v" (video only) or
     "a" (audio only, PCM when the path ends in .wav). The split exists for the
@@ -299,6 +351,12 @@ def extract_segment(
         Skips scaling and does not force 24 fps. Draft/preview still down-scale.
     """
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    curva = None
+    if pedacos:
+        if len(pedacos) == 1:
+            velocidade = pedacos[0][2]
+        else:
+            curva = [(a - seg_start, b - seg_start, v) for a, b, v in pedacos]
 
     portrait = is_portrait_source(source)
     if draft:
@@ -309,7 +367,10 @@ def extract_segment(
         scale = "scale=-2:1920" if portrait else "scale=1920:-2"
 
     vf_parts: list[str] = []
-    if velocidade != 1.0:
+    if curva:
+        fps = source_fps(source) if keep_resolution else shortform_target_fps(source)
+        vf_parts.append(f"setpts='{setpts_da_curva(curva)}',fps={fps}")
+    elif velocidade != 1.0:
         # the frame-rate conversion goes INSIDE the filter, right after setpts: left to
         # the output `-r`, a 2× take showed the flash 2.5 frames late and a 0.5× one
         # 1 frame early (measured on a source with flashes and beeps at known instants)
@@ -335,6 +396,8 @@ def extract_segment(
         vf_parts.append("format=yuv420p")
         vf_parts.append(grade_filter)
     vf = ",".join(vf_parts)
+    if _vf_curva is not None:
+        vf = _vf_curva
 
     # Per-segment level match (whisper/mumble rescue). Applied BEFORE the fades
     # so the edges still land at true silence. A boosted segment gets a limiter
@@ -345,7 +408,27 @@ def extract_segment(
         if gain_db > 0:
             af_parts.append("alimiter=level_in=1:level_out=1:limit=0.95")
 
-    out_dur = duration / velocidade
+    if curva:
+        out_dur = tempo.corte_ate(curva, curva[-1][1])
+        som = None
+        if streams != "v":
+            som = out_path if streams == "a" else out_path.with_name(out_path.stem + "_curva.wav")
+            _som_da_curva(source, seg_start, duration, curva, af_parts, som)
+        if streams == "a":
+            return
+        destino = out_path if streams == "v" else out_path.with_name(out_path.stem + "_curva.mp4")
+        extract_segment(source, seg_start, duration, grade_filter, destino, preview=preview, draft=draft,
+                        keep_resolution=keep_resolution, streams="v", _vf_curva=",".join(vf_parts),
+                        _dur_curva=out_dur)
+        if som is not None:
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(destino), "-i", str(som), "-map", "0:v",
+                            "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+                            "-t", f"{out_dur:.6f}", "-movflags", "+faststart", str(out_path)], check=True)
+            destino.unlink(missing_ok=True)
+            som.unlink(missing_ok=True)
+        return
+
+    out_dur = duration / velocidade if _dur_curva is None else _dur_curva
     if velocidade != 1.0:
         af_parts += [f"atempo={x:g}" for x in atempo_cadeia(velocidade)]
 
@@ -419,6 +502,15 @@ def snap_ranges_to_frames(edl: dict, fps: int) -> int:
     """
     changed = 0
     for r in edl.get("ranges", []):
+        if tempo.curva(r) is not None:
+            # a curva é relativa à tomada: a duração no corte é (end − start) × K, K fixo
+            k = tempo.segundos_de_corte_por_segundo(r)
+            frames = math.ceil(round((r["end"] - r["start"]) * k * fps, 4))
+            snapped = r["start"] + frames / fps / k
+            if abs(snapped - r["end"]) > 1e-6:
+                r["end"] = round(snapped, 6)
+                changed += 1
+            continue
         vel = tempo.velocidade(r)
         dur = (r["end"] - r["start"]) / vel
         # Round the frame count to 4 decimals BEFORE ceiling. `end` is persisted to
@@ -488,17 +580,18 @@ def extract_all_segments(
             seg_filter = resolved
 
         gain_db = float(r.get("gain_db", 0.0) or 0.0)
-        vel = tempo.velocidade(r)
+        peds = tempo.pedacos(r)
+        vel = peds[0][2] if len(peds) == 1 else None
 
         note = r.get("beat") or r.get("note") or ""
         grade_note = f"  grade: {seg_filter or '(none)'}" if is_auto else ""
         gain_note = f"  gain: {gain_db:+.1f}dB" if abs(gain_db) > 0.05 else ""
-        vel_note = f"  {vel:g}x" if vel != 1.0 else ""
+        vel_note = f"  curva {r['curva'].get('nome', '')}" if vel is None else (f"  {vel:g}x" if vel != 1.0 else "")
         print(f"  [{i:02d}] {src_name}  {start:7.2f}-{end:7.2f}  ({duration:5.2f}s)  {note}{grade_note}{gain_note}{vel_note}", flush=True)
         extract_segment(
             src_path, start, duration, seg_filter, out_path,
             preview=preview, draft=draft, keep_resolution=keep_resolution,
-            gain_db=gain_db, velocidade=vel,
+            gain_db=gain_db, pedacos=peds,
         )
         return out_path
 
@@ -625,27 +718,37 @@ def plan_jcut(edl: dict, edit_dir: Path, cfg: dict) -> list[dict]:
         # a_*/v_* are SOURCE times; lead, the tail frames and the offsets are CUT time.
         # A take at `vel` covers vel seconds of source per second of cut, so the lead
         # it skips and the tail it trims are vel times longer in the source.
-        vel = tempo.velocidade(r)
+        # With a speed curve (more than one piece) the same accounts go through tempo.py.
+        peds = tempo.pedacos(r)
+        vel = peds[0][2] if len(peds) == 1 else None
 
         tail = 0.0
         avail = trailing_silence(src, start, end) if i < n - 1 else None
         if avail is not None and cfg["tail_trim_frames"]:
             budget = max(0.0, avail - 0.010)          # keep 10ms of room tone
-            usable_frames = min(cfg["tail_trim_frames"], int(budget / vel * fps))
-            tail = usable_frames * vel / fps
+            if vel is not None:
+                usable_frames = min(cfg["tail_trim_frames"], int(budget / vel * fps))
+                tail = usable_frames * vel / fps
+            else:
+                usable_frames = min(cfg["tail_trim_frames"], int(tempo.dur_trecho(peds, end - budget, end) * fps))
+                total = tempo.corte_ate(peds, end)
+                tail = end - tempo.gravacao_em(peds, total - usable_frames / fps)
 
         a_in, a_out = start, end - tail
-        v_in = start + (lead * vel if i > 0 else 0.0)
+        if vel is not None:
+            v_in = start + (lead * vel if i > 0 else 0.0)
+        else:
+            v_in = tempo.gravacao_em(peds, lead) if i > 0 else start
         v_out = a_out
         plan.append({
-            "i": i, "src": src, "range": r, "vel": vel,
+            "i": i, "src": src, "range": r, "vel": vel, "peds": peds,
             "a_in": a_in, "a_out": a_out, "a_off": a_off,
             "v_in": v_in, "v_out": v_out, "v_off": v_off,
-            "tail_frames": round(tail / vel * fps),
+            "tail_frames": round(tail / vel * fps) if vel is not None else round(tempo.dur_trecho(peds, end - tail, end) * fps),
             "silence_avail_ms": round(avail * 1000) if avail is not None else None,
         })
-        v_off += (v_out - v_in) / vel
-        a_off += (a_out - a_in) / vel - lead
+        v_off += tempo.dur_trecho(peds, v_in, v_out)
+        a_off += tempo.dur_trecho(peds, a_in, a_out) - lead
     return plan
 
 
@@ -680,7 +783,7 @@ def assemble_jcut(plan: list[dict], out_path: Path, edit_dir: Path) -> None:
          f"alimiter=limit=0.95[a]", "-map", "[a]", "-c:a", "pcm_s16le",
          str(audio_only)], quiet=True)
 
-    total = sum((p["v_out"] - p["v_in"]) / p["vel"] for p in plan)  # cut time, not source time
+    total = sum(tempo.dur_trecho(p["peds"], p["v_in"], p["v_out"]) for p in plan)  # cut time, not source time
     # NO -shortest here: a sub-millisecond audio shortfall would truncate video.
     run(["ffmpeg", "-y", "-i", str(video_only), "-i", str(audio_only),
          "-map", "0:v", "-map", "1:a", "-c:v", "copy",
@@ -730,11 +833,12 @@ def extract_and_assemble_jcut(
         apath = clips_dir / f"seg_{i:02d}_{r['source']}_a.wav"
         extract_segment(p["src"], p["v_in"], p["v_out"] - p["v_in"], seg_filter,
                         vpath, preview=preview, draft=draft,
-                        keep_resolution=keep_resolution, streams="v", velocidade=p["vel"])
+                        keep_resolution=keep_resolution, streams="v",
+                        pedacos=tempo.recorte(p["peds"], p["v_in"], p["v_out"]))
         extract_segment(p["src"], p["a_in"], p["a_out"] - p["a_in"], "",
                         apath, preview=preview, draft=draft,
                         keep_resolution=keep_resolution, gain_db=gain_db,
-                        streams="a", velocidade=p["vel"])
+                        streams="a", pedacos=tempo.recorte(p["peds"], p["a_in"], p["a_out"]))
         p["video_path"], p["audio_path"] = vpath, apath
 
         tail_note = ""
@@ -744,7 +848,8 @@ def extract_and_assemble_jcut(
         elif p["silence_avail_ms"] is not None:
             tail_note = f"  cauda 0f (só {p['silence_avail_ms']}ms de silêncio)"
         gain_note = f"  gain: {gain_db:+.1f}dB" if abs(gain_db) > 0.05 else ""
-        vel_note = f"  {p['vel']:g}x" if p["vel"] != 1.0 else ""
+        vel_note = (f"  curva {r['curva'].get('nome', '')}" if p["vel"] is None
+                    else (f"  {p['vel']:g}x" if p["vel"] != 1.0 else ""))
         print(f"  [{i:02d}] {r['source']}  v {p['v_in']:7.2f}-{p['v_out']:7.2f}"
               f"  a {p['a_in']:7.2f}-{p['a_out']:7.2f}"
               f"  {r.get('beat') or ''}{tail_note}{gain_note}{vel_note}", flush=True)
@@ -1262,7 +1367,7 @@ def main() -> None:
     try:  # volume ou velocidade errados param antes de qualquer extração, não depois de minutos de render
         volumes = [volume_da_tomada(r) for r in edl.get("ranges", [])]
         for r in edl.get("ranges", []):
-            tempo.velocidade(r)
+            tempo.pedacos(r)  # confere velocidade e curva
     except ValueError as e:
         sys.exit(f"edl.json: {e}")
 
@@ -1305,19 +1410,21 @@ def main() -> None:
         edl["jcut_timeline"] = [
             {"beat": p["range"].get("beat"), "source": p["range"]["source"],
              "video_start_in_output": round(p["v_off"], 6),
-             "video_duration": round((p["v_out"] - p["v_in"]) / p["vel"], 6),
+             "video_duration": round(tempo.dur_trecho(p["peds"], p["v_in"], p["v_out"]), 6),
              "audio_start_in_output": round(p["a_off"], 6),
-             "audio_duration": round((p["a_out"] - p["a_in"]) / p["vel"], 6),
+             "audio_duration": round(tempo.dur_trecho(p["peds"], p["a_in"], p["a_out"]), 6),
              "tail_trim_frames": p["tail_frames"],
-             **({"velocidade": p["vel"]} if p["vel"] != 1.0 else {})}
+             **({"velocidade": p["vel"]} if p["vel"] not in (None, 1.0) else {}),
+             **({"curva": p["range"]["curva"].get("nome", "")} if p["vel"] is None else {})}
             for p in plan
         ]
         edl["total_duration_s"] = round(
-            sum((p["v_out"] - p["v_in"]) / p["vel"] for p in plan), 3)
+            sum(tempo.dur_trecho(p["peds"], p["v_in"], p["v_out"]) for p in plan), 3)
         edl_path.write_text(json.dumps(edl, ensure_ascii=False, indent=2))
         print(f"  timeline J-cut: {edl['total_duration_s']}s → edl.json atualizado")
         # onde o SOM de cada tomada está na saída (entra antes da imagem, no J-cut)
-        janelas = [(p["a_off"], p["a_off"] + (p["a_out"] - p["a_in"]) / p["vel"], v) for p, v in zip(plan, volumes)]
+        janelas = [(p["a_off"], p["a_off"] + tempo.dur_trecho(p["peds"], p["a_in"], p["a_out"]), v)
+                   for p, v in zip(plan, volumes)]
     else:
         # 1. Extract per-segment (auto-grade per range if EDL grade is "auto")
         segment_paths = extract_all_segments(

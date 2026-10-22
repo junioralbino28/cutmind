@@ -127,3 +127,79 @@ def test_velocidade_mantem_imagem_e_som_juntos_e_o_tom(fonte, tmp_path, jcut):
         janela = sinal[int((f + 0.01) * 48000):int((f + 0.04) * 48000)]
         e1k = _goertzel(janela, 48000, 1000)
         assert e1k > 8 * max(_goertzel(janela, 48000, 2000), _goertzel(janela, 48000, 500)), f
+
+
+# Curvas de teste (etapa 4d): cada flash cai num trecho até 2×; a 5× um flash de 0,1 s dura
+# menos de um quadro e some. A primeira acelera de 0,6× a 2× no meio; a segunda desacelera de
+# 1,5× a 0,5× no começo, com o flash de 4,0 s no meio da rampa.
+CURVA_A = [[0, 0.6], [0.5, 0.6], [0.7, 2.0], [1, 2.0]]
+CURVA_B = [[0, 1.5], [0.4, 0.5], [1, 0.5]]
+
+
+def test_ajuste_a_quadros_com_curva():
+    edl = {"ranges": [{"source": "F", "start": 0.0, "end": 2.71, "curva": {"nome": "a", "pontos": CURVA_A}},
+                      {"source": "F", "start": 3.0, "end": 5.53, "curva": {"nome": "b", "pontos": CURVA_B}}]}
+    assert render.snap_ranges_to_frames(edl, FPS) == 2
+    for r in edl["ranges"]:
+        quadros = tempo.dur_no_corte(r) * FPS
+        assert abs(quadros - round(quadros)) < 1e-4, (r, quadros)
+    assert render.snap_ranges_to_frames(edl, FPS) == 0
+
+
+def test_setpts_da_curva_leva_cada_ponto_ao_relogio():
+    peds = tempo.pedacos({"start": 0.0, "end": 4.0, "curva": {"pontos": CURVA_B}})
+    expr = render.setpts_da_curva(peds)
+    assert expr.count("if(") == len(peds) - 1 and expr.count("(((") < 3  # árvore, não fila
+    # avalia a expressão do ffmpeg em Python (ld(0) = x; if e lt viram funções) contra o tempo.py
+    def avaliar(x):
+        e = expr.replace("st(0,(PTS-STARTPTS)*TB);", "").replace("/TB", "").replace("ld(0)", repr(x))
+        e = e.replace("if(", "_se(").replace("lt(", "_menor(")
+        return eval(e, {"_se": lambda c, a, b: a if c else b, "_menor": lambda a, b: a < b})
+    for x in (0.0, 0.7, 1.6, 2.9, 4.0):
+        assert avaliar(x) == pytest.approx(tempo.corte_ate(peds, x), abs=1e-6)
+
+
+@pytest.mark.parametrize("jcut", [True, False])
+def test_curva_mantem_imagem_e_som_juntos_e_o_tom(fonte, tmp_path, jcut):
+    edit = tmp_path / "edit"
+    edit.mkdir()
+    edl = {"version": 1, "sources": {"F": str(fonte)}, "grade": "",
+           "ranges": [{"source": "F", "start": 0.5, "end": 3.2, "beat": "acelera", "curva": {"nome": "a", "pontos": CURVA_A}},
+                      {"source": "F", "start": 3.5, "end": 6.0, "beat": "freia", "curva": {"nome": "b", "pontos": CURVA_B}}]}
+    if not jcut:
+        edl["jcut"] = False
+    (edit / "edl.json").write_text(json.dumps(edl), encoding="utf-8")
+    r = subprocess.run([sys.executable, str(Path(render.__file__)), str(edit / "edl.json"), "-o", str(edit / "out.mp4"),
+                        "--draft", "--no-loudnorm", "--no-subtitles"],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       env={**os.environ, "PYTHONUTF8": "1"})
+    assert r.returncode == 0, r.stderr[-1500:]
+    salvo = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    spans = tempo.tomadas_no_corte(salvo)
+    assert all(s["vel"] is None for s in spans)
+
+    luz = _luz_por_quadro(edit / "out.mp4")
+    esperado = round(sum(s["dur"] for s in spans) * FPS)
+    assert abs(len(luz) - esperado) <= 1, (len(luz), esperado)
+
+    flashes = _inicios(luz, 128, 1 / FPS)
+    som = [abs(x) for x in _som(edit / "out.mp4")]
+    env = [max(som[i:i + 48]) for i in range(0, len(som), 48)]
+    bipes = _inicios(env, 4000, 0.001)
+    previstos = [tempo.no_corte(s, t) for t in FLASHES for s in spans if s["v_in"] <= t < s["v_out"]]
+    assert len(flashes) == len(previstos) == 4, (flashes, previstos)
+    # Com J-cut (o padrão) imagem e som caem a ±6 ms do previsto (medido). Sem J-cut o som
+    # atrasa ~21 ms por tomada, somando: o concat copia o AAC de cada trecho com o atraso de
+    # início do codificador (antigo, vale com ou sem curva). Daí 2 quadros nesse caminho.
+    folga_som = 1 / FPS if jcut else 2 / FPS
+    for f, p in zip(flashes, previstos):
+        assert abs(f - p) <= 1 / FPS + 1e-6, (f, p)  # a imagem no lugar da regra
+        b = min(bipes, key=lambda x: abs(x - p))
+        assert abs(b - p) <= folga_som, (p, b)  # e o som também
+
+    sinal = _som(edit / "out.mp4")
+    for p in previstos:  # o tom medido a partir do bipe achado, nos trechos lento e rápido
+        f = min(bipes, key=lambda x: abs(x - p))
+        janela = sinal[int((f + 0.01) * 48000):int((f + 0.04) * 48000)]
+        e1k = _goertzel(janela, 48000, 1000)
+        assert e1k > 8 * max(_goertzel(janela, 48000, 2000), _goertzel(janela, 48000, 500)), f

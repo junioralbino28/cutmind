@@ -42,6 +42,14 @@ def test_aviso_conta_a_velocidade_das_tomadas(tmp_path):
     assert "take 1 (HOOK): 2×" in aviso and "take 2 (B): 0.5×" in aviso and "take 3" not in aviso
 
 
+def test_aviso_conta_a_curva_das_tomadas(tmp_path):
+    curva = {"nome": "montagem", "pontos": [[0, 0.9], [0.1, 0.9], [0.5, 6.8], [0.65, 0.3], [0.8, 1], [1, 1]]}
+    aviso = _salvo(tmp_path, {"ranges": [{"source": "A", "beat": "HOOK", "curva": curva}, {"source": "B"}],
+                              "changes": [], "removed": [], "ops": {"curva": 1}})
+    assert "curva de velocidade em 1 take(s)" in aviso
+    assert "take 1 (HOOK): curva montagem, 6 pontos" in aviso and "take 2" not in aviso
+
+
 def test_aviso_do_editor_de_pc_continua_igual(tmp_path):
     aviso = _salvo(tmp_path, {"ranges": [], "changes": [{}], "removed": [{}]})
     assert "1 take(s) reajustado(s), 1 take(s) removido(s)" in aviso

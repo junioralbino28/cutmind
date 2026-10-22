@@ -175,8 +175,9 @@ the layer questions in chat.
   a new order are already applied. Rebuild `edl.json` `ranges` from it. `take`
   (when present) is the index of the range in the current `edl.json` it came from:
   copy `quote`, `reason` and `gain_db` from there. `volume` (0–4, the take's volume
-  slider: 0.5 = 50%) and `velocidade` (0.25–4, the take's speed) are the user's, not
-  the old range's: write them as they come, and leave them out when absent (100%, 1×). Two consecutive ranges from the
+  slider: 0.5 = 50%), `velocidade` (0.25–4, the take's speed) and `curva` (a speed
+  curve, below) are the user's, not the old range's: write them as they come, and leave
+  them out when absent (100%, 1×, no curve). Two consecutive ranges from the
   same source where one ends exactly where the next starts are a split the user kept
   as is — merge them back before rendering, or the J-cut doubles the audio there.
   `edl.ops` counts splits, duplicates and whether the order changed.
@@ -378,6 +379,17 @@ whole frames, and the J-cut lead/tail count in cut frames. Every helper that map
 time to cut time goes through `helpers/tempo.py` (`tomadas_no_corte`, `no_corte`);
 never sum `end − start` by hand. Measured: a flash and its beep stay ≤ 1 frame apart
 at 2× and 0.5×, and a 1 kHz beep stays 1 kHz.
+
+`curva`: a speed curve inside the take, as in CapCut (Montagem, Herói, Bala…):
+`{"nome": "montagem", "pontos": [[x, y], ...]}`, 2–20 points, `x` from 0 to 1 along the
+take IN THE SOURCE (never going back; two points at the same `x` make a step), `y` the
+speed there, 0.1 to 10, in a straight line between points. Never together with
+`velocidade`. `tempo.py` turns it into pieces of constant speed (neighbours ≤ 4% apart,
+each with its exact mean), and render, captions and the editors all use those pieces.
+The picture goes through one `setpts` expression per take; the sound through
+`helpers/esticar.py` (WSOLA placed by the clock — `atempo` switched by commands lost
+~1.6 ms per switch). Measured with J-cut: a flash and its beep land within 6 ms of where
+the clock puts them. Above ~2.5× there is no speech left to caption.
 
 `volume`: the take's volume from the phone editor, 0 to 4 (1 = as is, 0 = silent).
 `render.py` applies it LAST, on the finished cut after voice master and loudnorm,

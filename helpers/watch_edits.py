@@ -59,6 +59,8 @@ def digest(p: Path) -> str:
         head.append(f"volume mudado em {ops['volume']} take(s)")
     if ops.get("velocidade"):
         head.append(f"velocidade mudada em {ops['velocidade']} take(s)")
+    if ops.get("curva"):
+        head.append(f"curva de velocidade em {ops['curva']} take(s)")
     if ops:  # editor que divide, copia e move: a lista inteira é a referência
         parts.append("  edl.ranges é a lista inteira, na ordem nova — monte o edl.json por ela (SKILL.md).")
     vols = [(i, r) for i, r in enumerate(edl.get("ranges") or [], 1) if r.get("volume") is not None]
@@ -74,6 +76,14 @@ def digest(p: Path) -> str:
                      "o render.py aplica e o tempo de tudo passa pelo tempo.py):")
         for i, r in vels:
             parts.append(f'  · take {i} ({r.get("beat") or r.get("source", "")}): {float(r["velocidade"]):g}×')
+    curvas = [(i, r) for i, r in enumerate(edl.get("ranges") or [], 1) if r.get("curva")]
+    if curvas:
+        parts.append("  curva de velocidade por take (vai para o edl.json como está, sem `velocidade`; "
+                     "x = fração da tomada na gravação, y = velocidade; o render.py aplica pelo tempo.py):")
+        for i, r in curvas:
+            c = r["curva"]
+            parts.append(f'  · take {i} ({r.get("beat") or r.get("source", "")}): '
+                         f'curva {c.get("nome") or "personalizada"}, {len(c.get("pontos") or [])} pontos')
     if ed:
         head.append("inserts/gancho movidos")
     if "camadas" in d:
