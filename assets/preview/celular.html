@@ -32,8 +32,12 @@
     <button class="mode" id="btnMode" type="button" aria-label="Trocar entre o corte e o vídeo final">
       <span id="modeLabel">Corte</span><span class="mode-sub" id="projectSub">carregando…</span><span class="mode-car" id="modeCar"></span>
     </button>
+    <!-- no computador: o nome do projeto e o que o agente está fazendo (state.message) -->
+    <div class="agent" id="agent"><b id="projectName"></b><span id="agentMsg"></span></div>
     <div class="t-spacer"></div>
     <span class="pill sent hidden" id="sentPill">enviado</span>
+    <!-- no computador: o QR que abre este mesmo editor no celular -->
+    <button class="tb-btn desk-only" id="btnPhone" type="button"><span class="tb-ico" id="phoneIco"></span>Abrir no celular</button>
     <!-- um botão principal no canto de cima: Salvar quando há ajuste, Baixar quando não há -->
     <button class="tb-btn primary hidden" id="btnSave" type="button">Salvar <b id="dirtyCount">0</b></button>
     <button class="tb-btn primary hidden" id="btnDownload" type="button"><span class="tb-ico" id="downloadIco"></span>Baixar</button>
@@ -79,6 +83,10 @@
     <div class="trim-tip hidden" id="trimTip"></div>
   </section>
 
+  <!-- no computador: as colunas da biblioteca (esquerda) e das propriedades (direita); os
+       painéis que no celular sobem de baixo se encaixam nelas -->
+  <aside class="desk-col lib" id="deskLib"><p>Filtros, transições, trilhas e estilo abrem aqui.<br>Escolha na barra de ferramentas.</p></aside>
+  <aside class="desk-col props" id="deskProps"><p>Escolha uma tomada para ver volume, velocidade, curva e cor aqui.</p></aside>
   <nav class="toolbar" id="toolbar" aria-label="Ferramentas"></nav>
   <nav class="toolbar ctx hidden" id="ctxbar" aria-label="Ferramentas da tomada"></nav>
 
@@ -216,6 +224,17 @@
   <div class="up-pct" id="upPct"></div>
 </section>
 <div class="toast hidden" id="toast" role="status"></div>
+
+<!-- abrir no celular: o servidor entrega os links (com o código) só a este computador -->
+<div class="phone-modal hidden" id="phoneModal" role="dialog" aria-modal="true" aria-labelledby="phoneTitle">
+  <div class="phone-card">
+    <div class="phone-head">
+      <h3 id="phoneTitle">Abrir no celular</h3>
+      <button class="tb-btn" id="phoneClose" type="button">Fechar</button>
+    </div>
+    <div class="phone-body" id="phoneBody"></div>
+  </div>
+</div>
 <script src="/assets/estilos.js"></script>
 <script src="/assets/tempo.js"></script>
 <script src="/assets/celular.js"></script>

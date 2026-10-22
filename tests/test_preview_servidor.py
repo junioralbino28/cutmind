@@ -116,6 +116,28 @@ def test_rede_sem_codigo_ve_a_tela_mas_nao_os_dados(srv):
     assert pedir(srv.port, "GET", "/celular", remoto=True)[0].status == 200
 
 
+def test_um_editor_so_no_computador_e_no_celular(srv):
+    """O editor do celular é o editor único: `/` (computador) e `/celular` servem a mesma
+    página, que se arruma pela largura da tela; a desktop antiga fica em `/classico` até ser
+    aprovada a troca (PLANO-editor-unico-desktop)."""
+    _, raiz = pedir(srv.port, "GET", "/")
+    _, cel = pedir(srv.port, "GET", "/celular")
+    assert raiz == cel and b"/assets/celular.js" in raiz
+    r, antiga = pedir(srv.port, "GET", "/classico")
+    assert r.status == 200 and b"/assets/app.js" in antiga
+
+
+def test_editor_unico_traz_o_que_so_a_desktop_tinha():
+    """Etapa 1: o nome do projeto e a mensagem do agente no cabeçalho (o laço com o agente)
+    e o "Abrir no celular" com o QR, que antes só existiam na desktop antiga."""
+    app = Path(ps.APP_DIR)
+    html = (app / "celular.html").read_text(encoding="utf-8")
+    js = (app / "celular.js").read_text(encoding="utf-8")
+    for id_ in ("projectName", "agentMsg", "btnPhone", "phoneModal", "phoneBody"):
+        assert f'id="{id_}"' in html, id_
+    assert "S.state.message" in js and "fetch('/api/celular')" in js
+
+
 def test_codigo_errado_e_barrado(srv):
     r, _ = pedir(srv.port, "GET", "/api/state", remoto=True, cookie="chute-" + "x" * 20)
     assert r.status == 403

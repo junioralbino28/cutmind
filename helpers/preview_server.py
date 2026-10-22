@@ -12,8 +12,9 @@ per-session it is fed by data only:
                                editing style, caption style, edit elements.
 
 Routes:
-  /                     the app (from <skill>/assets/preview/)
-  /celular              the phone editor (assets/preview/celular.html)
+  /, /celular           the editor (assets/preview/celular.html): one page for the
+                        computer and the phone, laid out by the screen width
+  /classico             the old desktop editor (index.html), until the switch is approved
   /c?t=<código>         entrada do celular pelo link/QR: grava o código num
                         cookie e manda para /celular
   /assets/<file>        app files (css/js/logo)
@@ -471,10 +472,12 @@ class Handler(BaseHTTPRequestHandler):
         path, _, query = self.path.partition("?")
         if not self._gate(path):
             return
-        if path in ("/", "/index.html"):
-            self._send_file(APP_DIR / "index.html")
-        elif path == "/celular":
+        # um editor só: o mesmo no computador e no celular, arrumado pela largura da tela;
+        # a desktop antiga fica em /classico até a troca ser aprovada
+        if path in ("/", "/celular"):
             self._send_file(APP_DIR / "celular.html")
+        elif path in ("/classico", "/index.html"):
+            self._send_file(APP_DIR / "index.html")
         elif path == "/c":
             self._enter(query)
         elif path == "/api/celular":

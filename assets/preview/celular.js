@@ -41,6 +41,17 @@ const el = (tag, cls, parent) => {
 };
 
 const app = $('app');
+/* Editor único: na tela larga com mouse, o mesmo editor se arruma no jeito do CapCut desktop
+ * (biblioteca à esquerda, prévia no meio, propriedades à direita, linha do tempo embaixo).
+ * A classe `desk` no <html> liga esse leiaute; `?leiaute=computador` força, para testar. */
+const DESK_MQ = matchMedia('(min-width: 1024px) and (hover: hover) and (pointer: fine)');
+const isDesk = () => document.documentElement.classList.contains('desk');
+function aplicarDesk() {
+  const forca = new URLSearchParams(location.search).get('leiaute');
+  const on = forca ? forca === 'computador' : DESK_MQ.matches;
+  document.documentElement.classList.toggle('desk', on);
+}
+aplicarDesk();
 const video = $('video');
 const player = $('player');
 const timeline = $('timeline');
@@ -96,6 +107,7 @@ const ICON = {
   transicao: sv('<rect x="2.5" y="6.5" width="7" height="11" rx="1.6"/><rect x="14.5" y="6.5" width="7" height="11" rx="1.6"/><path d="M12 9.4l2.6 2.6-2.6 2.6-2.6-2.6z" fill="currentColor" stroke="none"/>'),
   velocidade: sv('<path d="M4.5 16.5a8 8 0 1 1 15 0"/><path d="M12 13.2l3.6-4" stroke-width="2"/><circle cx="12" cy="13.6" r="1.4" fill="currentColor"/>'),
   ajustar: sv('<path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2.2" fill="currentColor"/><circle cx="15.5" cy="12" r="2.2" fill="currentColor"/><circle cx="7.5" cy="17" r="2.2" fill="currentColor"/>'),
+  celular: sv('<rect x="6.5" y="2.5" width="11" height="19" rx="2.4"/><path d="M10.5 18.5h3"/>'),
   intensidade: sv('<path d="M4 12h16"/><circle cx="14.5" cy="12" r="2.6" fill="currentColor"/>'),
 };
 
@@ -681,6 +693,10 @@ async function applyState(data) {
   S.fps = S.state.fps || 30;
   S.savedPending = !!data.hasPendingEdits;
   document.title = S.state.project ? `${S.state.project} · CutMind` : 'CutMind';
+  // o que o agente está fazendo, como no editor de PC antigo (no celular fica escondido)
+  $('projectName').textContent = S.state.project || '';
+  $('agentMsg').textContent = S.state.message || '';
+  $('agent').title = [S.state.project, S.state.message].filter(Boolean).join(' — ');
 
   const ranges = (data.edl && data.edl.ranges) || [];
   S.jcut = (data.edl && data.edl.jcut_timeline) || null;
@@ -766,8 +782,9 @@ function fitZoom() {
   const w = timeline.clientWidth || 360;
   const total = Math.max(totalT(), 1);
   S.minPps = Math.max(1.5, (w * 0.9) / total);
-  // ~14 s na largura da tela: dá para ver as miniaturas e acertar a alça com o dedo
-  S.pps = Math.min(S.maxPps, Math.max(S.minPps, w / 14));
+  // ~14 s na largura da tela: dá para ver as miniaturas e acertar a alça com o dedo; no
+  // computador a linha do tempo é larga e o mouse é preciso: ~40 s
+  S.pps = Math.min(S.maxPps, Math.max(S.minPps, w / (isDesk() ? 40 : 14)));
   S.fitted = true;
 }
 
@@ -813,7 +830,13 @@ function renderTimeline() {
   const plan = trackPlan();
   // régua (30) + respiro (6) + faixas e os vãos entre elas
   const need = 36 + plan.reduce((a, t) => a + t.h, 0) + 6 * (plan.length - 1);
-  timeline.style.height = `${Math.min(TL_MAX, Math.max(TL_MIN, need))}px`;
+  // no computador a linha do tempo acompanha a janela: ~1/4 da altura, e a prévia fica com o resto
+  const [tlMin, tlMax] = isDesk()
+    ? [Math.min(260, Math.max(170, Math.round(innerHeight * 0.26))), Math.round(innerHeight * 0.45)]
+    : [TL_MIN, TL_MAX];
+  const tlH = Math.min(tlMax, Math.max(tlMin, need));
+  timeline.style.height = `${tlH}px`;
+  document.documentElement.style.setProperty('--tl-h', `${tlH}px`); // os painéis encaixados param acima dela
   for (const tr of plan) {
     const track = el('div', `track tr-${tr.faixa ? 'layer' : tr.id}`, tracksEl);
     track.style.height = `${tr.h}px`;
@@ -1697,7 +1720,64 @@ $('btnEmptyUpload').addEventListener('click', () => $('fileInput').click());
 $('emptyIco').innerHTML = ICON.enviar;
 $('upIco').innerHTML = ICON.enviar;
 $('downloadIco').innerHTML = ICON.baixar;
+$('phoneIco').innerHTML = ICON.celular;
 $('btnDownload').addEventListener('click', download);
+
+/* ---------- abrir no celular (computador) ----------
+ * O servidor só entrega os links a este computador: eles levam o código que libera o
+ * celular. Com o editor aberto só aqui (127.0.0.1), explica como pedir ao agente. */
+async function abrirNoCelular() {
+  const body = $('phoneBody');
+  body.innerHTML = '';
+  el('p', 'phone-hint', body).textContent = 'Carregando…';
+  $('phoneModal').classList.remove('hidden');
+  let d = null, r = null;
+  try { r = await fetch('/api/celular'); d = await r.json(); } catch (e) { /* servidor reiniciando */ }
+  body.innerHTML = '';
+  if (r && r.status === 403) { // outro aparelho na rede: o código do QR só sai no computador do editor
+    el('p', 'phone-hint', body).textContent = 'O código para abrir no celular só aparece no computador onde o editor está rodando.';
+    return;
+  }
+  if (!d || !d.enabled) {
+    el('p', 'phone-hint', body).textContent = 'Agora o editor está aberto só para este computador.';
+    el('p', 'phone-hint', body).innerHTML = 'Para editar pelo celular, peça no chat: <b>"abre o editor no celular"</b>. '
+      + 'O agente libera o editor para a sua rede, com um código, e o QR aparece aqui.';
+    return;
+  }
+  if (!d.urls.length) {
+    el('p', 'phone-hint', body).textContent = 'Não achei a rede deste computador. Ele está conectado ao Wi-Fi ou ao cabo?';
+    return;
+  }
+  const tabs = d.urls.length > 1 ? el('div', 'phone-tabs', body) : null;
+  const qr = el('div', 'phone-qr', body);
+  const url = el('div', 'phone-url', body);
+  const hint = el('p', 'phone-hint', body);
+  const mostra = (i) => {
+    const u = d.urls[i];
+    qr.innerHTML = u.qr || '';
+    qr.classList.toggle('hidden', !u.qr);
+    url.textContent = u.url;
+    hint.innerHTML = /tailscale/i.test(u.label)
+      ? 'Com o <b>Tailscale ligado no celular</b>, funciona de qualquer lugar. Aponte a câmera para o código.'
+      : 'Com o celular <b>no mesmo Wi-Fi</b> deste computador, aponte a câmera para o código. '
+        + 'Se não abrir, o Windows pode estar pedindo para liberar o Python na rede: aceite para redes privadas.';
+    if (tabs) [...tabs.children].forEach((b, k) => b.classList.toggle('on', k === i));
+  };
+  if (tabs) d.urls.forEach((u, i) => {
+    const b = el('button', 'tb-btn', tabs);
+    b.type = 'button';
+    b.textContent = u.label;
+    b.addEventListener('click', () => mostra(i));
+  });
+  mostra(0);
+}
+const fechaCelular = () => $('phoneModal').classList.add('hidden');
+$('btnPhone').addEventListener('click', abrirNoCelular);
+$('phoneClose').addEventListener('click', fechaCelular);
+$('phoneModal').addEventListener('click', (e) => { if (e.target === $('phoneModal')) fechaCelular(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('phoneModal').classList.contains('hidden')) fechaCelular();
+});
 
 // ---------- marcar um trecho (IN → OUT → o que mudar) ----------
 function toggleMark() {
@@ -3831,10 +3911,19 @@ function toast(msg, ms) {
 }
 
 // ---------- início ----------
+DESK_MQ.addEventListener('change', () => { // a janela cruzou a largura do computador
+  aplicarDesk();
+  S.fitted = false;
+  if (S.videoDuration) { fitZoom(); renderTimeline(); }
+});
+let deskResize = 0;
 window.addEventListener('resize', () => {
   sizeCanvases();
   positionTimeline();
   if (S.styling) requestAnimationFrame(renderStyle); // os cartões recortam pela largura
+  // no computador a altura da linha do tempo segue a da janela: refaz quando ela para de mudar
+  clearTimeout(deskResize);
+  if (isDesk() && S.videoDuration) deskResize = setTimeout(renderTimeline, 120);
 });
 poll();
 loop();
