@@ -100,7 +100,7 @@ Interface:
 
 ## Preview interface (standard — launch it at the start of every edit)
 
-Every edit session gets the same interactive editor in the user's browser: ONE app (`assets/preview/celular.*`, served at `/` and `/celular`) for the computer and the phone, with the same files behind both. The layout follows the screen. On a computer (wide window, mouse) it is laid out like CapCut desktop: library and panels on the left, the player in the middle, the chosen take's properties on the right, the toolbar and the multi-track timeline below, and the **needle moves** (click the ruler; the wheel scrolls the view). On a phone it is the CapCut-mobile layout with the needle fixed in the centre. Tracks: video with filmstrip, audio with waveform, A1/A2 (J-cut), effects, image and audio layers, markers and, in the Final view, captions, the Phase 2 blocks and the soundtrack. The player keeps the source aspect, vertical or horizontal. CutMind brand. **Never build a UI per session** — feed the standard interface with `state.json`. Editing `assets/preview/` is allowed only when the user asks for a UI change; it is shared, so the improvement lands for every project.
+Every edit session gets the same interactive editor in the user's browser: ONE app (`assets/preview/celular.*`, served at `/` and `/celular`) for the computer and the phone, with the same files behind both. The layout follows the screen. On a computer (wide window, mouse) it is laid out like CapCut desktop: library and panels on the left, the player in the middle, the chosen take's properties on the right, the toolbar and the multi-track timeline below, and the **needle moves** (click the ruler; the wheel scrolls the view). With a vertical video the player takes a column of its own beside everything, full height, and the timeline's tracks grow into the room it freed; the library menus open wide across the top (`?leiaute=empilhado` brings back the stacked layout). At the top of the library sits the **request box** ("O que você quer mudar?" + Aplicar mudanças): a free-text request that goes with the Salvar as a note marked `geral` (below). On a phone it is the CapCut-mobile layout with the needle fixed in the centre. Tracks: video with filmstrip, audio with waveform, A1/A2 (J-cut), effects, image and audio layers, markers and, in the Final view, captions, the Phase 2 blocks and the soundtrack. The player keeps the source aspect, vertical or horizontal. CutMind brand. **Never build a UI per session** — feed the standard interface with `state.json`. Editing `assets/preview/` is allowed only when the user asks for a UI change; it is shared, so the improvement lands for every project.
 
 **Launch (do this when a session starts, even before the first render — the UI shows a waiting state):**
 1. Write `<edit>/state.json`:
@@ -173,7 +173,12 @@ the layer questions in chat.
   timeline plus `renderedStart`/`renderedEnd` on the current `cut.mp4`, and the
   `phase` view the user was on (1 = Corte, 2 = Final). Use the RENDERED pair to find the moment in the
   existing render. These are instructions in the user's words — read them, then do
-  the edit they describe (re-cut, re-grade, swap an insert, fix a caption…).
+  the edit they describe (re-cut, re-grade, swap an insert, fix a caption…). A note
+  with `geral: true` came from the request box: a request about the whole video,
+  with `start` = `end` = where the needle was only to place "here". The watcher
+  announces it as PEDIDO. Answer it in `state.json` `message` too: the editor shows
+  that line at the top, and the box exists so the user does not have to come back to
+  the chat.
 - `edl.ranges` — the FULL new list of takes, in the user's order: trims, splits
   (two ranges from the same take), duplicates (the same span twice), deletions and
   a new order are already applied. Rebuild `edl.json` `ranges` from it. `take`
