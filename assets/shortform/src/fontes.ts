@@ -108,6 +108,7 @@ export const CATALOGO: Record<string, Fonte> = {
 export const familiaCss = (nome: string) => `"${nome}"`;
 
 const pedidas = new Set<string>();
+const carregando: Promise<unknown>[] = [];
 /** Loads a catalog family once, before the first frame; a font that fails stops the render
  * with its name instead of drawing the text in a fallback font nobody chose. */
 export const carregarFonte = (nome: string, peso?: number) => {
@@ -117,11 +118,15 @@ export const carregarFonte = (nome: string, peso?: number) => {
   if (pedidas.has(`${nome}:${w}`)) return;
   pedidas.add(`${nome}:${w}`);
   const h = delayRender(`fonte ${nome} ${w}`);
-  f.load()
+  carregando.push(f.load()
     .then((m) => (m as {loadFont: (s: string, o: object) => {waitUntilDone: () => Promise<unknown>}}).loadFont('normal', {weights: [w], subsets: f.subsets}).waitUntilDone())
     .then(() => continueRender(h))
-    .catch((err) => cancelRender(new Error(`a fonte ${nome} (${w}) não carregou: ${err}`)));
+    .catch((err) => cancelRender(new Error(`a fonte ${nome} (${w}) não carregou: ${err}`))));
 };
+
+/** Settles once every family asked for so far has loaded. Measure text only after it:
+ * measureText() keeps the first width it sees, and before the load that is the fallback font's. */
+export const fontesProntas = () => Promise.all(carregando).then(() => undefined);
 
 /** Every `estilo.fonte` in edit-data.json (effects, hook, numbers…): each family loads once. */
 export const carregarFontesUsadas = (dados: unknown) => {

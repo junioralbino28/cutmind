@@ -44,7 +44,7 @@ def test_imagem_visivel_vira_insert_e_a_escondida_fica_fora(projeto):
     _camadas(edit, [_img("i1", "midia/Print do repositório.png", 5, 3),
                     _img("i2", "midia/outro.jpg", 9, 2, oculto=True)])
     r = aplicar(edit)
-    assert r == {"inserts": 1, "faltando": []}
+    assert r == {"inserts": 1, "textos": 0, "faltando": [], "pendentes": [], "feitos": []}
     ins = _inserts(public)
     assert ins[0] == agente  # o do agente fica, no mesmo lugar
     assert ins[1] == {"src": "midia/camada-i1-1.png", "start": 5.0, "end": 8.0, "camada": "i1-1"}
@@ -67,5 +67,100 @@ def test_rodar_de_novo_nao_duplica_e_o_que_saiu_sai_do_video(projeto):
 def test_arquivo_que_sumiu_e_avisado(projeto):
     edit, public, _ = projeto
     _camadas(edit, [_img("i1", "midia/nao-existe.png", 5, 3)])
-    assert aplicar(edit) == {"inserts": 0, "faltando": ["midia/nao-existe.png"]}
+    r = aplicar(edit)
+    assert (r["inserts"], r["faltando"]) == (0, ["midia/nao-existe.png"])
     assert [i.get("camada") for i in _inserts(public)] == [None]
+
+
+def _txt(fid, *itens, oculto=False):
+    return {"id": fid, "tipo": "texto", "oculto": oculto, "travado": False,
+            "itens": [{"id": f"{fid}-{n}", "duracao": 2, **it} for n, it in enumerate(itens, 1)]}
+
+
+def _textos(public):
+    return json.loads((public / "edit-data.json").read_text(encoding="utf-8")).get("textos")
+
+
+@pytest.fixture
+def ferramentas(monkeypatch):
+    """Faz de conta o recorte e o rastreio: grava o arquivo pedido e anota a chamada."""
+    import camadas_edit_data as ced
+    chamadas = []
+
+    def falso(cmd):
+        chamadas.append(cmd)
+        saida = Path(cmd[cmd.index("-o") + 1])
+        if "face_track.py" in cmd[3]:
+            saida.write_text(json.dumps({"fps": 30, "points": [[0.5, 0.4]] * 10}), encoding="utf-8")
+        else:
+            saida.write_bytes(b"mov")
+        return True
+    monkeypatch.setattr(ced, "_rodar", falso)
+    return chamadas
+
+
+def test_texto_visivel_vai_para_o_edit_data_e_o_escondido_nao(projeto):
+    edit, public, _ = projeto
+    _camadas(edit, [_txt("t1", {"texto": "Olá\nmundo", "inicio": 2, "x": 300, "y": 500,
+                                "estilo": {"fonte": "Anton", "cor": "#FFE500"}, "curva": 40}),
+                    _txt("t2", {"texto": "escondido", "inicio": 4}, oculto=True)])
+    r = aplicar(edit)
+    assert (r["textos"], r["pendentes"], r["feitos"]) == (1, [], [])
+    assert _textos(public) == [{"id": "t1-1", "texto": "Olá\nmundo", "start": 2.0, "end": 4.0, "x": 300.0, "y": 500.0,
+                                "estilo": {"fonte": "Anton", "cor": "#ffe500"}, "curva": 40.0}]
+    # o template importa o rastreio: sem ninguém pedir, ele existe e fica neutro
+    assert json.loads((public / "rastreio.json").read_text(encoding="utf-8")) == {"neutral": True, "points": []}
+
+
+def test_projeto_sem_texto_nao_ganha_a_lista(projeto):
+    edit, public, _ = projeto
+    _camadas(edit, [_img("i1", "midia/outro.jpg", 9, 2)])
+    aplicar(edit)
+    assert _textos(public) is None
+
+
+def test_atras_da_pessoa_faz_o_recorte_da_janela_em_quadros(projeto, ferramentas):
+    edit, public, _ = projeto
+    (public / "cut.mp4").write_bytes(b"mp4")
+    _camadas(edit, [_txt("t1", {"texto": "atrás", "inicio": 1.01, "duracao": 2.0, "atras": True})])
+    r = aplicar(edit)
+    assert r["feitos"] == ["pessoa-t1-1-30-60.mov"] and r["pendentes"] == []
+    cmd = ferramentas[0]
+    assert cmd[cmd.index("--start") + 1] == "1.000000" and cmd[cmd.index("--duration") + 1] == "2.000000"
+    assert _textos(public)[0]["matte"] == "pessoa-t1-1-30-60.mov"
+    aplicar(edit)  # de novo: o recorte já existe, nada roda
+    assert len(ferramentas) == 1
+    # mudou a janela: o recorte velho sai e outro é feito
+    _camadas(edit, [_txt("t1", {"texto": "atrás", "inicio": 3, "duracao": 2.0, "atras": True})])
+    aplicar(edit)
+    assert sorted(p.name for p in public.glob("pessoa-*")) == ["pessoa-t1-1-90-60.mov"]
+    # escondido, guarda o recorte; excluído, o recorte sai
+    _camadas(edit, [_txt("t1", {"texto": "atrás", "inicio": 3, "duracao": 2.0, "atras": True}, oculto=True)])
+    aplicar(edit)
+    assert (public / "pessoa-t1-1-90-60.mov").exists() and _textos(public) == []
+    _camadas(edit, [])
+    aplicar(edit)
+    assert not list(public.glob("pessoa-*"))
+
+
+def test_sem_recorte_avisa_o_comando_e_o_texto_sai_na_frente(projeto):
+    edit, public, _ = projeto
+    (public / "cut.mp4").write_bytes(b"mp4")
+    _camadas(edit, [_txt("t1", {"texto": "atrás", "inicio": 1, "atras": True, "acompanhar": True})])
+    r = aplicar(edit, recortar=False)
+    assert len(r["pendentes"]) == 2 and "person_matte.py" in r["pendentes"][0] and "face_track.py" in r["pendentes"][1]
+    t = _textos(public)[0]
+    assert "matte" not in t and t["acompanhar"] is True
+
+
+def test_acompanhar_rastreia_o_rosto_quando_falta_ou_ficou_velho(projeto, ferramentas):
+    import os
+    edit, public, _ = projeto
+    cut = public / "cut.mp4"
+    cut.write_bytes(b"mp4")
+    _camadas(edit, [_txt("t1", {"texto": "segue", "inicio": 1, "acompanhar": True})])
+    assert aplicar(edit)["feitos"] == ["rastreio.json"]
+    assert aplicar(edit)["feitos"] == []  # rastreio novo: não refaz
+    os.utime(public / "rastreio.json", (cut.stat().st_mtime - 60,) * 2)  # o corte mudou depois do rastreio
+    assert aplicar(edit)["feitos"] == ["rastreio.json"]
+    assert [c[3].endswith("face_track.py") for c in ferramentas] == [True, True]

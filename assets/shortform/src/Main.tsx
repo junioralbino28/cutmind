@@ -37,6 +37,7 @@ import {ScatterCaptions} from './ScatterCaptions';
 import {SimpleCaptions, SIMPLE_VARIANTS} from './SimpleCaptions';
 import {spotFor, spotCentre, type Spot} from './captionPlace';
 import {CATALOGO, carregarFontesUsadas, familiaCss} from './fontes';
+import {CamadasTexto, type Texto} from './CamadasTexto';
 
 const {fontFamily} = loadFont('normal', {weights: ['400', '600', '900']});
 
@@ -104,6 +105,8 @@ export type EditData = {
   };
   inserts: Insert[];
   behind: Behind[];
+  // the text layers of the editor (CamadasTexto.tsx): written by camadas_edit_data.py, never by hand
+  textos?: Texto[];
   soundtrack: {enabled: boolean; file: string; volume: number};
 };
 
@@ -126,18 +129,11 @@ export const Sfx: React.FC<{src: string; volume?: number}> = ({src, volume = 0.0
 // children render inside the same transformed space. trimBefore + muted make a
 // windowed COPY of the base cut (scenes that redraw the picture): start it on the
 // window's own frame (window start - VIDEO_LAG) and keep it silent.
-export const DynamicVideo: React.FC<{src?: string; frameOffset?: number; transparent?: boolean; trimBefore?: number; muted?: boolean; children?: React.ReactNode}> = ({
-  src = 'cut.mp4',
-  frameOffset = 0,
-  transparent = false,
-  trimBefore,
-  muted,
-  children,
-}) => {
-  const frame = useCurrentFrame() + frameOffset;
-  const {width, height, fps} = useVideoConfig();
+// The camera at a GLOBAL frame: the picture is scaled by S and moved by (tx, ty).
+// A point (px, py) of cut.mp4 lands on screen at (tx + px·S, ty + py·S) — this is how
+// a text that follows the person (CamadasTexto.tsx) finds the face on screen.
+export const cameraAt = (frame: number, width: number, height: number, fps: number) => {
   const cam = D.camera;
-
   let S = 1;
   let tx = 0;
   let ty = 0;
@@ -163,6 +159,20 @@ export const DynamicVideo: React.FC<{src?: string; frameOffset?: number; transpa
     tx = clamp(tx, width - width * S, 0); // never reveal an edge
     ty = clamp(ty, height - height * S, 0);
   }
+  return {S, tx, ty};
+};
+
+export const DynamicVideo: React.FC<{src?: string; frameOffset?: number; transparent?: boolean; trimBefore?: number; muted?: boolean; children?: React.ReactNode}> = ({
+  src = 'cut.mp4',
+  frameOffset = 0,
+  transparent = false,
+  trimBefore,
+  muted,
+  children,
+}) => {
+  const frame = useCurrentFrame() + frameOffset;
+  const {width, height, fps} = useVideoConfig();
+  const {S, tx, ty} = cameraAt(frame, width, height, fps);
 
   return (
     <AbsoluteFill>
@@ -646,9 +656,13 @@ export const Main: React.FC = () => {
     <AbsoluteFill style={{backgroundColor: 'black'}}>
       {D.soundtrack.enabled ? <Soundtrack /> : null}
       <DynamicVideo />
+      {/* texts behind the person sit on the bare picture: the cut-out drawn back over them
+          is the same person the base shows, so it hides nothing else */}
+      <CamadasTexto atras />
       <BehindSubject />
       <Inserts />
       <CustomGraphics />
+      <CamadasTexto />
       {D.hook.enabled ? <HookIntro /> : null}
       {D.captions.enabled
         ? D.captions.style === 'stacked'

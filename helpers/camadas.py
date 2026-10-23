@@ -12,9 +12,18 @@ viram `inserts` no edit-data, `camadas_edit_data.py`) e o som do vídeo final
         "itens": [{"id": "a1-1", "arquivo": "midia/voz.m4a", "inicio": 0.0, "corte": 0.0,
                    "duracao": 12.3, "volume": 1.0, "melhorar": false}]},
        {"id": "i1", "tipo": "imagem", "oculto": false, "travado": false,
-        "itens": [{"id": "i1-1", "arquivo": "midia/print.jpg", "inicio": 5.0, "duracao": 3.0}]}]}
+        "itens": [{"id": "i1-1", "arquivo": "midia/print.jpg", "inicio": 5.0, "duracao": 3.0}]},
+       {"id": "t1", "tipo": "texto", "oculto": false, "travado": false,
+        "itens": [{"id": "t1-1", "texto": "Seu texto", "inicio": 2.0, "duracao": 3.0,
+                   "x": 540, "y": 960, "estilo": {"fonte": "Anton", "cor": "#ffffff"},
+                   "atras": false, "acompanhar": false, "curva": 0}]}]}
 
-Cada faixa é uma camada: áudio tem "mudo", imagem tem "oculto", as duas têm "travado".
+Cada faixa é uma camada: áudio tem "mudo", imagem e texto têm "oculto", todas têm "travado".
+Um texto tem o centro em `x`/`y` (px do quadro 1080x1920, podendo sair um pouco dele), quebra
+de linha com "\n" e o `estilo` do painel de Texto: `fonte` (uma família do catálogo de
+fontes), `peso`, `cor` e `corContorno` (#rrggbb), `tamanho` (× 96 px) e `contorno` (px). Com
+`atras` ele fica atrás da pessoa (o agente faz o recorte da janela), com `acompanhar` ele anda
+junto com ela (o rastreio do rosto), e `curva` (−100 a 100) o dobra num arco.
 `corte` é de onde o arquivo de áudio começa a tocar; `volume` vai de 0 a 2. Um áudio que
 veio da biblioteca de trilhas leva `"trilha": "<id do catálogo>"` (pacotes.py): o som
 final dá a ele a entrada e a saída lentas de música.
@@ -32,8 +41,11 @@ MIDIA_DIR = "midia"
 MAX_FAIXAS = 40
 MAX_ITENS = 200
 MAX_T = 6 * 3600.0
+MAX_TEXTO = 400
 
 _ID = re.compile(r"[A-Za-z0-9_-]{1,40}")
+_COR = re.compile(r"#[0-9a-fA-F]{6}")
+_FONTE = re.compile(r"[A-Za-z0-9 ]{1,60}")
 _ARQ = re.compile(r"midia/[^/\\]+")
 
 
@@ -74,6 +86,53 @@ def _arquivo(v: object, tipo: str) -> str:
     return v
 
 
+def _cor(v: object, nome: str) -> str:
+    if not isinstance(v, str) or not _COR.fullmatch(v):
+        raise CamadasInvalidas(f"{nome}: cor no formato #rrggbb")
+    return v.lower()
+
+
+def _estilo_texto(e: object) -> dict:
+    """O que o painel de Texto escolheu; o que não veio fica com o padrão do texto."""
+    if e is None:
+        return {}
+    if not isinstance(e, dict):
+        raise CamadasInvalidas("estilo não é um objeto")
+    out: dict = {}
+    if e.get("fonte") is not None:
+        if not isinstance(e["fonte"], str) or not _FONTE.fullmatch(e["fonte"]):
+            raise CamadasInvalidas("fonte: o nome de uma família, só letras, números e espaço")
+        out["fonte"] = e["fonte"]
+    if e.get("peso") is not None:
+        out["peso"] = int(_num(e["peso"], "peso", 100, 900))
+    for k in ("cor", "corContorno"):
+        if e.get(k) is not None:
+            out[k] = _cor(e[k], k)
+    if e.get("tamanho") is not None:
+        out["tamanho"] = _num(e["tamanho"], "tamanho", 0.2, 5.0)
+    if e.get("contorno") is not None:
+        out["contorno"] = _num(e["contorno"], "contorno", 0.0, 60.0)
+    return out
+
+
+def _item_texto(it: dict, iid: str) -> dict:
+    t = it.get("texto")
+    if not isinstance(t, str):
+        raise CamadasInvalidas("texto não é um texto")
+    t = t.replace("\r\n", "\n").replace("\r", "\n")
+    if not t.strip() or len(t) > MAX_TEXTO or any(ord(ch) < 32 and ch != "\n" for ch in t):
+        raise CamadasInvalidas(f"texto: de 1 a {MAX_TEXTO} letras, sem caractere de controle")
+    return {"id": iid, "texto": t,
+            "inicio": _num(it.get("inicio", 0), "inicio"),
+            "duracao": _num(it.get("duracao", 0), "duracao", 0.05),
+            "x": _num(it.get("x", 540), "x", -1080, 2160),
+            "y": _num(it.get("y", 960), "y", -1920, 3840),
+            "estilo": _estilo_texto(it.get("estilo")),
+            "atras": bool(it.get("atras", False)),
+            "acompanhar": bool(it.get("acompanhar", False)),
+            "curva": _num(it.get("curva", 0), "curva", -100, 100)}
+
+
 def normalize(obj: object) -> dict:
     """Confere e limpa o que veio do editor. Levanta CamadasInvalidas com o motivo."""
     if not isinstance(obj, dict):
@@ -89,8 +148,8 @@ def normalize(obj: object) -> dict:
         if not isinstance(f, dict):
             raise CamadasInvalidas("faixa não é um objeto")
         tipo = f.get("tipo")
-        if tipo not in ("audio", "imagem"):
-            raise CamadasInvalidas("tipo da faixa: audio ou imagem")
+        if tipo not in ("audio", "imagem", "texto"):
+            raise CamadasInvalidas("tipo da faixa: audio, imagem ou texto")
         fid = _id(f.get("id"), "id da faixa")
         if fid in ids:
             raise CamadasInvalidas(f"id repetido: {fid}")
@@ -109,6 +168,9 @@ def normalize(obj: object) -> dict:
             if iid in ids:
                 raise CamadasInvalidas(f"id repetido: {iid}")
             ids.add(iid)
+            if tipo == "texto":
+                itens.append(_item_texto(it, iid))
+                continue
             item = {"id": iid, "arquivo": _arquivo(it.get("arquivo"), tipo),
                     "inicio": _num(it.get("inicio", 0), "inicio"),
                     "duracao": _num(it.get("duracao", 0), "duracao", 0.05)}
@@ -150,3 +212,10 @@ def aparecem(camadas: dict) -> list[dict]:
     """Os itens de imagem que entram no vídeo: de faixa que não está escondida."""
     return [{**it, "faixa": f["id"]} for f in camadas["faixas"]
             if f["tipo"] == "imagem" and not f["oculto"] for it in f["itens"]]
+
+
+def textos(camadas: dict) -> list[dict]:
+    """Os textos que entram no vídeo, de faixa que não está escondida, na ordem das faixas:
+    a faixa que vem depois fica por cima, como no editor."""
+    return [{**it, "faixa": f["id"]} for f in camadas["faixas"]
+            if f["tipo"] == "texto" and not f["oculto"] for it in f["itens"]]

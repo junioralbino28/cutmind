@@ -88,6 +88,14 @@ Then copy `cut.mp4` into `public/` and generate the data files below.
   "splitInserts": [                  // STYLE "tela dividida" — see below
     {"src": "brand/logo.jpg", "start": 11.64, "end": 14.73, "fit": "cover", "bandH": 750}
   ],
+  "textos": [                        // the editor's TEXT LAYERS — written by camadas_edit_data.py, never by hand
+    {"id": "t1-1", "texto": "Linha 1\nLinha 2", "start": 4.5, "end": 7.5,
+     "x": 540, "y": 520,             // the block's CENTRE, frame px
+     "estilo": {"fonte": "Anton", "peso": 400, "cor": "#ffffff", "tamanho": 1.2, "contorno": 8, "corContorno": "#000000"},
+     "curva": 40,                    // optional, -100..100: the line bends into an arc
+     "matte": "pessoa-t1-1-135-90.mov", // optional: behind the person (the helper makes the cut-out)
+     "acompanhar": true}             // optional: follows the face in public/rastreio.json
+  ],
   "soundtrack": {"enabled": false, "file": "trilha.mp3", "volume": 0.0445}
   // Phase 3 flips soundtrack.enabled to true once trilha.mp3 exists
 }
@@ -116,6 +124,16 @@ Then copy `cut.mp4` into `public/` and generate the data files below.
   style, `tamanho`: a multiplier, `contorno` px, `corContorno`). Without them the
   hook renders exactly as before.
 - **Inserts**: rounded card + shadow, upper zone, slow Ken-Burns, whoosh on entry.
+- **Text layers** (`src/CamadasTexto.tsx`): what the user typed on the timeline in the
+  editor. `helpers/camadas_edit_data.py <edit>` writes `textos[]` from `camadas.json` and,
+  when a text asks for it, makes the person's cut-out for that window
+  (`public/pessoa-<id>-<first frame>-<frames>.mov`, person_matte.py) and the face track
+  (`public/rastreio.json`, face_track.py — its own file, the camera's `track.json` is not
+  touched). Defaults: white Poppins at `CATALOGO` weight, `tamanho` 1 = 96 px, no outline,
+  a soft shadow. A text behind the person sits on the bare picture: under a full-frame
+  effect (split screen, a scene that redraws the frame) it is covered, like any layer
+  under it. Follow uses the base camera, so inside a split screen it moves by the base
+  framing's numbers, not the band's.
 - **Behind-the-subject**: elements top-anchored; matte gets the same camera via
   `frameOffset`; ProRes 4444 + `<OffthreadVideo transparent>`.
 - **Audio**: whoosh ~0.09 / pop ~0.12 / music ~0.0445 (−15 dB from the former
