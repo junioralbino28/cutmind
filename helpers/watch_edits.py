@@ -156,10 +156,12 @@ def camadas_resumo(c: dict) -> str:
     fx = c.get("faixas") or []
     n_img = sum(len(f.get("itens") or []) for f in fx if f.get("tipo") == "imagem")
     n_aud = sum(len(f.get("itens") or []) for f in fx if f.get("tipo") == "audio")
-    if not n_img and not n_aud:
+    n_txt = sum(len(f.get("itens") or []) for f in fx if f.get("tipo") == "texto")
+    if not n_img and not n_aud and not n_txt:
         return "nenhuma"
     return ", ".join(x for x in (n_img and _plural(n_img, "imagem", "imagens"),
-                                 n_aud and _plural(n_aud, "áudio", "áudios")) if x)
+                                 n_aud and _plural(n_aud, "áudio", "áudios"),
+                                 n_txt and _plural(n_txt, "texto", "textos")) if x)
 
 
 def camadas_linhas(c: dict) -> list[str]:
@@ -180,12 +182,25 @@ def camadas_linhas(c: dict) -> list[str]:
                     bits.append("silenciada: fica fora")
                 rotulo = f'trilha "{it["trilha"]}" (biblioteca)' if it.get("trilha") else f'áudio "{nome}"'
                 out.append(f'  · {rotulo} de {fmt(ini)} a {fmt(ini + dur)}, {", ".join(bits)}')
+            elif f.get("tipo") == "texto":
+                bits = []
+                if it.get("atras"):
+                    bits.append("atrás da pessoa")
+                if it.get("acompanhar"):
+                    bits.append("acompanha a pessoa")
+                if it.get("curva"):
+                    bits.append(f"curva {float(it['curva']):g}")
+                if f.get("oculto"):
+                    bits.append("escondido: fica fora")
+                linha = " / ".join(str(it.get("texto", "")).split("\n"))
+                out.append(f'  · texto "{linha}" de {fmt(ini)} a {fmt(ini + dur)}' + (f", {', '.join(bits)}" if bits else ""))
             else:
                 fora = ", escondida: fica fora" if f.get("oculto") else ""
                 out.append(f'  · imagem "{nome}" de {fmt(ini)} a {fmt(ini + dur)}{fora}')
     if (c.get("video") or {}).get("mudo"):
         out.append("  · som do vídeo desligado: a voz do corte fica fora do vídeo final")
-    out.append("  Imagens → camadas_edit_data.py (inserts[]); som → mixar_final.py "
+    out.append("  Imagens e textos → camadas_edit_data.py (inserts[] e textos[]; ele faz o recorte da "
+               "pessoa e o rastreio do rosto que faltarem) e renderizar; som → mixar_final.py "
                "(references/shortform.md, \"Camadas\").")
     return out
 

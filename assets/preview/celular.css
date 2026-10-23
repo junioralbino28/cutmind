@@ -142,6 +142,25 @@ button { font-family: inherit; cursor: pointer; }
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
   z-index: 2; pointer-events: none;
 }
+/* camadas de texto, no lugar e no tamanho do vídeo final (src/CamadasTexto.tsx). A caixa é o
+   container: 1cqw = 1% da largura da prévia, a mesma conta dos 1080 px do quadro. Só o texto
+   pega o toque; o resto do vídeo continua tocando e pausando */
+.ov-textos { position: absolute; inset: 0; container-type: size; overflow: hidden; z-index: 3; pointer-events: none; }
+.ov-tx-w { position: absolute; inset: 0; pointer-events: none; filter: drop-shadow(0 0.37cqw 1.3cqw rgba(0, 0, 0, 0.45)); }
+.ov-tx {
+  position: absolute; translate: -50% -50%;
+  white-space: pre; text-align: center; line-height: 1.1;
+  pointer-events: auto; cursor: grab; touch-action: none; user-select: none;
+}
+.ov-tx.sel { outline: 1.5px dashed rgba(255, 255, 255, 0.9); outline-offset: 0.6cqw; }
+.ov-tx-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.ov-tx-svg text, .ov-tx-caixa { pointer-events: auto; cursor: grab; touch-action: none; user-select: none; }
+.ov-tx-caixa { fill: transparent; stroke: rgba(255, 255, 255, 0.9); stroke-width: 1.5px; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
+/* no Final, o escolhido que o vídeo já mostra: só a caixa, para pegar e arrastar */
+.ov-tx-w.fantasma { filter: none; }
+.ov-tx-w.fantasma .ov-tx { color: transparent !important; -webkit-text-stroke-color: transparent !important; }
+.ov-tx-w.fantasma text { fill: transparent; stroke: transparent; }
+.ov-tx-w.trav .ov-tx, .ov-tx-w.trav text { pointer-events: none; cursor: default; }
 /* efeito do agente escolhido: a moldura do bloco que se arrasta, no lugar e no tamanho dele
    no quadro 1080x1920 (o centro em left/top). Acima do toque de play, que fica por baixo */
 .ov-cena {
@@ -450,6 +469,8 @@ button { font-family: inherit; cursor: pointer; }
 .chip.layer { pointer-events: auto; gap: 5px; padding: 0 6px 0 4px; }
 .chip.layer.aud { background: #1c2925; box-shadow: inset 2px 0 0 #63c7a6; }
 .chip.layer.img { background: #25212f; box-shadow: inset 2px 0 0 #b49cf0; }
+.chip.layer.txt { background: #2c2416; box-shadow: inset 2px 0 0 #f2b33d; }
+.chip.layer.txt .l-ico { color: #f2b33d; }
 .chip.layer .l-thumb { height: calc(100% - 6px); aspect-ratio: 1; flex: none; object-fit: cover; border-radius: 2px; pointer-events: none; }
 .chip.layer .l-ico { flex: none; color: #63c7a6; }
 .chip.layer .l-ico svg, .chip.layer .l-tag svg { width: 13px; height: 13px; display: block; }

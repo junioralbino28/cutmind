@@ -78,6 +78,23 @@ def test_aviso_conta_as_camadas(tmp_path):
     assert "camadas_edit_data.py" in aviso and "mixar_final.py" in aviso
 
 
+def test_aviso_conta_os_textos(tmp_path):
+    camadas = {"versao": 1, "video": {"mudo": False}, "faixas": [
+        {"id": "t1", "tipo": "texto", "oculto": False, "travado": False,
+         "itens": [{"id": "t1-1", "texto": "Linha 1\nLinha 2", "inicio": 1, "duracao": 2, "x": 540, "y": 960,
+                    "estilo": {}, "atras": True, "acompanhar": True, "curva": -30}]},
+        {"id": "t2", "tipo": "texto", "oculto": True, "travado": False,
+         "itens": [{"id": "t2-1", "texto": "fora", "inicio": 4, "duracao": 1, "x": 540, "y": 960,
+                    "estilo": {}, "atras": False, "acompanhar": False, "curva": 0}]}]}
+    p = tmp_path / "preview_edits.json"
+    p.write_text(json.dumps({"type": "timeline-edits", "camadas": camadas}, ensure_ascii=False), encoding="utf-8")
+    aviso = digest(p)
+    assert "camadas: 2 textos" in aviso
+    assert '"Linha 1 / Linha 2"' in aviso and "atrás da pessoa" in aviso and "acompanha a pessoa" in aviso
+    assert "curva -30" in aviso and "escondido: fica fora" in aviso
+    assert "textos[]" in aviso
+
+
 def test_corte_e_camadas_no_mesmo_salvar_pede_remapear(tmp_path):
     """Os tempos das camadas são do corte que estava na tela: se o mesmo Salvar refaz o
     corte, o agente tem de levar as camadas para o corte novo antes de montar."""

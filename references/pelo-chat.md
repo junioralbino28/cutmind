@@ -70,10 +70,11 @@ A re-cut moves the takes: map every effect time to the new cut before re-running
 drop (and tell) an effect whose moment was cut out. Proven from hand-written files by
 `tests/test_efeitos.py` (the schema) and `tests/test_efeitos_render.py` (the render).
 
-## Images, audio and soundtracks (`camadas.json`)
+## Images, audio, text and soundtracks (`camadas.json`)
 
 Schema in `helpers/camadas.py` (validate with `camadas.normalize`); files live in
-`<edit>/midia/`, times in cut seconds. Images → `camadas_edit_data.py <edit>`; sound →
+`<edit>/midia/`, times in cut seconds. Images and texts → `camadas_edit_data.py <edit>`
+(it also makes the person's cut-out and the face track a text asks for); sound →
 `mixar_final.py <edit> --render <render>` (`references/shortform.md`, "Layers from the
 editor").
 
@@ -84,12 +85,18 @@ editor").
 | `trilhas` | "põe uma trilha animada" | `pacotes.py listar --tipo trilha --busca <mood>`, then `pacotes.py camada <edit> <id> [--inicio s]` (it writes the layer, marked `trilha`, at 15%) |
 | `volume` (on a layer) | "a música mais baixa" | the item's `volume` |
 | `melhorar` | "limpa o ruído desse áudio" | the item's `melhorar: true` (noise reduction + voice chain in `mixar_final.py`) |
+| `texto` | "escreve PROMOÇÃO no meio da tela dos 5 aos 8 s" | a new `tipo: "texto"` track with `{"texto", "inicio", "duracao", "x": 540, "y": 960}` (the CENTRE, frame px; `\n` breaks the line) |
+| `texto-editar` | "o texto em Anton amarelo, maior, com contorno preto", "curva o texto pra cima" | the item's `estilo`: `fonte` (a family of `assets/preview/fontes.js`, with its `peso`), `cor`, `tamanho` (× 96 px), `contorno` (px), `corContorno`; `curva` −100 to 100; `x`/`y` to move it |
+| `texto-atras` | "põe o texto atrás de mim" | the item's `atras: true`; `camadas_edit_data.py` makes the cut-out of that window (`person_matte.py`, ~30 s per 3 s on CPU) |
+| `texto-segue` | "o texto acompanhando meu corpo" | the item's `acompanhar: true`; `camadas_edit_data.py` tracks the face (`face_track.py` → `public/rastreio.json`) |
+| `duplicar` (on a layer) | "repete esse texto embaixo" | copy the item into a NEW track (new ids), same time; change what differs |
 | `excluir` (on a layer) | "tira a imagem" | drop the item (and the track when empty) |
 | track header (mute, hide, lock) | "sem o som do vídeo nessa parte" | `mudo` / `oculto` / `travado` on the track; `video.mudo` for the video's own sound |
 | `imp-video` | "usa também esse outro vídeo" | it is a new SOURCE, not a layer: copy it next to the others in the videos folder, transcribe, and cut it into `edl.json` like any take |
 
 Files that live only on the user's phone reach you through the editor's import; from the
-chat you need a path on this computer. Proven by `tests/test_camadas.py`,
+chat you need a path on this computer. A text behind the person sits on the bare picture:
+under a full-frame effect (split screen, a scene) it is covered. Proven by `tests/test_camadas.py`,
 `tests/test_camadas_edit_data.py`, `tests/test_mixar_final.py`,
 `tests/test_melhorar_audio.py` and `tests/test_pacotes.py` (`pacotes.py camada`).
 

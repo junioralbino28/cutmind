@@ -114,6 +114,10 @@ const ICON = {
   lupa: sv('<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5M8 10.5h5M10.5 8v5"/>'),
   semZoom: sv('<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5M8 10.5h5"/>'),
   texto: sv('<path d="M5 7V5h14v2M12 5v14M9.5 19h5"/>'),
+  // texto atrás da pessoa: a silhueta na frente da linha do texto
+  pessoa: sv('<path d="M3 8.5h18" stroke-dasharray="2.2 2"/><circle cx="12" cy="9" r="3.1"/><path d="M5.8 20.5c.7-3.6 3.2-5.6 6.2-5.6s5.5 2 6.2 5.6"/>'),
+  // texto que acompanha a pessoa: a mira
+  alvo: sv('<circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/>'),
 };
 
 /* ---------- catálogo de estilos e amostras: estilos.js ----------
@@ -803,6 +807,7 @@ async function applyState(data) {
   S.fxTeste = null;
   drawCenaBox();
   await loadCamadas();
+  await loadRastreio();
   await loadEfeitos();
   if (hasVideo) {
     setVideoSrc(S.view);
@@ -901,7 +906,9 @@ function trackPlan() {
     { id: 'ins', h: 18, show: fin && hasIns },
     // os efeitos que o agente pôs (cenas[]): cada um liga, desliga, troca o texto e tem o bloco arrastado no vídeo
     { id: 'cenas', h: 20, show: fin && S.cenasDraft.length > 0 },
-    ...fx.filter((f) => f.tipo === 'imagem').reverse().map(layer), // a mais nova fica no alto, como no editor do PC
+    // os textos ficam acima das imagens, como no vídeo final; a mais nova fica no alto, como no editor do PC
+    ...fx.filter((f) => f.tipo === 'texto').reverse().map(layer),
+    ...fx.filter((f) => f.tipo === 'imagem').reverse().map(layer),
     // filtros, transições e ajustes valem para o corte: no Final já estão no vídeo. O ajuste
     // tem faixa própria, como no CapCut: na mesma tomada de um filtro, os dois ficariam um em cima do outro
     { id: 'fx', h: 22, show: !fin && !S.posMode && S.efeitos.itens.some((it) => it.tipo !== 'ajuste') },
@@ -1671,6 +1678,13 @@ document.addEventListener('keydown', (e) => {
   }
   if (S.styling || S.posMode) return;
   const kl = k.toLowerCase();
+  // texto escolhido na tela: as setas o empurram (2 px do quadro; Shift, 10)
+  if (k.startsWith('Arrow') && !ctrl && textoSelNaTela()) {
+    e.preventDefault();
+    const d = e.shiftKey ? 10 : 2;
+    textoEmpurra(k === 'ArrowLeft' ? -d : k === 'ArrowRight' ? d : 0, k === 'ArrowUp' ? -d : k === 'ArrowDown' ? d : 0);
+    return;
+  }
   // efeito escolhido com a moldura na tela: as setas empurram o bloco (2 px do quadro; Shift, 10)
   if (k.startsWith('Arrow') && !ctrl && cenaNaTela()) {
     e.preventDefault();
@@ -1696,7 +1710,8 @@ document.addEventListener('keydown', (e) => {
     if (S.selected >= 0) splitSelected();
   } else if (ctrl && kl === 'd') { // no navegador seria "favoritar"
     e.preventDefault();
-    if (S.selected >= 0 && S.view === 'corte') duplicateSelected();
+    if (S.layerSel) duplicateLayerSel();
+    else if (S.selected >= 0 && S.view === 'corte') duplicateSelected();
   }
 });
 $('btnHelp').addEventListener('click', () => mostraAjuda(true));
@@ -1756,7 +1771,9 @@ function followDraft() {
 // ---------- barra de ferramentas ----------
 /* dica ao passar o mouse: o nome da ferramenta (quando o rótulo é um valor, como "100%") e o atalho */
 const ATALHO = { dividir: 'Ctrl+B', duplicar: 'Ctrl+D', excluir: 'Delete', marcar: 'M', voltar: 'Esc' };
-const DICA = { volume: 'Volume', velocidade: 'Velocidade e curva', intensidade: 'Intensidade do filtro' };
+const DICA = { volume: 'Volume', velocidade: 'Velocidade e curva', intensidade: 'Intensidade do filtro',
+  texto: 'Texto novo na agulha', 'texto-editar': 'Texto, fonte, cor, tamanho, contorno, curva e altura',
+  'texto-atras': 'No vídeo final, o texto passa atrás da pessoa', 'texto-segue': 'No vídeo final, o texto anda junto com a pessoa' };
 function renderToolbar() {
   const tb = $('toolbar');
   const ctx = $('ctxbar');
@@ -1796,6 +1813,7 @@ function renderToolbar() {
   tool(tb, 'importar', 'Importar', { icon: ICON.mais });
   tool(tb, 'cortar', 'Cortar', { icon: ICON.corte, disabled: !hasVideo });
   tool(tb, 'audio', 'Áudio', { disabled: !hasVideo });
+  tool(tb, 'texto', 'Texto', { disabled: !hasVideo });
   tool(tb, 'efeitos', 'Efeitos', { disabled: !hasVideo });
   tool(tb, 'legenda', 'Legenda', { disabled: !hasVideo || !canStyle() });
   tool(tb, 'estilo', 'Estilo', { disabled: !hasVideo || !canStyle() });
@@ -1858,11 +1876,17 @@ function renderToolbar() {
   if (lsel) { // um item de camada escolhido
     const aud = lsel.f.tipo === 'audio';
     tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
+    if (lsel.f.tipo === 'texto') {
+      tool(ctx, 'texto-editar', 'Editar', { icon: ICON.texto });
+      tool(ctx, 'texto-atras', 'Atrás da pessoa', { icon: ICON.pessoa, on: lsel.it.atras });
+      tool(ctx, 'texto-segue', 'Acompanhar', { icon: ICON.alvo, on: lsel.it.acompanhar });
+    }
     if (aud) {
       tool(ctx, 'volume', `${Math.round(lsel.it.volume * 100)}%`);
       // Melhorar é a cadeia de voz (tira ruído): numa música da biblioteca só estragaria
       if (!lsel.it.trilha) tool(ctx, 'melhorar', 'Melhorar', { on: lsel.it.melhorar });
     }
+    tool(ctx, 'duplicar', 'Duplicar');
     tool(ctx, 'excluir', 'Excluir', { icon: ICON.remover });
     return;
   }
@@ -1904,7 +1928,11 @@ document.addEventListener('click', (e) => {
     case 'do-celular': S.audioMenu = false; renderToolbar(); $('fileAudio').click(); break;
     case 'voltar': soltaEscolha(); break;
     case 'dividir': splitSelected(); break;
-    case 'duplicar': duplicateSelected(); break;
+    case 'duplicar': if (S.layerSel) duplicateLayerSel(); else duplicateSelected(); break;
+    case 'texto': addTexto(); break;
+    case 'texto-editar': openTextoCamada(false); break;
+    case 'texto-atras': textoLiga('atras'); break;
+    case 'texto-segue': textoLiga('acompanhar'); break;
     case 'excluir':
       if (S.layerSel) deleteLayerSel();
       else if (S.fxSel) deleteFxSel();
@@ -2924,7 +2952,7 @@ $('btnSave').addEventListener('click', async () => {
   if (dqs.length) payload.editData.destaques = dqs.map((c) => ({ alvo: c.tipo, ...(c.tipo === 'numero' ? { ref: c.ref } : {}), ...cenaValor(c) }));
   // zoom: a lista inteira, uma por tomada (o template usa zooms[i] quando há uma para cada)
   if (comZoom) payload.editData.camera = { zooms: S.zoomDraft.map((z) => +z.toFixed(3)), mudou: S.zoomDraft.map((z, i) => i).filter((i) => S.zoomDraft[i] !== S.zoomOrig[i]) };
-  if (camadasDirty()) payload.camadas = S.camadas;
+  if (camadasDirty()) payload.camadas = camadasParaSalvar();
   const comEfeitos = efeitosDirty();
   if (comEfeitos) payload.efeitos = S.efeitos;
   if (S.notes.length) {
@@ -3002,6 +3030,7 @@ async function loadCamadas() {
   } catch (e) { /* ainda não existe */ }
   S.camadas = c && Array.isArray(c.faixas) ? { versao: 1, video: { mudo: !!(c.video && c.video.mudo) }, faixas: c.faixas } : camVazio();
   S.camadasBase = camSig();
+  if (S.camadas.faixas.some((f) => f.tipo === 'texto')) CutMindFontes.carregarTodas(); // os textos aparecem com a fonte de verdade
   applyMute();
   // trilha da biblioteca aparece pelo nome do catálogo, não pelo nome do arquivo
   if (!S.trilhas && S.camadas.faixas.some((f) => f.itens.some((it) => it.trilha))) loadTrilhas().then(renderTimeline);
@@ -3067,14 +3096,26 @@ function trackHead(track, f) {
 }
 function renderLayerTrack(track, lane, f) {
   track.classList.toggle('mudo', f.tipo === 'audio' && f.mudo);
-  track.classList.toggle('oculto', f.tipo === 'imagem' && f.oculto);
+  track.classList.toggle('oculto', f.tipo !== 'audio' && f.oculto);
   track.classList.toggle('travado', f.travado);
   for (const it of f.itens) {
     const a = renderedToDraft(it.inicio), b = renderedToDraft(it.inicio + it.duracao);
-    const chip = el('div', `chip layer ${f.tipo === 'audio' ? 'aud' : 'img'}${it.trilha ? ' mus' : ''}`, lane);
+    const chip = el('div', `chip layer ${f.tipo === 'audio' ? 'aud' : f.tipo === 'texto' ? 'txt' : 'img'}${it.trilha ? ' mus' : ''}`, lane);
     chip.dataset.id = it.id;
     chip.style.left = `${a * S.pps}px`;
     chip.style.width = `${Math.max((b - a) * S.pps, 8)}px`;
+    if (f.tipo === 'texto') { // a 1ª linha do texto, e as marcas de atrás e acompanhar
+      el('span', 'l-ico', chip).innerHTML = ICON.texto;
+      el('span', 'l-name', chip).textContent = String(it.texto).split('\n')[0].slice(0, 60) || 'Texto';
+      if (it.atras) el('span', 'l-tag', chip).innerHTML = ICON.pessoa;
+      if (it.acompanhar) el('span', 'l-tag', chip).innerHTML = ICON.alvo;
+      if (it.id === S.layerSel) {
+        chip.classList.add('sel');
+        el('div', 'lh l', chip).dataset.side = 'l';
+        el('div', 'lh r', chip).dataset.side = 'r';
+      }
+      continue;
+    }
     if (f.tipo === 'imagem') {
       const im = el('img', 'l-thumb', chip);
       im.src = `/media/${it.arquivo}`;
@@ -3103,6 +3144,13 @@ function tapLayer(id) {
   S.selected = -1;
   S.insSel = -1;
   S.cenaSel = -1; S.zoomSel = -1; drawCenaBox();
+  // um texto escolhido com a agulha fora dele: ela vai para dentro, e o texto aparece pronto para arrastar
+  if (S.layerSel && hit.f.tipo === 'texto') {
+    const rt = draftToRendered(S.t), it = hit.it;
+    if (!(rt >= it.inicio && rt < it.inicio + it.duracao)) {
+      video.pause(); S.t = clampT(renderedToDraft(it.inicio + Math.min(0.5, it.duracao / 2))); positionTimeline(); preciseSeek();
+    }
+  }
   renderTimeline();
   renderToolbar();
 }
@@ -3605,7 +3653,8 @@ $('ovCena').addEventListener('pointercancel', fimCenaDrag);
  * vidro, o brilho e a perspectiva só aparecem quando o agente refaz o trecho). Pronto guarda um
  * passo do desfazer; Cancelar volta ao que estava quando o painel abriu. */
 const CORES_TEXTO = ['#ffffff', '#000000', '#ffe500', '#e8ff5a', '#c6ff3d', '#34e3c0', '#2f6bff', '#7a3cff', '#ff2d55', '#ff8a3d', '#b0101b'];
-const painel = { c: null, antes: null, valor: null, cat: null };
+// `c`: o efeito, gancho ou número aberto; `camada`: o id da camada de texto aberta (um ou outro)
+const painel = { c: null, camada: null, antes: null, valor: null, cat: null };
 function campoTexto(box, rotulo) {
   const sec = el('div', 'tx-sec', box);
   el('div', 'tx-rot', sec).textContent = rotulo;
@@ -3650,10 +3699,41 @@ function textoMuda(fn) {
   }
 }
 const mudaEstilo = (k, v) => textoMuda((c) => { c.estilo = { ...(c.estilo || {}), [k]: v }; });
+// a grade de fontes por aba, aberta na aba da fonte de agora (Em alta, se ela está lá)
+function fonteGrade(box, atual, escolhe) {
+  const sec = campoTexto(box, 'Fonte');
+  const abas = el('div', 'tx-abas', sec);
+  const grade = el('div', 'tx-fontes', sec);
+  const f0 = CutMindFontes.FONTES.find((f) => f.familia === atual);
+  painel.cat = f0 ? (f0.alta ? 'alta' : f0.cat) : painel.cat || 'alta';
+  let escolhida = atual;
+  const mostra = () => {
+    grade.innerHTML = '';
+    for (const a of abas.children) a.classList.toggle('on', a.dataset.cat === painel.cat);
+    for (const f of CutMindFontes.daAba(painel.cat)) {
+      const b = el('button', `tx-fonte${f.familia === escolhida ? ' on' : ''}`, grade);
+      b.type = 'button';
+      b.textContent = f.familia;
+      b.style.fontFamily = `"${f.familia}"`;
+      b.style.fontWeight = f.peso;
+      b.addEventListener('click', () => {
+        escolhida = f.familia;
+        escolhe(f);
+        for (const y of grade.children) y.classList.toggle('on', y === b);
+      });
+    }
+  };
+  for (const [id, nome] of CutMindFontes.CATEGORIAS) {
+    const a = el('button', 'tx-aba', abas);
+    a.type = 'button'; a.dataset.cat = id; a.textContent = nome;
+    a.addEventListener('click', () => { painel.cat = id; mostra(); });
+  }
+  mostra();
+}
 function openCenaTexto() {
   const c = alvoSel();
   if (!c) return;
-  painel.c = c; painel.antes = snap(); painel.valor = cenaValor(c);
+  painel.c = c; painel.camada = null; painel.antes = snap(); painel.valor = cenaValor(c);
   const d = CENA_ESTILO[c.tipo];
   const pode = (k) => !!d && (d.so ? d.so.includes(k) : !(d.sem || []).includes(k));
   if (d && pode('fonte')) CutMindFontes.carregarTodas();
@@ -3678,35 +3758,7 @@ function openCenaTexto() {
     }));
   }
   const e = estiloEfetivo(c);
-  if (e && pode('fonte')) {
-    const sec = campoTexto(box, 'Fonte');
-    const abas = el('div', 'tx-abas', sec);
-    const grade = el('div', 'tx-fontes', sec);
-    const atual = CutMindFontes.FONTES.find((f) => f.familia === e.fonte);
-    // abre na aba da fonte de agora (Em alta, se ela está lá)
-    painel.cat = atual ? (atual.alta ? 'alta' : atual.cat) : painel.cat || 'alta';
-    const mostra = () => {
-      grade.innerHTML = '';
-      for (const a of abas.children) a.classList.toggle('on', a.dataset.cat === painel.cat);
-      for (const f of CutMindFontes.daAba(painel.cat)) {
-        const b = el('button', `tx-fonte${f.familia === estiloEfetivo(c).fonte ? ' on' : ''}`, grade);
-        b.type = 'button';
-        b.textContent = f.familia;
-        b.style.fontFamily = `"${f.familia}"`;
-        b.style.fontWeight = f.peso;
-        b.addEventListener('click', () => {
-          textoMuda((x) => { x.estilo = { ...(x.estilo || {}), fonte: f.familia, peso: f.peso }; });
-          for (const y of grade.children) y.classList.toggle('on', y === b);
-        });
-      }
-    };
-    for (const [id, nome] of CutMindFontes.CATEGORIAS) {
-      const a = el('button', 'tx-aba', abas);
-      a.type = 'button'; a.dataset.cat = id; a.textContent = nome;
-      a.addEventListener('click', () => { painel.cat = id; mostra(); });
-    }
-    mostra();
-  }
+  if (e && pode('fonte')) fonteGrade(box, e.fonte, (f) => textoMuda((x) => { x.estilo = { ...(x.estilo || {}), fonte: f.familia, peso: f.peso }; }));
   if (e && pode('cor')) paletaCores(campoTexto(box, 'Cor'), e.cor, S.style && S.style.accent, (cor) => mudaEstilo('cor', cor));
   if (e && pode('tamanho')) {
     regua(campoTexto(box, 'Tamanho'), 40, 200, 5, Math.round(e.tamanho * 100), (v) => `${v}%`, (v) => mudaEstilo('tamanho', +(v / 100).toFixed(2)));
@@ -3729,6 +3781,7 @@ function openCenaTexto() {
 }
 function fechaTexto(guarda) {
   showSheet($('cenaSheet'), false);
+  if (painel.camada) { fechaTextoCamada(guarda); return; }
   const c = painel.c;
   painel.c = null;
   if (!c) return;
@@ -3777,6 +3830,323 @@ function deleteLayerSel() {
   if (!hit.f.itens.length) S.camadas.faixas = S.camadas.faixas.filter((f) => f !== hit.f);
   S.layerSel = null;
   renderTimeline(); renderToolbar(); refreshHeader();
+}
+// Duplicar uma camada (texto, imagem ou áudio): a cópia vai numa faixa nova, logo acima da
+// original e no mesmo tempo, já escolhida
+function duplicateLayerSel() {
+  const hit = camItem(S.layerSel);
+  if (!hit) return;
+  remember();
+  const fid = newFaixaId(hit.f.tipo === 'audio' ? 'a' : hit.f.tipo === 'texto' ? 't' : 'i');
+  const item = { ...JSON.parse(JSON.stringify(hit.it)), id: `${fid}-1` };
+  S.camadas.faixas.splice(S.camadas.faixas.indexOf(hit.f) + 1, 0, { ...hit.f, id: fid, travado: false, itens: [item] });
+  S.layerSel = item.id;
+  renderTimeline(); renderToolbar(); refreshHeader();
+  toast(hit.f.tipo === 'audio' ? 'Cópia numa camada nova' : 'Cópia numa camada nova, por cima da original', 2000);
+}
+
+/* ---------- camadas de texto ----------
+ * "Texto" na barra põe um texto na agulha, numa faixa própria, e abre o painel de Texto. O
+ * texto aparece sobre o vídeo como vai sair no final (src/CamadasTexto.tsx: centro em x/y do
+ * quadro 1080x1920, `tamanho` 1 = 96 px, Poppins branca sem contorno): tocar escolhe, arrastar
+ * leva, tocar no escolhido abre o painel. "Atrás da pessoa" e "Acompanhar" valem no vídeo
+ * final, onde o agente faz o recorte e o rastreio; a prévia segue o rosto quando o rastreio já
+ * existe. No Corte a prévia mostra os textos; no Final, só os que o vídeo ainda não tem. */
+const TEXTO_PX = 96;
+const TEXTO_PADRAO = { fonte: 'Poppins', cor: '#ffffff', corContorno: '#000000' };
+function estiloTexto(it) {
+  const e = it.estilo || {};
+  const fonte = e.fonte && CutMindFontes.FONTES.some((f) => f.familia === e.fonte) ? e.fonte : TEXTO_PADRAO.fonte;
+  return {
+    fonte,
+    peso: +e.peso || CutMindFontes.pesoDe(fonte),
+    cor: e.cor || TEXTO_PADRAO.cor,
+    tamanho: +e.tamanho > 0 ? +e.tamanho : 1,
+    contorno: +e.contorno > 0 ? +e.contorno : 0,
+    corContorno: e.corContorno || TEXTO_PADRAO.corContorno,
+  };
+}
+// o arco da linha de um texto curvo, em px do quadro: a mesma conta do arcoDoTexto do template
+function arcoDoTexto(x, y, size, largura, curva) {
+  const theta = (Math.abs(curva) / 100) * Math.PI;
+  const r = Math.max(1, largura) / theta;
+  const meio = Math.min(Math.PI * 0.999, theta / 2 + 0.25);
+  const by = y + size * 0.35;
+  const sx = r * Math.sin(meio), sy = r * (1 - Math.cos(meio));
+  const grande = 2 * meio > Math.PI ? 1 : 0;
+  return curva > 0
+    ? `M ${x - sx} ${by + sy} A ${r} ${r} 0 ${grande} 1 ${x + sx} ${by + sy}`
+    : `M ${x - sx} ${by - sy} A ${r} ${r} 0 ${grande} 0 ${x + sx} ${by - sy}`;
+}
+// tab vira espaço e os outros caracteres de controle saem: o servidor recusaria o texto
+const semControle = (s) => [...String(s)].map((ch) => (ch === '\t' ? ' ' : ch)).filter((ch) => ch === '\n' || ch.charCodeAt(0) >= 32).join('');
+// texto vazio não vai: o servidor recusaria o Salvar inteiro
+function camadasParaSalvar() {
+  const c = JSON.parse(JSON.stringify(S.camadas));
+  for (const f of c.faixas) if (f.tipo === 'texto') f.itens = f.itens.filter((it) => String(it.texto).trim());
+  c.faixas = c.faixas.filter((f) => f.tipo !== 'texto' || f.itens.length);
+  return c;
+}
+function addTexto() {
+  const total = S.videoDuration || totalT();
+  const inicio = +Math.min(draftToRendered(S.t), Math.max(0, total - 0.5)).toFixed(3);
+  remember();
+  const fid = newFaixaId('t');
+  const item = { id: `${fid}-1`, texto: 'Seu texto', inicio, duracao: +Math.min(3, Math.max(0.5, total - inicio)).toFixed(3),
+    x: FRAME_W / 2, y: FRAME_H / 2, estilo: {}, atras: false, acompanhar: false, curva: 0 };
+  S.camadas.faixas.push({ id: fid, tipo: 'texto', oculto: false, travado: false, itens: [item] });
+  S.layerSel = item.id;
+  S.fxSel = null; S.selected = -1; S.insSel = -1; S.cenaSel = -1; S.zoomSel = -1;
+  S.audioMenu = false; S.importMenu = false; S.fxMenu = false;
+  CutMindFontes.carregarTodas();
+  renderTimeline(); renderToolbar(); refreshHeader(); drawCenaBox();
+  openTextoCamada(true);
+}
+function textoLiga(k) {
+  const hit = camItem(S.layerSel);
+  if (!hit || hit.f.tipo !== 'texto') return;
+  remember();
+  hit.it[k] = !hit.it[k];
+  const liga = hit.it[k];
+  if (k === 'atras') toast(liga ? 'No vídeo final o texto passa atrás da pessoa (a prévia mostra na frente)' : 'O texto volta para a frente', 2800);
+  else toast(liga ? (S.rastreio ? 'O texto anda junto com a pessoa' : 'O texto anda junto com a pessoa no vídeo final (o agente rastreia o rosto)') : 'O texto fica parado', 2800);
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+
+// o rosto rastreado no corte (rastreio.json, ao lado do edit-data): a prévia de "Acompanhar"
+async function loadRastreio() {
+  S.rastreio = null;
+  const ed = S.state && S.state.editData;
+  if (!ed) return;
+  try {
+    const r = await fetch(`/media/${ed.slice(0, ed.lastIndexOf('/') + 1)}rastreio.json?v=${Date.now()}`);
+    const j = r.ok ? await r.json() : null;
+    if (j && Array.isArray(j.points) && j.points.length) S.rastreio = { fps: +j.fps || S.fps || 30, pontos: j.points };
+  } catch (e) { /* ainda não existe */ }
+}
+// quanto o rosto andou desde que o texto entrou, em px do quadro (o vídeo final soma o zoom da câmera)
+function segueDesloc(it, rt) {
+  const R = S.rastreio;
+  if (!it.acompanhar || !R) return [0, 0];
+  const p = (t) => R.pontos[Math.max(0, Math.min(R.pontos.length - 1, Math.round(t * R.fps)))];
+  const a = p(it.inicio), b = p(rt);
+  return [(b[0] - a[0]) * FRAME_W, (b[1] - a[1]) * FRAME_H];
+}
+// o texto já está no vídeo final quando o edit-data tem ele igual (camadas_edit_data.py)
+function textoJaNoFinal(it) {
+  const t = S.editData && Array.isArray(S.editData.textos) ? S.editData.textos.find((x) => x.id === it.id) : null;
+  if (!t) return false;
+  const perto = (a, b) => Math.abs(+a - +b) < 0.0015;
+  const ord = (o) => JSON.stringify(Object.keys(o || {}).sort().map((k) => [k, o[k]]));
+  return t.texto === it.texto && perto(t.start, it.inicio) && perto(t.end, it.inicio + it.duracao) && perto(t.x, it.x) && perto(t.y, it.y)
+    && ord(t.estilo) === ord(it.estilo) && perto(t.curva || 0, it.curva || 0) && !!t.matte === !!it.atras && !!t.acompanhar === !!it.acompanhar;
+}
+const medidor = document.createElement('canvas').getContext('2d');
+S.fontesVersao = 0;
+// fonte que acabou de chegar muda a largura: o texto curvo se mede de novo
+if (document.fonts) document.fonts.addEventListener('loadingdone', () => { S.fontesVersao++; });
+let txSig = '';
+function desenhaTextos() {
+  const box = $('ovTextos');
+  if (!box) return;
+  const rt = draftToRendered(S.t);
+  const lista = [];
+  if (!S.styling && !S.posMode && S.camadas) {
+    for (const f of S.camadas.faixas) {
+      if (f.tipo !== 'texto' || f.oculto) continue;
+      for (const it of f.itens) {
+        if (!(rt >= it.inicio && rt < it.inicio + it.duracao) || !String(it.texto).trim()) continue;
+        const sel = it.id === S.layerSel;
+        const noFinal = S.view === 'final' && textoJaNoFinal(it);
+        if (noFinal && !sel) continue; // o vídeo final já mostra este texto
+        lista.push({ it, sel, fantasma: noFinal, d: segueDesloc(it, rt), trav: f.travado });
+      }
+    }
+  }
+  const sig = JSON.stringify([lista.map((x) => [x.it, x.sel, x.fantasma, x.d.map(Math.round), x.trav]), S.fontesVersao]);
+  if (sig === txSig) return;
+  txSig = sig;
+  box.innerHTML = '';
+  for (const x of lista) desenhaTexto(box, x);
+}
+function desenhaTexto(box, { it, sel, fantasma, d, trav }) {
+  const e = estiloTexto(it);
+  const px = TEXTO_PX * e.tamanho;
+  const cq = (v) => `${((v / FRAME_W) * 100).toFixed(4)}cqw`; // px do quadro em largura da prévia
+  const w = el('div', `ov-tx-w${fantasma ? ' fantasma' : ''}${trav ? ' trav' : ''}`, box);
+  w.style.translate = `${cq(d[0])} ${cq(d[1])}`;
+  const curva = Math.max(-100, Math.min(100, +it.curva || 0));
+  if (!curva) {
+    const t = el('div', `ov-tx${sel ? ' sel' : ''}`, w);
+    t.dataset.tx = it.id;
+    t.textContent = it.texto;
+    Object.assign(t.style, { left: pct(it.x / FRAME_W), top: pct(it.y / FRAME_H), fontFamily: `"${e.fonte}"`, fontWeight: e.peso, fontSize: cq(px), color: e.cor });
+    if (e.contorno > 0) { t.style.webkitTextStroke = `${cq(e.contorno)} ${e.corContorno}`; t.style.paintOrder = 'stroke fill'; }
+    return;
+  }
+  const linha = String(it.texto).split('\n').map((s) => s.trim()).filter(Boolean).join(' ');
+  medidor.font = `${e.peso} ${px}px "${e.fonte}"`;
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${FRAME_W} ${FRAME_H}`);
+  svg.setAttribute('class', 'ov-tx-svg');
+  w.appendChild(svg);
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('id', `ovtx-${it.id}`);
+  path.setAttribute('d', arcoDoTexto(it.x, it.y, px, medidor.measureText(linha).width, curva));
+  path.setAttribute('fill', 'none');
+  svg.appendChild(path);
+  const t = document.createElementNS(ns, 'text');
+  const at = { 'font-family': `"${e.fonte}"`, 'font-weight': e.peso, 'font-size': px, fill: e.cor, 'text-anchor': 'middle',
+    stroke: e.contorno > 0 ? e.corContorno : 'none', 'stroke-width': e.contorno, 'stroke-linejoin': 'round', 'paint-order': 'stroke' };
+  for (const [k, v] of Object.entries(at)) t.setAttribute(k, v);
+  t.dataset.tx = it.id;
+  const tp = document.createElementNS(ns, 'textPath');
+  tp.setAttribute('href', `#ovtx-${it.id}`);
+  tp.setAttribute('startOffset', '50%');
+  tp.textContent = linha;
+  t.appendChild(tp);
+  svg.appendChild(t);
+  if (!sel) return;
+  // a caixa de quem está escolhido: o contorno do arco, que também se pega para arrastar
+  const b = t.getBBox(), m = 10;
+  const r = document.createElementNS(ns, 'rect');
+  for (const [k, v] of Object.entries({ x: b.x - m, y: b.y - m, width: b.width + 2 * m, height: b.height + 2 * m, class: 'ov-tx-caixa' })) r.setAttribute(k, v);
+  r.dataset.tx = it.id;
+  svg.insertBefore(r, t);
+}
+// o texto escolhido, quando a agulha está nele: as setas o empurram
+function textoSelNaTela() {
+  const hit = S.layerSel && camItem(S.layerSel);
+  if (!hit || hit.f.tipo !== 'texto' || hit.f.travado || S.styling || S.posMode) return null;
+  const rt = draftToRendered(S.t);
+  return rt >= hit.it.inicio && rt < hit.it.inicio + hit.it.duracao ? hit.it : null;
+}
+// perto do meio, encaixa no meio (nos dois eixos)
+function textoLugar(it, x, y) {
+  const nx = Math.round(Math.min(FRAME_W, Math.max(0, x))), ny = Math.round(Math.min(FRAME_H, Math.max(0, y)));
+  it.x = Math.abs(nx - FRAME_W / 2) < 12 ? FRAME_W / 2 : nx;
+  it.y = Math.abs(ny - FRAME_H / 2) < 12 ? FRAME_H / 2 : ny;
+}
+function textoEmpurra(dx, dy) {
+  const it = textoSelNaTela();
+  if (!it) return;
+  const agora = performance.now();
+  if (!(S.empurrouEm && agora - S.empurrouEm < 900)) remember();
+  S.empurrouEm = agora;
+  it.x = Math.round(Math.min(FRAME_W, Math.max(0, it.x + dx)));
+  it.y = Math.round(Math.min(FRAME_H, Math.max(0, it.y + dy)));
+  desenhaTextos();
+  if (!S.empurraFila) {
+    S.empurraFila = true;
+    requestAnimationFrame(() => { S.empurraFila = false; renderTimeline(); renderToolbar(); refreshHeader(); });
+  }
+}
+// arrastar o texto no vídeo: o centro anda com o dedo (ou o mouse). Tocar num texto o escolhe;
+// tocar no que já estava escolhido abre o painel, como no CapCut
+const txDrag = { id: null };
+$('ovTextos').addEventListener('pointerdown', (e) => {
+  const alvo = e.target.closest('[data-tx]');
+  const hit = alvo && camItem(alvo.dataset.tx);
+  if (!hit || hit.f.travado) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const P = player.getBoundingClientRect();
+  Object.assign(txDrag, { id: e.pointerId, alvo: hit.it.id, x0: e.clientX, y0: e.clientY, ix: hit.it.x, iy: hit.it.y,
+    k: FRAME_W / P.width, moved: false, jaEscolhido: S.layerSel === hit.it.id, before: snap() });
+  video.pause();
+  if (!txDrag.jaEscolhido) {
+    S.layerSel = hit.it.id;
+    S.selected = -1; S.insSel = -1; S.cenaSel = -1; S.zoomSel = -1; S.fxSel = null;
+    renderTimeline(); renderToolbar(); drawCenaBox();
+  }
+  window.addEventListener('pointermove', txMove);
+  window.addEventListener('pointerup', txFim);
+  window.addEventListener('pointercancel', txFim);
+});
+function txMove(e) {
+  if (e.pointerId !== txDrag.id) return;
+  const dx = e.clientX - txDrag.x0, dy = e.clientY - txDrag.y0;
+  if (!txDrag.moved && Math.hypot(dx, dy) < 4) return;
+  const hit = camItem(txDrag.alvo);
+  if (!hit) return;
+  txDrag.moved = true;
+  textoLugar(hit.it, txDrag.ix + dx * txDrag.k, txDrag.iy + dy * txDrag.k);
+  desenhaTextos();
+}
+function txFim(e) {
+  if (e.pointerId !== txDrag.id) return;
+  window.removeEventListener('pointermove', txMove);
+  window.removeEventListener('pointerup', txFim);
+  window.removeEventListener('pointercancel', txFim);
+  txDrag.id = null;
+  tapGuard.until = performance.now() + 400; // pegar o texto não dá play
+  if (txDrag.moved) { remember(txDrag.before); renderTimeline(); renderToolbar(); refreshHeader(); return; }
+  if (txDrag.jaEscolhido && e.type === 'pointerup') openTextoCamada(false);
+}
+
+// o painel de Texto da camada: o que está escrito, a fonte, a cor, o tamanho, o contorno, a
+// curva e a altura, tudo ao vivo na prévia. Pronto guarda um passo do desfazer; Cancelar volta
+// ao que estava quando o painel abriu; texto apagado tira a camada, como no CapCut
+function txMuda(fn) {
+  const hit = painel.camada && camItem(painel.camada);
+  if (!hit) return;
+  fn(hit.it);
+  desenhaTextos();
+  if (!S.textoFila) {
+    S.textoFila = true;
+    requestAnimationFrame(() => { S.textoFila = false; renderTimeline(); refreshHeader(); });
+  }
+}
+const txEstilo = (k, v) => txMuda((x) => { x.estilo = { ...(x.estilo || {}), [k]: v }; });
+function openTextoCamada(novo) {
+  const hit = camItem(S.layerSel);
+  if (!hit || hit.f.tipo !== 'texto') return;
+  const it = hit.it;
+  painel.c = null;
+  painel.camada = it.id;
+  painel.antes = snap();
+  painel.valor = JSON.parse(JSON.stringify(it));
+  CutMindFontes.carregarTodas();
+  $('cenaSheetNome').textContent = 'Texto';
+  const box = $('cenaCampos');
+  box.innerHTML = '';
+  const lab = el('label', 'cena-campo', box);
+  el('span', '', lab).textContent = 'O que está escrito';
+  const inp = el('textarea', '', lab);
+  inp.rows = Math.max(2, Math.min(5, String(it.texto).split('\n').length));
+  inp.maxLength = 400;
+  inp.value = it.texto;
+  inp.addEventListener('input', () => txMuda((x) => { x.texto = semControle(inp.value); }));
+  const e = estiloTexto(it);
+  fonteGrade(box, e.fonte, (f) => txMuda((x) => { x.estilo = { ...(x.estilo || {}), fonte: f.familia, peso: f.peso }; }));
+  paletaCores(campoTexto(box, 'Cor'), e.cor, S.style && S.style.accent, (cor) => txEstilo('cor', cor));
+  regua(campoTexto(box, 'Tamanho'), 20, 500, 5, Math.round(e.tamanho * 100), (v) => `${v}%`, (v) => txEstilo('tamanho', +(v / 100).toFixed(2)));
+  const sec = campoTexto(box, 'Contorno');
+  regua(sec, 0, 30, 1, e.contorno, (v) => (v ? `${v} px` : 'sem'), (v) => txEstilo('contorno', v));
+  paletaCores(sec, e.corContorno, null, (cor) => txEstilo('corContorno', cor));
+  regua(campoTexto(box, 'Curva'), -100, 100, 1, Math.round(+it.curva || 0), (v) => (v ? `${v > 0 ? '+' : ''}${v}` : 'reto'), (v) => txMuda((x) => { x.curva = v; }));
+  const alt = campoTexto(box, 'Altura');
+  regua(alt, 0, 100, 1, Math.round((it.y / FRAME_H) * 100), (v) => `${v}%`, (v) => txMuda((x) => { x.y = Math.round((v / 100) * FRAME_H); }));
+  el('p', 'tx-dica', alt).textContent = isDesk() ? 'Para o lado, arraste o texto no vídeo ou use as setas do teclado.' : 'Para o lado, arraste o texto no vídeo.';
+  showSheet($('cenaSheet'), true);
+  // texto novo: já é só digitar por cima (depois que o painel sobe, como o da nota)
+  if (novo) setTimeout(() => { if (painel.camada === it.id) { inp.focus(); inp.select(); } }, 280);
+}
+function fechaTextoCamada(guarda) {
+  const hit = camItem(painel.camada);
+  painel.camada = null;
+  if (hit) {
+    if (!guarda) Object.assign(hit.it, JSON.parse(JSON.stringify(painel.valor)));
+    else if (!String(hit.it.texto).trim()) {
+      remember(painel.antes);
+      hit.f.itens = hit.f.itens.filter((x) => x !== hit.it);
+      if (!hit.f.itens.length) S.camadas.faixas = S.camadas.faixas.filter((f) => f !== hit.f);
+      S.layerSel = null;
+      toast('Texto vazio: a camada saiu', 1800);
+    } else if (JSON.stringify(hit.it) !== JSON.stringify(painel.valor)) remember(painel.antes);
+  }
+  renderTimeline(); renderToolbar(); refreshHeader(); desenhaTextos();
 }
 function toggleMelhorar() {
   const hit = camItem(S.layerSel);
@@ -4111,6 +4481,7 @@ function syncLayers() {
     if (img) ov.src = `/media/${img}`;
     ov.classList.toggle('hidden', !img);
   }
+  desenhaTextos();
 }
 ['fileAudio', 'fileImagem'].forEach((id) => {
   $(id).addEventListener('change', (e) => {
