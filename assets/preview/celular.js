@@ -1363,16 +1363,50 @@ timeline.addEventListener('pointerdown', (e) => {
   G.down = e.target;
   G.downAt = performance.now();
   G.wasPlaying = !video.paused;
-  // segurar uma tomada sem arrastar: ela sai da faixa e vai para onde o dedo levar
+  // segurar uma tomada sem arrastar: ela sai da faixa e vai para onde o dedo levar.
+  // `G.pega` é o mesmo "pegar" do item: no computador ele vem já no arraste (ver o pointermove)
+  G.pega = null;
   const tk = e.target.closest('.take');
-  if (tk && S.view === 'corte' && !S.posMode) G.lp = setTimeout(() => startMove(+tk.dataset.i, e.clientX), 450);
+  if (tk && S.view === 'corte' && !S.posMode) G.pega = () => startMove(+tk.dataset.i, e.clientX);
   // segurar um item de camada: ele passa a andar com o dedo
   const lc = e.target.closest('.chip.layer');
-  if (lc) G.lp = setTimeout(() => holdLayer(lc.dataset.id, e.clientX), 450);
+  if (lc) G.pega = () => holdLayer(lc.dataset.id, e.clientX);
   // segurar um bloco da Fase 2 (vista Final): ele anda com o dedo
   const f2 = e.target.closest('.chip.f2');
-  if (f2 && S.view === 'final') G.lp = setTimeout(() => holdIns(+f2.dataset.i, e.clientX), 450);
+  if (f2 && S.view === 'final') G.pega = () => holdIns(+f2.dataset.i, e.clientX);
+  if (G.pega) G.lp = setTimeout(G.pega, 450);
 });
+// o item pego segue o ponteiro (na vista que pode ter andado sozinha desde que o arraste começou)
+function arrasteSegue(x) {
+  G.ultX = x;
+  const rolou = agulhaAnda() && G.v0arraste != null ? (S.v0 - G.v0arraste) * S.pps : 0;
+  if (G.mode === 'move') { G.mv.x = x; updateMove(); } else if (G.mode === 'layer') dragLayer(x + rolou);
+  else if (G.mode === 'ins') dragIns(x + rolou);
+}
+/* Computador: levando um item (ou a ponta dele) para perto da borda da linha do tempo, a vista
+ * anda sozinha, como no CapCut desktop; sem isso não dava para levar um texto dos 9 s aos 60 s
+ * sem antes afastar o zoom. O celular não precisa: lá a linha do tempo corre sob o dedo. */
+function bordaRola() {
+  if (!agulhaAnda()) return;
+  G.v0arraste = S.v0;
+  let last = performance.now();
+  const passo = (now) => {
+    if (G.mode !== 'layer' && G.mode !== 'ins') { G.v0arraste = null; return; }
+    const r = timeline.getBoundingClientRect(), x = G.ultX;
+    const zona = 48;
+    const fundo = x == null ? 0 : x < r.left + DESK_MARGEM + zona ? -(r.left + DESK_MARGEM + zona - x) / zona
+      : x > r.right - zona ? (x - (r.right - zona)) / zona : 0;
+    if (fundo) {
+      const v0 = S.v0;
+      S.v0 += Math.max(-1, Math.min(1, fundo)) * visivel() * 0.9 * ((now - last) / 1000);
+      prendeVista();
+      if (S.v0 !== v0) { positionTimeline(); arrasteSegue(x); }
+    }
+    last = now;
+    requestAnimationFrame(passo);
+  };
+  requestAnimationFrame(passo);
+}
 
 timeline.addEventListener('pointermove', (e) => {
   if (!G.pts.has(e.pointerId)) return;
@@ -1413,9 +1447,7 @@ timeline.addEventListener('pointermove', (e) => {
     return;
   }
   if (G.mode === 'scrub') { levaAgulha(xNaLinha(e), true); return; }
-  if (G.mode === 'move') { G.mv.x = e.clientX; updateMove(); return; }
-  if (G.mode === 'layer') { dragLayer(e.clientX); return; }
-  if (G.mode === 'ins') { dragIns(e.clientX); return; }
+  if (G.mode === 'move' || G.mode === 'layer' || G.mode === 'ins') { arrasteSegue(e.clientX); return; }
   if (G.mode === 'pan') {
     const dx = e.clientX - G.x0;
     if (G.agulha && Math.abs(dx) > 2) {
@@ -1426,8 +1458,14 @@ timeline.addEventListener('pointermove', (e) => {
       return;
     }
     if (!G.moved && Math.abs(dx) > 6) {
-      G.moved = true;
-      clearTimeout(G.lp); // arrastou antes do tempo: é rolagem, não mover
+      clearTimeout(G.lp);
+      // computador: o mouse não tem o "segurar" do dedo; arrastar um item já o leva, como no
+      // CapCut desktop (antes o arraste virava rolagem e nada saía do lugar)
+      if (agulhaAnda() && G.pega) {
+        G.pega();
+        if (G.mode !== 'pan') { arrasteSegue(e.clientX); return; }
+      }
+      G.moved = true; // celular: arrastou antes do tempo, é rolagem, não mover
       if (!video.paused) video.pause();
     }
     if (!G.moved) return;
@@ -3279,6 +3317,8 @@ function startLayerDrag(x, kind, side) {
   G.mode = 'layer';
   G.ly = { id: hit.it.id, kind, side, x0: x, it0: { ...hit.it }, before: snap() };
   video.pause();
+  G.ultX = x;
+  bordaRola();
   return true;
 }
 function holdLayer(id, x) {
@@ -3358,6 +3398,8 @@ function startInsDrag(x, kind, side) {
   G.mode = 'ins';
   G.ins = { i: S.insSel, kind, side, x0: x, c0: { start: c.start, end: c.end }, before: snap() };
   video.pause();
+  G.ultX = x;
+  bordaRola();
   return true;
 }
 function holdIns(i, x) {
@@ -3774,7 +3816,25 @@ function regua(host, min, max, passo, valor, mostra, muda) {
   const v = el('span', 'tx-val', linha);
   v.textContent = mostra(valor);
   r.addEventListener('input', () => { v.textContent = mostra(+r.value); muda(+r.value); });
+  r.mostra = mostra;
   return r;
+}
+// a régua anda quando outro controle muda o mesmo valor (a alça do texto, a cor do contorno)
+function reguaPoe(r, v) {
+  r.value = v;
+  r.nextElementSibling.textContent = r.mostra(+r.value);
+}
+/* Contorno: a largura e a cor. Escolher a cor com o contorno desligado, ou fino demais para
+ * aparecer, já liga um que se vê: 1 px do quadro de 1080 é um terço de pixel na prévia, e no
+ * vídeo final também some (aconteceu no teste: amarelo a 1 px, e "a cor não aparece"). */
+const CONTORNO_VISIVEL = 6;
+function campoContorno(box, e, mudaLargura, mudaCor) {
+  const sec = campoTexto(box, 'Contorno');
+  const r = regua(sec, 0, 30, 1, e.contorno, (v) => (v ? `${v} px` : 'sem'), mudaLargura);
+  paletaCores(sec, e.corContorno, null, (cor) => {
+    mudaCor(cor);
+    if (+r.value < 3) { reguaPoe(r, CONTORNO_VISIVEL); mudaLargura(CONTORNO_VISIVEL); }
+  });
 }
 // a mudança ao vivo: o rascunho do efeito muda e a moldura redesenha; a linha do tempo, no quadro seguinte
 function textoMuda(fn) {
@@ -3848,17 +3908,14 @@ function openCenaTexto() {
       x.textos = { ...x.textos, [k]: k === 'batidas' ? velho.map((w, i) => (ls[i] ? ls[i] : w)) : ls.filter(Boolean) };
     }));
   }
+  // tamanho, cor e contorno em cima, as fontes por último: a grade é alta, e na coluna do
+  // computador ela escondia o resto (no teste, "não tem como mudar o tamanho")
   const e = estiloEfetivo(c);
-  if (e && pode('fonte')) fonteGrade(box, e.fonte, (f) => textoMuda((x) => { x.estilo = { ...(x.estilo || {}), fonte: f.familia, peso: f.peso }; }));
-  if (e && pode('cor')) paletaCores(campoTexto(box, 'Cor'), e.cor, S.style && S.style.accent, (cor) => mudaEstilo('cor', cor));
   if (e && pode('tamanho')) {
     regua(campoTexto(box, 'Tamanho'), 40, 200, 5, Math.round(e.tamanho * 100), (v) => `${v}%`, (v) => mudaEstilo('tamanho', +(v / 100).toFixed(2)));
   }
-  if (e && pode('contorno')) {
-    const sec = campoTexto(box, 'Contorno');
-    regua(sec, 0, 30, 1, e.contorno, (v) => (v ? `${v} px` : 'sem'), (v) => mudaEstilo('contorno', v));
-    paletaCores(sec, e.corContorno, null, (cor) => mudaEstilo('corContorno', cor));
-  }
+  if (e && pode('cor')) paletaCores(campoTexto(box, 'Cor'), e.cor, S.style && S.style.accent, (cor) => mudaEstilo('cor', cor));
+  if (e && pode('contorno')) campoContorno(box, e, (v) => mudaEstilo('contorno', v), (cor) => mudaEstilo('corContorno', cor));
   const b = CENA_BLOCO[c.tipo] && blocoDaCena(c);
   if (b) {
     const sec = campoTexto(box, 'Altura');
@@ -3868,6 +3925,7 @@ function openCenaTexto() {
     }));
     el('p', 'tx-dica', sec).textContent = isDesk() ? 'Para o lado, arraste a moldura no vídeo ou use as setas do teclado.' : 'Para o lado, arraste a moldura no vídeo.';
   }
+  if (e && pode('fonte')) fonteGrade(box, e.fonte, (f) => textoMuda((x) => { x.estilo = { ...(x.estilo || {}), fonte: f.familia, peso: f.peso }; }));
   showSheet($('cenaSheet'), true);
 }
 function fechaTexto(guarda) {
@@ -4156,6 +4214,8 @@ function desenhaTexto(box, { it, sel, fantasma, d, trav }) {
     t.textContent = it.texto;
     Object.assign(t.style, { left: pct(it.x / FRAME_W), top: pct(it.y / FRAME_H), fontFamily: `"${e.fonte}"`, fontWeight: e.peso, fontSize: cq(px), color: e.cor });
     if (e.contorno > 0) { t.style.webkitTextStroke = `${cq(e.contorno)} ${e.corContorno}`; t.style.paintOrder = 'stroke fill'; }
+    // o escolhido ganha a bolinha do canto: puxar para fora aumenta, para dentro diminui (CapCut)
+    if (sel && !trav) el('span', 'ov-tx-tam', t).dataset.tam = it.id;
     return;
   }
   const linha = String(it.texto).split('\n').map((s) => s.trim()).filter(Boolean).join(' ');
@@ -4188,6 +4248,11 @@ function desenhaTexto(box, { it, sel, fantasma, d, trav }) {
   for (const [k, v] of Object.entries({ x: b.x - m, y: b.y - m, width: b.width + 2 * m, height: b.height + 2 * m, class: 'ov-tx-caixa' })) r.setAttribute(k, v);
   r.dataset.tx = it.id;
   svg.insertBefore(r, t);
+  if (trav) return;
+  const bola = document.createElementNS(ns, 'circle'); // a mesma bolinha do texto reto
+  for (const [k, v] of Object.entries({ cx: b.x + b.width + m, cy: b.y + b.height + m, r: 20, class: 'ov-tx-tam-svg' })) bola.setAttribute(k, v);
+  bola.dataset.tam = it.id;
+  svg.appendChild(bola);
 }
 // o texto escolhido, quando a agulha está nele: as setas o empurram
 function textoSelNaTela() {
@@ -4220,6 +4285,8 @@ function textoEmpurra(dx, dy) {
 // tocar no que já estava escolhido abre o painel, como no CapCut
 const txDrag = { id: null };
 $('ovTextos').addEventListener('pointerdown', (e) => {
+  const bola = e.target.closest('[data-tam]');
+  if (bola) { comecaTamanho(e, bola.dataset.tam); return; }
   const alvo = e.target.closest('[data-tx]');
   const hit = alvo && camItem(alvo.dataset.tx);
   if (!hit || hit.f.travado) return;
@@ -4246,7 +4313,50 @@ function txMove(e) {
   if (!hit) return;
   txDrag.moved = true;
   textoLugar(hit.it, txDrag.ix + dx * txDrag.k, txDrag.iy + dy * txDrag.k);
+  if (painel.camada === hit.it.id && painel.reguaAlt) reguaPoe(painel.reguaAlt, Math.round((hit.it.y / FRAME_H) * 100));
   desenhaTextos();
+}
+/* A bolinha do canto: a distância do ponteiro até o centro do texto, sobre a do toque, multiplica
+ * o tamanho (de 20% a 500%, a régua do painel). Com o painel aberto a régua anda junto e o Pronto
+ * guarda o passo do desfazer; sem ele, o próprio gesto guarda. */
+const txTam = { id: null };
+function comecaTamanho(e, id) {
+  const hit = camItem(id);
+  if (!hit || hit.f.travado) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const P = player.getBoundingClientRect();
+  const d = segueDesloc(hit.it, draftToRendered(S.t));
+  const cx = P.left + ((hit.it.x + d[0]) / FRAME_W) * P.width, cy = P.top + ((hit.it.y + d[1]) / FRAME_H) * P.height;
+  Object.assign(txTam, { id: e.pointerId, alvo: id, cx, cy, d0: Math.max(6, Math.hypot(e.clientX - cx, e.clientY - cy)),
+    t0: estiloTexto(hit.it).tamanho, before: snap() });
+  video.pause();
+  window.addEventListener('pointermove', tamMove);
+  window.addEventListener('pointerup', tamFim);
+  window.addEventListener('pointercancel', tamFim);
+}
+function tamMove(e) {
+  if (e.pointerId !== txTam.id) return;
+  const hit = camItem(txTam.alvo);
+  if (!hit) return;
+  const k = Math.hypot(e.clientX - txTam.cx, e.clientY - txTam.cy) / txTam.d0;
+  const v = Math.round(Math.max(0.2, Math.min(5, txTam.t0 * k)) * 100) / 100;
+  if (v === estiloTexto(hit.it).tamanho) return;
+  hit.it.estilo = { ...(hit.it.estilo || {}), tamanho: v };
+  if (painel.camada === hit.it.id && painel.reguaTam) reguaPoe(painel.reguaTam, Math.round(v * 100));
+  desenhaTextos();
+}
+function tamFim(e) {
+  if (e.pointerId !== txTam.id) return;
+  window.removeEventListener('pointermove', tamMove);
+  window.removeEventListener('pointerup', tamFim);
+  window.removeEventListener('pointercancel', tamFim);
+  txTam.id = null;
+  tapGuard.until = performance.now() + 400; // puxar a bolinha não dá play
+  const hit = camItem(txTam.alvo);
+  if (!hit || estiloTexto(hit.it).tamanho === txTam.t0) return;
+  if (painel.camada !== hit.it.id) remember(txTam.before);
+  renderTimeline(); renderToolbar(); refreshHeader();
 }
 function txFim(e) {
   if (e.pointerId !== txDrag.id) return;
@@ -4293,17 +4403,19 @@ function openTextoCamada(novo) {
   inp.maxLength = 400;
   inp.value = it.texto;
   inp.addEventListener('input', () => txMuda((x) => { x.texto = semControle(inp.value); }));
+  // tamanho, cor e contorno logo abaixo do texto; as fontes por último (a grade é alta e, na
+  // coluna do computador, empurrava o resto para fora da vista)
   const e = estiloTexto(it);
-  fonteGrade(box, e.fonte, (f) => txMuda((x) => { x.estilo = { ...(x.estilo || {}), fonte: f.familia, peso: f.peso }; }));
+  const tam = campoTexto(box, 'Tamanho');
+  painel.reguaTam = regua(tam, 20, 500, 5, Math.round(e.tamanho * 100), (v) => `${v}%`, (v) => txEstilo('tamanho', +(v / 100).toFixed(2)));
+  el('p', 'tx-dica', tam).textContent = 'Ou puxe a bolinha no canto do texto, no vídeo.';
   paletaCores(campoTexto(box, 'Cor'), e.cor, S.style && S.style.accent, (cor) => txEstilo('cor', cor));
-  regua(campoTexto(box, 'Tamanho'), 20, 500, 5, Math.round(e.tamanho * 100), (v) => `${v}%`, (v) => txEstilo('tamanho', +(v / 100).toFixed(2)));
-  const sec = campoTexto(box, 'Contorno');
-  regua(sec, 0, 30, 1, e.contorno, (v) => (v ? `${v} px` : 'sem'), (v) => txEstilo('contorno', v));
-  paletaCores(sec, e.corContorno, null, (cor) => txEstilo('corContorno', cor));
+  campoContorno(box, e, (v) => txEstilo('contorno', v), (cor) => txEstilo('corContorno', cor));
   regua(campoTexto(box, 'Curva'), -100, 100, 1, Math.round(+it.curva || 0), (v) => (v ? `${v > 0 ? '+' : ''}${v}` : 'reto'), (v) => txMuda((x) => { x.curva = v; }));
   const alt = campoTexto(box, 'Altura');
-  regua(alt, 0, 100, 1, Math.round((it.y / FRAME_H) * 100), (v) => `${v}%`, (v) => txMuda((x) => { x.y = Math.round((v / 100) * FRAME_H); }));
+  painel.reguaAlt = regua(alt, 0, 100, 1, Math.round((it.y / FRAME_H) * 100), (v) => `${v}%`, (v) => txMuda((x) => { x.y = Math.round((v / 100) * FRAME_H); }));
   el('p', 'tx-dica', alt).textContent = isDesk() ? 'Para o lado, arraste o texto no vídeo ou use as setas do teclado.' : 'Para o lado, arraste o texto no vídeo.';
+  fonteGrade(box, e.fonte, (f) => txMuda((x) => { x.estilo = { ...(x.estilo || {}), fonte: f.familia, peso: f.peso }; }));
   showSheet($('cenaSheet'), true);
   // texto novo: já é só digitar por cima (depois que o painel sobe, como o da nota)
   if (novo) setTimeout(() => { if (painel.camada === it.id) { inp.focus(); inp.select(); } }, 280);
@@ -4396,19 +4508,16 @@ function openLegendaTexto() {
   const box = $('cenaCampos');
   box.innerHTML = '';
   const e = legendaEfetiva();
-  if (!so) {
-    fonteGrade(box, e.fonte, (f) => legMuda((L) => { L.estilo = { ...(L.estilo || {}), fonte: f.familia, peso: f.peso }; }));
-    paletaCores(campoTexto(box, 'Cor'), e.cor, S.style && S.style.accent, (cor) => legEstilo('cor', cor));
-  }
+  // como no texto: tamanho, cor e contorno em cima, as fontes por último
   regua(campoTexto(box, 'Tamanho'), 30, 300, 5, Math.round(e.tamanho * 100), (v) => `${v}%`, (v) => legEstilo('tamanho', +(v / 100).toFixed(2)));
   if (!so) {
-    const sec = campoTexto(box, 'Contorno');
-    regua(sec, 0, 30, 1, e.contorno, (v) => (v ? `${v} px` : 'sem'), (v) => legEstilo('contorno', v));
-    paletaCores(sec, e.corContorno, null, (cor) => legEstilo('corContorno', cor));
+    paletaCores(campoTexto(box, 'Cor'), e.cor, S.style && S.style.accent, (cor) => legEstilo('cor', cor));
+    campoContorno(box, e, (v) => legEstilo('contorno', v), (cor) => legEstilo('corContorno', cor));
   }
   el('p', 'tx-dica', box).textContent = so
     ? 'Neste estilo as fontes e as cores fazem parte do desenho: aqui muda o tamanho. A altura de cada frase fica em "Posição".'
     : 'Vale para todas as frases. A altura de cada frase fica em "Posição".';
+  if (!so) fonteGrade(box, e.fonte, (f) => legMuda((L) => { L.estilo = { ...(L.estilo || {}), fonte: f.familia, peso: f.peso }; }));
   showSheet($('cenaSheet'), true);
   desenhaLegendaPrevia(true);
 }
