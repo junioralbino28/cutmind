@@ -34,7 +34,10 @@ def digest(p: Path) -> str:
     for i, n in enumerate(notes, 1):
         start, end = n.get("start", 0), n.get("end", 0)
         fase = n.get("phase", 1)
-        parts.append(f'  {i}. [{fmt(start)} → {fmt(end)}] (fase {fase}) {n.get("text", "").strip()}')
+        if n.get("geral"):  # a caixa "O que você quer mudar?": pedido sem trecho, a agulha só situa
+            parts.append(f'  {i}. PEDIDO (agulha em {fmt(start)}, fase {fase}) {n.get("text", "").strip()}')
+        else:
+            parts.append(f'  {i}. [{fmt(start)} → {fmt(end)}] (fase {fase}) {n.get("text", "").strip()}')
 
     edl = d.get("edl") or {}
     n_ch = len(edl.get("changes") or [])
@@ -43,8 +46,11 @@ def digest(p: Path) -> str:
     ed = d.get("editData") or {}
 
     head = []
-    if notes:
-        head.append(f"{len(notes)} marcação(ões)")
+    pedidos = sum(1 for n in notes if n.get("geral"))
+    if pedidos:
+        head.append(_plural(pedidos, "pedido escrito", "pedidos escritos"))
+    if len(notes) - pedidos:
+        head.append(f"{len(notes) - pedidos} marcação(ões)")
     if n_ch:
         head.append(f"{n_ch} take(s) reajustado(s)")
     if n_rm:

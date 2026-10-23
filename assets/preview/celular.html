@@ -99,7 +99,17 @@
 
   <!-- no computador: as colunas da biblioteca (esquerda) e das propriedades (direita); os
        painéis que no celular sobem de baixo se encaixam nelas -->
-  <aside class="desk-col lib" id="deskLib"><p>Filtros, transições, trilhas e estilo abrem aqui.<br>Escolha na barra de ferramentas.</p></aside>
+  <aside class="desk-col lib" id="deskLib">
+    <!-- pedido em texto livre ao agente: vai com o Salvar, como uma marcação sem trecho -->
+    <form class="pedido" id="pedido">
+      <div class="pedido-linha">
+        <textarea id="pedidoTexto" rows="1" aria-label="O que você quer mudar?" placeholder="O que você quer mudar? Ex.: deixa a legenda maior no começo"></textarea>
+        <button class="tb-btn primary" type="submit" title="Vai para o agente junto com o que estiver por salvar (Ctrl+Enter)">Aplicar mudanças</button>
+      </div>
+      <span class="pedido-info" id="pedidoInfo"></span>
+    </form>
+    <p>Filtros, transições, trilhas e estilo abrem aqui.<br>Escolha na barra de ferramentas.</p>
+  </aside>
   <aside class="desk-col props" id="deskProps"><p>Escolha uma tomada para ver volume, velocidade, curva e cor aqui.</p></aside>
   <nav class="toolbar" id="toolbar" aria-label="Ferramentas"></nav>
   <nav class="toolbar ctx hidden" id="ctxbar" aria-label="Ferramentas da tomada"></nav>

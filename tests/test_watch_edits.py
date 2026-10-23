@@ -56,6 +56,20 @@ def test_aviso_do_editor_de_pc_continua_igual(tmp_path):
     assert "lista inteira" not in aviso
 
 
+def test_aviso_separa_o_pedido_escrito_das_marcacoes(tmp_path):
+    """A caixa "O que você quer mudar?" manda um pedido sem trecho (`geral`): a agulha só situa."""
+    p = tmp_path / "preview_edits.json"
+    p.write_text(json.dumps({"type": "timeline-edits", "notes": [
+        {"start": 12.5, "end": 12.5, "phase": 2, "text": "troca a música do final", "geral": True},
+        {"start": 3, "end": 5, "phase": 1, "text": "tira essa pausa"},
+    ]}), encoding="utf-8")
+    aviso = digest(p)
+    assert "1 pedido escrito, 1 marcação(ões)" in aviso
+    assert "PEDIDO (agulha em 0:12.50, fase 2) troca a música do final" in aviso
+    assert "[0:03.00 → 0:05.00] (fase 1) tira essa pausa" in aviso
+    assert "0:12.50 → 0:12.50" not in aviso  # o pedido não vira um trecho de duração zero
+
+
 def test_aviso_conta_as_camadas(tmp_path):
     """Imagem e áudio postos no editor: o agente precisa saber o que entra no vídeo final,
     o que ficou de fora (silenciada) e quais helpers aplicam."""

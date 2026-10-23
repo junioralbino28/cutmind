@@ -2978,7 +2978,10 @@ function edlPayload() {
     },
   };
 }
-$('btnSave').addEventListener('click', async () => {
+$('btnSave').addEventListener('click', () => salvar());
+/* Manda ao agente tudo o que está por salvar (e as marcações). `aviso` troca a mensagem do fim
+ * (a caixa de pedido tem a sua). Devolve se o servidor aceitou. */
+async function salvar(aviso) {
   const payload = { type: 'timeline-edits' };
   const soCamadas = !edlDirty() && !S.notes.length;
   if (edlDirty()) payload.edl = edlPayload();
@@ -3020,6 +3023,7 @@ $('btnSave').addEventListener('click', async () => {
       renderedEnd: +draftToRendered(n.end).toFixed(3),
       phase: S.view === 'final' ? 2 : 1,
       text: n.text,
+      ...(n.geral ? { geral: true } : {}), // pedido da caixa: sem trecho, só a agulha de referência
     }));
   }
   try {
@@ -3027,7 +3031,7 @@ $('btnSave').addEventListener('click', async () => {
     const out = await res.json();
     if (!out.ok) {
       // camada recusada pelo servidor: o motivo vale mais que o aviso genérico
-      if (out.error) { toast(`Não salvei: ${out.error}`, 4500); return; }
+      if (out.error) { toast(`Não salvei: ${out.error}`, 4500); return false; }
       throw new Error('falhou');
     }
     S.savedPending = true;
@@ -3052,14 +3056,42 @@ $('btnSave').addEventListener('click', async () => {
     forgetHistory(); // o que foi enviado ao agente não se desfaz daqui
     renderTimeline(); renderToolbar(); refreshHeader();
     const oque = comEfeitos ? (comCamadas ? 'Camadas e efeitos salvos' : 'Efeitos salvos') : 'Camadas salvas';
-    const aviso = !soCamadas ? 'Ajustes enviados. O agente refaz o corte.'
+    toast(aviso || (!soCamadas ? 'Ajustes enviados. O agente refaz o corte.'
       : comF2 ? 'Ajustes enviados. O agente refaz só os trechos do vídeo final que mudaram.'
-        : `${oque}. O agente põe no vídeo final.`;
-    toast(aviso, 3000);
+        : `${oque}. O agente põe no vídeo final.`), 3000);
+    return true;
   } catch (err) {
     toast('Não consegui salvar — o editor ainda está ligado no computador?', 4000);
+    return false;
   }
+}
+
+// ---------- pedido ao agente: a caixa "O que você quer mudar?" (computador) ----------
+/* Um pedido em texto livre, sem trecho marcado. Vai como uma marcação `geral` na posição da
+ * agulha, junto com o que estiver por salvar: o mesmo caminho do Salvar, que o agente já lê. */
+$('pedido').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const campo = $('pedidoTexto'), txt = campo.value.trim();
+  if (!txt) { toast('Escreva o que mudar', 1800); campo.focus(); return; }
+  const id = `p${Date.now()}`;
+  S.notes.push({ id, start: S.t, end: S.t, text: txt, geral: true });
+  if (await salvar('Pedido enviado. O agente responde na barra de cima.')) {
+    campo.value = '';
+    crescePedido();
+    const h = new Date();
+    $('pedidoInfo').textContent = `Enviado às ${h.getHours()}:${String(h.getMinutes()).padStart(2, '0')}. A resposta aparece na barra de cima.`;
+  } else S.notes = S.notes.filter((n) => n.id !== id); // não foi: o texto fica na caixa para tentar de novo
 });
+$('pedidoTexto').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('pedido').requestSubmit(); }
+});
+// uma linha parada; cresce com o texto até o teto do CSS (o resto rola dentro)
+function crescePedido() {
+  const c = $('pedidoTexto');
+  c.style.height = '';
+  if (c.value) c.style.height = `${Math.min(c.scrollHeight + 2, 120)}px`;
+}
+$('pedidoTexto').addEventListener('input', crescePedido);
 
 // ---------- camadas: imagens e áudios na linha do tempo ----------
 /* Como em qualquer editor: cada envio de imagem ou áudio vira uma faixa própria, com
