@@ -57,6 +57,8 @@
       <div class="cap" id="ovCap"></div>
       <!-- camada de imagem debaixo da agulha: no lugar e no tamanho do cartão do vídeo final -->
       <img class="ov-img hidden" id="ovImg" alt="">
+      <!-- efeito do agente escolhido na vista Final: a moldura do bloco que se arrasta (texto, cartão, celular) -->
+      <div class="ov-cena hidden" id="ovCena"><div class="ov-cena-txt" id="ovCenaTxt"></div><span id="ovCenaNome"></span></div>
       <!-- ao aparar: o quadro do vídeo de ORIGEM na alça (o corte não tem o que foi cortado) -->
       <img class="peek hidden" id="peek" alt="">
       <button class="tap-play" id="tapPlay" type="button" aria-label="Reproduzir ou pausar"></button>
@@ -143,6 +145,30 @@
   <footer class="sheet-foot">
     <div class="t-spacer"></div>
     <button class="tb-btn primary" id="volOk" type="button">Pronto</button>
+  </footer>
+</section>
+
+<!-- painel pequeno: o zoom da tomada escolhida no vídeo final (camera.zooms do edit-data.json) -->
+<section class="sheet small" id="tomZoomSheet" aria-hidden="true">
+  <div class="sheet-grip"></div>
+  <div class="note-head"><b>Zoom da tomada</b><span id="tomZoomVal">100%</span></div>
+  <input class="vol-range" id="tomZoomRange" type="range" min="100" max="200" step="1" value="100" aria-label="Zoom da tomada">
+  <p class="vol-nota">A prévia mostra o vídeo de agora. O zoom novo entra quando o agente refaz o trecho.</p>
+  <footer class="sheet-foot">
+    <div class="t-spacer"></div>
+    <button class="tb-btn primary" id="tomZoomOk" type="button">Pronto</button>
+  </footer>
+</section>
+
+<!-- painel de Texto do efeito escolhido: o que está escrito, fonte, cor, tamanho, contorno e altura -->
+<section class="sheet small" id="cenaSheet" aria-hidden="true">
+  <div class="sheet-grip"></div>
+  <div class="note-head"><b id="cenaSheetNome">Texto</b></div>
+  <div class="cena-campos" id="cenaCampos"></div>
+  <footer class="sheet-foot">
+    <div class="t-spacer"></div>
+    <button class="tb-btn ghost" id="cenaCancel" type="button">Cancelar</button>
+    <button class="tb-btn primary" id="cenaOk" type="button">Pronto</button>
   </footer>
 </section>
 
@@ -268,6 +294,7 @@
 </div>
 <script src="/assets/estilos.js"></script>
 <script src="/assets/tempo.js"></script>
+<script src="/assets/fontes.js"></script>
 <script src="/assets/celular.js"></script>
 </body>
 </html>

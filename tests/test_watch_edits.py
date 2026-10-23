@@ -150,3 +150,21 @@ def test_aviso_dos_blocos_da_fase_2(tmp_path):
         "splitVideos": [], "hook": {"endSec": 3.25}, "behind": [], "wordAccents": []}}), encoding="utf-8")
     aviso = digest(p)
     assert "inserts/gancho movidos" in aviso
+
+
+def test_aviso_dos_efeitos_e_do_zoom_da_fase_2(tmp_path):
+    """Efeito desligado ou com bloco arrastado e zoom de tomada: o aviso diz o que gravar e onde."""
+    p = tmp_path / "preview_edits.json"
+    p.write_text(json.dumps({"type": "timeline-edits", "editData": {
+        "cenas": [{"ref": 16, "tipo": "vidro", "start": 71.23, "end": 74.43, "desligada": False,
+                   "texto": {"x": 540, "y": 420}, "textos": {"palavra": "GARGALO"},
+                   "estilo": {"fonte": "Bebas Neue", "peso": 400, "tamanho": 1.2}},
+                  {"ref": 3, "tipo": "mural", "start": 33.0, "end": 36.43, "desligada": True, "texto": None, "textos": {}}],
+        "camera": {"zooms": [1.0, 1.2, 1.0], "mudou": [1]}}}), encoding="utf-8")
+    aviso = digest(p)
+    assert "2 efeitos mudados" in aviso and "zoom mudado em 1 tomada" in aviso
+    assert "#16 vidro" in aviso and "bloco em x=540 y=420" in aviso and 'palavra="GARGALO"' in aviso
+    assert "estilo fonte=Bebas Neue, peso=400, tamanho=1.2" in aviso
+    assert "#3 mural" in aviso and "DESLIGAR" in aviso
+    assert "tomada 2 → 120%" in aviso
+    assert "inserts/gancho movidos" not in aviso  # só efeitos e zoom: nenhum bloco andou

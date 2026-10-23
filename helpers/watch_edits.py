@@ -84,8 +84,32 @@ def digest(p: Path) -> str:
             c = r["curva"]
             parts.append(f'  · take {i} ({r.get("beat") or r.get("source", "")}): '
                          f'curva {c.get("nome") or "personalizada"}, {len(c.get("pontos") or [])} pontos')
-    if ed:
+    if any(k in ed for k in ("inserts", "splitInserts", "splitVideos", "hook", "behind", "wordAccents", "numeros")):
         head.append("inserts/gancho movidos")
+    cenas = ed.get("cenas") or []
+    if cenas:
+        head.append(_plural(len(cenas), "efeito mudado", "efeitos mudados"))
+        parts.append("  efeitos (edit-data.json `cenas[ref]`): grave `desligada`, `texto` (centro do bloco no "
+                     "quadro 1080x1920; null = o lugar padrão do componente) e os textos, e refaça só a "
+                     "janela de cada um (references/shortform.md):")
+        for c in cenas:
+            oque = ["DESLIGAR" if c.get("desligada") else "ligado"]
+            t = c.get("texto")
+            if t:
+                oque.append(f'bloco em x={t.get("x")} y={t.get("y")}')
+            for k, v in (c.get("textos") or {}).items():
+                oque.append(f'{k}="{" / ".join(v) if isinstance(v, list) else v}"')
+            est = c.get("estilo") or {}
+            if est:  # fonte (família do catálogo), cor, tamanho (×), contorno (px) e a cor dele
+                oque.append("estilo " + ", ".join(f"{k}={v}" for k, v in est.items()))
+            parts.append(f'  · #{c.get("ref")} {c.get("tipo")} [{fmt(c.get("start", 0))} → {fmt(c.get("end", 0))}]: '
+                         + "; ".join(oque))
+    cam = ed.get("camera") or {}
+    if cam.get("zooms"):
+        mud = [i for i in (cam.get("mudou") or []) if 0 <= i < len(cam["zooms"])]
+        head.append(f"zoom mudado em {_plural(len(mud), 'tomada', 'tomadas')}")
+        parts.append("  zoom: `camera.zooms` passa a ser a lista inteira, uma por tomada; refaça as tomadas mudadas: "
+                     + ", ".join(f"tomada {i + 1} → {round(float(cam['zooms'][i]) * 100)}%" for i in mud))
     if "camadas" in d:
         head.append(f"camadas: {camadas_resumo(d['camadas'])}")
         parts += camadas_linhas(d["camadas"])

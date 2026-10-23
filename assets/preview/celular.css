@@ -142,6 +142,22 @@ button { font-family: inherit; cursor: pointer; }
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
   z-index: 2; pointer-events: none;
 }
+/* efeito do agente escolhido: a moldura do bloco que se arrasta, no lugar e no tamanho dele
+   no quadro 1080x1920 (o centro em left/top). Acima do toque de play, que fica por baixo */
+.ov-cena {
+  position: absolute; translate: -50% -50%;
+  border: 1.5px dashed rgba(255, 255, 255, 0.9); border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  z-index: 4; cursor: grab; touch-action: none;
+}
+.ov-cena:active { cursor: grabbing; }
+.ov-cena.own { border-color: var(--brand); background: rgba(255, 82, 0, 0.12); }
+.ov-cena span {
+  position: absolute; left: 6px; top: 4px; max-width: calc(100% - 12px);
+  font-size: 10px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8); pointer-events: none;
+}
 /* fora do Estilo a prévia é só o vídeo (no "Posição das frases", o vídeo e a frase) */
 .player:not(.styling) .band, .player:not(.styling) .hl { display: none !important; }
 .player:not(.styling):not(.posicionando) .cap { display: none !important; }
@@ -460,6 +476,16 @@ button { font-family: inherit; cursor: pointer; }
 .chip.f2 .l-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 .chip.f2.sel { overflow: visible; outline: 2px solid #fff; outline-offset: -1px; z-index: 3; }
 .chip.f2.dirty::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--brand); }
+/* efeitos do agente (cenas[]) e o zoom de cada tomada: escolhem; o tempo deles segue a tomada */
+.chip.cena, .chip.zoom { pointer-events: auto; }
+.chip.cena { box-shadow: inset 2px 0 0 #ff8a3d; }
+.chip.cena .l-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.chip.cena.off { opacity: 0.45; background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0 4px, transparent 4px 8px); }
+.chip.cena.off .l-name { text-decoration: line-through; }
+.chip.zoom { justify-content: center; padding: 0 2px; font-size: 8.5px; font-variant-numeric: tabular-nums; box-shadow: inset 2px 0 0 #6fd3c1; }
+.chip.zoom.neutro { color: var(--dim); }
+.chip.cena.sel, .chip.zoom.sel { outline: 2px solid #fff; outline-offset: -1px; z-index: 3; }
+.chip.cena.dirty::after, .chip.zoom.dirty::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--brand); }
 .chip.layer.mus .l-ico { color: #6aa8f0; }
 .track.travado .chip.layer { background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0 4px, transparent 4px 8px); }
 .lh {
@@ -660,10 +686,15 @@ kbd {
 .desk .sheet.open { visibility: visible; }
 .desk .sheet .sheet-grip { display: none; }
 .desk #sheet, .desk #trilhaSheet, .desk #fxSheet { left: 0; right: auto; width: var(--col-l); transform: translateX(-102%); border-right: 1px solid var(--line); }
-.desk #noteSheet, .desk #volSheet, .desk #velSheet, .desk #ajSheet, .desk #fxIntSheet { left: auto; right: 0; width: var(--col-r); transform: translateX(102%); border-left: 1px solid var(--line); overflow-y: auto; }
+.desk #noteSheet, .desk #volSheet, .desk #velSheet, .desk #ajSheet, .desk #fxIntSheet,
+.desk #tomZoomSheet, .desk #cenaSheet { left: auto; right: 0; width: var(--col-r); transform: translateX(102%); border-left: 1px solid var(--line); overflow-y: auto; }
 /* aberto: a id acima (que esconde de lado) pesa mais que .open, então a regra repete as ids */
 .desk #sheet.open, .desk #trilhaSheet.open, .desk #fxSheet.open,
-.desk #noteSheet.open, .desk #volSheet.open, .desk #velSheet.open, .desk #ajSheet.open, .desk #fxIntSheet.open { transform: none; }
+.desk #noteSheet.open, .desk #volSheet.open, .desk #velSheet.open, .desk #ajSheet.open, .desk #fxIntSheet.open,
+.desk #tomZoomSheet.open, .desk #cenaSheet.open { transform: none; }
+/* na coluna, o painel de Texto usa a altura toda: os campos rolam, os botões ficam embaixo */
+.desk #cenaSheet { display: flex; flex-direction: column; }
+.desk #cenaSheet .cena-campos { flex: 1; max-height: none; }
 /* no celular o Estilo e os Efeitos escondem o resto para a prévia caber; no computador há lugar */
 .desk .app.styling .topbar, .desk .app.efeitando .topbar { display: flex !important; }
 .desk .app.styling .transport, .desk .app.efeitando .transport { display: flex !important; }
@@ -886,6 +917,47 @@ textarea {
 }
 textarea:focus { box-shadow: inset 0 0 0 1px var(--line2); }
 #noteText { width: calc(100% - 28px); margin: 6px 14px 4px; }
+/* os textos de um efeito: rótulo pequeno em cima de cada campo */
+.cena-campos { display: flex; flex-direction: column; gap: 10px; padding: 8px 14px 4px; max-height: 46vh; overflow-y: auto; }
+.cena-campo { display: flex; flex-direction: column; gap: 4px; }
+.cena-campo span { font-size: 11px; font-weight: 600; color: var(--dim); }
+.cena-campo input {
+  font-family: inherit; font-size: 14px; color: var(--text);
+  background: var(--surface3); border: 0; border-radius: 8px; padding: 10px 12px; outline: none;
+  user-select: text; -webkit-user-select: text;
+}
+.cena-campo input:focus { box-shadow: inset 0 0 0 1px var(--line2); }
+.cena-campo textarea { width: 100%; }
+/* painel de Texto: uma seção por propriedade, rótulo pequeno em cima */
+.tx-sec { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
+.tx-rot { font-size: 11px; font-weight: 600; color: var(--dim); }
+.tx-abas { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.tx-aba {
+  flex: none; padding: 6px 10px; border: 0; border-radius: 999px;
+  font: 600 12px/1 inherit; color: var(--dim); background: var(--surface3); cursor: pointer;
+}
+.tx-aba.on { color: var(--brand-ink); background: var(--brand); }
+/* com o mouse, aba escondida de lado ninguém acha: no computador elas quebram linha */
+.desk .tx-abas { flex-wrap: wrap; overflow: visible; }
+/* cada fonte escrita nela mesma, como no seletor do CapCut */
+.tx-fontes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.tx-fonte {
+  min-height: 44px; padding: 6px 8px; border: 1px solid transparent; border-radius: 8px;
+  font-size: 17px; line-height: 1.1; color: var(--text); background: var(--surface3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
+}
+.tx-fonte.on { border-color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); }
+.tx-cores { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tx-cor { width: 28px; height: 28px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.18); cursor: pointer; padding: 0; }
+.tx-cor.on { border-color: #fff; box-shadow: 0 0 0 2px var(--brand); }
+.tx-cor-livre { width: 32px; height: 32px; padding: 0; border: 0; background: none; cursor: pointer; }
+.tx-regua { display: flex; align-items: center; gap: 10px; }
+.tx-regua input { flex: 1; accent-color: var(--brand); }
+.tx-val { min-width: 48px; text-align: right; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+.tx-dica { margin: 0; font-size: 11px; line-height: 1.4; color: var(--dim); }
+/* a prévia do texto novo dentro da moldura */
+.ov-cena-txt { position: absolute; inset: 0; pointer-events: none; }
+.ov-cena-txt svg { width: 100%; height: 100%; overflow: visible; display: block; }
 .note-head { display: flex; align-items: baseline; gap: 10px; padding: 8px 16px 2px; font-size: 14px; font-weight: 700; }
 .note-head span { font-size: 11px; font-weight: 600; color: var(--dim); font-variant-numeric: tabular-nums; }
 

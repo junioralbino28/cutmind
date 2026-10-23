@@ -101,6 +101,12 @@ chat you need a path on this computer. Proven by `tests/test_camadas.py`,
 | `estilo` / `legenda` | "muda a legenda para empilhado" | when the user NAMES the style, write it in `state.json` `style` and rebuild Phase 2 (`references/shortform.md`). When they only ask "qual fica melhor?", open the Estilo panel instead (`awaitingStyle`): the gate exists so they see each style on their own frame |
 | Phase 2 soundtrack (the read-only block under the audio in Final) | "abaixa a trilha", "tira a música" | `soundtrack` in `edit-data.json`: `volume` (linear, 0.0445 when absent) or `enabled: false`; then `mixar_final.py`. The editor only shows it, so this one is always from the chat |
 | caption position (`todas`, `padrao`) | "a legenda mais para cima" | `captionPositions` in `state.json` `style` (`all` for every phrase, `phrases[]` anchored on the source moment), then `caption_positions.py --style <edit>/state.json ...` (`references/shortform.md`, "Where each phrase sits"); `padrao` = leave it out |
+| `cena-liga` | "tira o efeito do gráfico" | `cenas[i].desligada: true` (false or absent = on). Re-render that effect's window |
+| `cena-texto` | "troca GARGALO por GARGALOS", "o GARGALO em Bebas, maior" | `cenas[i]`: the text field itself (`palavra`, `titulo`, `frase`, `pergunta`, `gigante`, `pequeno`, `etiqueta`, `botao`, `nome`; `batidas[k].palavra` in the digital zoom) and `estilo`: `fonte` (a family of `assets/preview/fontes.js`, with its `peso`), `cor`, `tamanho` (× the designed size), `contorno` (px) and `corContorno`. Re-render the window |
+| moving the effect's frame on the video, `cena-lugar` | "o texto do vidro mais para cima" | `cenas[i].texto = {x, y}`: the block's centre in 1080×1920 frame px (`cena-lugar` = `x: 540`); absent = the component's default place. Re-render the window |
+| `cena-original` | "volta o efeito como estava" | the previous values of those keys |
+| `zoom-valor`, `zoom-sem` | "a tomada 4 sem zoom", "mais zoom na 2" | `camera.zooms`: one base zoom per take (expand the cycle to one per take first, as the editor does); `zoom-sem` = 1. Re-render those takes |
+| `zoom-original` | "volta o zoom da 4" | the previous value |
 
 Phase 2 is short-form only for the style gate; on longform ask the layer questions in
 chat (`SKILL.md`, "The Estilo panel"). Caption positions are proven by

@@ -111,6 +111,9 @@ const ICON = {
   ajustar: sv('<path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2.2" fill="currentColor"/><circle cx="15.5" cy="12" r="2.2" fill="currentColor"/><circle cx="7.5" cy="17" r="2.2" fill="currentColor"/>'),
   celular: sv('<rect x="6.5" y="2.5" width="11" height="19" rx="2.4"/><path d="M10.5 18.5h3"/>'),
   intensidade: sv('<path d="M4 12h16"/><circle cx="14.5" cy="12" r="2.6" fill="currentColor"/>'),
+  lupa: sv('<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5M8 10.5h5M10.5 8v5"/>'),
+  semZoom: sv('<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5M8 10.5h5"/>'),
+  texto: sv('<path d="M5 7V5h14v2M12 5v14M9.5 19h5"/>'),
 };
 
 /* ---------- catálogo de estilos e amostras: estilos.js ----------
@@ -343,6 +346,11 @@ const S = {
   editData: null,
   insertsDraft: [],
   insSel: -1,         // o bloco da Fase 2 escolhido na vista Final (índice em insertsDraft)
+  cenasDraft: [],     // os efeitos do agente (cenas[] do edit-data.json), um bloco cada
+  cenaSel: -1,
+  zoomDraft: null,    // o zoom de cada tomada (camera.zooms, aberto um por tomada)
+  zoomOrig: null,
+  zoomSel: -1,
   notes: [],
   pendingIn: null,
   editingNote: null,
@@ -552,10 +560,13 @@ function buildInsertsDraft() {
   (d.splitVideos || []).forEach((it, i) => list.push({ kind: 'splitvideo', label: it.label || (it.src || '').split('/').pop(), start: +it.start, end: +it.end, ref: i }));
   (d.behind || []).forEach((b, i) => list.push({ kind: 'behind', label: b.kind === 'words' ? (b.words || []).map((w) => w.t).join(' ') : (b.src || '').split('/').pop(), start: +b.start, end: +b.start + +b.dur, ref: i }));
   (d.wordAccents || []).forEach((w, i) => list.push({ kind: 'word', label: w.text, start: +w.start, end: +w.end, ref: i }));
+  // o número que conta (numeros[]: at → end) anda e apara como as palavras
+  (d.numeros || []).forEach((n, i) => list.push({ kind: 'numero', label: `${n.prefixo || ''}${n.valor}${n.sufixo || ''}`, start: +n.at, end: +(n.end ?? +n.at + 2.4), ref: i }));
   S.insertsDraft = list.map((c) => ({ ...c, orig: { start: c.start, end: c.end } }));
   S.insSel = -1;
+  buildCenasDraft(d);
 }
-const isText = (c) => c.kind === 'hook' || c.kind === 'word';
+const isText = (c) => c.kind === 'hook' || c.kind === 'word' || c.kind === 'numero';
 // o bloco andou ou foi aparado desde o último vídeo do agente (ou o último Salvar)
 const insMudou = (c) => c.start !== c.orig.start || c.end !== c.orig.end;
 const insertsDirty = () => S.insertsDraft.some(insMudou);
@@ -579,7 +590,8 @@ function diffBase() {
 }
 const edlDirty = () => diffBase() > 0;
 function dirtyCount() {
-  return diffBase() + S.notes.length + S.insertsDraft.filter(insMudou).length + (camadasDirty() ? 1 : 0) + (efeitosDirty() ? 1 : 0);
+  return diffBase() + S.notes.length + S.insertsDraft.filter(insMudou).length + (camadasDirty() ? 1 : 0) + (efeitosDirty() ? 1 : 0)
+    + S.cenasDraft.filter(cenaMudou).length + zoomMudados();
 }
 const isChanged = (r) => {
   const b = S.base.find((x) => x.uid === r.uid);
@@ -618,6 +630,10 @@ function snap() {
     fxSel: S.fxSel,
     ins: S.insertsDraft.map((c) => ({ start: c.start, end: c.end })),
     insSel: S.insSel,
+    cenas: S.cenasDraft.map(cenaValor),
+    cenaSel: S.cenaSel,
+    zooms: S.zoomDraft ? [...S.zoomDraft] : null,
+    zoomSel: S.zoomSel,
   };
 }
 function remember(before) {
@@ -645,6 +661,11 @@ function restore(s) {
   // os blocos da Fase 2 são os mesmos objetos (o agente manda outros junto com um histórico zerado)
   if (s.ins && s.ins.length === S.insertsDraft.length) s.ins.forEach((v, k) => Object.assign(S.insertsDraft[k], v));
   S.insSel = s.insSel != null && s.insSel < S.insertsDraft.length ? s.insSel : -1;
+  if (s.cenas && s.cenas.length === S.cenasDraft.length) s.cenas.forEach((v, k) => Object.assign(S.cenasDraft[k], cenaValor(v)));
+  S.cenaSel = s.cenaSel != null && s.cenaSel < S.cenasDraft.length ? s.cenaSel : -1;
+  if (s.zooms && S.zoomDraft && s.zooms.length === S.zoomDraft.length) S.zoomDraft = [...s.zooms];
+  S.zoomSel = s.zoomSel != null && S.zoomDraft && s.zoomSel < S.zoomDraft.length ? s.zoomSel : -1;
+  drawCenaBox();
   applyMute();
   S.t = clampT(S.t);
   renderTimeline(); renderToolbar(); refreshHeader(); renderHistory();
@@ -760,6 +781,8 @@ async function applyState(data) {
   S.captions = [];
   S.editData = null;
   S.insertsDraft = [];
+  S.cenasDraft = []; S.cenaSel = -1;
+  S.zoomDraft = null; S.zoomOrig = null; S.zoomSel = -1;
   if ((S.state.phase || 1) >= 2) {
     if (S.state.captions) {
       try { S.captions = groupCaptions(await (await fetch(`/media/${S.state.captions}?v=${Date.now()}`)).json()); } catch (e) { /* ainda não existe */ }
@@ -772,6 +795,7 @@ async function applyState(data) {
   S.fxSel = null;
   S.insSel = -1;
   S.fxTeste = null;
+  drawCenaBox();
   await loadCamadas();
   await loadEfeitos();
   if (hasVideo) {
@@ -869,11 +893,15 @@ function trackPlan() {
     { id: 'caps', h: 18, show: fin && S.captions.length > 0 },
     { id: 'text', h: 18, show: fin && hasTxt },
     { id: 'ins', h: 18, show: fin && hasIns },
+    // os efeitos que o agente pôs (cenas[]): cada um liga, desliga, troca o texto e tem o bloco arrastado no vídeo
+    { id: 'cenas', h: 20, show: fin && S.cenasDraft.length > 0 },
     ...fx.filter((f) => f.tipo === 'imagem').reverse().map(layer), // a mais nova fica no alto, como no editor do PC
     // filtros, transições e ajustes valem para o corte: no Final já estão no vídeo. O ajuste
     // tem faixa própria, como no CapCut: na mesma tomada de um filtro, os dois ficariam um em cima do outro
     { id: 'fx', h: 22, show: !fin && !S.posMode && S.efeitos.itens.some((it) => it.tipo !== 'ajuste') },
     { id: 'aj', h: 22, show: !fin && !S.posMode && S.efeitos.itens.some((it) => it.tipo === 'ajuste') },
+    // o zoom de cada tomada no vídeo final, colado em cima dela
+    { id: 'zoom', h: 16, show: fin && !!S.zoomDraft },
     { id: 'video', h: VIDEO_TRACK_H, show: true },
     { id: 'audio', h: 30, show: true },
     // J-cut: a voz de cada tomada em duas faixas alternadas, com a sobra que entra antes da imagem
@@ -933,6 +961,8 @@ function renderTimeline() {
     else if (tr.id === 'notes') renderNotes(lane);
     else if (tr.id === 'a1' || tr.id === 'a2') renderJcutLane(track, lane, tr.id === 'a1' ? 0 : 1);
     else if (tr.id === 'trilha') renderTrilhaF2(lane);
+    else if (tr.id === 'cenas') renderCenas(lane);
+    else if (tr.id === 'zoom') renderZoom(lane);
     else if (tr.id === 'caps') {
       for (const c of S.captions) {
         const a = renderedToDraft(c.start), b = renderedToDraft(c.end);
@@ -1116,6 +1146,7 @@ function positionTimeline() {
   $('tNow').textContent = fmt(S.t);
   $('tTotal').textContent = fmt(totalT());
   drawFrase(); // no "Posição das frases": a frase debaixo da agulha (só refaz quando muda)
+  if (S.cenaSel >= 0) drawCenaBox(); // a moldura do efeito escolhido só aparece dentro dele
 }
 
 function drawRuler() {
@@ -1512,9 +1543,16 @@ function tapAt(target) {
   if (fc) { tapFx(fc.dataset.id); return; }
   const f2 = target && target.closest && target.closest('.chip.f2');
   if (f2 && S.view === 'final') { tapIns(+f2.dataset.i); return; }
+  const ce = target && target.closest && target.closest('.chip.cena');
+  if (ce && S.view === 'final') { tapCena(+ce.dataset.c); return; }
+  const zc = target && target.closest && target.closest('.chip.zoom');
+  if (zc && S.view === 'final') { tapZoom(+zc.dataset.z); return; }
   S.layerSel = null;
   S.fxSel = null;
   S.insSel = -1;
+  S.cenaSel = -1;
+  S.zoomSel = -1;
+  drawCenaBox();
   const take = target && target.closest && target.closest('.take');
   if (take && S.view === 'corte') {
     const i = +take.dataset.i;
@@ -1592,7 +1630,7 @@ function passo(seg) {
 // Esc fecha o painel aberto como o botão dele: o Estilo sem aplicar, a nota sem guardar,
 // os de régua no Pronto (a régua já mudou ao vivo)
 const FECHA_PAINEL = { sheet: 'sheetClose', noteSheet: 'noteCancel', volSheet: 'volOk', velSheet: 'velOk', ajSheet: 'ajOk',
-  fxIntSheet: 'fxIntOk', trilhaSheet: 'trilhaClose', fxSheet: 'fxClose' };
+  fxIntSheet: 'fxIntOk', trilhaSheet: 'trilhaClose', fxSheet: 'fxClose', tomZoomSheet: 'tomZoomOk', cenaSheet: 'cenaCancel' };
 function fechaPainel() {
   const aberto = document.querySelector('.sheet.open');
   if (!aberto || !FECHA_PAINEL[aberto.id]) return false;
@@ -1627,6 +1665,13 @@ document.addEventListener('keydown', (e) => {
   }
   if (S.styling || S.posMode) return;
   const kl = k.toLowerCase();
+  // efeito escolhido com a moldura na tela: as setas empurram o bloco (2 px do quadro; Shift, 10)
+  if (k.startsWith('Arrow') && !ctrl && cenaNaTela()) {
+    e.preventDefault();
+    const d = e.shiftKey ? 10 : 2;
+    cenaEmpurra(k === 'ArrowLeft' ? -d : k === 'ArrowRight' ? d : 0, k === 'ArrowUp' ? -d : k === 'ArrowDown' ? d : 0);
+    return;
+  }
   if ((k === 'ArrowLeft' || k === 'ArrowRight') && !ctrl) {
     e.preventDefault();
     const seg = e.shiftKey ? 1 : 1 / (S.fps || 30);
@@ -1713,10 +1758,13 @@ function renderToolbar() {
   const fsel = !lsel && S.fxSel && S.view === 'corte' ? fxItem(S.fxSel) : null;
   const sel = !lsel && !fsel && S.selected >= 0 && S.view === 'corte' ? S.draft[S.selected] : null;
   const isel = !lsel && !fsel && S.view === 'final' && S.insSel >= 0 ? S.insertsDraft[S.insSel] || null : null;
-  if (sel || lsel || fsel || isel) { S.audioMenu = false; S.importMenu = false; S.fxMenu = false; }
+  const csel = !lsel && !fsel && !isel && S.view === 'final' && S.cenaSel >= 0 ? S.cenasDraft[S.cenaSel] || null : null;
+  const zsel = !lsel && !fsel && !isel && !csel && S.view === 'final' && S.zoomDraft && S.zoomSel >= 0;
+  const algum = !!(sel || lsel || fsel || isel || csel || zsel);
+  if (algum) { S.audioMenu = false; S.importMenu = false; S.fxMenu = false; }
   const amenu = S.audioMenu, imenu = S.importMenu, fmenu = S.fxMenu;
-  tb.classList.toggle('hidden', !!(sel || lsel || fsel || isel || amenu || imenu || fmenu));
-  ctx.classList.toggle('hidden', !(sel || lsel || fsel || isel || amenu || imenu || fmenu));
+  tb.classList.toggle('hidden', !!(algum || amenu || imenu || fmenu));
+  ctx.classList.toggle('hidden', !(algum || amenu || imenu || fmenu));
   const hasVideo = S.videoDuration > 0;
   const tool = (host, id, label, opts = {}) => {
     const b = el('button', `tool${opts.on ? ' on' : ''}${opts.armed ? ' armed' : ''}${opts.cls ? ` ${opts.cls}` : ''}`, host);
@@ -1778,6 +1826,22 @@ function renderToolbar() {
   if (isel) { // um bloco da Fase 2: segurar move, as alças aparam; "Original" volta ao tempo do agente
     tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
     tool(ctx, 'f2-original', 'Original', { icon: ICON.original, disabled: !insMudou(isel) });
+    return;
+  }
+  if (csel) { // um efeito do agente: o tempo segue a tomada; o bloco se arrasta na prévia
+    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
+    tool(ctx, 'cena-liga', csel.desligada ? 'Ligar' : 'Desligar', { icon: csel.desligada ? ICON.olhoFechado : ICON.olho });
+    if (Object.keys(csel.textos).length) tool(ctx, 'cena-texto', 'Texto', { icon: ICON.texto, disabled: csel.desligada });
+    if (CENA_BLOCO[csel.tipo]) tool(ctx, 'cena-lugar', 'Centralizar', { icon: ICON.mover, disabled: csel.desligada || Math.round(blocoDaCena(csel).x) === FRAME_W / 2 });
+    tool(ctx, 'cena-original', 'Original', { icon: ICON.original, disabled: !cenaMudou(csel) });
+    return;
+  }
+  if (zsel) { // o zoom de uma tomada no vídeo final
+    const z = S.zoomDraft[S.zoomSel];
+    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
+    tool(ctx, 'zoom-valor', `${Math.round(z * 100)}%`, { icon: ICON.lupa });
+    tool(ctx, 'zoom-sem', 'Sem zoom', { icon: ICON.semZoom, disabled: Math.abs(z - 1) < 0.005 });
+    tool(ctx, 'zoom-original', 'Original', { icon: ICON.original, disabled: z === S.zoomOrig[S.zoomSel] });
     return;
   }
   if (lsel) { // um item de camada escolhido
@@ -1849,6 +1913,13 @@ document.addEventListener('click', (e) => {
       if (c) { remember(); c.start = c.orig.start; c.end = c.orig.end; renderTimeline(); renderToolbar(); refreshHeader(); }
       break;
     }
+    case 'cena-liga': cenaMuda((c) => { c.desligada = !c.desligada; }); break;
+    case 'cena-texto': openCenaTexto(); break;
+    case 'cena-lugar': cenaCentraliza(); break;
+    case 'cena-original': cenaMuda((c) => Object.assign(c, cenaValor(c.orig))); break;
+    case 'zoom-valor': openZoom(); break;
+    case 'zoom-sem': zoomPara(1); break;
+    case 'zoom-original': zoomPara(S.zoomOrig[S.zoomSel]); break;
     case 'pronto': exitPosMode(); break;
     case 'todas':
       S.todas = !S.todas;
@@ -1861,9 +1932,9 @@ document.addEventListener('click', (e) => {
 });
 
 function soltaEscolha() {
-  S.selected = -1; S.layerSel = null; S.fxSel = null; S.insSel = -1;
+  S.selected = -1; S.layerSel = null; S.fxSel = null; S.insSel = -1; S.cenaSel = -1; S.zoomSel = -1;
   S.audioMenu = false; S.importMenu = false; S.fxMenu = false;
-  renderTimeline(); renderToolbar();
+  renderTimeline(); renderToolbar(); drawCenaBox();
 }
 
 // "Cortar": escolhe a tomada que está debaixo da agulha (no corte) e abre as ferramentas dela
@@ -1945,6 +2016,9 @@ function switchView(v) {
   S.selected = -1;
   S.layerSel = null;
   S.insSel = -1;
+  S.cenaSel = -1;
+  S.zoomSel = -1;
+  drawCenaBox();
   applyMute(); // o silenciar do som do vídeo vale no corte; o final já sai mixado
   setVideoSrc(v);
   renderTimeline();
@@ -2810,18 +2884,26 @@ $('btnSave').addEventListener('click', async () => {
   const soCamadas = !edlDirty() && !S.notes.length;
   if (edlDirty()) payload.edl = edlPayload();
   const comBlocos = insertsDirty();
+  const comCenas = S.cenasDraft.some(cenaMudou), comZoom = zoomMudados() > 0;
+  const comF2 = comBlocos || comCenas || comZoom;
+  if (comF2) payload.editData = {};
   if (comBlocos) { // blocos da Fase 2: todos os de cada tipo, pelo `ref`, como a desktop antiga mandava
     const de = (k) => S.insertsDraft.filter((c) => c.kind === k);
     const t = (v) => +v.toFixed(3);
-    payload.editData = {
+    Object.assign(payload.editData, {
       inserts: de('insert').map((c) => ({ ref: c.ref, start: t(c.start), end: t(c.end) })),
       splitInserts: de('split').map((c) => ({ ref: c.ref, label: c.label, start: t(c.start), end: t(c.end) })),
       splitVideos: de('splitvideo').map((c) => ({ ref: c.ref, label: c.label, start: t(c.start), end: t(c.end) })),
       hook: de('hook').map((c) => ({ endSec: t(c.end) }))[0] || null,
       behind: de('behind').map((c) => ({ ref: c.ref, start: t(c.start), dur: t(c.end - c.start) })),
       wordAccents: de('word').map((c) => ({ ref: c.ref, text: c.label, start: t(c.start), end: t(c.end) })),
-    };
+      numeros: de('numero').map((c) => ({ ref: c.ref, at: t(c.start), end: t(c.end) })),
+    });
   }
+  // efeitos: só os que mudaram, pelo `ref` (o agente refaz só a janela de cada um)
+  if (comCenas) payload.editData.cenas = S.cenasDraft.filter(cenaMudou).map((c) => ({ ref: c.ref, tipo: c.tipo, start: c.start, end: c.end, ...cenaValor(c) }));
+  // zoom: a lista inteira, uma por tomada (o template usa zooms[i] quando há uma para cada)
+  if (comZoom) payload.editData.camera = { zooms: S.zoomDraft.map((z) => +z.toFixed(3)), mudou: S.zoomDraft.map((z, i) => i).filter((i) => S.zoomDraft[i] !== S.zoomOrig[i]) };
   if (camadasDirty()) payload.camadas = S.camadas;
   const comEfeitos = efeitosDirty();
   if (comEfeitos) payload.efeitos = S.efeitos;
@@ -2852,15 +2934,20 @@ $('btnSave').addEventListener('click', async () => {
     S.camadasBase = camSig();
     S.efeitosBase = fxSig();
     S.insertsDraft.forEach((c) => { c.orig = { start: c.start, end: c.end }; });
+    S.cenasDraft.forEach((c) => { c.orig = cenaValor(c); });
+    if (S.zoomDraft) S.zoomOrig = [...S.zoomDraft];
     S.selected = -1;
     S.layerSel = null;
     S.fxSel = null;
     S.insSel = -1;
+    S.cenaSel = -1;
+    S.zoomSel = -1;
+    drawCenaBox();
     forgetHistory(); // o que foi enviado ao agente não se desfaz daqui
     renderTimeline(); renderToolbar(); refreshHeader();
     const oque = comEfeitos ? (comCamadas ? 'Camadas e efeitos salvos' : 'Efeitos salvos') : 'Camadas salvas';
     const aviso = !soCamadas ? 'Ajustes enviados. O agente refaz o corte.'
-      : comBlocos ? 'Blocos enviados. O agente refaz o vídeo final.'
+      : comF2 ? 'Ajustes enviados. O agente refaz só os trechos do vídeo final que mudaram.'
         : `${oque}. O agente põe no vídeo final.`;
     toast(aviso, 3000);
   } catch (err) {
@@ -2994,6 +3081,7 @@ function tapLayer(id) {
   S.layerSel = S.layerSel === id ? null : id;
   S.selected = -1;
   S.insSel = -1;
+  S.cenaSel = -1; S.zoomSel = -1; drawCenaBox();
   renderTimeline();
   renderToolbar();
 }
@@ -3095,9 +3183,10 @@ const MIN_INS = 0.15;
 function tapIns(i) {
   if (!S.insertsDraft[i]) return;
   S.insSel = S.insSel === i ? -1 : i;
-  S.selected = -1; S.layerSel = null; S.fxSel = null;
+  S.selected = -1; S.layerSel = null; S.fxSel = null; S.cenaSel = -1; S.zoomSel = -1;
   renderTimeline();
   renderToolbar();
+  drawCenaBox();
 }
 function startInsDrag(x, kind, side) {
   const c = S.insertsDraft[S.insSel];
@@ -3147,6 +3236,445 @@ function endInsDrag() {
   G.mode = null;
   $('trimTip').classList.add('hidden');
   if (c && (c.start !== D.c0.start || c.end !== D.c0.end)) remember(D.before); // tocar sem arrastar não conta
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+
+// ---------- efeitos e zoom do agente na linha do tempo (vista Final) ----------
+/* Tudo o que o agente pôs no vídeo final aparece numa faixa e se ajusta sem conversa.
+ * Cada efeito (`cenas[]` do edit-data.json) liga e desliga, tem o texto trocado e o bloco
+ * (texto, cartão, celular) arrastado sobre o vídeo — ou empurrado pelas setas, 2 px por
+ * toque. O tempo de um efeito segue a tomada (o recorte da pessoa nasce no começo dela):
+ * ele não anda nem apara. O zoom de cada tomada (`camera.zooms`) sobe e desce. A prévia
+ * continua sendo o vídeo de agora: a moldura mostra para onde o bloco vai, e o Salvar
+ * leva as mudanças pelo `ref` para o agente refazer só os trechos tocados. */
+const CENA_NOME = {
+  corteZoom: 'Corte no zoom', revelacao: 'Revelação', papel: 'Recorte de papel', mural: 'Mural', parede: 'Parede de fotos',
+  capa: 'Capa de revista', grafico: 'Gráfico', app: 'App', checklist: 'Checklist', zoomDigital: 'Zoom digital',
+  saindo: 'Saindo da tela', rabisco: 'Rabisco', vertigem: 'Vertigem', celular: 'Celular', vidro: 'Vidro', orbita: 'Órbita', chroma: 'Site',
+};
+// os campos de texto que a pessoa pode trocar (texto solto ou uma lista de linhas)
+const CENA_TEXTOS = { titulo: 'Título', pergunta: 'Pergunta', frase: 'Frase', palavra: 'Palavra', pequeno: 'Faixa de cima',
+  gigante: 'Palavra grande', etiqueta: 'Etiqueta', botao: 'Botão', nome: 'Nome', batidas: 'Palavras (uma por batida)' };
+const linhasDe = (v) => (Array.isArray(v) ? v : [v || '']).map(String);
+const maisLonga = (v) => linhasDe(v).reduce((a, s) => (s.length > a.length ? s : a), '');
+const largo = (s, px) => Math.min(1040, Math.max(160, String(s || '').length * px));
+/* O bloco que se arrasta em cada efeito, em px do quadro 1080x1920: centro padrão e tamanho.
+ * O centro espelha o padrão do componente (src/cenas/*.tsx, `centro(c, [x, y])`): mudou lá,
+ * muda aqui. O tamanho é só a moldura que a pessoa pega. Efeito sem bloco móvel não entra. */
+const CENA_BLOCO = {
+  vidro: (c, t) => ({ x: 540, y: c.y ?? 700, w: c.largura ?? largo(t.palavra, (c.tamanho ?? 300) * 0.5), h: (c.tamanho ?? 300) * 0.74 }),
+  zoomDigital: (c, t) => ({ x: 540, y: c.y ?? 960, w: largo(maisLonga(t.batidas), (c.tamanho ?? 330) * 0.42), h: (c.tamanho ?? 330) * 0.74 }),
+  parede: (c, t) => ({ x: 540, y: 245, w: Math.max(largo(t.gigante, 116), largo(t.pequeno, 30)), h: 316 }),
+  capa: (c) => { const tam = c.tamanho ?? 330; return { x: 540, y: (c.baseline ?? 690) - tam * 0.355, w: c.largura ?? 1010, h: tam * 0.72 }; },
+  grafico: (c, t) => ({ x: 751, y: 411, w: largo(t.etiqueta || 'ESCALA', 42) + 128, h: 130 }),
+  chroma: () => ({ x: 514, y: 590, w: 900, h: 680 }),
+  papel: (c, t) => ({ x: 540, y: 268, w: largo(maisLonga(t.frase), 96), h: 296 }),
+  rabisco: (c, t) => ({ x: 540, y: 184, w: largo(t.frase, 48), h: 124 }),
+  checklist: (c) => ({ x: 540, y: (c.top ?? 108) + 234, w: 908, h: 468 }),
+  celular: () => ({ x: 778, y: 795, w: 452, h: 930 }),
+  orbita: (c, t) => ({ x: 540, y: 252, w: largo(maisLonga(t.titulo), 46), h: 104 * linhasDe(t.titulo).length }),
+  saindo: (c, t) => ({ x: 540, y: 213, w: largo(t.titulo, 66), h: 150 }),
+  vertigem: (c, t) => ({ x: 540, y: 226, w: largo(t.pergunta, 70), h: 132 }),
+};
+/* O texto de destaque de cada efeito: o padrão do componente (src/cenas/*.tsx, `estiloDe(c, {...})`:
+ * mudou lá, muda aqui), o que o painel de Texto deixa mudar (`sem`/`so`), o tamanho da letra no
+ * quadro (`px`), a largura fixa quando o texto é esticado (`esticar`) e o que aparece escrito. */
+const CENA_ESTILO = {
+  vidro: { fonte: 'poppins', contorno: 6, corContorno: '#ffffff', sem: ['cor'], px: (c) => c.tamanho ?? 300, esticar: (c) => c.largura ?? 1000, linhas: (t) => [t.palavra || 'GARGALO'] },
+  zoomDigital: { fonte: 'bebas', cor: (c) => c.cor || '#ffe500', contorno: 8, corContorno: '#000000', px: (c) => c.tamanho ?? 330, linhas: (t) => [maisLonga(t.batidas)] },
+  parede: { fonte: 'anton', cor: '#ff5200', contorno: 10, corContorno: '#ffffff', px: () => 230, linhas: (t) => [t.gigante || ''] },
+  capa: { fonte: 'playfair', cor: (c) => c.cor || '#b0101b', contorno: 0, corContorno: '#000000', px: (c) => c.tamanho ?? 330, esticar: (c) => c.largura ?? 1010, linhas: (t) => [t.nome || 'EQUIPE'] },
+  grafico: { fonte: 'poppins', cor: '#063322', contorno: 0, corContorno: '#ffffff', px: () => 52, linhas: (t) => [t.etiqueta || 'ESCALA'] },
+  chroma: { fonte: 'poppins', cor: '#ffffff', contorno: 0, corContorno: '#3a0ca3', px: () => 94, linhas: (t) => [t.titulo || ''] },
+  papel: { so: ['tamanho'], cor: '#ffffff', contorno: 4, corContorno: '#000000', px: () => 109, linhas: (t) => linhasDe(t.frase) },
+  rabisco: { fonte: 'caveat', cor: '#fdfdf8', contorno: 0, corContorno: '#000000', px: () => 112, linhas: (t) => [t.frase || ''] },
+  orbita: { fonte: 'instrument', cor: '#ffffff', contorno: 0, corContorno: '#000000', px: () => 104, linhas: (t) => linhasDe(t.titulo) },
+  saindo: { fonte: 'bebas', cor: (c) => c.cor || '#c6ff3d', contorno: 0, corContorno: '#000000', px: () => 150, linhas: (t) => [t.titulo || ''] },
+  vertigem: { fonte: 'oswald', cor: '#ffffff', contorno: 0, corContorno: '#000000', px: () => 132, linhas: (t) => [t.pergunta || ''] },
+};
+// o estilo que vale agora: o escolhido no painel por cima do padrão do efeito
+function estiloEfetivo(c) {
+  const d = c && CENA_ESTILO[c.tipo];
+  if (!d) return null;
+  const val = (x) => (typeof x === 'function' ? x(c.cena) : x);
+  const e = c.estilo || {};
+  const fonte = e.fonte ? CutMindFontes.familiaDe(e.fonte) : d.fonte ? CutMindFontes.familiaDe(d.fonte) : null;
+  return {
+    fonte,
+    peso: +e.peso || (fonte ? CutMindFontes.pesoDe(fonte) : 400),
+    italico: !e.fonte && d.fonte === 'instrument',
+    cor: e.cor || val(d.cor) || '#ffffff',
+    tamanho: +e.tamanho > 0 ? +e.tamanho : 1,
+    contorno: e.contorno != null ? +e.contorno : d.contorno || 0,
+    corContorno: e.corContorno || d.corContorno || '#000000',
+  };
+}
+// o que a pessoa muda num efeito, copiado (foto do desfazer, `orig`, o que vai no Salvar).
+// Funções declaradas (e não const): o cabeçalho e o desfazer as chamam antes desta linha rodar
+function cenaValor(v) {
+  const est = v.estilo && typeof v.estilo === 'object' && Object.keys(v.estilo).length ? JSON.parse(JSON.stringify(v.estilo)) : null;
+  return { desligada: !!v.desligada, texto: v.texto ? { x: +v.texto.x, y: +v.texto.y } : null, textos: JSON.parse(JSON.stringify(v.textos || {})), estilo: est };
+}
+function cenaValores(c) {
+  const textos = {};
+  for (const k of Object.keys(CENA_TEXTOS)) {
+    const v = c[k];
+    if (typeof v === 'string') textos[k] = v;
+    else if (k !== 'batidas' && Array.isArray(v) && v.every((x) => typeof x === 'string')) textos[k] = [...v];
+  }
+  if (Array.isArray(c.batidas)) textos.batidas = c.batidas.map((b) => String((b && b.palavra) || ''));
+  const t = c.texto;
+  return cenaValor({ desligada: c.desligada, texto: t && isFinite(t.x) && isFinite(t.y) ? t : null, textos, estilo: c.estilo });
+}
+function cenaSig(v) { return JSON.stringify([!!v.desligada, v.texto || null, v.textos, v.estilo || null]); }
+function cenaMudou(c) { return cenaSig(c) !== cenaSig(c.orig); }
+function zoomMudados() { return S.zoomDraft ? S.zoomDraft.filter((z, i) => z !== S.zoomOrig[i]).length : 0; }
+function buildCenasDraft(d) {
+  S.cenasDraft = (d.cenas || []).map((c, i) => {
+    const v = cenaValores(c);
+    return { ref: i, tipo: c.tipo, start: +c.start, end: +c.end, nome: CENA_NOME[c.tipo] || c.tipo, cena: c, ...v, orig: cenaValor(v) };
+  });
+  S.cenaSel = -1;
+  // o template usa zooms[i % zooms.length]: aberto um por tomada, cada uma muda sozinha
+  const cam = d.camera, n = S.rendered.length;
+  const zs = cam && cam.enabled !== false && Array.isArray(cam.zooms) && cam.zooms.length ? cam.zooms : null;
+  S.zoomDraft = zs && n ? Array.from({ length: n }, (_, i) => +zs[i % zs.length] || 1) : null;
+  S.zoomOrig = S.zoomDraft ? [...S.zoomDraft] : null;
+  S.zoomSel = -1;
+}
+function blocoDaCena(c) {
+  const f = c && CENA_BLOCO[c.tipo];
+  if (!f) return null;
+  const b = f(c.cena, c.textos);
+  const k = CENA_ESTILO[c.tipo] ? estiloEfetivo(c).tamanho : 1; // a moldura cresce com a letra
+  const t = { ...b, w: b.w * k, h: b.h * k };
+  return c.texto ? { ...t, x: c.texto.x, y: c.texto.y } : t;
+}
+function renderCenas(lane) {
+  S.cenasDraft.forEach((c, i) => {
+    const a = renderedToDraft(c.start), b = renderedToDraft(c.end);
+    const chip = el('div', 'chip cena', lane);
+    chip.dataset.c = i;
+    chip.style.left = `${a * S.pps}px`;
+    chip.style.width = `${Math.max((b - a) * S.pps - 2, 6)}px`;
+    el('span', 'l-name', chip).textContent = c.nome;
+    chip.title = c.desligada ? `${c.nome} (desligado)` : c.nome;
+    if (c.desligada) chip.classList.add('off');
+    if (cenaMudou(c)) chip.classList.add('dirty');
+    if (i === S.cenaSel) chip.classList.add('sel');
+  });
+}
+function renderZoom(lane) {
+  const rl = renderedLayout();
+  S.zoomDraft.forEach((z, i) => {
+    const L = rl[i];
+    if (!L) return;
+    const a = renderedToDraft(L.out), b = renderedToDraft(L.out + L.dur);
+    const chip = el('div', 'chip zoom', lane);
+    chip.dataset.z = i;
+    chip.style.left = `${a * S.pps}px`;
+    chip.style.width = `${Math.max((b - a) * S.pps - 2, 4)}px`;
+    chip.textContent = `${Math.round(z * 100)}%`;
+    if (Math.abs(z - 1) < 0.005) chip.classList.add('neutro');
+    if (z !== S.zoomOrig[i]) chip.classList.add('dirty');
+    if (i === S.zoomSel) chip.classList.add('sel');
+  });
+}
+function tapCena(i) {
+  const c = S.cenasDraft[i];
+  if (!c) return;
+  S.cenaSel = S.cenaSel === i ? -1 : i;
+  S.zoomSel = -1; S.insSel = -1; S.selected = -1; S.layerSel = null; S.fxSel = null;
+  if (S.cenaSel >= 0) {
+    // escolhido, o vídeo vai até o efeito (se a agulha estava fora dele): a moldura aparece pronta
+    const a = renderedToDraft(c.start), b = renderedToDraft(c.end);
+    if (!(S.t >= a && S.t < b)) { video.pause(); S.t = clampT(a + (b - a) * 0.65); positionTimeline(); preciseSeek(); }
+    if (blocoDaCena(c) && !c.desligada && !S.cenaEnsinou) {
+      S.cenaEnsinou = true;
+      flashName(`<span>${isDesk() ? 'Arraste a moldura no vídeo, ou use as setas' : 'Arraste a moldura no vídeo'}</span>`, 2400);
+    }
+  }
+  renderTimeline(); renderToolbar(); drawCenaBox();
+}
+function tapZoom(i) {
+  if (!S.zoomDraft || S.zoomDraft[i] == null) return;
+  S.zoomSel = S.zoomSel === i ? -1 : i;
+  S.cenaSel = -1; S.insSel = -1; S.selected = -1; S.layerSel = null; S.fxSel = null;
+  renderTimeline(); renderToolbar(); drawCenaBox();
+}
+// a moldura do efeito escolhido, só enquanto a agulha está dentro dele
+function cenaNaTela() {
+  const c = S.view === 'final' && S.cenaSel >= 0 ? S.cenasDraft[S.cenaSel] : null;
+  if (!c || c.desligada || !CENA_BLOCO[c.tipo]) return null;
+  const a = renderedToDraft(c.start), b = renderedToDraft(c.end);
+  return S.t >= a - 0.01 && S.t < b ? c : null;
+}
+function drawCenaBox() {
+  const box = $('ovCena');
+  if (!box) return;
+  const c = cenaNaTela();
+  const b = c && blocoDaCena(c);
+  if (!b) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  box.style.left = pct(b.x / FRAME_W);
+  box.style.top = pct(b.y / FRAME_H);
+  box.style.width = pct(b.w / FRAME_W);
+  box.style.height = pct(b.h / FRAME_H);
+  box.classList.toggle('own', !!c.texto);
+  $('ovCenaNome').textContent = c.texto ? `${c.nome}: lugar novo` : c.nome;
+  desenhaFantasma(c, b);
+}
+/* A prévia do texto novo dentro da moldura, num SVG do tamanho dela no quadro: só quando o
+ * texto, o estilo ou o lugar mudaram (sem mudança, o vídeo já mostra o texto de verdade). */
+const escSvg = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+function desenhaFantasma(c, b) {
+  const g = $('ovCenaTxt');
+  const d = CENA_ESTILO[c.tipo];
+  const o = c.orig || {};
+  const mudou = JSON.stringify([c.texto, c.textos, c.estilo || null]) !== JSON.stringify([o.texto || null, o.textos, o.estilo || null]);
+  if (!d || !mudou) { g.innerHTML = ''; return; }
+  const e = estiloEfetivo(c);
+  const linhas = d.linhas(c.textos).filter((l) => l !== '');
+  const px = d.px(c.cena) * e.tamanho;
+  const esticar = d.esticar ? d.esticar(c.cena) * e.tamanho : 0;
+  const vidro = c.tipo === 'vidro';
+  const fam = c.tipo === 'papel' ? 'Anton' : e.fonte;
+  const txt = linhas.map((l, i) => {
+    const y = b.h / 2 + (i - (linhas.length - 1) / 2) * px * 1.04;
+    return `<text x="${b.w / 2}" y="${y}" text-anchor="middle" dominant-baseline="central" font-family="${escSvg(`"${fam}"`)}"`
+      + ` font-weight="${e.peso}" font-style="${e.italico ? 'italic' : 'normal'}" font-size="${px}"`
+      + ` fill="${vidro ? 'rgba(225,238,250,.6)' : escSvg(e.cor)}" stroke="${escSvg(e.corContorno)}" stroke-width="${e.contorno}" paint-order="stroke fill"`
+      + (esticar ? ` textLength="${esticar}" lengthAdjust="spacingAndGlyphs"` : '') + `>${escSvg(l)}</text>`;
+  }).join('');
+  g.innerHTML = `<svg viewBox="0 0 ${b.w} ${b.h}" preserveAspectRatio="xMidYMid meet">${txt}</svg>`;
+}
+// muda o efeito escolhido com uma foto para o desfazer
+function cenaMuda(fn) {
+  const c = S.cenasDraft[S.cenaSel];
+  if (!c) return;
+  remember();
+  fn(c);
+  renderTimeline(); renderToolbar(); refreshHeader(); drawCenaBox();
+}
+const cenaLugar = (c, x, y) => {
+  const nx = Math.round(Math.min(FRAME_W, Math.max(0, x))), ny = Math.round(Math.min(FRAME_H, Math.max(0, y)));
+  c.texto = { x: Math.abs(nx - FRAME_W / 2) < 12 ? FRAME_W / 2 : nx, y: ny }; // perto do meio, encaixa no meio
+};
+function cenaCentraliza() { cenaMuda((c) => { const b = blocoDaCena(c); c.texto = { x: FRAME_W / 2, y: Math.round(b.y) }; }); }
+// setas: vários toques seguidos viram um passo só do desfazer
+function cenaEmpurra(dx, dy) {
+  const c = cenaNaTela();
+  const b = c && blocoDaCena(c);
+  if (!b) return;
+  const agora = performance.now();
+  if (!(S.empurrouEm && agora - S.empurrouEm < 900)) remember();
+  S.empurrouEm = agora;
+  c.texto = { x: Math.round(Math.min(FRAME_W, Math.max(0, b.x + dx))), y: Math.round(Math.min(FRAME_H, Math.max(0, b.y + dy))) };
+  drawCenaBox();
+  if (!S.empurraFila) {
+    S.empurraFila = true;
+    requestAnimationFrame(() => { S.empurraFila = false; renderTimeline(); renderToolbar(); refreshHeader(); });
+  }
+}
+// arrastar a moldura: o centro do bloco anda com o dedo (ou o mouse), em px do quadro
+const cenaDrag = { id: null };
+$('ovCena').addEventListener('pointerdown', (e) => {
+  const c = cenaNaTela();
+  const b = c && blocoDaCena(c);
+  if (!b) return;
+  e.preventDefault();
+  e.stopPropagation();
+  try { $('ovCena').setPointerCapture(e.pointerId); } catch (err) { /* toque sintético */ }
+  const P = player.getBoundingClientRect();
+  Object.assign(cenaDrag, { id: e.pointerId, x0: e.clientX, y0: e.clientY, bx: b.x, by: b.y, k: FRAME_W / P.width, moved: false, before: snap() });
+  video.pause();
+});
+$('ovCena').addEventListener('pointermove', (e) => {
+  if (e.pointerId !== cenaDrag.id) return;
+  const dx = e.clientX - cenaDrag.x0, dy = e.clientY - cenaDrag.y0;
+  if (!cenaDrag.moved && Math.hypot(dx, dy) < 4) return;
+  const c = S.cenasDraft[S.cenaSel];
+  if (!c) return;
+  cenaDrag.moved = true;
+  cenaLugar(c, cenaDrag.bx + dx * cenaDrag.k, cenaDrag.by + dy * cenaDrag.k);
+  drawCenaBox();
+});
+function fimCenaDrag(e) {
+  if (e.pointerId !== cenaDrag.id) return;
+  cenaDrag.id = null;
+  tapGuard.until = performance.now() + 400; // pegar a moldura não dá play
+  if (!cenaDrag.moved) return;
+  remember(cenaDrag.before);
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+$('ovCena').addEventListener('pointerup', fimCenaDrag);
+$('ovCena').addEventListener('pointercancel', fimCenaDrag);
+/* O painel de Texto do efeito escolhido, como o de qualquer editor: o que está escrito, a
+ * fonte, a cor, o tamanho, o contorno e a altura. Tudo muda ao vivo no rascunho, e a moldura
+ * sobre o vídeo mostra o texto novo com a fonte e a cor escolhidas (uma prévia aproximada: o
+ * vidro, o brilho e a perspectiva só aparecem quando o agente refaz o trecho). Pronto guarda um
+ * passo do desfazer; Cancelar volta ao que estava quando o painel abriu. */
+const CORES_TEXTO = ['#ffffff', '#000000', '#ffe500', '#e8ff5a', '#c6ff3d', '#34e3c0', '#2f6bff', '#7a3cff', '#ff2d55', '#ff8a3d', '#b0101b'];
+const painel = { c: null, antes: null, valor: null, cat: null };
+function campoTexto(box, rotulo) {
+  const sec = el('div', 'tx-sec', box);
+  el('div', 'tx-rot', sec).textContent = rotulo;
+  return sec;
+}
+function paletaCores(host, atual, extra, muda) {
+  const linha = el('div', 'tx-cores', host);
+  const cores = [...new Set([extra, ...CORES_TEXTO].filter(Boolean).map((c) => c.toLowerCase()))];
+  for (const cor of cores) {
+    const b = el('button', `tx-cor${cor === String(atual).toLowerCase() ? ' on' : ''}`, linha);
+    b.type = 'button';
+    b.style.background = cor;
+    b.title = cor;
+    b.addEventListener('click', () => { muda(cor); for (const x of linha.children) x.classList.toggle('on', x === b); });
+  }
+  const livre = el('input', 'tx-cor-livre', linha);
+  livre.type = 'color';
+  livre.value = /^#[0-9a-f]{6}$/i.test(atual) ? atual : '#ffffff';
+  livre.title = 'Outra cor';
+  livre.addEventListener('input', () => { muda(livre.value); for (const x of linha.children) if (x !== livre) x.classList.remove('on'); });
+}
+function regua(host, min, max, passo, valor, mostra, muda) {
+  const linha = el('div', 'tx-regua', host);
+  const r = el('input', '', linha);
+  r.type = 'range'; r.min = min; r.max = max; r.step = passo; r.value = valor;
+  const v = el('span', 'tx-val', linha);
+  v.textContent = mostra(valor);
+  r.addEventListener('input', () => { v.textContent = mostra(+r.value); muda(+r.value); });
+  return r;
+}
+// a mudança ao vivo: o rascunho do efeito muda e a moldura redesenha; a linha do tempo, no quadro seguinte
+function textoMuda(fn) {
+  const c = painel.c;
+  if (!c) return;
+  fn(c);
+  if (c.estilo && !Object.keys(c.estilo).length) c.estilo = null;
+  drawCenaBox();
+  if (!S.textoFila) {
+    S.textoFila = true;
+    requestAnimationFrame(() => { S.textoFila = false; renderTimeline(); refreshHeader(); });
+  }
+}
+const mudaEstilo = (k, v) => textoMuda((c) => { c.estilo = { ...(c.estilo || {}), [k]: v }; });
+function openCenaTexto() {
+  const c = S.cenasDraft[S.cenaSel];
+  if (!c) return;
+  painel.c = c; painel.antes = snap(); painel.valor = cenaValor(c);
+  const d = CENA_ESTILO[c.tipo];
+  const pode = (k) => !!d && (d.so ? d.so.includes(k) : !(d.sem || []).includes(k));
+  if (d && pode('fonte')) CutMindFontes.carregarTodas();
+  $('cenaSheetNome').textContent = `Texto · ${c.nome}`;
+  const box = $('cenaCampos');
+  box.innerHTML = '';
+  // o que está escrito: um campo por texto; lista de linhas numa caixa, uma por linha
+  for (const [k, v] of Object.entries(c.textos)) {
+    const lab = el('label', 'cena-campo', box);
+    el('span', '', lab).textContent = CENA_TEXTOS[k] || k;
+    const lista = Array.isArray(v);
+    const inp = el(lista ? 'textarea' : 'input', '', lab);
+    if (lista) inp.rows = Math.max(2, v.length);
+    else inp.type = 'text';
+    inp.value = lista ? v.join('\n') : v;
+    inp.addEventListener('input', () => textoMuda((x) => {
+      if (!lista) { x.textos = { ...x.textos, [k]: inp.value }; return; }
+      const ls = inp.value.split('\n').map((t) => t.trim());
+      const velho = painel.valor.textos[k] || [];
+      // as batidas têm hora e zoom próprios: a quantidade fica; numa lista de linhas, linha vazia sai
+      x.textos = { ...x.textos, [k]: k === 'batidas' ? velho.map((w, i) => (ls[i] ? ls[i] : w)) : ls.filter(Boolean) };
+    }));
+  }
+  const e = estiloEfetivo(c);
+  if (e && pode('fonte')) {
+    const sec = campoTexto(box, 'Fonte');
+    const abas = el('div', 'tx-abas', sec);
+    const grade = el('div', 'tx-fontes', sec);
+    const atual = CutMindFontes.FONTES.find((f) => f.familia === e.fonte);
+    // abre na aba da fonte de agora (Em alta, se ela está lá)
+    painel.cat = atual ? (atual.alta ? 'alta' : atual.cat) : painel.cat || 'alta';
+    const mostra = () => {
+      grade.innerHTML = '';
+      for (const a of abas.children) a.classList.toggle('on', a.dataset.cat === painel.cat);
+      for (const f of CutMindFontes.daAba(painel.cat)) {
+        const b = el('button', `tx-fonte${f.familia === estiloEfetivo(c).fonte ? ' on' : ''}`, grade);
+        b.type = 'button';
+        b.textContent = f.familia;
+        b.style.fontFamily = `"${f.familia}"`;
+        b.style.fontWeight = f.peso;
+        b.addEventListener('click', () => {
+          textoMuda((x) => { x.estilo = { ...(x.estilo || {}), fonte: f.familia, peso: f.peso }; });
+          for (const y of grade.children) y.classList.toggle('on', y === b);
+        });
+      }
+    };
+    for (const [id, nome] of CutMindFontes.CATEGORIAS) {
+      const a = el('button', 'tx-aba', abas);
+      a.type = 'button'; a.dataset.cat = id; a.textContent = nome;
+      a.addEventListener('click', () => { painel.cat = id; mostra(); });
+    }
+    mostra();
+  }
+  if (e && pode('cor')) paletaCores(campoTexto(box, 'Cor'), e.cor, S.style && S.style.accent, (cor) => mudaEstilo('cor', cor));
+  if (e && pode('tamanho')) {
+    regua(campoTexto(box, 'Tamanho'), 40, 200, 5, Math.round(e.tamanho * 100), (v) => `${v}%`, (v) => mudaEstilo('tamanho', +(v / 100).toFixed(2)));
+  }
+  if (e && pode('contorno')) {
+    const sec = campoTexto(box, 'Contorno');
+    regua(sec, 0, 30, 1, e.contorno, (v) => (v ? `${v} px` : 'sem'), (v) => mudaEstilo('contorno', v));
+    paletaCores(sec, e.corContorno, null, (cor) => mudaEstilo('corContorno', cor));
+  }
+  const b = CENA_BLOCO[c.tipo] && blocoDaCena(c);
+  if (b) {
+    const sec = campoTexto(box, 'Altura');
+    regua(sec, 0, 100, 1, Math.round((b.y / FRAME_H) * 100), (v) => `${v}%`, (v) => textoMuda((x) => {
+      const bx = blocoDaCena(x);
+      x.texto = { x: Math.round(bx.x), y: Math.round((v / 100) * FRAME_H) };
+    }));
+    el('p', 'tx-dica', sec).textContent = isDesk() ? 'Para o lado, arraste a moldura no vídeo ou use as setas do teclado.' : 'Para o lado, arraste a moldura no vídeo.';
+  }
+  showSheet($('cenaSheet'), true);
+}
+function fechaTexto(guarda) {
+  showSheet($('cenaSheet'), false);
+  const c = painel.c;
+  painel.c = null;
+  if (!c) return;
+  if (!guarda) Object.assign(c, cenaValor(painel.valor));
+  else if (cenaSig(c) !== cenaSig(painel.valor)) remember(painel.antes);
+  renderTimeline(); renderToolbar(); refreshHeader(); drawCenaBox();
+}
+$('cenaCancel').addEventListener('click', () => fechaTexto(false));
+$('cenaOk').addEventListener('click', () => fechaTexto(true));
+// zoom da tomada: a régua de 100% a 200%; a prévia segue o vídeo de agora
+let zoomBefore = null;
+function openZoom() {
+  if (!S.zoomDraft || S.zoomSel < 0) return;
+  zoomBefore = snap();
+  $('tomZoomRange').value = Math.round(S.zoomDraft[S.zoomSel] * 100);
+  $('tomZoomVal').textContent = `${$('tomZoomRange').value}%`;
+  showSheet($('tomZoomSheet'), true);
+}
+$('tomZoomRange').addEventListener('input', () => {
+  if (!S.zoomDraft || S.zoomSel < 0) return;
+  S.zoomDraft[S.zoomSel] = +($('tomZoomRange').value / 100).toFixed(2);
+  $('tomZoomVal').textContent = `${$('tomZoomRange').value}%`;
+  if (!S.zoomFila) {
+    S.zoomFila = true;
+    requestAnimationFrame(() => { S.zoomFila = false; renderTimeline(); refreshHeader(); });
+  }
+});
+$('tomZoomOk').addEventListener('click', () => {
+  showSheet($('tomZoomSheet'), false);
+  if (zoomBefore && zoomBefore.zooms && S.zoomDraft && zoomBefore.zooms.some((z, i) => z !== S.zoomDraft[i])) remember(zoomBefore);
+  zoomBefore = null;
+  renderTimeline(); renderToolbar(); refreshHeader();
+});
+function zoomPara(z) {
+  if (!S.zoomDraft || S.zoomSel < 0 || S.zoomDraft[S.zoomSel] === z) return;
+  remember();
+  S.zoomDraft[S.zoomSel] = z;
   renderTimeline(); renderToolbar(); refreshHeader();
 }
 
@@ -3952,6 +4480,7 @@ function tapFx(id) {
   S.layerSel = null;
   S.selected = -1;
   S.insSel = -1;
+  S.cenaSel = -1; S.zoomSel = -1; drawCenaBox();
   renderTimeline();
   renderToolbar();
 }
