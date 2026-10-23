@@ -1,6 +1,6 @@
 ---
 name: cutmind-install
-description: Verify or repair a CutMind install (Claude Code, Codex, or any agent with a skills directory). The user installs with one command from README.md; this file is for checking that it worked and fixing what didn't.
+description: Install, verify or repair CutMind (Claude Code, Codex, or any agent with a skills directory). When the user asks for it to be installed, YOU run the installer, install what is missing and verify; this file says how.
 ---
 
 # cutmind install
@@ -8,19 +8,31 @@ description: Verify or repair a CutMind install (Claude Code, Codex, or any agen
 Use this file only for first-time setup, verification or repair. For daily
 editing, read `SKILL.md`. Always read `helpers/` — that's where the scripts live.
 
-> **The user installs, you verify.** `README.md` gives them one command:
+> **You install.** When the user asks for CutMind — "instala o CutMind", a link to
+> this repository, a folder they downloaded — run the installer yourself and finish
+> the job: install what is missing, verify, hand off. Do not give them a command to
+> type; not having to is the point of asking you. The only thing that goes back to
+> them is a password or an admin prompt you cannot answer.
 >
-> ```
-> uv run https://raw.githubusercontent.com/junioralbino28/cutmind/main/cutmind_install.py
-> ```
+> 1. **Detect the OS**, and on Windows which shell you are in.
+> 2. **`uv`.** If `uv --version` fails, install it: `winget install --id astral-sh.uv -e`
+>    (Windows), `brew install uv` (macOS), `curl -LsSf https://astral.sh/uv/install.sh | sh`
+>    (Linux). A fresh install is not on THIS terminal's PATH yet. On Windows, reload it
+>    from the registry in the same command line that uses it:
+>    `$env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')`
+> 3. **Run the installer:**
+>    - from the internet: `uv run https://raw.githubusercontent.com/junioralbino28/cutmind/main/cutmind_install.py`
+>    - from a folder the user already has (download or clone):
+>      `uv run --no-project <folder>/cutmind_install.py --source <folder>`
 >
-> That is the supported install and it is the user's action, not yours. If
-> someone hands you only a repo URL and asks you to install from it, point them
-> at that command rather than cloning and running unknown code yourself.
->
-> Your job starts after: verifying, diagnosing a missing binary, fixing a stale
-> venv. Those are local operations on a machine whose owner is in the
-> conversation.
+>    It copies the skill into every agent it finds, runs `uv sync` (torch + WhisperX: a
+>    few GB the first time; tell the user it is downloading, then wait), installs
+>    Node.js LTS when it is missing, and ends with a checklist.
+> 4. **Fix every `x` in the checklist** and run the installer again. ffmpeg is the usual
+>    one: `winget install Gyan.FFmpeg` / `brew install ffmpeg` (reload the PATH as in
+>    step 2). On Linux, `sudo apt-get install -y ffmpeg` needs the user's password: that
+>    exact line is the one thing you hand over.
+> 5. **Verify** (below) and **hand off** (end of this file).
 
 ## What the install consists of
 

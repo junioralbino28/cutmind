@@ -20,8 +20,19 @@ galeria e baixar o final. Peça ao agente "abre o editor no celular" e escaneie 
 QR que aparece no botão **Abrir no celular** do editor do computador. Pela rede,
 só entra quem abriu pelo link ou QR, que levam um código deste computador.
 
-## Instalar a partir desta pasta
+## Instalar
 
-    python cutmind_install.py --source .
+Peça ao seu agente (Claude Code ou Codex): **"instala o CutMind pra mim:
+https://github.com/junioralbino28/cutmind"**. Ele roda o instalador, instala o que
+faltar (uv, ffmpeg, Node.js) e confere se tudo funciona. O passo a passo dele está
+em [install.md](install.md).
 
-Precisa de `uv` e `ffmpeg` instalados. O Node.js (Fase 2) o instalador põe sozinho quando falta: pelo winget no Windows e pelo Homebrew no Mac. No Linux ele mostra o comando.
+À mão, é um comando só:
+
+    uv run https://raw.githubusercontent.com/junioralbino28/cutmind/main/cutmind_install.py
+
+Já baixou esta pasta? De dentro dela:
+
+    uv run --no-project cutmind_install.py --source .
+
+Precisa do [`uv`](https://docs.astral.sh/uv/) e do `ffmpeg`. O Node.js (Fase 2) o instalador põe sozinho quando falta: pelo winget no Windows e pelo Homebrew no Mac. No Linux ele mostra o comando.

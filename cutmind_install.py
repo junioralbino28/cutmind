@@ -424,6 +424,13 @@ def main() -> None:
     ap.add_argument("--no-node", action="store_true",
                     help="não instalar o Node.js sozinho quando faltar (só avisar)")
     args = ap.parse_args()
+    # quem lê esta saída costuma ser o agente, por um pipe: no Windows o pipe sai na página de
+    # código antiga e os acentos chegam como "�"
+    for fluxo in (sys.stdout, sys.stderr):
+        try:
+            fluxo.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
 
     log("cutmind — instalação")
     log()
