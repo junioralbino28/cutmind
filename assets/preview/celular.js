@@ -2578,7 +2578,7 @@ function showSheet(sheet, open) {
 }
 
 // ---------- Estilo: painel que sobe + prévia ao vivo ----------
-const TABS = [['edit', 'Edição'], ['captions', 'Legenda'], ['headline', 'Headline'], ['accent', 'Cor'], ['extras', 'Extras']];
+const TABS = [['edit', 'Edição'], ['captions', 'Legenda'], ['headline', 'Headline'], ['accent', 'Cor'], ['extras', 'Extras'], ['modelos', 'Modelos']];
 const normHex = (v) => {
   let s = String(v || '').trim().replace(/^#/, '');
   if (/^[0-9a-f]{3}$/i.test(s)) s = s.split('').map((c) => c + c).join('');
@@ -2672,6 +2672,7 @@ function renderStyle() {
   else if (S.styleTab === 'captions') renderCards(body, 'captions', 'captions');
   else if (S.styleTab === 'headline') renderCards(body, 'headlines', 'headline');
   else if (S.styleTab === 'accent') renderAccent(body);
+  else if (S.styleTab === 'modelos') renderModelos(body);
   else renderExtras(body);
 
   updateSummary();
@@ -2822,6 +2823,212 @@ function renderExtras(body) {
   note.addEventListener('input', () => { S.style.note = note.value; });
 }
 
+/* Modelos de estilo (~/.cutmind/modelos, modelos.py): o visual de um vídeo com nome, para
+ * outro vídeo. O cartão desenha o modelo sobre o quadro deste vídeo (filtro e ajuste pelo
+ * mesmo motor do vídeo final, legenda e headline no estilo e na cor dele). Tocar mostra o
+ * modelo na prévia; Aplicar leva tudo: o Estilo, e pelo Salvar o filtro e o ajuste em todas
+ * as tomadas, a transição em todos os cortes e a trilha do começo ao fim. */
+async function carregaModelos() {
+  try { S.modelos = (await (await fetch('/api/modelos')).json()).modelos || []; } catch (e) { S.modelos = S.modelos || []; }
+}
+const MOD_CAPA = new Map(); // id|quadro → dataURL com o filtro e o ajuste do modelo
+async function capaModelo(m) {
+  if (!m.filtro && !m.ajuste) return null;
+  const chave = `${m.id}|${m.filtro ? m.filtro.pacote + m.filtro.intensidade : ''}|${JSON.stringify(m.ajuste)}|${S.frameUrl.length}`;
+  if (MOD_CAPA.has(chave)) return MOD_CAPA.get(chave);
+  const W = 270, H = 480;
+  const img = new Image();
+  img.src = S.frameUrl;
+  await img.decode();
+  const base = document.createElement('canvas');
+  base.width = W; base.height = H;
+  base.getContext('2d').drawImage(img, 0, 0, W, H);
+  FX.mod = FX.mod || import('/efeitos/motor.js');
+  const mod = await FX.mod;
+  let fonte = base;
+  const gastos = [];
+  try {
+    if (m.filtro) {
+      const ef = await mod.carregarEfeito(`/gen/pacote/${encodeURIComponent(m.filtro.pacote)}/`, { largura: W, altura: H });
+      gastos.push(ef);
+      ef.desenhar({ quadro: fonte, intensidade: m.filtro.intensidade });
+      fonte = ef.canvas;
+    }
+    if (m.ajuste) {
+      const aj = mod.criarAjuste({ largura: W, altura: H });
+      gastos.push(aj);
+      aj.desenhar({ quadro: fonte, ajustes: m.ajuste });
+      fonte = aj.canvas;
+    }
+    const out = document.createElement('canvas');
+    out.width = W; out.height = H;
+    out.getContext('2d').drawImage(fonte, 0, 0);
+    const url = out.toDataURL('image/jpeg', 0.82);
+    MOD_CAPA.set(chave, url);
+    return url;
+  } catch (e) {
+    return null; // pacote que não baixou: o cartão fica com o quadro limpo
+  } finally {
+    gastos.forEach((g) => g.destruir && g.destruir());
+  }
+}
+const lookDoModelo = (m) => ({ ...S.style, ...m.estilo, elements: { ...defaultStyle().elements, ...(m.estilo.elements || {}) } });
+function resumoModelo(m) {
+  const b = [`legenda ${styleName('captions', m.estilo.captions || S.style.captions)}`];
+  if (m.legenda && m.legenda.estilo && m.legenda.estilo.fonte) b.push(m.legenda.estilo.fonte);
+  if (m.filtro) b.push(`filtro ${m.filtro.nome || S.fxNomes[m.filtro.pacote] || m.filtro.pacote}`);
+  if (m.transicao) b.push(`transição ${m.transicao.nome || S.fxNomes[m.transicao.pacote] || ''}`.trim());
+  if (m.ajuste) b.push('cor ajustada');
+  if (m.trilha) b.push(`trilha ${m.trilha.nome || ''}`.trim());
+  return b.join(' · ');
+}
+function renderModelos(body) {
+  if (!S.modelos) {
+    el('p', 'sheet-hint', body).textContent = 'Carregando os modelos…';
+    carregaModelos().then(() => { if (S.styling && S.styleTab === 'modelos') renderStyle(); });
+    return;
+  }
+  el('p', 'sheet-hint', body).textContent = S.modelos.length
+    ? 'Toque num modelo para ver no seu vídeo. Aplicar leva o visual inteiro (legenda, headline, cor, filtro, transição e trilha).'
+    : 'Guarde o visual deste vídeo com um nome (a marca de um cliente, por exemplo) e use em qualquer outro vídeo.';
+  const form = el('form', `mod-salvar${S.modSalvando ? '' : ' hidden'}`, body);
+  const inp = el('input', '', form);
+  inp.type = 'text'; inp.maxLength = 60; inp.placeholder = 'Nome do modelo (ex.: Canal de Receitas)';
+  inp.setAttribute('aria-label', 'Nome do modelo');
+  const ok = el('button', 'tb-btn primary', form);
+  ok.type = 'submit'; ok.textContent = 'Salvar';
+  form.addEventListener('submit', (e) => { e.preventDefault(); salvaModelo(inp.value); });
+  if (S.modSalvando) setTimeout(() => inp.focus(), 50);
+  const grid = el('div', 'cards mods', body);
+  const novo = el('button', 'card mod-novo', grid);
+  novo.type = 'button';
+  novo.dataset.salvarModelo = '1';
+  el('div', 'face', novo).innerHTML = ICON.mais;
+  el('div', 'c-name', novo).textContent = 'Salvar o estilo deste vídeo';
+  for (const m of S.modelos) {
+    const card = el('button', `card mod${S.modeloSel === m.id ? ' on' : ''}`, grid);
+    card.type = 'button';
+    card.dataset.modelo = m.id;
+    const face = el('div', 'face', card);
+    const frame = el('div', 'comp frame', face);
+    const media = el('div', 'media', el('div', 'win', frame));
+    media.style.backgroundImage = `url("${S.frameUrl}")`;
+    el('div', 'band', frame);
+    el('div', 'hl', frame);
+    el('div', 'cap', frame);
+    const look = lookDoModelo(m);
+    if (m.estilo.accent) frame.style.setProperty('--hl-accent', m.estilo.accent); // a cor do modelo, só no cartão dele
+    applyGeom(frame, look, 'abertura');
+    fillText(frame, look, 'abertura', S.cardAnims);
+    capaModelo(m).then((url) => { if (url) media.style.backgroundImage = `url("${url}")`; });
+    const del = el('span', 'c-del', face);
+    del.dataset.apagar = m.id;
+    del.innerHTML = ICON.remover;
+    del.title = 'Apagar o modelo';
+    el('div', 'c-name', card).textContent = m.nome;
+    el('div', 'c-sub', card).textContent = resumoModelo(m);
+  }
+}
+// o visual deste vídeo agora: o Estilo, a legenda fina e o que o vídeo usa em todas as tomadas
+function capturaModelo(nome) {
+  const st = S.style;
+  const m = { nome, estilo: { edit: st.edit, headline: st.headline, captions: st.captions,
+    accent: normHex(st.accent) || ACCENT_DEFAULT, elements: { ...st.elements } } };
+  if (S.legenda && S.legenda.estilo) m.legenda = { estilo: S.legenda.estilo, acompanhar: !!S.legenda.acompanhar };
+  const itens = (S.efeitos && S.efeitos.itens) || [];
+  const so = (tipo) => itens.filter((x) => x.tipo === tipo);
+  const umSo = (lista, chave) => lista.length && new Set(lista.map(chave)).size === 1;
+  const fs = so('filtro'), ts = so('transicao'), as = so('ajuste');
+  // o nome da biblioteca vai junto: noutro projeto a lista de filtros pode nem ter carregado
+  const rotulo = (nome) => (nome ? { nome } : {});
+  if (umSo(fs, (x) => x.pacote)) m.filtro = { pacote: fs[0].pacote, ...rotulo(S.fxNomes[fs[0].pacote]), ...(fs[0].intensidade != null ? { intensidade: fs[0].intensidade } : {}) };
+  if (umSo(ts, (x) => x.pacote)) m.transicao = { pacote: ts[0].pacote, ...rotulo(S.fxNomes[ts[0].pacote]), duracao: ts[0].duracao };
+  if (umSo(as, (x) => JSON.stringify(x.ajustes))) m.ajuste = as[0].ajustes;
+  const trs = S.camadas.faixas.flatMap((f) => (f.tipo === 'audio' ? f.itens.filter((it) => it.trilha) : []));
+  if (umSo(trs, (x) => x.trilha)) m.trilha = { pacote: trs[0].trilha, ...rotulo((S.trilhaNomes || {})[trs[0].trilha]), volume: trs[0].volume == null ? 1 : trs[0].volume };
+  return m;
+}
+async function salvaModelo(nome) {
+  nome = String(nome || '').trim();
+  if (!nome) { toast('Dê um nome ao modelo', 2200); return; }
+  try {
+    const r = await fetch('/api/modelos', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ modelo: capturaModelo(nome) }) });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'falhou');
+    S.modSalvando = false;
+    S.modeloSel = null;
+    await carregaModelos();
+    renderStyle();
+    toast(`Modelo "${d.modelo.nome}" guardado. Ele aparece aqui em qualquer projeto.`, 3200);
+  } catch (e) { toast(`Não guardei o modelo: ${e.message}`, 4200); }
+}
+async function apagaModelo(id) {
+  const m = (S.modelos || []).find((x) => x.id === id);
+  if (!m || !confirm(`Apagar o modelo "${m.nome}"? Os vídeos que já usaram ele não mudam.`)) return;
+  try {
+    const d = await (await fetch('/api/modelos/apagar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }) })).json();
+    if (!d.ok) throw new Error(d.error || 'falhou');
+    if (S.modeloSel === id) S.modeloSel = null;
+    await carregaModelos();
+    renderStyle();
+  } catch (e) { toast(`Não apaguei: ${e.message}`, 3600); }
+}
+// tocar no cartão: o Estilo vira o do modelo, e a prévia de cima mostra
+function escolheModelo(id) {
+  const m = (S.modelos || []).find((x) => x.id === id);
+  if (!m) return;
+  if (!S.estiloAntesDoModelo) S.estiloAntesDoModelo = JSON.parse(JSON.stringify(S.style));
+  S.modeloSel = id;
+  const look = lookDoModelo(m);
+  S.style = { ...S.style, ...look, note: S.style.note, captionPositions: S.style.captionPositions };
+  document.documentElement.style.setProperty('--hl-accent', S.style.accent || ACCENT_DEFAULT);
+  for (const c of $('sheetBody').querySelectorAll('.card.mod')) c.classList.toggle('on', c.dataset.modelo === id);
+  updateSummary();
+  applyLive();
+}
+// Aplicar com um modelo escolhido: o que vai pelo Salvar (efeitos e trilha) antes do Estilo
+async function aplicaModeloDeEstilo(m) {
+  const rl = renderedLayout();
+  // a trilha baixa primeiro: é o único passo que pode falhar, e aí nada do modelo fica pela metade
+  let trilha = null;
+  if (m.trilha) {
+    const r = await fetch('/api/pacotes/usar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: m.trilha.pacote }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(`a trilha não baixou: ${d.error || r.status}`);
+    trilha = { arquivo: d.arquivo, dur: await midiaDuration(d.arquivo) };
+  }
+  if (m.filtro || m.transicao || m.ajuste || m.trilha) remember();
+  if (m.filtro || m.transicao || m.ajuste) {
+    const tira = new Set([m.filtro && 'filtro', m.transicao && 'transicao', m.ajuste && 'ajuste'].filter(Boolean));
+    S.efeitos.itens = S.efeitos.itens.filter((x) => !tira.has(x.tipo));
+    const poe = (letra, item) => S.efeitos.itens.push({ id: novoFxId(letra), ...item });
+    for (const tk of rl) {
+      const jan = { inicio: +tk.out.toFixed(3), duracao: +tk.dur.toFixed(3) };
+      if (m.filtro) poe('f', { tipo: 'filtro', pacote: m.filtro.pacote, ...jan, ...(m.filtro.intensidade != null ? { intensidade: m.filtro.intensidade } : {}) });
+      if (m.ajuste) poe('a', { tipo: 'ajuste', ...jan, ajustes: { ...m.ajuste } });
+    }
+    if (m.transicao) for (const tk of rl.slice(1)) poe('t', { tipo: 'transicao', pacote: m.transicao.pacote, corte: +tk.out.toFixed(3), duracao: m.transicao.duracao });
+    fxPreparar();
+  }
+  if (trilha) {
+    // a trilha da biblioteca que havia sai; a do modelo entra do começo ao fim
+    S.camadas.faixas = S.camadas.faixas
+      .map((f) => (f.tipo === 'audio' ? { ...f, itens: f.itens.filter((it) => !it.trilha) } : f))
+      .filter((f) => f.tipo !== 'audio' || f.itens.length);
+    const total = S.videoDuration || totalT();
+    const dur = Math.min(trilha.dur || total, total);
+    const fid = newFaixaId('a');
+    S.camadas.faixas.push({ id: fid, tipo: 'audio', travado: false, mudo: false, itens: [{ id: `${fid}-1`, arquivo: trilha.arquivo,
+      inicio: 0, duracao: +dur.toFixed(3), corte: 0, volume: m.trilha.volume, melhorar: false, trilha: m.trilha.pacote }] });
+  }
+  renderTimeline(); renderToolbar(); refreshHeader();
+  if (dirtyCount()) return salvar(`Modelo "${m.nome}" aplicado. O agente refaz o vídeo com ele.`);
+  return true;
+}
+
 /* A prévia de cima: o vídeo de verdade com o estilo escolhido por cima. Na aba
  * Edição ela mostra um trecho do meio (tela dividida); nas outras, a abertura. */
 function applyLive() {
@@ -2926,6 +3133,12 @@ document.addEventListener('keydown', (e) => {
 
 $('sheetBody').addEventListener('click', (e) => {
   if (e.target.closest('.pos-btn')) { enterPosMode(); return; }
+  // aba Modelos: apagar (a lixeira do cartão), guardar este estilo, ou ver um modelo no vídeo
+  const apagar = e.target.closest('[data-apagar]');
+  if (apagar) { apagaModelo(apagar.dataset.apagar); return; }
+  if (e.target.closest('[data-salvar-modelo]')) { S.modSalvando = true; renderStyle(); return; }
+  const mod = e.target.closest('[data-modelo]');
+  if (mod) { escolheModelo(mod.dataset.modelo); return; }
   const sub = e.target.closest('.subtab');
   if (sub) {
     S.capFilter = sub.dataset.f;
@@ -2944,9 +3157,23 @@ $('sheetBody').addEventListener('click', (e) => {
     updateSummary();
   }
 });
-$('sheetClose').addEventListener('click', closeStyle);
+$('sheetClose').addEventListener('click', () => {
+  // fechar sem aplicar: o modelo só foi visto, o Estilo volta ao de antes dele
+  if (S.modeloSel && S.estiloAntesDoModelo) S.style = S.estiloAntesDoModelo;
+  S.modeloSel = null;
+  S.estiloAntesDoModelo = null;
+  S.modSalvando = false;
+  closeStyle();
+});
 
 $('sheetApply').addEventListener('click', async () => {
+  const modelo = S.modeloSel ? (S.modelos || []).find((x) => x.id === S.modeloSel) : null;
+  if (modelo) {
+    // efeitos e trilha vão pelo Salvar (são do corte); se não deu, nada do Estilo sai sozinho
+    try {
+      if (!(await aplicaModeloDeEstilo(modelo))) return;
+    } catch (err) { toast(`Não apliquei o modelo: ${err.message}`, 4200); return; }
+  }
   const payload = {
     type: 'style-setup',
     projeto: S.projetoId,
@@ -2965,6 +3192,8 @@ $('sheetApply').addEventListener('click', async () => {
     note: (S.style.note || '').trim(),
     // frases arrastadas no "Posição das frases", ancoradas na gravação (caption_positions.py)
     captionPositions: capPos(),
+    // modelo aplicado: o nome para o agente saber, e a legenda fina dele (fonte, cor, contorno)
+    ...(modelo ? { modelo: { id: modelo.id, nome: modelo.nome }, ...(modelo.legenda ? { legenda: modelo.legenda } : {}) } : {}),
   };
   try {
     const res = await fetch('/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -2974,9 +3203,11 @@ $('sheetApply').addEventListener('click', async () => {
       throw new Error('falhou');
     }
     S.savedPending = true;
+    S.modeloSel = null;
+    S.estiloAntesDoModelo = null;
     closeStyle();
     refreshHeader();
-    toast('Estilo enviado. O agente refaz o vídeo com ele.', 3200);
+    toast(modelo ? `Modelo "${modelo.nome}" aplicado. O agente refaz o vídeo com ele.` : 'Estilo enviado. O agente refaz o vídeo com ele.', 3200);
   } catch (err) {
     toast('Não consegui enviar — o editor ainda está ligado no computador?', 4000);
   }

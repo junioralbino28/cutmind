@@ -85,6 +85,7 @@ import efeitos as ef  # mesma pasta deste arquivo
 import velocidade as vel  # mesma pasta deste arquivo
 import pacotes as pk  # mesma pasta deste arquivo
 import projetos as pj  # mesma pasta deste arquivo
+import modelos as md  # mesma pasta deste arquivo
 
 APP_DIR = Path(__file__).resolve().parent.parent / "assets" / "preview"
 EFEITOS_DIR = APP_DIR.parent / "efeitos"
@@ -553,6 +554,8 @@ class Handler(BaseHTTPRequestHandler):
             self._projetos()
         elif path == "/gen/projeto-capa":
             self._projeto_capa(query)
+        elif path == "/api/modelos":
+            self._json({"modelos": md.listar()})
         elif path == "/api/midia":
             self._midia()
         elif path == "/api/pacotes":
@@ -576,6 +579,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in ("/api/projetos/abrir", "/api/projetos/novo"):
             self._projeto_post(path)
+            return
+        if path in ("/api/modelos", "/api/modelos/apagar"):
+            self._modelo_post(path)
             return
         if path != "/api/save":
             self._fail(404, "unknown route")
@@ -978,21 +984,49 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._json({"error": "projeto sem vídeo ainda"}, 404)
 
-    def _projeto_post(self, path: str) -> None:
+    def _corpo_pequeno(self, limite: int = 10_000) -> dict | None:
+        """O JSON de um pedido curto; None quando já respondeu com o erro."""
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             self._fail(400, "invalid Content-Length")
-            return
-        if length > 10_000:
+            return None
+        if length > limite:
             self._fail(413, "pedido grande demais")
-            return
+            return None
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
         except (ValueError, json.JSONDecodeError):
             body = None
         if not isinstance(body, dict):
             self._json({"error": "pedido inválido"}, 400)
+            return None
+        return body
+
+    def _modelo_post(self, path: str) -> None:
+        """Salvar o estilo deste vídeo como modelo, ou apagar um (~/.cutmind/modelos)."""
+        body = self._corpo_pequeno(20_000)
+        if body is None:
+            return
+        if path.endswith("/apagar"):
+            if md.apagar(body.get("id")):
+                self._json({"ok": True})
+            else:
+                self._json({"error": "modelo não encontrado"}, 404)
+            return
+        try:
+            m = md.salvar(body.get("modelo"))
+        except md.ModeloInvalido as e:
+            self._json({"error": f"modelo: {e}"}, 400)
+            return
+        except OSError as e:
+            self._json({"error": f"não consegui gravar o modelo: {e}"}, 500)
+            return
+        self._json({"ok": True, "modelo": m})
+
+    def _projeto_post(self, path: str) -> None:
+        body = self._corpo_pequeno()
+        if body is None:
             return
         if path.endswith("/abrir"):
             # só pelo id da lista: ninguém abre pela rede uma pasta que não esteja nela

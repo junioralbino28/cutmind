@@ -322,6 +322,18 @@ def style_digest(p: Path) -> str:
         f'  · headline: {d.get("headlineName") or d.get("headline")}',
         f'  · legenda: {d.get("captionsName") or d.get("captions")}',
     ]
+    # modelo de estilo (aba Modelos): o visual inteiro de outro vídeo. Filtro, transição, ajuste
+    # e trilha dele chegam pelo preview_edits.json do mesmo Aplicar (efeitos/camadas)
+    modelo = d.get("modelo") or {}
+    if modelo.get("nome"):
+        out.insert(1, f'  · MODELO "{modelo["nome"]}" aplicado (modelos.py mostrar {modelo.get("id", "?")}); '
+                      'filtro, transição, ajuste e trilha dele vêm no preview_edits.json')
+    leg = (d.get("legenda") or {}).get("estilo") or {}
+    if leg:
+        bits = [f"{k}={v}" for k, v in leg.items()]
+        acomp = " · acompanhar" if (d.get("legenda") or {}).get("acompanhar") else ""
+        out.append(f'  · legenda fina do modelo: {" ".join(bits)}{acomp} → captions do edit-data '
+                   '(como o editData.legenda de um Salvar)')
     # frases arrastadas no celular: o lugar delas vale mais que o do estilo e o da emenda
     pos = d.get("captionPositions") or {}
     n = len(pos.get("phrases") or [])

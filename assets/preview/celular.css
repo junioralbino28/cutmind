@@ -1046,6 +1046,18 @@ kbd {
 .card.on .c-name { color: var(--text); font-weight: 700; }
 .card .c-check { display: none; }
 .sheet-hint { font-size: 11.5px; color: var(--dim); padding: 0 16px 10px; line-height: 1.45; }
+/* aba Modelos: o quadro inteiro (9:16) com o visual do modelo; o primeiro guarda este estilo */
+.cards.mods { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+.cards.mods .face { aspect-ratio: 9 / 16; }
+.card.mod-novo .face { display: grid; place-items: center; background: transparent; border: 1.5px dashed var(--line2); color: var(--brand); }
+.card.mod-novo .face svg { width: 26px; height: 26px; }
+.card .c-sub { font-size: 10px; color: var(--dim2); margin-top: 2px; line-height: 1.25; }
+.card .c-del { position: absolute; top: 5px; right: 5px; z-index: 3; width: 24px; height: 24px; display: grid; place-items: center;
+  border-radius: 50%; background: rgba(8, 9, 12, 0.6); color: #fff; }
+.card .c-del svg { width: 14px; height: 14px; }
+.mod-salvar { display: flex; gap: 8px; padding: 0 14px 12px; }
+.mod-salvar input { flex: 1; min-width: 0; height: 34px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line2);
+  background: var(--surface); color: var(--text); font: inherit; font-size: 13px; user-select: text; }
 
 /* cor de destaque */
 .accent-row { display: flex; align-items: center; gap: 12px; padding: 4px 18px; }

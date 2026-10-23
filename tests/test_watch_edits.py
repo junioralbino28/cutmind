@@ -344,3 +344,15 @@ def test_sem_uma_vez_passa_a_vigiar_a_pasta_nova(tmp_path):
     out, _ = p.communicate(timeout=20)
     assert f"OUTRO PROJETO: B — {b.resolve()}" in out
     assert "no projeto B" in out
+
+
+def test_aviso_de_estilo_conta_o_modelo_aplicado(tmp_path):
+    from watch_edits import style_digest
+    p = tmp_path / "preview_style.json"
+    p.write_text(json.dumps({"type": "style-setup", "rerender": True, "edit": "limpa", "captions": "karaoke",
+                             "headline": "realce", "modelo": {"id": "canal-de-receitas", "nome": "Canal de Receitas"},
+                             "legenda": {"estilo": {"fonte": "Anton", "cor": "#ffffff"}, "acompanhar": True}}),
+                 encoding="utf-8")
+    aviso = style_digest(p)
+    assert 'MODELO "Canal de Receitas" aplicado (modelos.py mostrar canal-de-receitas)' in aviso
+    assert "legenda fina do modelo: fonte=Anton cor=#ffffff · acompanhar" in aviso
