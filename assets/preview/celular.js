@@ -45,14 +45,19 @@ const el = (tag, cls, parent) => {
 const app = $('app');
 /* Editor único: na tela larga com mouse, o mesmo editor se arruma no jeito do CapCut desktop
  * (biblioteca à esquerda, prévia no meio, propriedades à direita, linha do tempo embaixo).
- * A classe `desk` no <html> liga esse leiaute; `?leiaute=computador` força, para testar. */
+ * A classe `desk` no <html> liga esse leiaute; `?leiaute=computador` força, para testar.
+ * Com o vídeo em pé, a prévia vai para uma coluna ao lado da linha do tempo (classe `lado`):
+ * com muitas faixas, empilhada ela encolhia no meio da tela. `?leiaute=empilhado` volta. */
 const DESK_MQ = matchMedia('(min-width: 1024px) and (hover: hover) and (pointer: fine)');
 const isDesk = () => document.documentElement.classList.contains('desk');
 function aplicarDesk() {
   const forca = new URLSearchParams(location.search).get('leiaute');
-  const on = forca ? forca === 'computador' : DESK_MQ.matches;
+  const on = forca ? ['computador', 'empilhado'].includes(forca) : DESK_MQ.matches;
   document.documentElement.classList.toggle('desk', on);
+  document.documentElement.classList.toggle('lado', on && forca !== 'empilhado');
 }
+// em pé até o vídeo dizer o contrário: é o caso comum, e assim a tela não pula ao abrir
+document.documentElement.classList.add('em-pe');
 aplicarDesk();
 const video = $('video');
 const player = $('player');
@@ -854,6 +859,13 @@ video.addEventListener('loadedmetadata', () => {
   if (!video.videoWidth || !video.videoHeight) return;
   player.style.setProperty('--ar', `${video.videoWidth} / ${video.videoHeight}`);
   player.style.setProperty('--arn', (video.videoWidth / video.videoHeight).toFixed(6));
+  // a coluna da prévia ao lado da linha do tempo tem a largura do vídeo na altura da tela
+  const raiz = document.documentElement, emPe = video.videoWidth < video.videoHeight;
+  raiz.style.setProperty('--arn-v', (video.videoWidth / video.videoHeight).toFixed(6));
+  if (raiz.classList.contains('em-pe') !== emPe) {
+    raiz.classList.toggle('em-pe', emPe);
+    if (S.fitted) fitZoom(); // a linha do tempo mudou de largura
+  }
   if (S.draft.length) renderTimeline(); // a largura dos quadros da tira depende da proporção
 });
 

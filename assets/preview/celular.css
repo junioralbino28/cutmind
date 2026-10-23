@@ -759,6 +759,29 @@ kbd {
 .desk .cards.tall .face { height: min(230px, calc((var(--col-l) - 56px) / 3 * 16 / 9)); }
 .desk .app.styling .stage, .desk .app.efeitando .stage { height: auto; padding-top: 14px; }
 
+/* ---------- computador, vídeo em pé: a prévia ao lado da linha do tempo ----------
+   Com muitas faixas a linha do tempo come a altura, e o vídeo em pé encolhia no meio da tela.
+   Aqui ele ganha uma coluna à esquerda, da barra de cima até embaixo, com os controles no pé;
+   à direita ficam os painéis, a barra de ferramentas e a linha do tempo. Vídeo deitado segue
+   empilhado. A coluna tem a largura do vídeo na altura que sobra (--arn-v vem do vídeo). */
+.desk.lado.em-pe { --col-v: min(46vw, calc((100vh - var(--top-h) - 48px - 28px) * var(--arn-v, 0.5625) + 28px)); }
+.desk.lado.em-pe .app {
+  grid-template-columns: var(--col-v) var(--col-l) minmax(0, 1fr) var(--col-r);
+  grid-template-rows: var(--top-h) minmax(0, 1fr) var(--tool-h) auto 48px;
+  grid-template-areas:
+    "top top top top"
+    "stage lib lib props"
+    "stage tools tools tools"
+    "stage tl tl tl"
+    "transport tl tl tl";
+}
+.desk.lado.em-pe .stage, .desk.lado.em-pe .transport { border-right: 1px solid var(--line); }
+/* o aviso da biblioteca fica na faixa onde o painel abre, para o painel cobri-lo como antes */
+.desk.lado.em-pe .desk-col.lib { border-right: 0; justify-content: flex-start; }
+.desk.lado.em-pe .desk-col.lib p { width: calc(var(--col-l) - 48px); }
+/* os painéis da biblioteca abrem colados na coluna da prévia, não na borda da janela */
+.desk.lado.em-pe #sheet, .desk.lado.em-pe #trilhaSheet, .desk.lado.em-pe #fxSheet, .desk.lado.em-pe #modeloSheet { left: var(--col-v); }
+
 /* ---------- estado vazio (sem vídeo ainda) ---------- */
 .empty {
   position: absolute; inset: 0;
