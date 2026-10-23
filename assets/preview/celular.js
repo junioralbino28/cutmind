@@ -351,6 +351,7 @@ const S = {
   zoomDraft: null,    // o zoom de cada tomada (camera.zooms, aberto um por tomada)
   zoomOrig: null,
   zoomSel: -1,
+  destaques: { hook: null, numeros: [] }, // o gancho e os números, com o painel de Texto dos efeitos
   notes: [],
   pendingIn: null,
   editingNote: null,
@@ -565,6 +566,7 @@ function buildInsertsDraft() {
   S.insertsDraft = list.map((c) => ({ ...c, orig: { start: c.start, end: c.end } }));
   S.insSel = -1;
   buildCenasDraft(d);
+  buildDestaques(d);
 }
 const isText = (c) => c.kind === 'hook' || c.kind === 'word' || c.kind === 'numero';
 // o bloco andou ou foi aparado desde o último vídeo do agente (ou o último Salvar)
@@ -591,7 +593,7 @@ function diffBase() {
 const edlDirty = () => diffBase() > 0;
 function dirtyCount() {
   return diffBase() + S.notes.length + S.insertsDraft.filter(insMudou).length + (camadasDirty() ? 1 : 0) + (efeitosDirty() ? 1 : 0)
-    + S.cenasDraft.filter(cenaMudou).length + zoomMudados();
+    + S.cenasDraft.filter(cenaMudou).length + zoomMudados() + destaquesMudados().length;
 }
 const isChanged = (r) => {
   const b = S.base.find((x) => x.uid === r.uid);
@@ -631,6 +633,7 @@ function snap() {
     ins: S.insertsDraft.map((c) => ({ start: c.start, end: c.end })),
     insSel: S.insSel,
     cenas: S.cenasDraft.map(cenaValor),
+    destaques: listaDestaques().map(cenaValor),
     cenaSel: S.cenaSel,
     zooms: S.zoomDraft ? [...S.zoomDraft] : null,
     zoomSel: S.zoomSel,
@@ -662,6 +665,8 @@ function restore(s) {
   if (s.ins && s.ins.length === S.insertsDraft.length) s.ins.forEach((v, k) => Object.assign(S.insertsDraft[k], v));
   S.insSel = s.insSel != null && s.insSel < S.insertsDraft.length ? s.insSel : -1;
   if (s.cenas && s.cenas.length === S.cenasDraft.length) s.cenas.forEach((v, k) => Object.assign(S.cenasDraft[k], cenaValor(v)));
+  const dl = listaDestaques();
+  if (s.destaques && s.destaques.length === dl.length) { s.destaques.forEach((v, k) => Object.assign(dl[k], cenaValor(v))); rotulosDestaques(); }
   S.cenaSel = s.cenaSel != null && s.cenaSel < S.cenasDraft.length ? s.cenaSel : -1;
   if (s.zooms && S.zoomDraft && s.zooms.length === S.zoomDraft.length) S.zoomDraft = [...s.zooms];
   S.zoomSel = s.zoomSel != null && S.zoomDraft && s.zoomSel < S.zoomDraft.length ? s.zoomSel : -1;
@@ -782,6 +787,7 @@ async function applyState(data) {
   S.editData = null;
   S.insertsDraft = [];
   S.cenasDraft = []; S.cenaSel = -1;
+  S.destaques = { hook: null, numeros: [] };
   S.zoomDraft = null; S.zoomOrig = null; S.zoomSel = -1;
   if ((S.state.phase || 1) >= 2) {
     if (S.state.captions) {
@@ -1146,7 +1152,7 @@ function positionTimeline() {
   $('tNow').textContent = fmt(S.t);
   $('tTotal').textContent = fmt(totalT());
   drawFrase(); // no "Posição das frases": a frase debaixo da agulha (só refaz quando muda)
-  if (S.cenaSel >= 0) drawCenaBox(); // a moldura do efeito escolhido só aparece dentro dele
+  if (S.cenaSel >= 0 || S.insSel >= 0) drawCenaBox(); // a moldura do escolhido só aparece dentro dele
 }
 
 function drawRuler() {
@@ -1825,7 +1831,12 @@ function renderToolbar() {
   }
   if (isel) { // um bloco da Fase 2: segurar move, as alças aparam; "Original" volta ao tempo do agente
     tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
-    tool(ctx, 'f2-original', 'Original', { icon: ICON.original, disabled: !insMudou(isel) });
+    const dq = destaqueDoBloco(isel);
+    if (dq) {
+      tool(ctx, 'cena-texto', 'Texto', { icon: ICON.texto });
+      tool(ctx, 'cena-lugar', 'Centralizar', { icon: ICON.mover, disabled: Math.round(blocoDaCena(dq).x) === FRAME_W / 2 });
+    }
+    tool(ctx, 'f2-original', 'Original', { icon: ICON.original, disabled: !insMudou(isel) && !(dq && cenaMudou(dq)) });
     return;
   }
   if (csel) { // um efeito do agente: o tempo segue a tomada; o bloco se arrasta na prévia
@@ -1910,7 +1921,13 @@ document.addEventListener('click', (e) => {
     case 'original': remember(); r.start = r.orig.start; r.end = r.orig.end; renderTimeline(); renderToolbar(); refreshHeader(); break;
     case 'f2-original': {
       const c = S.insertsDraft[S.insSel];
-      if (c) { remember(); c.start = c.orig.start; c.end = c.orig.end; renderTimeline(); renderToolbar(); refreshHeader(); }
+      if (c) {
+        remember();
+        c.start = c.orig.start; c.end = c.orig.end;
+        const dq = destaqueDoBloco(c);
+        if (dq) { Object.assign(dq, cenaValor(dq.orig)); rotulosDestaques(); }
+        renderTimeline(); renderToolbar(); refreshHeader(); drawCenaBox();
+      }
       break;
     }
     case 'cena-liga': cenaMuda((c) => { c.desligada = !c.desligada; }); break;
@@ -2885,7 +2902,8 @@ $('btnSave').addEventListener('click', async () => {
   if (edlDirty()) payload.edl = edlPayload();
   const comBlocos = insertsDirty();
   const comCenas = S.cenasDraft.some(cenaMudou), comZoom = zoomMudados() > 0;
-  const comF2 = comBlocos || comCenas || comZoom;
+  const dqs = destaquesMudados();
+  const comF2 = comBlocos || comCenas || comZoom || dqs.length > 0;
   if (comF2) payload.editData = {};
   if (comBlocos) { // blocos da Fase 2: todos os de cada tipo, pelo `ref`, como a desktop antiga mandava
     const de = (k) => S.insertsDraft.filter((c) => c.kind === k);
@@ -2902,6 +2920,8 @@ $('btnSave').addEventListener('click', async () => {
   }
   // efeitos: só os que mudaram, pelo `ref` (o agente refaz só a janela de cada um)
   if (comCenas) payload.editData.cenas = S.cenasDraft.filter(cenaMudou).map((c) => ({ ref: c.ref, tipo: c.tipo, start: c.start, end: c.end, ...cenaValor(c) }));
+  // gancho e números com texto, estilo ou lugar mudados: `alvo` hook, ou numero + ref
+  if (dqs.length) payload.editData.destaques = dqs.map((c) => ({ alvo: c.tipo, ...(c.tipo === 'numero' ? { ref: c.ref } : {}), ...cenaValor(c) }));
   // zoom: a lista inteira, uma por tomada (o template usa zooms[i] quando há uma para cada)
   if (comZoom) payload.editData.camera = { zooms: S.zoomDraft.map((z) => +z.toFixed(3)), mudou: S.zoomDraft.map((z, i) => i).filter((i) => S.zoomDraft[i] !== S.zoomOrig[i]) };
   if (camadasDirty()) payload.camadas = S.camadas;
@@ -2935,6 +2955,7 @@ $('btnSave').addEventListener('click', async () => {
     S.efeitosBase = fxSig();
     S.insertsDraft.forEach((c) => { c.orig = { start: c.start, end: c.end }; });
     S.cenasDraft.forEach((c) => { c.orig = cenaValor(c); });
+    listaDestaques().forEach((c) => { c.orig = cenaValor(c); });
     if (S.zoomDraft) S.zoomOrig = [...S.zoomDraft];
     S.selected = -1;
     S.layerSel = null;
@@ -3184,6 +3205,11 @@ function tapIns(i) {
   if (!S.insertsDraft[i]) return;
   S.insSel = S.insSel === i ? -1 : i;
   S.selected = -1; S.layerSel = null; S.fxSel = null; S.cenaSel = -1; S.zoomSel = -1;
+  const b = S.insertsDraft[S.insSel];
+  // fora do bloco, ou na entrada/saída dele (o texto ainda surgindo): a agulha vai para o meio
+  if (b && destaqueDoBloco(b) && !(S.t >= b.start + 0.35 && S.t < b.end - 0.35)) {
+    video.pause(); S.t = clampT(b.start + (b.end - b.start) * 0.6); positionTimeline(); preciseSeek();
+  }
   renderTimeline();
   renderToolbar();
   drawCenaBox();
@@ -3254,7 +3280,8 @@ const CENA_NOME = {
 };
 // os campos de texto que a pessoa pode trocar (texto solto ou uma lista de linhas)
 const CENA_TEXTOS = { titulo: 'Título', pergunta: 'Pergunta', frase: 'Frase', palavra: 'Palavra', pequeno: 'Faixa de cima',
-  gigante: 'Palavra grande', etiqueta: 'Etiqueta', botao: 'Botão', nome: 'Nome', batidas: 'Palavras (uma por batida)' };
+  gigante: 'Palavra grande', etiqueta: 'Etiqueta', botao: 'Botão', nome: 'Nome', batidas: 'Palavras (uma por batida)',
+  text: 'Texto', prefixo: 'Antes do número', valor: 'Número', sufixo: 'Depois do número', rotulo: 'Linha de baixo' };
 const linhasDe = (v) => (Array.isArray(v) ? v : [v || '']).map(String);
 const maisLonga = (v) => linhasDe(v).reduce((a, s) => (s.length > a.length ? s : a), '');
 const largo = (s, px) => Math.min(1040, Math.max(160, String(s || '').length * px));
@@ -3275,6 +3302,11 @@ const CENA_BLOCO = {
   orbita: (c, t) => ({ x: 540, y: 252, w: largo(maisLonga(t.titulo), 46), h: 104 * linhasDe(t.titulo).length }),
   saindo: (c, t) => ({ x: 540, y: 213, w: largo(t.titulo, 66), h: 150 }),
   vertigem: (c, t) => ({ x: 540, y: 226, w: largo(t.pergunta, 70), h: 132 }),
+  hook: (c) => {
+    const g = GANCHO[c.style] || GANCHO.outline, h = 2 * g.cap * (c.lineHeight ?? g.lh);
+    return { x: 540, y: (c.paddingTop ?? g.top) + h / 2, w: c.safeWidth ?? g.w, h };
+  },
+  numero: (c) => { const h = 190 + (c.rotulo ? 10 + 48 * 1.15 : 0); return { x: 540, y: 230 + h / 2, w: 860, h }; },
 };
 /* O texto de destaque de cada efeito: o padrão do componente (src/cenas/*.tsx, `estiloDe(c, {...})`:
  * mudou lá, muda aqui), o que o painel de Texto deixa mudar (`sem`/`so`), o tamanho da letra no
@@ -3291,7 +3323,28 @@ const CENA_ESTILO = {
   orbita: { fonte: 'instrument', cor: '#ffffff', contorno: 0, corContorno: '#000000', px: () => 104, linhas: (t) => linhasDe(t.titulo) },
   saindo: { fonte: 'bebas', cor: (c) => c.cor || '#c6ff3d', contorno: 0, corContorno: '#000000', px: () => 150, linhas: (t) => [t.titulo || ''] },
   vertigem: { fonte: 'oswald', cor: '#ffffff', contorno: 0, corContorno: '#000000', px: () => 132, linhas: (t) => [t.pergunta || ''] },
+  // o gancho (Main.tsx, HookInner) e o número (CustomGraphics, NumeroNaTela): o padrão de cada estilo
+  hook: { fonte: 'poppins', cor: (c) => (['misto', 'realce'].includes(c.style) ? '#ff5200' : '#ffffff'),
+    contorno: (c) => ((c.style || 'outline') === 'outline' ? c.strokePx ?? 7 : 0), corContorno: '#000000',
+    px: (c) => GANCHO[c.style] ? GANCHO[c.style].cap : GANCHO.outline.cap, linhas: (t) => duasLinhas(t.text || ''),
+    corDaLinha: (i, e, c) => (c.style === 'misto' && i === 0 ? '#ffffff' : c.style === 'realce' ? '#ffffff' : e.cor) },
+  numero: { fonte: 'poppins', cor: '#ff5200', contorno: 8, corContorno: '#000000', px: () => 190,
+    linhas: (t) => [`${t.prefixo || ''}${t.valor || ''}${t.sufixo || ''}`] },
 };
+// os estilos do gancho (HL_STYLES em Main.tsx): o teto da letra, a largura, a linha e o topo
+const GANCHO = { outline: { cap: 51, w: 900, lh: 1.02, top: 330 }, card: { cap: 46, w: 820, lh: 1.06, top: 120 },
+  realce: { cap: 48, w: 830, lh: 1.04, top: 300 }, misto: { cap: 55, w: 900, lh: 0.98, top: 300 } };
+// as duas linhas do gancho, partidas no meio pelo número de letras (o render parte pela largura medida)
+function duasLinhas(txt) {
+  const ps = String(txt).trim().split(/\s+/).filter(Boolean);
+  if (ps.length < 2) return [ps.join(' ')];
+  let melhor = 1, dif = Infinity;
+  for (let i = 1; i < ps.length; i++) {
+    const d = Math.abs(ps.slice(0, i).join(' ').length - ps.slice(i).join(' ').length);
+    if (d < dif) { dif = d; melhor = i; }
+  }
+  return [ps.slice(0, melhor).join(' '), ps.slice(melhor).join(' ')];
+}
 // o estilo que vale agora: o escolhido no painel por cima do padrão do efeito
 function estiloEfetivo(c) {
   const d = c && CENA_ESTILO[c.tipo];
@@ -3305,8 +3358,8 @@ function estiloEfetivo(c) {
     italico: !e.fonte && d.fonte === 'instrument',
     cor: e.cor || val(d.cor) || '#ffffff',
     tamanho: +e.tamanho > 0 ? +e.tamanho : 1,
-    contorno: e.contorno != null ? +e.contorno : d.contorno || 0,
-    corContorno: e.corContorno || d.corContorno || '#000000',
+    contorno: e.contorno != null ? +e.contorno : +val(d.contorno) || 0,
+    corContorno: e.corContorno || val(d.corContorno) || '#000000',
   };
 }
 // o que a pessoa muda num efeito, copiado (foto do desfazer, `orig`, o que vai no Salvar).
@@ -3341,6 +3394,36 @@ function buildCenasDraft(d) {
   S.zoomDraft = zs && n ? Array.from({ length: n }, (_, i) => +zs[i % zs.length] || 1) : null;
   S.zoomOrig = S.zoomDraft ? [...S.zoomDraft] : null;
   S.zoomSel = -1;
+}
+// o gancho e os números: o mesmo formato de um efeito, achados pelo bloco da faixa de texto
+function destaqueDe(tipo, ref, nome, obj, textos) {
+  const t = obj.texto;
+  const v = cenaValor({ texto: t && isFinite(t.x) && isFinite(t.y) ? t : null, textos, estilo: obj.estilo });
+  return { tipo, ref, nome, cena: obj, ...v, orig: cenaValor(v) };
+}
+function buildDestaques(d) {
+  const h = d.hook && d.hook.enabled ? d.hook : null;
+  S.destaques = {
+    hook: h ? destaqueDe('hook', 0, 'Gancho', h, { text: h.text != null ? String(h.text) : (h.lines || []).join(' ') }) : null,
+    numeros: (d.numeros || []).map((n, i) => destaqueDe('numero', i, 'Número', n,
+      { prefixo: n.prefixo || '', valor: String(n.valor ?? ''), sufixo: n.sufixo || '', rotulo: n.rotulo || '' })),
+  };
+}
+function listaDestaques() { return [S.destaques.hook, ...S.destaques.numeros].filter(Boolean); }
+function destaquesMudados() { return listaDestaques().filter(cenaMudou); }
+function destaqueDoBloco(b) {
+  if (!b) return null;
+  if (b.kind === 'hook') return S.destaques.hook;
+  if (b.kind === 'numero') return S.destaques.numeros[b.ref] || null;
+  return null;
+}
+// o nome do bloco na faixa segue o texto novo
+function rotulosDestaques() {
+  for (const b of S.insertsDraft) {
+    const dq = destaqueDoBloco(b);
+    if (!dq) continue;
+    b.label = b.kind === 'hook' ? (dq.textos.text || 'Gancho') : `${dq.textos.prefixo || ''}${dq.textos.valor || ''}${dq.textos.sufixo || ''}`;
+  }
 }
 function blocoDaCena(c) {
   const f = c && CENA_BLOCO[c.tipo];
@@ -3402,11 +3485,18 @@ function tapZoom(i) {
   S.cenaSel = -1; S.insSel = -1; S.selected = -1; S.layerSel = null; S.fxSel = null;
   renderTimeline(); renderToolbar(); drawCenaBox();
 }
-// a moldura do efeito escolhido, só enquanto a agulha está dentro dele
+// o que está escolhido para o painel de Texto: um efeito, ou o gancho/número do bloco escolhido
+function alvoSel() {
+  if (S.view !== 'final') return null;
+  if (S.cenaSel >= 0) return S.cenasDraft[S.cenaSel] || null;
+  return S.insSel >= 0 ? destaqueDoBloco(S.insertsDraft[S.insSel]) : null;
+}
+// a moldura do escolhido, só enquanto a agulha está dentro dele
 function cenaNaTela() {
-  const c = S.view === 'final' && S.cenaSel >= 0 ? S.cenasDraft[S.cenaSel] : null;
+  const c = alvoSel();
   if (!c || c.desligada || !CENA_BLOCO[c.tipo]) return null;
-  const a = renderedToDraft(c.start), b = renderedToDraft(c.end);
+  const bl = S.cenaSel >= 0 ? null : S.insertsDraft[S.insSel];
+  const a = bl ? bl.start : renderedToDraft(c.start), b = bl ? bl.end : renderedToDraft(c.end);
   return S.t >= a - 0.01 && S.t < b ? c : null;
 }
 function drawCenaBox() {
@@ -3443,14 +3533,14 @@ function desenhaFantasma(c, b) {
     const y = b.h / 2 + (i - (linhas.length - 1) / 2) * px * 1.04;
     return `<text x="${b.w / 2}" y="${y}" text-anchor="middle" dominant-baseline="central" font-family="${escSvg(`"${fam}"`)}"`
       + ` font-weight="${e.peso}" font-style="${e.italico ? 'italic' : 'normal'}" font-size="${px}"`
-      + ` fill="${vidro ? 'rgba(225,238,250,.6)' : escSvg(e.cor)}" stroke="${escSvg(e.corContorno)}" stroke-width="${e.contorno}" paint-order="stroke fill"`
+      + ` fill="${vidro ? 'rgba(225,238,250,.6)' : escSvg(d.corDaLinha ? d.corDaLinha(i, e, c.cena) : e.cor)}" stroke="${escSvg(e.corContorno)}" stroke-width="${e.contorno}" paint-order="stroke fill"`
       + (esticar ? ` textLength="${esticar}" lengthAdjust="spacingAndGlyphs"` : '') + `>${escSvg(l)}</text>`;
   }).join('');
   g.innerHTML = `<svg viewBox="0 0 ${b.w} ${b.h}" preserveAspectRatio="xMidYMid meet">${txt}</svg>`;
 }
 // muda o efeito escolhido com uma foto para o desfazer
 function cenaMuda(fn) {
-  const c = S.cenasDraft[S.cenaSel];
+  const c = alvoSel();
   if (!c) return;
   remember();
   fn(c);
@@ -3493,7 +3583,7 @@ $('ovCena').addEventListener('pointermove', (e) => {
   if (e.pointerId !== cenaDrag.id) return;
   const dx = e.clientX - cenaDrag.x0, dy = e.clientY - cenaDrag.y0;
   if (!cenaDrag.moved && Math.hypot(dx, dy) < 4) return;
-  const c = S.cenasDraft[S.cenaSel];
+  const c = alvoSel();
   if (!c) return;
   cenaDrag.moved = true;
   cenaLugar(c, cenaDrag.bx + dx * cenaDrag.k, cenaDrag.by + dy * cenaDrag.k);
@@ -3552,6 +3642,7 @@ function textoMuda(fn) {
   if (!c) return;
   fn(c);
   if (c.estilo && !Object.keys(c.estilo).length) c.estilo = null;
+  if (c.tipo === 'hook' || c.tipo === 'numero') rotulosDestaques();
   drawCenaBox();
   if (!S.textoFila) {
     S.textoFila = true;
@@ -3560,7 +3651,7 @@ function textoMuda(fn) {
 }
 const mudaEstilo = (k, v) => textoMuda((c) => { c.estilo = { ...(c.estilo || {}), [k]: v }; });
 function openCenaTexto() {
-  const c = S.cenasDraft[S.cenaSel];
+  const c = alvoSel();
   if (!c) return;
   painel.c = c; painel.antes = snap(); painel.valor = cenaValor(c);
   const d = CENA_ESTILO[c.tipo];

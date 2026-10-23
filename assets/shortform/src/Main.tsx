@@ -36,6 +36,7 @@ import {StackedCaptions} from './StackedCaptions';
 import {ScatterCaptions} from './ScatterCaptions';
 import {SimpleCaptions, SIMPLE_VARIANTS} from './SimpleCaptions';
 import {spotFor, spotCentre, type Spot} from './captionPlace';
+import {CATALOGO, carregarFontesUsadas, familiaCss} from './fontes';
 
 const {fontFamily} = loadFont('normal', {weights: ['400', '600', '900']});
 
@@ -70,6 +71,10 @@ export type EditData = {
     strokePx?: number;     // outline: black stroke width (default 12)
     paddingTop?: number;   // distance from top (per-style default)
     lineHeight?: number;
+    // from the editor's Text panel: the block's centre in frame px (wins over paddingTop)
+    // and its look — `fonte` a family of fontes.ts, `tamanho` a multiplier, `contorno` px
+    texto?: {x: number; y: number};
+    estilo?: {fonte?: string; peso?: number; cor?: string; tamanho?: number; contorno?: number; corContorno?: string};
   };
   captions: {
     enabled: boolean;
@@ -103,6 +108,8 @@ export type EditData = {
 };
 
 const D = editData as unknown as EditData;
+// the fonts the user picked in the editor (every `estilo.fonte` in edit-data.json) load before the first frame
+carregarFontesUsadas(D);
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const clamp01 = (v: number) => clamp(v, 0, 1);
@@ -461,15 +468,15 @@ const HL_STYLES: Record<string, HlStyle> = {
   misto: {weights: [400, 900], cap: 55, safeW: 900, lh: 0.98, top: 300},
 };
 
-const hlWidth = (text: string, size: number, weight: number) =>
+const hlWidth = (text: string, size: number, weight: number, fam: string = fontFamily) =>
   text
-    ? measureText({text, fontFamily, fontSize: size, fontWeight: weight, letterSpacing: '-1px'}).width
+    ? measureText({text, fontFamily: fam, fontSize: size, fontWeight: weight, letterSpacing: '-1px'}).width
     : 0;
 
 // Balance by MEASURED width, not word count: "É assim que vai" and "ficar a sua
 // headline" are 4 words and 3 words but nearly the same width — counting words
 // would break it in the wrong place.
-function twoLines(text: string, weights: [number, number]): [string, string] {
+function twoLines(text: string, weights: [number, number], fam: string = fontFamily): [string, string] {
   const words = text.trim().split(/\s+/).filter(Boolean);
   if (words.length < 2) return [words[0] ?? '', ''];
   let best: [string, string] = [words[0], words.slice(1).join(' ')];
@@ -477,7 +484,7 @@ function twoLines(text: string, weights: [number, number]): [string, string] {
   for (let i = 1; i < words.length; i++) {
     const a = words.slice(0, i).join(' ');
     const b = words.slice(i).join(' ');
-    const d = Math.abs(hlWidth(a, 100, weights[0]) - hlWidth(b, 100, weights[1]));
+    const d = Math.abs(hlWidth(a, 100, weights[0], fam) - hlWidth(b, 100, weights[1], fam));
     if (d < bestDiff) {
       bestDiff = d;
       best = [a, b];
@@ -489,9 +496,9 @@ function twoLines(text: string, weights: [number, number]): [string, string] {
 // Width scales with size, but letterSpacing (-1px per gap) does NOT — so the
 // first estimate is off by a few px on long lines. One refinement pass at the
 // estimated size fixes that; iterating further buys nothing.
-function fitHeadline(lines: [string, string], s: HlStyle): number {
+function fitHeadline(lines: [string, string], s: HlStyle, fam: string = fontFamily): number {
   const widest = (size: number) =>
-    Math.max(hlWidth(lines[0], size, s.weights[0]), hlWidth(lines[1], size, s.weights[1]));
+    Math.max(hlWidth(lines[0], size, s.weights[0], fam), hlWidth(lines[1], size, s.weights[1], fam));
   let size = Math.floor((s.safeW / Math.max(1, widest(100))) * 100);
   size = clamp(Math.floor((s.safeW / Math.max(1, widest(size))) * size), HL_MIN, s.cap);
   return size;
@@ -506,22 +513,36 @@ const HookInner: React.FC<{totalFrames: number}> = ({totalFrames}) => {
   const y = interpolate(enter, [0, 1], [24, 0]);
 
   const styleId = H.style ?? 'outline';
-  const S = HL_STYLES[styleId] ?? HL_STYLES.outline;
+  // the editor's Text panel: a catalog font (one weight for every line), colour, size and outline
+  const E = H.estilo ?? {};
+  const escolhida = typeof E.fonte === 'string' && E.fonte in CATALOGO ? E.fonte : null;
+  const fam = escolhida ? familiaCss(escolhida) : fontFamily;
+  const pesoE = escolhida ? Number(E.peso) || CATALOGO[escolhida].peso : null;
+  const k = Number(E.tamanho) > 0 ? Math.min(3, Math.max(0.3, Number(E.tamanho))) : 1;
+  const S0 = HL_STYLES[styleId] ?? HL_STYLES.outline;
+  const S: HlStyle = pesoE ? {...S0, weights: [pesoE, pesoE]} : S0;
+  const peso = (padrao: number) => pesoE ?? padrao;
   const raw = (H.text ?? (H.lines || []).join(' ')).trim();
-  const lines = twoLines(styleId === 'card' ? raw.toUpperCase() : raw, S.weights);
+  const lines = twoLines(styleId === 'card' ? raw.toUpperCase() : raw, S.weights, fam);
   // fontSizePx is a CEILING, never a fixed size. As a hard override it silently
   // defeats the whole point: at a size the text cannot fit in, the line wraps and
   // the headline becomes three lines again — which is exactly what happened with
   // the uppercase "card" style at the project's inherited fontSizePx of 66.
-  const cap = H.fontSizePx ?? H.maxFontPx ?? S.cap;
-  const size = fitHeadline(lines, {...S, cap, safeW: H.safeWidth ?? S.safeW});
+  const cap = (H.fontSizePx ?? H.maxFontPx ?? S.cap) * k;
+  const size = fitHeadline(lines, {...S, cap, safeW: Math.min(1040, (H.safeWidth ?? S.safeW) * k)}, fam);
   const lh = H.lineHeight ?? S.lh;
-  const top = H.paddingTop ?? S.top;
+  // `texto` is the block's centre: half its height above it (the same sum the editor's frame uses)
+  const n = lines.filter(Boolean).length;
+  const meia = styleId === 'realce' ? (n * size * (lh + 0.24) + (n - 1) * 10) / 2 : styleId === 'card' ? (n * size * lh + 56) / 2 : (n * size * lh) / 2;
+  const top = H.texto ? Number(H.texto.y) - meia : H.paddingTop ?? S.top;
+  const dx = H.texto ? Number(H.texto.x) - 540 : 0;
+  const contorno = Number(E.contorno) >= 0 && E.contorno !== undefined && E.contorno !== null ? Number(E.contorno) : 0;
+  const traco = (px: number, cor: string): React.CSSProperties => (px > 0 ? {WebkitTextStroke: `${px}px ${cor}`, paintOrder: 'stroke fill'} : {});
   const shell: React.CSSProperties = {
     opacity: op,
-    translate: `0px ${y}px`,
+    translate: `${dx}px ${y}px`,
     textAlign: 'center',
-    fontFamily,
+    fontFamily: fam,
     lineHeight: lh,
     letterSpacing: -1,
     // the two-line promise is structural: if a fit is ever off, this overflows
@@ -538,10 +559,11 @@ const HookInner: React.FC<{totalFrames: number}> = ({totalFrames}) => {
             <div
               key={i}
               style={{
-                background: '#ff5200',
+                background: E.cor || '#ff5200',
                 color: '#fff',
-                fontWeight: 900,
+                fontWeight: peso(900),
                 fontSize: size,
+                ...traco(contorno, E.corContorno || '#000'),
                 padding: '0.08em 0.3em 0.16em',
                 borderRadius: 12,
                 boxShadow: '0 10px 28px rgba(0,0,0,0.45)',
@@ -560,8 +582,8 @@ const HookInner: React.FC<{totalFrames: number}> = ({totalFrames}) => {
       <AbsoluteFill style={{justifyContent: 'flex-start', alignItems: 'center', paddingTop: top}}>
         <Sfx src="whoosh.mp3" volume={0.1} />
         <div style={{...shell, filter: 'drop-shadow(0 6px 16px rgba(0,0,0,0.55))'}}>
-          <div style={{fontWeight: 400, fontSize: size, color: '#fff'}}>{lines[0]}</div>
-          <div style={{fontWeight: 900, fontSize: size, color: '#ff5200'}}>{lines[1]}</div>
+          <div style={{fontWeight: peso(400), fontSize: size, color: '#fff', ...traco(contorno, E.corContorno || '#000')}}>{lines[0]}</div>
+          <div style={{fontWeight: peso(900), fontSize: size, color: E.cor || '#ff5200', ...traco(contorno, E.corContorno || '#000')}}>{lines[1]}</div>
         </div>
       </AbsoluteFill>
     );
@@ -571,14 +593,14 @@ const HookInner: React.FC<{totalFrames: number}> = ({totalFrames}) => {
     return (
       <AbsoluteFill style={{justifyContent: 'flex-start', alignItems: 'center', paddingTop: top}}>
         <Sfx src="whoosh.mp3" volume={0.1} />
-        <div style={{opacity: op, translate: `0px ${y}px`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 28}}>
+        <div style={{opacity: op, translate: `${dx}px ${y}px`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 28}}>
           {H.logo || H.sign ? (
             <div style={{display: 'flex', alignItems: 'center', gap: 34}}>
               {H.logo ? <Img src={staticFile(H.logo)} style={{width: 300, borderRadius: 18, boxShadow: '0 12px 34px rgba(0,0,0,0.4)'}} /> : null}
               {H.sign ? <Img src={staticFile(H.sign)} style={{width: 128, filter: 'drop-shadow(0 8px 20px rgba(0,0,0,0.45))'}} /> : null}
             </div>
           ) : null}
-          <div style={{background: '#232326', borderRadius: 24, padding: '28px 46px', textAlign: 'center', fontFamily, fontWeight: 900, fontSize: size, color: '#fff', lineHeight: lh, letterSpacing: -1, textShadow: '0 4px 20px rgba(0,0,0,0.55)', boxShadow: '0 18px 50px rgba(0,0,0,0.45)'}}>
+          <div style={{background: '#232326', borderRadius: 24, padding: '28px 46px', textAlign: 'center', fontFamily: fam, fontWeight: peso(900), fontSize: size, color: E.cor || '#fff', ...traco(contorno, E.corContorno || '#000'), lineHeight: lh, letterSpacing: -1, textShadow: '0 4px 20px rgba(0,0,0,0.55)', boxShadow: '0 18px 50px rgba(0,0,0,0.45)'}}>
             {lines.filter(Boolean).map((l, i) => (<div key={i}>{l}</div>))}
           </div>
         </div>
@@ -586,17 +608,17 @@ const HookInner: React.FC<{totalFrames: number}> = ({totalFrames}) => {
     );
   }
 
-  const stroke = H.strokePx ?? 7;
+  const stroke = E.contorno !== undefined && E.contorno !== null ? contorno : H.strokePx ?? 7;
   return (
     <AbsoluteFill style={{justifyContent: 'flex-start', alignItems: 'center', paddingTop: top}}>
       <Sfx src="whoosh.mp3" volume={0.1} />
       <div
         style={{
           ...shell,
-          fontWeight: 800,
+          fontWeight: peso(800),
           fontSize: size,
-          color: '#fff',
-          WebkitTextStroke: `${stroke}px #000`,
+          color: E.cor || '#fff',
+          WebkitTextStroke: `${stroke}px ${E.corContorno || '#000'}`,
           paintOrder: 'stroke fill',
           filter: 'drop-shadow(0 6px 14px rgba(0,0,0,0.45))',
           padding: '0 60px',

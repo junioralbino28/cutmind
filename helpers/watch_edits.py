@@ -104,6 +104,24 @@ def digest(p: Path) -> str:
                 oque.append("estilo " + ", ".join(f"{k}={v}" for k, v in est.items()))
             parts.append(f'  · #{c.get("ref")} {c.get("tipo")} [{fmt(c.get("start", 0))} → {fmt(c.get("end", 0))}]: '
                          + "; ".join(oque))
+    destaques = ed.get("destaques") or []
+    if destaques:
+        head.append(_plural(len(destaques), "texto de destaque mudado", "textos de destaque mudados"))
+        parts.append("  gancho e números (edit-data.json `hook` e `numeros[ref]`): grave `texto` (centro do "
+                     "bloco no quadro 1080x1920), `estilo` e os textos — no gancho `text` (e tire `lines`), no "
+                     "número `prefixo`/`valor` (número)/`sufixo`/`rotulo` — e refaça a janela de cada um:")
+        for c in destaques:
+            alvo = "gancho" if c.get("alvo") == "hook" else f'número #{c.get("ref")}'
+            oque = []
+            t = c.get("texto")
+            if t:
+                oque.append(f'bloco em x={t.get("x")} y={t.get("y")}')
+            for k, v in (c.get("textos") or {}).items():
+                oque.append(f'{k}="{v}"')
+            est = c.get("estilo") or {}
+            if est:
+                oque.append("estilo " + ", ".join(f"{k}={v}" for k, v in est.items()))
+            parts.append(f"  · {alvo}: " + "; ".join(oque))
     cam = ed.get("camera") or {}
     if cam.get("zooms"):
         mud = [i for i in (cam.get("mudou") or []) if 0 <= i < len(cam["zooms"])]

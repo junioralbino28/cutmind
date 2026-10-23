@@ -168,3 +168,18 @@ def test_aviso_dos_efeitos_e_do_zoom_da_fase_2(tmp_path):
     assert "#3 mural" in aviso and "DESLIGAR" in aviso
     assert "tomada 2 → 120%" in aviso
     assert "inserts/gancho movidos" not in aviso  # só efeitos e zoom: nenhum bloco andou
+
+
+def test_aviso_do_gancho_e_do_numero(tmp_path):
+    """Gancho e número mudados no painel de Texto: o aviso diz onde gravar cada campo."""
+    p = tmp_path / "preview_edits.json"
+    p.write_text(json.dumps({"type": "timeline-edits", "editData": {"destaques": [
+        {"alvo": "hook", "desligada": False, "texto": {"x": 540, "y": 520}, "textos": {"text": "Só 2% cortaram"},
+         "estilo": {"fonte": "Anton", "peso": 400, "cor": "#ffe500"}},
+        {"alvo": "numero", "ref": 0, "desligada": False, "texto": None,
+         "textos": {"prefixo": "", "valor": "6", "sufixo": " MIL", "rotulo": "empresas"}, "estilo": {"tamanho": 0.8}}]}}),
+        encoding="utf-8")
+    aviso = digest(p)
+    assert "2 textos de destaque mudados" in aviso
+    assert "gancho: bloco em x=540 y=520" in aviso and 'text="Só 2% cortaram"' in aviso and "fonte=Anton" in aviso
+    assert "número #0" in aviso and 'valor="6"' in aviso and "tamanho=0.8" in aviso

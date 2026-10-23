@@ -153,11 +153,14 @@ button { font-family: inherit; cursor: pointer; }
 }
 .ov-cena:active { cursor: grabbing; }
 .ov-cena.own { border-color: var(--brand); background: rgba(255, 82, 0, 0.12); }
+/* o nome numa etiqueta em cima da moldura, como no CapCut: dentro dela cobria o texto */
 .ov-cena span {
-  position: absolute; left: 6px; top: 4px; max-width: calc(100% - 12px);
+  position: absolute; left: -1px; bottom: calc(100% + 3px); max-width: 100%;
+  padding: 1px 6px; border-radius: 4px; background: rgba(0, 0, 0, 0.7);
   font-size: 10px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8); pointer-events: none;
+  pointer-events: none;
 }
+.ov-cena.own span { background: var(--brand); color: var(--brand-ink); }
 /* fora do Estilo a prévia é só o vídeo (no "Posição das frases", o vídeo e a frase) */
 .player:not(.styling) .band, .player:not(.styling) .hl { display: none !important; }
 .player:not(.styling):not(.posicionando) .cap { display: none !important; }

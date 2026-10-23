@@ -110,7 +110,11 @@ Then copy `cut.mp4` into `public/` and generate the data files below.
   **outline** — white text + thick black stroke, no card, sentence-case, sits
   lower (may overlap the top of the head); tune `fontSizePx`/`strokePx`/
   `paddingTop`/`lineHeight`. Copy written like a virality specialist; approve a
-  still first.
+  still first. The editor's Text panel writes `hook.texto` (`{x, y}`, the block's
+  centre in frame px, over `paddingTop`) and `hook.estilo` (`fonte` — a family of
+  `src/fontes.ts`, loaded only when used —, `peso`, `cor`: the main colour of the
+  style, `tamanho`: a multiplier, `contorno` px, `corContorno`). Without them the
+  hook renders exactly as before.
 - **Inserts**: rounded card + shadow, upper zone, slow Ken-Burns, whoosh on entry.
 - **Behind-the-subject**: elements top-anchored; matte gets the same camera via
   `frameOffset`; ProRes 4444 + `<OffthreadVideo transparent>`.
