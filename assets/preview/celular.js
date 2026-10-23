@@ -1652,7 +1652,8 @@ function passo(seg) {
 // Esc fecha o painel aberto como o botão dele: o Estilo sem aplicar, a nota sem guardar,
 // os de régua no Pronto (a régua já mudou ao vivo)
 const FECHA_PAINEL = { sheet: 'sheetClose', noteSheet: 'noteCancel', volSheet: 'volOk', velSheet: 'velOk', ajSheet: 'ajOk',
-  fxIntSheet: 'fxIntOk', trilhaSheet: 'trilhaClose', fxSheet: 'fxClose', tomZoomSheet: 'tomZoomOk', cenaSheet: 'cenaCancel' };
+  fxIntSheet: 'fxIntOk', trilhaSheet: 'trilhaClose', fxSheet: 'fxClose', tomZoomSheet: 'tomZoomOk', cenaSheet: 'cenaCancel',
+  modeloSheet: 'modeloClose' };
 function fechaPainel() {
   const aberto = document.querySelector('.sheet.open');
   if (!aberto || !FECHA_PAINEL[aberto.id]) return false;
@@ -1781,7 +1782,8 @@ function followDraft() {
 /* dica ao passar o mouse: o nome da ferramenta (quando o rótulo é um valor, como "100%") e o atalho */
 const ATALHO = { dividir: 'Ctrl+B', duplicar: 'Ctrl+D', excluir: 'Delete', marcar: 'M', voltar: 'Esc' };
 const DICA = { volume: 'Volume', velocidade: 'Velocidade e curva', intensidade: 'Intensidade do filtro',
-  texto: 'Texto novo na agulha', 'texto-editar': 'Texto, fonte, cor, tamanho, contorno, curva e altura',
+  texto: 'Texto solto ou modelo', 'texto-novo': 'Texto novo na agulha', modelos: 'Dois ou três textos de uma vez, em fontes misturadas',
+  'texto-editar': 'Texto, fonte, cor, tamanho, contorno, curva e altura',
   atras: 'No vídeo final, a camada passa atrás da pessoa', 'texto-segue': 'No vídeo final, o texto anda junto com a pessoa',
   'leg-texto': 'Fonte, cor, tamanho e contorno de todas as frases', 'leg-segue': 'No vídeo final, a legenda anda junto com a pessoa',
   'leg-posicao': 'O lugar de cada frase da legenda', 'leg-original': 'A legenda como o agente fez' };
@@ -1796,10 +1798,10 @@ function renderToolbar() {
   const zsel = !lsel && !fsel && !isel && !csel && S.view === 'final' && S.zoomDraft && S.zoomSel >= 0;
   const lgsel = !lsel && !fsel && !isel && !csel && !zsel && S.view === 'final' && S.legSel && !!S.legenda;
   const algum = !!(sel || lsel || fsel || isel || csel || zsel || lgsel);
-  if (algum) { S.audioMenu = false; S.importMenu = false; S.fxMenu = false; }
-  const amenu = S.audioMenu, imenu = S.importMenu, fmenu = S.fxMenu;
-  tb.classList.toggle('hidden', !!(algum || amenu || imenu || fmenu));
-  ctx.classList.toggle('hidden', !(algum || amenu || imenu || fmenu));
+  if (algum) { S.audioMenu = false; S.importMenu = false; S.fxMenu = false; S.textMenu = false; }
+  const amenu = S.audioMenu, imenu = S.importMenu, fmenu = S.fxMenu, tmenu = S.textMenu;
+  tb.classList.toggle('hidden', !!(algum || amenu || imenu || fmenu || tmenu));
+  ctx.classList.toggle('hidden', !(algum || amenu || imenu || fmenu || tmenu));
   const hasVideo = S.videoDuration > 0;
   const tool = (host, id, label, opts = {}) => {
     const b = el('button', `tool${opts.on ? ' on' : ''}${opts.armed ? ' armed' : ''}${opts.cls ? ` ${opts.cls}` : ''}`, host);
@@ -1844,6 +1846,12 @@ function renderToolbar() {
     tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
     tool(ctx, 'trilhas', 'Trilhas', { icon: ICON.audio });
     tool(ctx, 'do-celular', 'Do celular', { icon: ICON.enviar });
+    return;
+  }
+  if (tmenu) { // Texto: um texto solto na agulha, ou um modelo de dois ou três textos em fontes misturadas
+    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
+    tool(ctx, 'texto-novo', 'Texto', { icon: ICON.texto });
+    tool(ctx, 'modelos', 'Modelos', { icon: ICON.estilo });
     return;
   }
   if (fmenu) { // Efeitos: filtro na tomada debaixo da agulha, transição no corte mais perto
@@ -1935,8 +1943,8 @@ document.addEventListener('click', (e) => {
     case 'estilo': openStyle('edit'); break;
     case 'legenda': openStyle('captions'); break;
     case 'marcar': toggleMark(); break;
-    case 'importar': S.importMenu = true; S.audioMenu = false; S.fxMenu = false; renderToolbar(); break;
-    case 'efeitos': S.fxMenu = true; S.audioMenu = false; S.importMenu = false; renderToolbar(); break;
+    case 'importar': S.importMenu = true; S.audioMenu = false; S.fxMenu = false; S.textMenu = false; renderToolbar(); break;
+    case 'efeitos': S.fxMenu = true; S.audioMenu = false; S.importMenu = false; S.textMenu = false; renderToolbar(); break;
     case 'filtros': S.fxMenu = false; renderToolbar(); openFx('filtro'); break;
     case 'transicoes': S.fxMenu = false; renderToolbar(); openFx('transicao'); break;
     case 'intensidade': openIntensidade(); break;
@@ -1944,13 +1952,15 @@ document.addEventListener('click', (e) => {
     case 'imp-video': S.importMenu = false; renderToolbar(); $('fileInput').click(); break;
     case 'imp-imagem': S.importMenu = false; renderToolbar(); $('fileImagem').click(); break;
     case 'imp-audio': S.importMenu = false; renderToolbar(); $('fileAudio').click(); break;
-    case 'audio': S.audioMenu = true; S.importMenu = false; S.fxMenu = false; renderToolbar(); break;
+    case 'audio': S.audioMenu = true; S.importMenu = false; S.fxMenu = false; S.textMenu = false; renderToolbar(); break;
     case 'trilhas': S.audioMenu = false; renderToolbar(); openTrilhas(); break;
     case 'do-celular': S.audioMenu = false; renderToolbar(); $('fileAudio').click(); break;
     case 'voltar': soltaEscolha(); break;
     case 'dividir': splitSelected(); break;
     case 'duplicar': if (S.layerSel) duplicateLayerSel(); else duplicateSelected(); break;
-    case 'texto': addTexto(); break;
+    case 'texto': S.textMenu = true; S.audioMenu = false; S.importMenu = false; S.fxMenu = false; renderToolbar(); break;
+    case 'texto-novo': S.textMenu = false; addTexto(); break;
+    case 'modelos': S.textMenu = false; renderToolbar(); openModelos(); break;
     case 'texto-editar': openTextoCamada(false); break;
     case 'atras': textoLiga('atras'); break;
     case 'texto-segue': textoLiga('acompanhar'); break;
@@ -2003,7 +2013,7 @@ document.addEventListener('click', (e) => {
 
 function soltaEscolha() {
   S.selected = -1; S.layerSel = null; S.fxSel = null; S.insSel = -1; S.cenaSel = -1; S.zoomSel = -1; S.legSel = false;
-  S.audioMenu = false; S.importMenu = false; S.fxMenu = false;
+  S.audioMenu = false; S.importMenu = false; S.fxMenu = false; S.textMenu = false;
   renderTimeline(); renderToolbar(); drawCenaBox();
 }
 
@@ -3918,9 +3928,12 @@ function camadasParaSalvar() {
   c.faixas = c.faixas.filter((f) => f.tipo !== 'texto' || f.itens.length);
   return c;
 }
+// o começo de uma camada nova na agulha, arredondado para BAIXO: para cima, ela nascia uma
+// fração de milissegundo depois da agulha e não aparecia na prévia
+const inicioNaAgulha = (total) => Math.floor(Math.min(draftToRendered(S.t), Math.max(0, total - 0.5)) * 1000) / 1000;
 function addTexto() {
   const total = S.videoDuration || totalT();
-  const inicio = +Math.min(draftToRendered(S.t), Math.max(0, total - 0.5)).toFixed(3);
+  const inicio = inicioNaAgulha(total);
   remember();
   const fid = newFaixaId('t');
   const item = { id: `${fid}-1`, texto: 'Seu texto', inicio, duracao: +Math.min(3, Math.max(0.5, total - inicio)).toFixed(3),
@@ -3928,11 +3941,83 @@ function addTexto() {
   S.camadas.faixas.push({ id: fid, tipo: 'texto', oculto: false, travado: false, itens: [item] });
   S.layerSel = item.id;
   S.fxSel = null; S.selected = -1; S.insSel = -1; S.cenaSel = -1; S.zoomSel = -1;
-  S.audioMenu = false; S.importMenu = false; S.fxMenu = false;
+  S.audioMenu = false; S.importMenu = false; S.fxMenu = false; S.textMenu = false;
   CutMindFontes.carregarTodas();
   renderTimeline(); renderToolbar(); refreshHeader(); drawCenaBox();
   openTextoCamada(true);
 }
+
+/* Modelos de texto: dois ou três textos de uma vez, em fontes misturadas (o "Zoom / do seu /
+ * vídeo" da referência). Cada linha vira uma camada de texto própria, no mesmo tempo, e se
+ * troca como qualquer texto. O cartão mostra o modelo desenhado sobre o quadro da agulha, nas
+ * mesmas contas do vídeo final. `dy` é a distância da linha até MODELO_Y, em px do quadro; o
+ * peso de cada fonte vem do catálogo (é o que o render carrega). */
+const MODELO_Y = 900;
+const MODELOS_TEXTO = [
+  { nome: 'Mistura', linhas: [
+    { texto: 'Zoom', dy: -150, estilo: { fonte: 'Archivo Black', cor: '#ffffff', tamanho: 2.2 } },
+    { texto: 'do seu', dy: -20, estilo: { fonte: 'Playfair Display', cor: '#d9d9d9', tamanho: 0.75 } },
+    { texto: 'vídeo', dy: 115, estilo: { fonte: 'Pacifico', cor: '#ff4fa3', tamanho: 1.6 } }] },
+  { nome: 'Chamada', linhas: [
+    { texto: 'O SEGREDO', dy: -75, estilo: { fonte: 'Oswald', cor: '#ffe500', tamanho: 0.8 } },
+    { texto: 'QUE NINGUÉM CONTA', dy: 30, estilo: { fonte: 'Anton', cor: '#ffffff', tamanho: 1.2, contorno: 8, corContorno: '#000000' } }] },
+  { nome: 'Número', linhas: [
+    { texto: '3', dy: -150, estilo: { fonte: 'Bebas Neue', cor: '#ffe500', tamanho: 4 } },
+    { texto: 'erros que', dy: 55, estilo: { fonte: 'Poppins', cor: '#ffffff', tamanho: 0.75 } },
+    { texto: 'custam caro', dy: 150, estilo: { fonte: 'Permanent Marker', cor: '#ff3b30', tamanho: 1.15 } }] },
+  { nome: 'Elegante', linhas: [
+    { texto: 'menos', dy: -125, estilo: { fonte: 'Cormorant Garamond', cor: '#ffffff', tamanho: 1.6 } },
+    { texto: 'é', dy: 0, estilo: { fonte: 'Great Vibes', cor: '#f2c14e', tamanho: 1.4 } },
+    { texto: 'mais', dy: 125, estilo: { fonte: 'Cormorant Garamond', cor: '#ffffff', tamanho: 1.6 } }] },
+  { nome: 'Retrô', linhas: [
+    { texto: 'GAME', dy: -70, estilo: { fonte: 'Press Start 2P', cor: '#39e5ff', tamanho: 0.9 } },
+    { texto: 'OVER', dy: 70, estilo: { fonte: 'Monoton', cor: '#ff3fd8', tamanho: 1.5 } }] },
+  { nome: 'Manchete', linhas: [
+    { texto: 'URGENTE', dy: -60, estilo: { fonte: 'Archivo Black', cor: '#ff2d2d', tamanho: 1.3, contorno: 6, corContorno: '#ffffff' } },
+    { texto: 'leia antes de comprar', dy: 55, estilo: { fonte: 'Caveat', cor: '#ffffff', tamanho: 1 } }] },
+];
+const linhaDoModelo = (l) => ({ texto: l.texto, x: FRAME_W / 2, y: MODELO_Y + l.dy, curva: 0,
+  estilo: { ...l.estilo, peso: CutMindFontes.pesoDe(l.estilo.fonte) } });
+function openModelos() {
+  video.pause();
+  CutMindFontes.carregarTodas();
+  const box = $('modeloLista');
+  box.innerHTML = '';
+  el('p', 'sheet-hint', box).textContent = 'Dois ou três textos de uma vez, em fontes misturadas. Cada linha vira uma camada: depois, toque em uma para trocar o que está escrito.';
+  const grade = el('div', 'mod-grade', box);
+  const idx = Math.min(S.thumbCount || 1, Math.floor(draftToRendered(S.t) / THUMB_EVERY) + 1); // o quadro da agulha
+  const fundo = S.thumbCount > 0 ? `url("/gen/thumbs/${String(idx).padStart(4, '0')}.jpg")` : 'none';
+  MODELOS_TEXTO.forEach((m, k) => {
+    const card = el('button', 'mod-card', grade);
+    card.type = 'button';
+    card.style.backgroundImage = fundo;
+    m.linhas.forEach((l, j) => desenhaTexto(card, { it: { id: `modelo-${k}-${j}`, ...linhaDoModelo(l) }, sel: false, fantasma: false, d: [0, 0], trav: true }));
+    el('span', 'mod-nome', card).textContent = m.nome;
+    card.addEventListener('click', () => aplicaModelo(m));
+  });
+  showSheet($('modeloSheet'), true);
+}
+function fechaModelos() { showSheet($('modeloSheet'), false); }
+function aplicaModelo(m) {
+  const total = S.videoDuration || totalT();
+  const inicio = inicioNaAgulha(total);
+  const duracao = +Math.min(3, Math.max(0.5, total - inicio)).toFixed(3);
+  remember();
+  let primeiro = null;
+  for (const l of m.linhas) {
+    const fid = newFaixaId('t');
+    const item = { id: `${fid}-1`, inicio, duracao, atras: false, acompanhar: false, ...linhaDoModelo(l) };
+    S.camadas.faixas.push({ id: fid, tipo: 'texto', oculto: false, travado: false, itens: [item] });
+    primeiro = primeiro || item.id;
+  }
+  S.layerSel = primeiro;
+  S.fxSel = null; S.selected = -1; S.insSel = -1; S.cenaSel = -1; S.zoomSel = -1; S.legSel = false;
+  fechaModelos();
+  renderTimeline(); renderToolbar(); refreshHeader(); drawCenaBox();
+  toast(`${m.linhas.length} textos, cada um numa camada: toque em um para trocar o que está escrito`, 2800);
+}
+$('modeloClose').innerHTML = ICON.fechar;
+$('modeloClose').addEventListener('click', fechaModelos);
 // liga e desliga `atras` (texto ou imagem) e `acompanhar` (texto) da camada escolhida
 function textoLiga(k) {
   const hit = camItem(S.layerSel);

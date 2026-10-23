@@ -85,7 +85,8 @@ editor").
 | `trilhas` | "põe uma trilha animada" | `pacotes.py listar --tipo trilha --busca <mood>`, then `pacotes.py camada <edit> <id> [--inicio s]` (it writes the layer, marked `trilha`, at 15%) |
 | `volume` (on a layer) | "a música mais baixa" | the item's `volume` |
 | `melhorar` | "limpa o ruído desse áudio" | the item's `melhorar: true` (noise reduction + voice chain in `mixar_final.py`) |
-| `texto` | "escreve PROMOÇÃO no meio da tela dos 5 aos 8 s" | a new `tipo: "texto"` track with `{"texto", "inicio", "duracao", "x": 540, "y": 960}` (the CENTRE, frame px; `\n` breaks the line) |
+| `texto` / `texto-novo` | "escreve PROMOÇÃO no meio da tela dos 5 aos 8 s" | a new `tipo: "texto"` track with `{"texto", "inicio", "duracao", "x": 540, "y": 960}` (the CENTRE, frame px; `\n` breaks the line) |
+| `modelos` | "um título com fontes misturadas, tipo Zoom / do seu / vídeo" | two or three text tracks at the same time, one per line, each in its own font, stacked around y≈900 (the editor's `MODELOS_TEXTO` in `assets/preview/celular.js` has six ready mixes) |
 | `texto-editar` | "o texto em Anton amarelo, maior, com contorno preto", "curva o texto pra cima" | the item's `estilo`: `fonte` (a family of `assets/preview/fontes.js`, with its `peso`), `cor`, `tamanho` (× 96 px), `contorno` (px), `corContorno`; `curva` −100 to 100; `x`/`y` to move it |
 | `atras` | "põe o texto atrás de mim", "essa imagem atrás de mim" | the item's `atras: true` (text or image); `camadas_edit_data.py` makes the cut-out of that window (`person_matte.py`, ~30 s per 3 s on CPU). An image then becomes the big card behind the person (`behind[]`) instead of the top card |
 | `texto-segue` | "o texto acompanhando meu corpo" | the item's `acompanhar: true`; `camadas_edit_data.py` tracks the face (`face_track.py` → `public/rastreio.json`) |
