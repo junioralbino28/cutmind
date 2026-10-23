@@ -386,6 +386,23 @@ def test_efeitos_tortos_nao_gravam_nada(srv):
     assert not (srv.edit / "camadas.json").exists()  # as camadas boas do mesmo Salvar também esperam
 
 
+def test_salvar_velocidade_grava_o_arquivo_do_projeto(srv):
+    vel = {"versao": 1, "duracao": 82.5666, "trechos": [{"inicio": 10, "fim": 25, "fator": 2},
+                                                         {"inicio": 30, "fim": 31, "fator": 1}]}
+    r, corpo = _salvar(srv, {"type": "timeline-edits", "velocidade": vel})
+    assert r.status == 200, corpo
+    salvo = json.loads((srv.edit / "velocidade.json").read_text(encoding="utf-8"))
+    assert salvo == {"versao": 1, "duracao": 82.567, "trechos": [{"inicio": 10.0, "fim": 25.0, "fator": 2.0}]}
+    assert json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))["velocidade"] == salvo
+
+
+def test_velocidade_torta_nao_grava_nada(srv):
+    r, dados = _salvar(srv, {"type": "timeline-edits", "velocidade": {"trechos": [
+        {"inicio": 1, "fim": 5, "fator": 2}, {"inicio": 4, "fim": 6, "fator": 1.5}]}})
+    assert r.status == 400 and "velocidade" in json.loads(dados)["error"]
+    assert not (srv.edit / "velocidade.json").exists() and not (srv.edit / "preview_edits.json").exists()
+
+
 # ---- biblioteca de trilhas: o celular escolhe, o servidor baixa ----
 @pytest.fixture
 def trilhas(srv, tmp_path):

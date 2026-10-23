@@ -709,6 +709,35 @@ was cut out.
 
 ---
 
+## Speed of the finished video (`velocidade.json`)
+
+On the Final view the user selects everything (Ctrl+A or **Selecionar**) or a span
+(dragging the empty part of the timeline; the orange edges adjust it) and changes its
+**Velocidade** — CapCut's "select all and speed it up". It is applied to the video
+that is already assembled, so picture, voice, captions, effects, layers and soundtrack
+move together and nothing drifts. A take's own speed (the Corte view, `edl.json`) is a
+different thing: it changes the cut, and whatever sits on the cut's clock must follow.
+
+The project file is `<edit>/velocidade.json` (schema in `helpers/velocidade.py`):
+`trechos` with `inicio`/`fim` in **final.mp4 seconds** and `fator` 0.25–4, plus
+`duracao`, the final's length when the user marked them. Delivery:
+
+1. `uv run python -X utf8 helpers/velocidade_final.py <edit>` — after `mixar_final.py`
+   whenever the final is redone, and on its own when only the speed changed. It writes
+   `final-entrega.mp4` (each span by `setpts` + `atempo`, one filtergraph so the audio
+   stays continuous; atempo's own lead, 10–62 ms by factor, is measured and given back)
+   and records `entregaVideo` in `state.json`: the editor's **Baixar** delivers that file
+   when it is newer than the spans and the final. With no spans it removes both, and
+   the final is the delivery again.
+2. It **refuses** (exit 2) when the final's length differs from `duracao` by more than
+   0.1 s: the cut was redone after the spans were marked, and they may sit on other
+   words now. Carry each span to the new cut (as with layers) and write the new
+   `duracao`, or clear them and say so; `--forcar` applies anyway.
+3. **Verify** the reported length (`esperado` = what the spans promise) and watch a
+   boundary: the voice keeps its pitch.
+
+---
+
 ## The Estilo panel (between Fase 1 and Fase 2)
 
 The cut is approved and nothing about the LOOK of Fase 2 is decided yet. **Do not
@@ -795,7 +824,7 @@ skill prompt is resent every turn.
 
 ## Helpers de Fase 2/3
 
-- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte; `uv sync --extra matting`) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`pacotes.py`** (kit library: `listar --tipo trilha`, `camada <edit> <id>`, `abrir <id>`) · **`efeitos_render.py`** (filters and transitions from the editor into `public/cut.mp4`) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental).
+- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte; `uv sync --extra matting`) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`pacotes.py`** (kit library: `listar --tipo trilha`, `camada <edit> <id>`, `abrir <id>`) · **`efeitos_render.py`** (filters and transitions from the editor into `public/cut.mp4`) · **`velocidade_final.py`** (the editor's speed spans on the finished video → `final-entrega.mp4`) · **`legenda_tempos.py`** (caption pieces the user dragged in time → `captions.json`) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental).
 
 ---
 

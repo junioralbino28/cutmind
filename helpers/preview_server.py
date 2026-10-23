@@ -34,7 +34,8 @@ Routes:
   /api/save     POST    body → <edit>/preview_edits.json (atomic), or
                         <edit>/preview_style.json when body.type=="style-setup";
                         com `camadas`, grava também <edit>/camadas.json (camadas.py);
-                        com `efeitos`, <edit>/efeitos.json (efeitos.py)
+                        com `efeitos`, <edit>/efeitos.json (efeitos.py); com
+                        `velocidade`, <edit>/velocidade.json (velocidade.py)
   /api/upload   POST    ?name=<arquivo>, corpo = o arquivo. Vídeo → pasta dos
                         vídeos (pai do <edit>) + aviso em <edit>/preview_upload.json;
                         imagem e áudio → <edit>/midia/ (camadas do projeto)
@@ -81,6 +82,7 @@ from urllib.parse import parse_qs, unquote
 
 import camadas as cam  # mesma pasta deste arquivo
 import efeitos as ef  # mesma pasta deste arquivo
+import velocidade as vel  # mesma pasta deste arquivo
 import pacotes as pk  # mesma pasta deste arquivo
 
 APP_DIR = Path(__file__).resolve().parent.parent / "assets" / "preview"
@@ -145,8 +147,8 @@ def juntar_salvamentos(velho: dict, novo: dict) -> dict:
     reference on Save), so writing it over a pending preview_edits.json lost the first
     one. Notes add up; effects merge by `ref` and the hook/number texts by `alvo` + `ref`
     (newest wins); the zoom list is always the whole list, and its `mudou` adds up;
-    whole-state keys (`edl.ranges`, the Phase 2 blocks of a kind, camadas, efeitos, the
-    captions' `legenda`) are replaced by the newest.
+    whole-state keys (`edl.ranges`, the Phase 2 blocks of a kind, camadas, efeitos,
+    velocidade, the captions' `legenda`) are replaced by the newest.
     """
     out = {**velho, **{k: v for k, v in novo.items() if k not in ("notes", "editData")}}
     notas = (velho.get("notes") or []) + (novo.get("notes") or [])
@@ -599,16 +601,23 @@ class Handler(BaseHTTPRequestHandler):
                     body["camadas"] = cam.normalize(body["camadas"])
                 if "efeitos" in body:
                     body["efeitos"] = ef.normalize(body["efeitos"])
+                if "velocidade" in body:
+                    body["velocidade"] = vel.normalize(body["velocidade"])
             except cam.CamadasInvalidas as e:
                 self._json({"error": f"camadas: {e}"}, 400)
                 return
             except ef.EfeitosInvalidos as e:
                 self._json({"error": f"efeitos: {e}"}, 400)
                 return
+            except vel.VelocidadeInvalida as e:
+                self._json({"error": f"velocidade: {e}"}, 400)
+                return
             if "camadas" in body:
                 cam.save(self.root / "camadas.json", body["camadas"])
             if "efeitos" in body:
                 ef.save(self.root / "efeitos.json", body["efeitos"])
+            if "velocidade" in body:
+                vel.save(self.root / "velocidade.json", body["velocidade"])
         out = self.root / name
         if name == "preview_edits.json" and out.exists():
             # o agente ainda não aplicou o Salvar anterior: o novo SOMA a ele, não o apaga
@@ -928,13 +937,17 @@ class Handler(BaseHTTPRequestHandler):
             state = {"error": f"sem permissão para ler state.json: {e}"}
         # attach small data files + mtimes so the UI hot-reloads on change
         mtimes: dict[str, float] = {}
-        for key in ("video", "finalVideo", "edl", "captions", "editData"):
+        for key in ("video", "finalVideo", "entregaVideo", "edl", "captions", "editData"):
             rel = state.get(key)
             if not rel:
                 continue
             p = self._safe(self.root, rel)
             if p and p.exists():
                 mtimes[key] = p.stat().st_mtime
+        # a entrega acelerada só vale se for mais nova que os trechos (o Baixar compara)
+        vel_p = self.root / "velocidade.json"
+        if vel_p.exists():
+            mtimes["velocidade"] = vel_p.stat().st_mtime
         edl = None
         rel = state.get("edl") or "edl.json"
         p = self._safe(self.root, rel)

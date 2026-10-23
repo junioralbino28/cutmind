@@ -158,6 +158,17 @@ def test_aviso_dos_pedacos_da_legenda_levados_no_tempo(tmp_path):
     assert "palavras 12–14" in aviso and "-0.50 s" in aviso
 
 
+def test_aviso_da_velocidade_do_video_final(tmp_path):
+    p = tmp_path / "preview_edits.json"
+    p.write_text(json.dumps({"type": "timeline-edits", "velocidade": {"versao": 1, "duracao": 82.567, "trechos": [
+        {"inicio": 10.0, "fim": 25.0, "fator": 2.0}]}}), encoding="utf-8")
+    aviso = digest(p)
+    assert "velocidade: 1 trecho" in aviso and "velocidade_final.py" in aviso
+    assert "0:10.00 a 0:25.00 a 2×" in aviso and "15.00 s viram 7.50 s" in aviso
+    p.write_text(json.dumps({"type": "timeline-edits", "velocidade": {"versao": 1, "trechos": []}}), encoding="utf-8")
+    assert "sem trechos" in digest(p)  # tirou a velocidade: o agente desfaz a entrega acelerada
+
+
 def test_corte_e_camadas_no_mesmo_salvar_pede_remapear(tmp_path):
     """Os tempos das camadas são do corte que estava na tela: se o mesmo Salvar refaz o
     corte, o agente tem de levar as camadas para o corte novo antes de montar."""

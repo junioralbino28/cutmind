@@ -126,6 +126,18 @@ Phase 2 is short-form only for the style gate; on longform ask the layer questio
 chat (`SKILL.md`, "The Estilo panel"). Caption positions are proven by
 `tests/test_caption_positions.py`; caption pieces moved in time by `tests/test_legenda_tempos.py`.
 
+## Speed of the finished video (`velocidade.json`, after Phase 3)
+
+| Editor tool | Chat request | What to write | Then |
+|---|---|---|---|
+| `selecionar` / `tudo` (or Ctrl+A, or dragging the empty part of the Final timeline) + `vel-trecho` | "acelera o vídeo todo pra 1,25×", "do 0:20 ao 0:40 em 1,5×" | `<edit>/velocidade.json`: `{"versao": 1, "duracao": <final.mp4 seconds>, "trechos": [{"inicio", "fim", "fator"}]}` — final.mp4 seconds, `fator` 0.25–4, no overlaps (`helpers/velocidade.py` checks) | `velocidade_final.py <edit>` → `final-entrega.mp4` and `entregaVideo` in `state.json` |
+| `vel-normal` | "volta o começo para a velocidade normal" | drop that span, or the part of it | same (no spans left: it removes the delivery and the final is the video again) |
+
+Everything in a span speeds up together, captions and effects included: it is the
+finished video that is retimed, not the cut. To speed up only the speech of one take,
+use the take's `velocidade` (Phase 1) instead. Proven by `tests/test_velocidade_final.py`
+(a flash and a beep stay together at 2× and 0.5×, the beep keeps its pitch).
+
 ## Editor-only controls (no file behind them)
 
 `voltar`, `cortar` (selects the take under the needle), the A1/A2 caret on the audio track

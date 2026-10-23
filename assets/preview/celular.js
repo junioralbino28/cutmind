@@ -124,6 +124,9 @@ const ICON = {
   pessoa: sv('<path d="M3 8.5h18" stroke-dasharray="2.2 2"/><circle cx="12" cy="9" r="3.1"/><path d="M5.8 20.5c.7-3.6 3.2-5.6 6.2-5.6s5.5 2 6.2 5.6"/>'),
   // texto que acompanha a pessoa: a mira
   alvo: sv('<circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/>'),
+  // seleção em massa: a caixa tracejada; "tudo": as duas pontas do vídeo
+  selecionar: sv('<rect x="3.5" y="5" width="17" height="14" rx="2.2" stroke-dasharray="3.2 2.6"/><path d="M8 12h8"/>'),
+  tudo: sv('<path d="M3.5 12h17M7 8.5 3.5 12 7 15.5M17 8.5l3.5 3.5-3.5 3.5"/>'),
 };
 
 /* ---------- catálogo de estilos e amostras: estilos.js ----------
@@ -410,6 +413,9 @@ const S = {
   fxLista: {},        // tipo → pacotes da biblioteca (filtro, transicao)
   fxNomes: {},        // id do pacote → nome, para o bloco na linha do tempo
   fxTeste: null,      // o efeito tocado no painel, mostrado na prévia antes do "Usar"
+  vel: { versao: 1, trechos: [] }, // a velocidade do vídeo final (velocidade.json): trechos no relógio do final.mp4
+  velBase: '',        // os trechos como estavam ao abrir ou no último Salvar
+  faixa: null,        // a seleção em massa na vista Final: {a, b} no relógio do final.mp4 (todas as faixas)
 };
 
 const fmt = (t) => {
@@ -607,7 +613,8 @@ function diffBase() {
 const edlDirty = () => diffBase() > 0;
 function dirtyCount() {
   return diffBase() + S.notes.length + S.insertsDraft.filter(insMudou).length + (camadasDirty() ? 1 : 0) + (efeitosDirty() ? 1 : 0)
-    + S.cenasDraft.filter(cenaMudou).length + zoomMudados() + destaquesMudados().length + (legendaMudou() ? 1 : 0);
+    + S.cenasDraft.filter(cenaMudou).length + zoomMudados() + destaquesMudados().length + (legendaMudou() ? 1 : 0)
+    + (velDirty() ? 1 : 0);
 }
 const isChanged = (r) => {
   const b = S.base.find((x) => x.uid === r.uid);
@@ -623,7 +630,9 @@ function refreshHeader() {
   $('dirtyCount').textContent = n;
   $('sentPill').classList.toggle('hidden', !(S.savedPending && n === 0));
   $('modeLabel').textContent = S.view === 'final' ? 'Final' : 'Corte';
-  $('projectSub').textContent = hasVideo ? fmtShort(totalT()) : '';
+  // com trechos acelerados, a duração da entrega ao lado da do final
+  const entregue = S.view === 'final' && S.vel.trechos.length ? duracaoEntregue() : null;
+  $('projectSub').textContent = !hasVideo ? '' : entregue != null ? `${fmtShort(totalT())} → ${fmtShort(entregue)}` : fmtShort(totalT());
   $('btnMode').disabled = !hasFinal(); // sem vídeo final, a prévia só tem o corte
 }
 
@@ -653,6 +662,8 @@ function snap() {
     zoomSel: S.zoomSel,
     legenda: S.legenda ? JSON.parse(JSON.stringify(S.legenda)) : null,
     legSel: S.legSel,
+    vel: JSON.parse(JSON.stringify(S.vel)),
+    faixa: S.faixa ? { ...S.faixa } : null,
   };
 }
 function remember(before) {
@@ -688,6 +699,8 @@ function restore(s) {
   S.zoomSel = s.zoomSel != null && S.zoomDraft && s.zoomSel < S.zoomDraft.length ? s.zoomSel : -1;
   if (S.legenda && s.legenda) S.legenda = s.legenda;
   S.legSel = !!(S.legenda && s.legSel);
+  if (s.vel) S.vel = s.vel;
+  S.faixa = s.faixa && S.view === 'final' ? s.faixa : null;
   drawCenaBox();
   applyMute();
   S.t = clampT(S.t);
@@ -819,10 +832,12 @@ async function applyState(data) {
   S.fxSel = null;
   S.insSel = -1;
   S.fxTeste = null;
+  S.faixa = null;
   drawCenaBox();
   await loadCamadas();
   await loadRastreio();
   await loadEfeitos();
+  await loadVelocidade();
   if (hasVideo) {
     setVideoSrc(S.view);
     loadWave();
@@ -922,6 +937,8 @@ function trackPlan() {
   return [
     { id: 'frases', h: 22, show: S.posMode && S.frases.length > 0 },
     { id: 'notes', h: 14, show: S.notes.length > 0 || S.pendingIn != null },
+    // a velocidade do vídeo final (seleção em massa): vale para todas as faixas embaixo dela
+    { id: 'vel', h: 18, show: fin && !S.posMode && S.vel.trechos.length > 0 },
     { id: 'caps', h: 18, show: fin && S.captions.length > 0 },
     { id: 'text', h: 18, show: fin && hasTxt },
     { id: 'ins', h: 18, show: fin && hasIns },
@@ -1001,6 +1018,7 @@ function renderTimeline() {
     else if (tr.id === 'notes') renderNotes(lane);
     else if (tr.id === 'a1' || tr.id === 'a2') renderJcutLane(track, lane, tr.id === 'a1' ? 0 : 1);
     else if (tr.id === 'trilha') renderTrilhaF2(lane);
+    else if (tr.id === 'vel') renderVelTrack(lane);
     else if (tr.id === 'cenas') renderCenas(lane);
     else if (tr.id === 'zoom') renderZoom(lane);
     else if (tr.id === 'caps') {
@@ -1034,6 +1052,7 @@ function renderTimeline() {
       });
     }
   }
+  renderFaixa(); // a seleção em massa, por cima de todas as faixas
   sizeCanvases();
   positionTimeline();
   if (S.posMode) markFrases();
@@ -1336,7 +1355,7 @@ timeline.addEventListener('pointerdown', (e) => {
   stopMomentum();
   clearTimeout(G.lp);
   if (G.pts.size === 2) {
-    if (G.mode === 'move' || G.mode === 'layer' || G.mode === 'ins' || G.mode === 'cap') return; // movendo uma tomada, camada ou bloco, o segundo dedo não vira pinça
+    if (G.mode === 'move' || ARRASTES.includes(G.mode)) return; // movendo uma tomada, camada, bloco ou ponta da seleção, o segundo dedo não vira pinça
     const [a, b] = [...G.pts.values()];
     G.mode = 'pinch';
     G.d0 = Math.hypot(a.x - b.x, a.y - b.y) || 1;
@@ -1351,6 +1370,16 @@ timeline.addEventListener('pointerdown', (e) => {
     G.trim = { i, side: h.dataset.side, x0: e.clientX, r: { ...S.draft[i] }, before: snap() };
     video.pause();
     requestPeek(S.draft[i].source, edgeT(S.draft[i], h.dataset.side));
+    return;
+  }
+  // as pontas laranja da seleção em massa: puxar ajusta o trecho
+  const fh = e.target.closest('.fh');
+  if (fh && S.faixa) {
+    G.mode = 'faixa-borda';
+    G.fb = { borda: fh.dataset.borda };
+    video.pause();
+    G.ultX = e.clientX;
+    bordaRola();
     return;
   }
   const lh = e.target.closest('.lh');
@@ -1394,7 +1423,9 @@ function arrasteSegue(x) {
   if (G.mode === 'move') { G.mv.x = x; updateMove(); } else if (G.mode === 'layer') dragLayer(x + rolou);
   else if (G.mode === 'ins') dragIns(x + rolou);
   else if (G.mode === 'cap') dragCap(x + rolou);
+  else if (G.mode === 'faixa' || G.mode === 'faixa-borda') puxaFaixa(x); // o tempo debaixo do ponteiro já conta a vista
 }
+const ARRASTES = ['layer', 'ins', 'cap', 'faixa', 'faixa-borda'];
 /* Computador: levando um item (ou a ponta dele) para perto da borda da linha do tempo, a vista
  * anda sozinha, como no CapCut desktop; sem isso não dava para levar um texto dos 9 s aos 60 s
  * sem antes afastar o zoom. O celular não precisa: lá a linha do tempo corre sob o dedo. */
@@ -1403,7 +1434,7 @@ function bordaRola() {
   G.v0arraste = S.v0;
   let last = performance.now();
   const passo = (now) => {
-    if (G.mode !== 'layer' && G.mode !== 'ins' && G.mode !== 'cap') { G.v0arraste = null; return; }
+    if (!ARRASTES.includes(G.mode)) { G.v0arraste = null; return; }
     const r = timeline.getBoundingClientRect(), x = G.ultX;
     const zona = 48;
     const fundo = x == null ? 0 : x < r.left + DESK_MARGEM + zona ? -(r.left + DESK_MARGEM + zona - x) / zona
@@ -1459,7 +1490,7 @@ timeline.addEventListener('pointermove', (e) => {
     return;
   }
   if (G.mode === 'scrub') { levaAgulha(xNaLinha(e), true); return; }
-  if (G.mode === 'move' || G.mode === 'layer' || G.mode === 'ins' || G.mode === 'cap') { arrasteSegue(e.clientX); return; }
+  if (G.mode === 'move' || ARRASTES.includes(G.mode)) { arrasteSegue(e.clientX); return; }
   if (G.mode === 'pan') {
     const dx = e.clientX - G.x0;
     if (G.agulha && Math.abs(dx) > 2) {
@@ -1476,6 +1507,13 @@ timeline.addEventListener('pointermove', (e) => {
       if (agulhaAnda() && G.pega) {
         G.pega();
         if (G.mode !== 'pan') { arrasteSegue(e.clientX); return; }
+      }
+      // computador, vista Final: arrastar no vão escolhe um trecho de TODAS as faixas, como a
+      // caixa de seleção do CapCut (a vista rola pela rodinha)
+      if (agulhaAnda() && !G.pega && S.view === 'final' && hasFinal() && !S.posMode) {
+        comecaMarquee();
+        arrasteSegue(e.clientX);
+        return;
       }
       G.moved = true; // celular: arrastou antes do tempo, é rolagem, não mover
       if (!video.paused) video.pause();
@@ -1501,6 +1539,10 @@ function endPointer(e) {
   if (G.mode === 'layer') { if (G.pts.size === 0) endLayerDrag(); return; }
   if (G.mode === 'ins') { if (G.pts.size === 0) endInsDrag(); return; }
   if (G.mode === 'cap') { if (G.pts.size === 0) endCap(); return; }
+  if (G.mode === 'faixa' || G.mode === 'faixa-borda') {
+    if (G.pts.size === 0) { G.mode = null; if (S.faixa) preciseSeek(); renderTimeline(); renderToolbar(); }
+    return;
+  }
   if (G.mode === 'pinch') {
     if (G.pts.size === 1) { // sobrou um dedo: ele passa a arrastar, sem pulo
       const [p] = [...G.pts.values()];
@@ -1621,6 +1663,17 @@ function tapAt(target) {
   if (target && target.closest && target.closest('.add-tile')) {
     S.selected = -1; S.layerSel = null; S.fxSel = null; S.audioMenu = false; S.fxMenu = false; S.importMenu = true;
     renderTimeline(); renderToolbar();
+    return;
+  }
+  // um bloco da faixa de velocidade: a seleção em massa vira o trecho dele; qualquer outro
+  // toque solta a seleção
+  const vc = target && target.closest && target.closest('.chip.velc');
+  const tv = vc && S.view === 'final' ? S.vel.trechos[+vc.dataset.v] : null;
+  S.faixa = null;
+  if (tv) {
+    S.selected = -1; S.layerSel = null; S.fxSel = null; S.insSel = -1; S.cenaSel = -1; S.zoomSel = -1; S.legSel = false;
+    S.faixa = { a: tv.inicio, b: tv.fim };
+    drawCenaBox(); renderTimeline(); renderToolbar();
     return;
   }
   // a legenda é uma só: tocar em qualquer frase da faixa escolhe todas
@@ -1792,6 +1845,9 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     if (S.layerSel) duplicateLayerSel();
     else if (S.selected >= 0 && S.view === 'corte') duplicateSelected();
+  } else if (ctrl && kl === 'a') { // tudo de uma vez (no navegador seria escolher o texto da página)
+    e.preventDefault();
+    selecionaTudo();
   }
 });
 $('btnHelp').addEventListener('click', () => mostraAjuda(true));
@@ -1804,7 +1860,12 @@ function loop() {
   for (const f of S.liveAnims) f(now);
   if (!video.paused && !video.ended && !G.mode && !momentum) {
     if (S.view === 'corte') followDraft();
-    else { if (video.playbackRate !== 1) video.playbackRate = 1; S.t = clampT(renderedToDraft(video.currentTime)); positionTimeline(); }
+    else {
+      // no Final, o trecho com velocidade toca no fator dele (o tom da voz fica, como no atempo)
+      const f = fatorEm(video.currentTime);
+      if (video.playbackRate !== f) video.playbackRate = f;
+      S.t = clampT(renderedToDraft(video.currentTime)); positionTimeline();
+    }
   }
   syncLayers();
   syncVolTomada();
@@ -1850,13 +1911,16 @@ function followDraft() {
 
 // ---------- barra de ferramentas ----------
 /* dica ao passar o mouse: o nome da ferramenta (quando o rótulo é um valor, como "100%") e o atalho */
-const ATALHO = { dividir: 'Ctrl+B', duplicar: 'Ctrl+D', excluir: 'Delete', marcar: 'M', voltar: 'Esc' };
+const ATALHO = { dividir: 'Ctrl+B', duplicar: 'Ctrl+D', excluir: 'Delete', marcar: 'M', voltar: 'Esc', selecionar: 'Ctrl+A', tudo: 'Ctrl+A' };
 const DICA = { volume: 'Volume', velocidade: 'Velocidade e curva', intensidade: 'Intensidade do filtro',
   texto: 'Texto solto ou modelo', 'texto-novo': 'Texto novo na agulha', modelos: 'Dois ou três textos de uma vez, em fontes misturadas',
   'texto-editar': 'Texto, fonte, cor, tamanho, contorno, curva e altura',
   atras: 'No vídeo final, a camada passa atrás da pessoa', 'texto-segue': 'No vídeo final, o texto anda junto com a pessoa',
   'leg-texto': 'Fonte, cor, tamanho e contorno de todas as frases', 'leg-segue': 'No vídeo final, a legenda anda junto com a pessoa',
-  'leg-posicao': 'O lugar de cada frase da legenda', 'leg-original': 'A legenda como o agente fez' };
+  'leg-posicao': 'O lugar de cada frase da legenda', 'leg-original': 'A legenda como o agente fez',
+  selecionar: 'Escolhe o vídeo todo (imagem, som, legenda e efeitos juntos); no computador, arrastar no vão escolhe um trecho',
+  'vel-trecho': 'Velocidade de tudo no trecho: nada sai do lugar', 'vel-normal': 'O trecho volta à velocidade normal',
+  tudo: 'O vídeo inteiro' };
 function renderToolbar() {
   const tb = $('toolbar');
   const ctx = $('ctxbar');
@@ -1867,7 +1931,8 @@ function renderToolbar() {
   const csel = !lsel && !fsel && !isel && S.view === 'final' && S.cenaSel >= 0 ? S.cenasDraft[S.cenaSel] || null : null;
   const zsel = !lsel && !fsel && !isel && !csel && S.view === 'final' && S.zoomDraft && S.zoomSel >= 0;
   const lgsel = !lsel && !fsel && !isel && !csel && !zsel && S.view === 'final' && S.legSel && !!S.legenda;
-  const algum = !!(sel || lsel || fsel || isel || csel || zsel || lgsel);
+  const bsel = !lsel && !fsel && !isel && !csel && !zsel && !lgsel && S.view === 'final' && S.faixa ? S.faixa : null;
+  const algum = !!(sel || lsel || fsel || isel || csel || zsel || lgsel || bsel);
   if (algum) { S.audioMenu = false; S.importMenu = false; S.fxMenu = false; S.textMenu = false; }
   const amenu = S.audioMenu, imenu = S.importMenu, fmenu = S.fxMenu, tmenu = S.textMenu;
   tb.classList.toggle('hidden', !!(algum || amenu || imenu || fmenu || tmenu));
@@ -1896,6 +1961,8 @@ function renderToolbar() {
   // pergunta o tipo (o + no fim da faixa abre a mesma escolha)
   tool(tb, 'importar', 'Importar', { icon: ICON.mais });
   tool(tb, 'cortar', 'Cortar', { icon: ICON.corte, disabled: !hasVideo });
+  // no Final: escolhe tudo (imagem, som, legenda, efeitos) para mexer junto, como o Ctrl+A
+  if (S.view === 'final') tool(tb, 'selecionar', 'Selecionar', { disabled: !hasVideo });
   tool(tb, 'audio', 'Áudio', { disabled: !hasVideo });
   tool(tb, 'texto', 'Texto', { disabled: !hasVideo });
   tool(tb, 'efeitos', 'Efeitos', { disabled: !hasVideo });
@@ -1928,6 +1995,14 @@ function renderToolbar() {
     tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
     tool(ctx, 'filtros', 'Filtros', { icon: ICON.filtro });
     tool(ctx, 'transicoes', 'Transições', { icon: ICON.transicao });
+    return;
+  }
+  if (bsel) { // a seleção em massa: o trecho de todas as faixas
+    const f = fatorDaFaixa(bsel);
+    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
+    tool(ctx, 'vel-trecho', f == null ? 'Velocidade' : fmtVel(f), { icon: ICON.velocidade });
+    tool(ctx, 'vel-normal', 'Normal', { icon: ICON.original, disabled: f === 1 });
+    tool(ctx, 'tudo', 'Tudo', { disabled: faixaETudo(bsel) });
     return;
   }
   if (fsel) { // um efeito escolhido na linha do tempo
@@ -2010,6 +2085,9 @@ document.addEventListener('click', (e) => {
   const r = S.draft[S.selected];
   switch (id) {
     case 'cortar': selectUnderNeedle(); break;
+    case 'selecionar': case 'tudo': selecionaTudo(); break;
+    case 'vel-trecho': openVelFaixa(); break;
+    case 'vel-normal': if (S.faixa) { remember(); S.vel.trechos = comFator(S.vel.trechos, S.faixa.a, S.faixa.b, 1); renderTimeline(); renderToolbar(); refreshHeader(); } break;
     case 'estilo': openStyle('edit'); break;
     case 'legenda': openStyle('captions'); break;
     case 'marcar': toggleMark(); break;
@@ -2083,6 +2161,7 @@ document.addEventListener('click', (e) => {
 
 function soltaEscolha() {
   S.selected = -1; S.layerSel = null; S.fxSel = null; S.insSel = -1; S.cenaSel = -1; S.zoomSel = -1; S.legSel = false;
+  S.faixa = null;
   S.audioMenu = false; S.importMenu = false; S.fxMenu = false; S.textMenu = false;
   renderTimeline(); renderToolbar(); drawCenaBox();
 }
@@ -2164,6 +2243,7 @@ function switchView(v) {
   if (v === S.view) return;
   S.view = v;
   S.selected = -1;
+  S.faixa = null; // a seleção em massa é da vista Final
   S.layerSel = null;
   S.insSel = -1;
   S.cenaSel = -1;
@@ -2176,15 +2256,24 @@ function switchView(v) {
   refreshHeader();
 }
 
+// a entrega com a velocidade só vale se o agente a fez depois dos trechos e do final de agora
+function entregaPronta() {
+  const m = S.mtimes;
+  return !!(S.state.entregaVideo && S.vel.trechos.length && m.entregaVideo
+    && m.entregaVideo >= (m.velocidade || 0) && m.entregaVideo >= (m.finalVideo || 0));
+}
 function download() {
-  const rel = hasFinal() ? S.state.finalVideo : (S.state.video || 'cut.mp4');
+  const entrega = hasFinal() && entregaPronta();
+  const rel = entrega ? S.state.entregaVideo : hasFinal() ? S.state.finalVideo : (S.state.video || 'cut.mp4');
   const a = document.createElement('a');
   a.href = `/media/${rel}`;
   a.download = `${(S.state.project || 'cutmind').replace(/[\\/:*?"<>|]+/g, '-')}.mp4`;
   document.body.appendChild(a);
   a.click();
   a.remove();
-  toast(hasFinal() ? 'Baixando o vídeo final' : 'Baixando o corte (o final ainda não existe)', 2600);
+  toast(entrega ? 'Baixando o vídeo final, com a velocidade'
+    : hasFinal() && S.vel.trechos.length ? 'Baixando o final SEM a velocidade: a versão acelerada ainda não ficou pronta'
+      : hasFinal() ? 'Baixando o vídeo final' : 'Baixando o corte (o final ainda não existe)', 3200);
 }
 
 // ---------- enviar vídeo: vai em pedaços para a pasta dos vídeos no computador ----------
@@ -3070,6 +3159,10 @@ async function salvar(aviso) {
   if (camadasDirty()) payload.camadas = camadasParaSalvar();
   const comEfeitos = efeitosDirty();
   if (comEfeitos) payload.efeitos = S.efeitos;
+  // a velocidade do vídeo final: a lista inteira, e a duração do final em que foi marcada
+  // (corte refeito depois = outra duração: o velocidade_final.py para antes de aplicar)
+  const comVel = velDirty();
+  if (comVel) payload.velocidade = { versao: 1, duracao: +fimFinal().toFixed(3), trechos: S.vel.trechos };
   if (S.notes.length) {
     payload.notes = S.notes.map((n) => ({
       start: +n.start.toFixed(3),
@@ -3097,6 +3190,8 @@ async function salvar(aviso) {
     const comCamadas = 'camadas' in payload;
     S.camadasBase = camSig();
     S.efeitosBase = fxSig();
+    S.velBase = velSig();
+    S.faixa = null;
     S.insertsDraft.forEach((c) => { c.orig = { start: c.start, end: c.end }; });
     S.cenasDraft.forEach((c) => { c.orig = cenaValor(c); });
     listaDestaques().forEach((c) => { c.orig = cenaValor(c); });
@@ -3115,7 +3210,8 @@ async function salvar(aviso) {
     const oque = comEfeitos ? (comCamadas ? 'Camadas e efeitos salvos' : 'Efeitos salvos') : 'Camadas salvas';
     toast(aviso || (!soCamadas ? 'Ajustes enviados. O agente refaz o corte.'
       : comF2 ? 'Ajustes enviados. O agente refaz só os trechos do vídeo final que mudaram.'
-        : `${oque}. O agente põe no vídeo final.`), 3000);
+        : comVel && !comCamadas && !comEfeitos ? 'Velocidade salva. O agente faz o vídeo de entrega com ela.'
+          : `${oque}. O agente põe no vídeo final.`), 3000);
     return true;
   } catch (err) {
     toast('Não consegui salvar — o editor ainda está ligado no computador?', 4000);
@@ -4717,6 +4813,7 @@ function openVelocidade() {
   showSheet($('velSheet'), true);
 }
 $('velRange').addEventListener('input', () => {
+  if (VF.on) { velFaixaInput(); return; } // a régua é da seleção em massa
   const r = velTomada();
   if (!r) return;
   const p = +$('velRange').value;
@@ -4731,6 +4828,7 @@ $('velRange').addEventListener('input', () => {
   }
 });
 $('velOk').addEventListener('click', () => {
+  if (VF.on) { fechaVelFaixa(); return; }
   showSheet($('velSheet'), false);
   if (velBefore && velBefore.draft.some((r, k) => S.draft[k] && (r.vel !== S.draft[k].vel || curvaKey(r) !== curvaKey(S.draft[k])))) remember(velBefore);
   velBefore = null;
@@ -4743,6 +4841,201 @@ for (const m of VEL_MARCAS) {
   b.textContent = fmtVel(m);
   b.style.left = `${((Math.log2(m) + 2) / 4) * 100}%`;
   b.addEventListener('click', () => { $('velRange').value = Math.log2(m); $('velRange').dispatchEvent(new Event('input')); });
+}
+
+/* ---------- seleção em massa e velocidade do vídeo final (vista Final) ----------
+ * Como no CapCut desktop: Ctrl+A (ou Selecionar) escolhe tudo, arrastar no vão escolhe um
+ * trecho, e as pontas laranja da faixa ajustam. Escolhido é o trecho de TODAS as faixas
+ * (imagem, som, legenda, efeitos, camadas), e a Velocidade acelera tudo junto: o agente aplica
+ * no vídeo final já montado (velocidade_final.py), então nada sai do lugar. A linha do tempo
+ * segue no relógio do final; o trecho ganha um bloco com o fator na faixa de velocidade, a
+ * prévia toca nele mais rápido ou mais devagar (playbackRate, o tom da voz fica) e o topo
+ * mostra quanto o vídeo vai durar. Tempos no relógio do final.mp4, como o velocidade.json. */
+const VEL_MIN_FAIXA = 0.2; // segundos: menos que isso é clique, não seleção
+const velSig = () => JSON.stringify(S.vel.trechos);
+const velDirty = () => velSig() !== S.velBase;
+S.velBase = velSig();
+async function loadVelocidade() {
+  let v = null;
+  try {
+    const r = await fetch(`/media/velocidade.json?v=${Date.now()}`);
+    if (r.ok) v = await r.json();
+  } catch (e) { /* ainda não existe */ }
+  const tr = v && Array.isArray(v.trechos) ? v.trechos : [];
+  S.vel = { versao: 1, trechos: tr.map((t) => ({ inicio: +t.inicio, fim: +t.fim, fator: +t.fator })) };
+  S.velBase = velSig();
+}
+const fimFinal = () => S.videoDuration || totalT();
+const noQuadro = (t) => { const fps = S.fps || 30; return Math.round(t * fps) / fps; };
+// quanto o vídeo dura com os trechos (a conta do velocidade.py)
+function duracaoEntregue() {
+  const total = fimFinal();
+  let menos = 0;
+  for (const t of S.vel.trechos) {
+    const a = Math.max(0, t.inicio), b = Math.min(total, t.fim);
+    if (b > a) menos += (b - a) - (b - a) / t.fator;
+  }
+  return total - menos;
+}
+// o fator no instante t do final (1 fora dos trechos)
+function fatorEm(t) {
+  const s = S.vel.trechos.find((x) => t >= x.inicio && t < x.fim);
+  return s ? s.fator : 1;
+}
+// os trechos com o pedaço [a, b] no fator f (1 tira); vizinhos de mesmo fator viram um só
+function comFator(trechos, a, b, f) {
+  const out = [];
+  for (const s of trechos) {
+    if (s.fim <= a + 1e-6 || s.inicio >= b - 1e-6) { out.push({ ...s }); continue; }
+    if (s.inicio < a - 1e-6) out.push({ ...s, fim: a });
+    if (s.fim > b + 1e-6) out.push({ ...s, inicio: b });
+  }
+  if (Math.abs(f - 1) > 1e-6) out.push({ inicio: a, fim: b, fator: f });
+  out.sort((x, y) => x.inicio - y.inicio);
+  const junto = [];
+  for (const s of out) {
+    const u = junto[junto.length - 1];
+    if (u && Math.abs(u.fim - s.inicio) < 1e-6 && u.fator === s.fator) u.fim = s.fim;
+    else junto.push(s);
+  }
+  // pedaço com menos de 0,1 s (o mínimo do velocidade.py) não fica
+  return junto.filter((s) => s.fim - s.inicio >= 0.1 - 1e-6)
+    .map((s) => ({ inicio: +s.inicio.toFixed(3), fim: +s.fim.toFixed(3), fator: s.fator }));
+}
+// o fator que vale na faixa inteira (null quando ela mistura fatores)
+function fatorDaFaixa(F) {
+  const dentro = S.vel.trechos.filter((s) => s.fim > F.a + 1e-6 && s.inicio < F.b - 1e-6);
+  if (!dentro.length) return 1;
+  const s = dentro[0];
+  return dentro.length === 1 && s.inicio <= F.a + 1e-6 && s.fim >= F.b - 1e-6 ? s.fator : null;
+}
+const faixaETudo = (F) => F.a <= 1e-3 && F.b >= noQuadro(fimFinal()) - 1e-3;
+function escolheFaixa(a, b) {
+  const lo = Math.max(0, noQuadro(Math.min(a, b))), hi = Math.min(fimFinal(), noQuadro(Math.max(a, b)));
+  S.faixa = hi - lo >= VEL_MIN_FAIXA ? { a: lo, b: hi } : null;
+}
+function selecionaTudo() {
+  if (!hasFinal()) { toast('A seleção de tudo é no vídeo final, que ainda não existe', 2600); return; }
+  if (S.view !== 'final') switchView('final');
+  soltaEscolha();
+  S.faixa = { a: 0, b: noQuadro(fimFinal()) };
+  renderTimeline(); renderToolbar();
+  if (!S.faixaEnsinou) {
+    S.faixaEnsinou = true;
+    flashName('<span>Tudo escolhido. Puxe as pontas laranja</span>', 2600);
+  }
+}
+// o tempo do rascunho debaixo de um x da tela (o mesmo nas duas agulhas)
+const tempoNoX = (x) => (x - timeline.getBoundingClientRect().left - origemEm(timeline.clientWidth)) / S.pps;
+const finalNoX = (x) => Math.max(0, Math.min(fimFinal(), draftToRendered(Math.max(0, tempoNoX(x)))));
+function comecaMarquee() {
+  S.selected = -1; S.layerSel = null; S.fxSel = null; S.insSel = -1; S.cenaSel = -1; S.zoomSel = -1; S.legSel = false;
+  S.audioMenu = false; S.importMenu = false; S.fxMenu = false; S.textMenu = false;
+  drawCenaBox();
+  G.mode = 'faixa';
+  G.fa = finalNoX(G.x0);
+  video.pause();
+  G.ultX = G.x0;
+  bordaRola();
+}
+// o arraste da caixa (do ponto onde começou até o ponteiro) ou de uma ponta da faixa
+function puxaFaixa(x) {
+  const t = finalNoX(x);
+  if (G.mode === 'faixa') escolheFaixa(G.fa, t);
+  else if (S.faixa) {
+    const F = S.faixa;
+    if (G.fb.borda === 'a') F.a = Math.max(0, Math.min(noQuadro(t), F.b - VEL_MIN_FAIXA));
+    else F.b = Math.min(fimFinal(), Math.max(noQuadro(t), F.a + VEL_MIN_FAIXA));
+    // a agulha vai junto da ponta: a prévia mostra o quadro onde o trecho começa ou termina
+    S.t = clampT(renderedToDraft(G.fb.borda === 'a' ? F.a : Math.max(F.a, F.b - 1 / (S.fps || 30))));
+    scheduleSeek(true);
+  }
+  if (!G.faixaFila) {
+    G.faixaFila = true;
+    requestAnimationFrame(() => { G.faixaFila = false; renderTimeline(); renderToolbar(); });
+  }
+}
+// a faixa laranja, por cima de todas as faixas; anda com elas (entra em `lanes`)
+function renderFaixa() {
+  if (!S.faixa || S.view !== 'final') return;
+  const tr = [...tracksEl.querySelectorAll('.track')];
+  if (!tr.length) return;
+  const ult = tr[tr.length - 1];
+  const topo = tr[0].offsetTop, base = ult.offsetTop + ult.offsetHeight;
+  const lane = el('div', 'lane faixa-lane', tracksEl);
+  Object.assign(lane.style, { top: `${topo - 3}px`, bottom: 'auto', height: `${base - topo + 6}px` });
+  lanes.push(lane);
+  const a = renderedToDraft(S.faixa.a), b = renderedToDraft(S.faixa.b);
+  const band = el('div', 'faixa-sel', lane);
+  band.style.left = `${a * S.pps}px`;
+  band.style.width = `${Math.max((b - a) * S.pps, 2)}px`;
+  el('div', 'fh l', band).dataset.borda = 'a';
+  el('div', 'fh r', band).dataset.borda = 'b';
+  const f = fatorDaFaixa(S.faixa), d = S.faixa.b - S.faixa.a;
+  el('span', 'faixa-rot', band).textContent = f && f !== 1 ? `${fmtSeg(d)} → ${fmtSeg(d / f)} · ${fmtVel(f)}` : fmtSeg(d);
+}
+// a faixa de velocidade: um bloco por trecho, com o fator
+function renderVelTrack(lane) {
+  const mudou = velDirty();
+  S.vel.trechos.forEach((s, k) => {
+    const a = renderedToDraft(s.inicio), b = renderedToDraft(s.fim);
+    const chip = el('div', `chip velc${mudou ? ' dirty' : ''}`, lane);
+    chip.dataset.v = k;
+    chip.style.left = `${a * S.pps}px`;
+    chip.style.width = `${Math.max((b - a) * S.pps - 2, 6)}px`;
+    chip.textContent = fmtVel(s.fator);
+    chip.title = `${fmtVel(s.fator)}: ${fmtSeg(s.fim - s.inicio)} viram ${fmtSeg((s.fim - s.inicio) / s.fator)}`;
+    if (S.faixa && Math.abs(S.faixa.a - s.inicio) < 1e-3 && Math.abs(S.faixa.b - s.fim) < 1e-3) chip.classList.add('sel');
+  });
+}
+/* O painel de Velocidade, o mesmo da tomada, sem a Curva: a régua muda o fator da faixa toda
+ * ao vivo; os trechos de fora ficam como estavam (VF.base). Pronto guarda um passo do desfazer. */
+const VF = { on: false, base: null, before: null };
+function velFaixaMostra(f) {
+  const F = S.faixa, d = F.b - F.a;
+  $('velVal').textContent = fmtVel(f);
+  $('velDur').textContent = `Trecho: ${f !== 1 ? `${fmtSeg(d)} → ${fmtSeg(d / f)}` : fmtSeg(d)} · vídeo: `
+    + `${fmtShort(fimFinal())} → ${fmtShort(duracaoEntregue())}. Tudo no trecho acelera junto.`;
+}
+function openVelFaixa() {
+  const F = S.faixa;
+  if (!F) return;
+  video.pause();
+  VF.on = true;
+  VF.before = snap();
+  VF.base = comFator(S.vel.trechos, F.a, F.b, 1); // os outros trechos, sem o desta faixa
+  const f = fatorDaFaixa(F) || 1;
+  $('velRange').value = Math.log2(f).toFixed(2);
+  $('velModos').hidden = true;
+  $('velNormal').hidden = false;
+  $('velCurva').hidden = true;
+  S.t = clampT(renderedToDraft(F.a)); // a agulha no começo do trecho: o play mostra o ritmo novo
+  positionTimeline();
+  preciseSeek();
+  velFaixaMostra(f);
+  showSheet($('velSheet'), true);
+}
+function velFaixaInput() {
+  const F = S.faixa;
+  if (!F) return;
+  const p = +$('velRange').value;
+  const marca = VEL_MARCAS.find((m) => Math.abs(Math.log2(m) - p) < 0.06); // perto de uma marca: encosta nela
+  const f = marca || +Math.pow(2, p).toFixed(2);
+  S.vel.trechos = comFator(VF.base, F.a, F.b, f);
+  velFaixaMostra(f);
+  if (!G.velQueued) {
+    G.velQueued = true;
+    requestAnimationFrame(() => { G.velQueued = false; renderTimeline(); refreshHeader(); });
+  }
+}
+function fechaVelFaixa() {
+  showSheet($('velSheet'), false);
+  $('velModos').hidden = false;
+  VF.on = false;
+  if (VF.before && JSON.stringify(VF.before.vel.trechos) !== velSig()) remember(VF.before);
+  VF.before = null;
+  VF.base = null;
+  renderTimeline(); renderToolbar(); refreshHeader();
 }
 
 /* Curva (etapa 4d): as curvas do CapCut com os mesmos pontos (catálogo de recursos dele,

@@ -167,6 +167,12 @@ def digest(p: Path) -> str:
         if edl:
             parts.append("  ⚠ O corte mudou no mesmo Salvar: os tempos dos efeitos são do corte ANTIGO. "
                          "Leve-os para o corte novo antes do render (references/shortform.md).")
+    if "velocidade" in d:
+        head.append(f"velocidade: {velocidade_resumo(d['velocidade'])}")
+        parts += velocidade_linhas(d["velocidade"])
+        if edl:
+            parts.append("  ⚠ O corte mudou no mesmo Salvar: os trechos são do final ANTIGO. Refaça o final, "
+                         "leve os trechos para ele (grave a duração nova) e só então acelere.")
     if not head:
         head.append("ajustes salvos")
 
@@ -260,6 +266,31 @@ def efeitos_linhas(e: dict) -> list[str]:
             out.append(f'  · transição "{it.get("pacote")}" no corte de {fmt(float(it.get("corte", 0)))} '
                        f'({float(it.get("duracao", 0)):.1f} s)')
     out.append("  Efeitos → efeitos_render.py antes do render final (references/shortform.md, \"Efeitos\").")
+    return out
+
+
+def _x(f: float) -> str:
+    return f"{float(f):g}".replace(".", ",") + "×"
+
+
+def velocidade_resumo(v: dict) -> str:
+    tr = v.get("trechos") or []
+    return _plural(len(tr), "trecho", "trechos") if tr else "tudo na velocidade normal"
+
+
+def velocidade_linhas(v: dict) -> list[str]:
+    """Os trechos do vídeo final que tocam em outro ritmo (tudo junto: imagem, som, legenda)."""
+    tr = v.get("trechos") or []
+    if not tr:
+        return ["  velocidade.json (gravado pelo editor): sem trechos. Rode velocidade_final.py <edit>: "
+                "ele tira a entrega acelerada e o final.mp4 volta a ser a entrega."]
+    out = ["  velocidade.json (gravado pelo editor), tempos do final.mp4:"]
+    for t in tr:
+        ini, fim, f = float(t["inicio"]), float(t["fim"]), float(t["fator"])
+        out.append(f"  · de {fmt(ini)} a {fmt(fim)} a {_x(f)} ({fim - ini:.2f} s viram {(fim - ini) / f:.2f} s)")
+    out.append("  Velocidade → velocidade_final.py <edit> (se o final for refeito neste pedido, depois do "
+               "mixar_final.py): ele faz o final-entrega.mp4 e grava `entregaVideo` no state.json "
+               "(references/shortform.md, \"Speed of the finished video\").")
     return out
 
 

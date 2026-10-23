@@ -147,7 +147,8 @@ block is the lead — how much voice arrives before that take's picture.
 **What the user can do in the UI:** scrub; trim, split, duplicate, move and delete
 takes; take volume, speed and speed curves; colour (Ajustar), filters and transitions;
 image and audio layers and soundtracks; move and trim the Phase 2 blocks; move a caption
-piece in time; resize a text by its corner dot; pick and
+piece in time; resize a text by its corner dot; select everything (Ctrl+A) or a span on
+the Final view and speed it all up together; pick and
 see the styles on their own frame — and **mark correction ranges**: park the needle,
 press `M` (or **Marcar**), move to the end of the problem, press `M` again, then type
 what should change. Many ranges per pass. On the computer: click the ruler to move the
@@ -202,6 +203,7 @@ the layer questions in chat.
   - `legenda` — the captions' Text panel, whole: `estilo` (same keys as above; null = drop `captions.estilo`) and `acompanhar` (the captions move with the person) → `captions.estilo` / `captions.acompanhar` in edit-data.json; with `acompanhar`, run `camadas_edit_data.py` (it tracks the face) and re-render. `tempos`, when present, are caption pieces the user dragged in time on the Final view (`palavra`, `palavras`, `deMs`, `paraMs`): run `legenda_tempos.py <edit>`, which shifts those words in `captions.json` (running it twice does not shift twice), then re-render.
 - `camadas` — images, audio and TEXTS the user put on the timeline (the server already wrote `<edit>/camadas.json`): images and texts → `camadas_edit_data.py` (it also makes the person's cut-out for what goes behind them and the face track for what follows them), sound → `mixar_final.py` (`references/shortform.md`, "Layers from the editor").
 - `efeitos` — filters and transitions from the library, plus each take's Ajustar (`ajuste`) (the server already wrote `<edit>/efeitos.json`) → `efeitos_render.py <edit>` writes `remotion/public/cut.mp4` with them, then re-render (`references/shortform.md`, "Effects from the editor").
+- `velocidade` — the speed of the finished video: the user selected everything or a span on the Final view and changed its Velocidade (the server already wrote `<edit>/velocidade.json`; spans in final.mp4 seconds) → `velocidade_final.py <edit>` (after `mixar_final.py` when the final is redone) writes `final-entrega.mp4` and `entregaVideo` in `state.json`, which the editor's Baixar delivers. It refuses when the cut changed since the spans were marked (`references/shortform.md`, "Speed of the finished video").
 
 Then delete `preview_edits.json` and update `state.json`.
 
