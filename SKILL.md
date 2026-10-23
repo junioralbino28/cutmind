@@ -146,11 +146,13 @@ block is the lead — how much voice arrives before that take's picture.
 
 **What the user can do in the UI:** scrub; trim, split, duplicate, move and delete
 takes; take volume, speed and speed curves; colour (Ajustar), filters and transitions;
-image and audio layers and soundtracks; move and trim the Phase 2 blocks; pick and
+image and audio layers and soundtracks; move and trim the Phase 2 blocks; move a caption
+piece in time; resize a text by its corner dot; pick and
 see the styles on their own frame — and **mark correction ranges**: park the needle,
 press `M` (or **Marcar**), move to the end of the problem, press `M` again, then type
 what should change. Many ranges per pass. On the computer: click the ruler to move the
-needle (drag it to scrub), the wheel scrolls the view, Ctrl+wheel or a trackpad pinch
+needle (drag it to scrub), dragging an item moves it at once (the phone holds first),
+dragging empty space or the wheel scrolls the view, Ctrl+wheel or a trackpad pinch
 zooms on the pointer, the zoom slider holds the needle, **Ajustar** shows the whole
 video. Shortcuts live behind the **?** button at the top right.
 
@@ -197,7 +199,7 @@ the layer questions in chat.
   - `cenas` — ONLY the effects that changed, each by `ref` (its index in `cenas[]`): `desligada` (true = the effect is off: drop it or set the flag), `texto` (`{x, y}`, the centre of the effect's movable block in 1080×1920 frame px; null = the component's default place), `textos` (the text fields: `palavra`, `titulo`, `frase`…; a list is one line per item) and `estilo` (`fonte` = a family of the font catalog, `peso`, `cor`, `tamanho` as a multiplier, `contorno` in px, `corContorno`; null = the effect's own look). Write those four keys into `cenas[ref]` as they come and re-render only each effect's window (`start`–`end`).
   - `destaques` — the hook (`alvo: "hook"`) and on-screen numbers (`alvo: "numero"`, `ref`) the user changed in the same Text panel: `texto` (centre in frame px), `estilo` (as above) and `textos` — the hook's `text` (write it to `hook.text` and drop `lines`), a number's `prefixo`, `valor` (store it as a number), `sufixo`, `rotulo`. Re-render each one's window (the hook from 0 to `hook.endSec`).
   - `camera` — `zooms`, the WHOLE list, one base zoom per take (the template reads `zooms[i % length]`, so one per take is per take), and `mudou`, the takes the user changed: replace `camera.zooms` and re-render those takes.
-  - `legenda` — the captions' Text panel, whole: `estilo` (same keys as above; null = drop `captions.estilo`) and `acompanhar` (the captions move with the person) → `captions.estilo` / `captions.acompanhar` in edit-data.json; with `acompanhar`, run `camadas_edit_data.py` (it tracks the face) and re-render.
+  - `legenda` — the captions' Text panel, whole: `estilo` (same keys as above; null = drop `captions.estilo`) and `acompanhar` (the captions move with the person) → `captions.estilo` / `captions.acompanhar` in edit-data.json; with `acompanhar`, run `camadas_edit_data.py` (it tracks the face) and re-render. `tempos`, when present, are caption pieces the user dragged in time on the Final view (`palavra`, `palavras`, `deMs`, `paraMs`): run `legenda_tempos.py <edit>`, which shifts those words in `captions.json` (running it twice does not shift twice), then re-render.
 - `camadas` — images, audio and TEXTS the user put on the timeline (the server already wrote `<edit>/camadas.json`): images and texts → `camadas_edit_data.py` (it also makes the person's cut-out for what goes behind them and the face track for what follows them), sound → `mixar_final.py` (`references/shortform.md`, "Layers from the editor").
 - `efeitos` — filters and transitions from the library, plus each take's Ajustar (`ajuste`) (the server already wrote `<edit>/efeitos.json`) → `efeitos_render.py <edit>` writes `remotion/public/cut.mp4` with them, then re-render (`references/shortform.md`, "Effects from the editor").
 

@@ -544,7 +544,10 @@ button { font-family: inherit; cursor: pointer; }
 .chip.zoom { justify-content: center; padding: 0 2px; font-size: 8.5px; font-variant-numeric: tabular-nums; box-shadow: inset 2px 0 0 #6fd3c1; }
 .chip.zoom.neutro { color: var(--dim); }
 .chip.cena.sel, .chip.zoom.sel { outline: 2px solid #fff; outline-offset: -1px; z-index: 3; }
-.chip.cena.dirty::after, .chip.zoom.dirty::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--brand); }
+.chip.cena.dirty::after, .chip.zoom.dirty::after, .chip.cap.dirty::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--brand); }
+/* computador: o que se arrasta com o mouse mostra a mãozinha; as alças, a seta de aparar */
+.desk .chip.layer, .desk .chip.f2, .desk .chip.cap { cursor: grab; }
+.desk .handle, .desk .lh { cursor: ew-resize; }
 .chip.layer.mus .l-ico { color: #6aa8f0; }
 .track.travado .chip.layer { background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0 4px, transparent 4px 8px); }
 .lh {

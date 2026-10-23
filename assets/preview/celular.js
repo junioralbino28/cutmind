@@ -546,18 +546,21 @@ function renderedToDraft(t) {
   }
   return t;
 }
+// os pedaços da faixa de legenda; `i0`/`n` são as palavras do captions.json (o que o arraste
+// desloca) e `ms` o começo como está no arquivo
 function groupCaptions(caps) {
   const lines = [];
   let cur = [];
-  for (const w of caps) {
-    cur.push(w);
+  caps.forEach((w, i) => {
+    cur.push(i);
     if (cur.length >= 3 || /[.,!?…]$/.test(w.text)) { lines.push(cur); cur = []; }
-  }
+  });
   if (cur.length) lines.push(cur);
-  return lines.map((line) => ({
-    text: line.map((w) => w.text.replace(/[.,!?…]+$/, '')).join(' '),
-    start: line[0].startMs / 1000,
-    end: line[line.length - 1].endMs / 1000,
+  return lines.map((ix) => ({
+    text: ix.map((i) => caps[i].text.replace(/[.,!?…]+$/, '')).join(' '),
+    start: caps[ix[0]].startMs / 1000,
+    end: caps[ix[ix.length - 1]].endMs / 1000,
+    i0: ix[0], n: ix.length, ms: caps[ix[0]].startMs,
   }));
 }
 function buildInsertsDraft() {
@@ -1001,13 +1004,18 @@ function renderTimeline() {
     else if (tr.id === 'cenas') renderCenas(lane);
     else if (tr.id === 'zoom') renderZoom(lane);
     else if (tr.id === 'caps') {
-      for (const c of S.captions) {
-        const a = renderedToDraft(c.start), b = renderedToDraft(c.end);
-        const chip = el('div', `chip cap${S.legSel ? ' sel' : ''}${legendaMudou() ? ' dirty' : ''}`, lane);
+      const estilo = legendaEstiloMudou();
+      S.captions.forEach((c, k) => {
+        // o pedaço arrastado anda; marcado (por salvar) quando anda desde o último Salvar, e todos
+        // quando o estilo mudou
+        const dl = deslocCap(c), dl0 = (S.legendaOrig && S.legendaOrig.tempos && S.legendaOrig.tempos[c.i0]) || 0;
+        const a = renderedToDraft(c.start + dl), b = renderedToDraft(c.end + dl);
+        const chip = el('div', `chip cap${S.legSel ? ' sel' : ''}${estilo || dl !== dl0 ? ' dirty' : ''}`, lane);
+        chip.dataset.k = k;
         chip.style.left = `${a * S.pps}px`;
         chip.style.width = `${Math.max((b - a) * S.pps, 4)}px`;
         chip.textContent = c.text;
-      }
+      });
     } else {
       const want = tr.id === 'text';
       S.insertsDraft.forEach((c, i) => {
@@ -1328,7 +1336,7 @@ timeline.addEventListener('pointerdown', (e) => {
   stopMomentum();
   clearTimeout(G.lp);
   if (G.pts.size === 2) {
-    if (G.mode === 'move' || G.mode === 'layer' || G.mode === 'ins') return; // movendo uma tomada, camada ou bloco, o segundo dedo não vira pinça
+    if (G.mode === 'move' || G.mode === 'layer' || G.mode === 'ins' || G.mode === 'cap') return; // movendo uma tomada, camada ou bloco, o segundo dedo não vira pinça
     const [a, b] = [...G.pts.values()];
     G.mode = 'pinch';
     G.d0 = Math.hypot(a.x - b.x, a.y - b.y) || 1;
@@ -1374,6 +1382,9 @@ timeline.addEventListener('pointerdown', (e) => {
   // segurar um bloco da Fase 2 (vista Final): ele anda com o dedo
   const f2 = e.target.closest('.chip.f2');
   if (f2 && S.view === 'final') G.pega = () => holdIns(+f2.dataset.i, e.clientX);
+  // um pedaço da legenda (vista Final): ele anda no tempo
+  const cp = e.target.closest('.chip.cap');
+  if (cp && S.view === 'final' && S.legenda) G.pega = () => holdCap(+cp.dataset.k, e.clientX);
   if (G.pega) G.lp = setTimeout(G.pega, 450);
 });
 // o item pego segue o ponteiro (na vista que pode ter andado sozinha desde que o arraste começou)
@@ -1382,6 +1393,7 @@ function arrasteSegue(x) {
   const rolou = agulhaAnda() && G.v0arraste != null ? (S.v0 - G.v0arraste) * S.pps : 0;
   if (G.mode === 'move') { G.mv.x = x; updateMove(); } else if (G.mode === 'layer') dragLayer(x + rolou);
   else if (G.mode === 'ins') dragIns(x + rolou);
+  else if (G.mode === 'cap') dragCap(x + rolou);
 }
 /* Computador: levando um item (ou a ponta dele) para perto da borda da linha do tempo, a vista
  * anda sozinha, como no CapCut desktop; sem isso não dava para levar um texto dos 9 s aos 60 s
@@ -1391,7 +1403,7 @@ function bordaRola() {
   G.v0arraste = S.v0;
   let last = performance.now();
   const passo = (now) => {
-    if (G.mode !== 'layer' && G.mode !== 'ins') { G.v0arraste = null; return; }
+    if (G.mode !== 'layer' && G.mode !== 'ins' && G.mode !== 'cap') { G.v0arraste = null; return; }
     const r = timeline.getBoundingClientRect(), x = G.ultX;
     const zona = 48;
     const fundo = x == null ? 0 : x < r.left + DESK_MARGEM + zona ? -(r.left + DESK_MARGEM + zona - x) / zona
@@ -1447,7 +1459,7 @@ timeline.addEventListener('pointermove', (e) => {
     return;
   }
   if (G.mode === 'scrub') { levaAgulha(xNaLinha(e), true); return; }
-  if (G.mode === 'move' || G.mode === 'layer' || G.mode === 'ins') { arrasteSegue(e.clientX); return; }
+  if (G.mode === 'move' || G.mode === 'layer' || G.mode === 'ins' || G.mode === 'cap') { arrasteSegue(e.clientX); return; }
   if (G.mode === 'pan') {
     const dx = e.clientX - G.x0;
     if (G.agulha && Math.abs(dx) > 2) {
@@ -1488,6 +1500,7 @@ function endPointer(e) {
   if (G.mode === 'move') { if (G.pts.size === 0) endMove(e.type === 'pointerup'); return; }
   if (G.mode === 'layer') { if (G.pts.size === 0) endLayerDrag(); return; }
   if (G.mode === 'ins') { if (G.pts.size === 0) endInsDrag(); return; }
+  if (G.mode === 'cap') { if (G.pts.size === 0) endCap(); return; }
   if (G.mode === 'pinch') {
     if (G.pts.size === 1) { // sobrou um dedo: ele passa a arrastar, sem pulo
       const [p] = [...G.pts.values()];
@@ -3048,8 +3061,12 @@ async function salvar(aviso) {
   if (dqs.length) payload.editData.destaques = dqs.map((c) => ({ alvo: c.tipo, ...(c.tipo === 'numero' ? { ref: c.ref } : {}), ...cenaValor(c) }));
   // zoom: a lista inteira, uma por tomada (o template usa zooms[i] quando há uma para cada)
   if (comZoom) payload.editData.camera = { zooms: S.zoomDraft.map((z) => +z.toFixed(3)), mudou: S.zoomDraft.map((z, i) => i).filter((i) => S.zoomDraft[i] !== S.zoomOrig[i]) };
-  // a legenda: o estilo do painel de Texto e o acompanhar, inteiros (vão para `captions` no edit-data)
-  if (comLegenda) payload.editData.legenda = { estilo: S.legenda.estilo || null, acompanhar: !!S.legenda.acompanhar };
+  // a legenda: o estilo do painel de Texto e o acompanhar, inteiros (vão para `captions` no
+  // edit-data); `tempos`, os pedaços arrastados no tempo (legenda_tempos.py no captions.json)
+  if (comLegenda) {
+    const tempos = temposLegenda();
+    payload.editData.legenda = { estilo: S.legenda.estilo || null, acompanhar: !!S.legenda.acompanhar, ...(tempos.length ? { tempos } : {}) };
+  }
   if (camadasDirty()) payload.camadas = camadasParaSalvar();
   const comEfeitos = efeitosDirty();
   if (comEfeitos) payload.efeitos = S.efeitos;
@@ -3084,6 +3101,8 @@ async function salvar(aviso) {
     S.cenasDraft.forEach((c) => { c.orig = cenaValor(c); });
     listaDestaques().forEach((c) => { c.orig = cenaValor(c); });
     if (S.zoomDraft) S.zoomOrig = [...S.zoomDraft];
+    // sem isto a legenda salva seguia "mudada": o Salvar 1 não saía e a versão nova do agente não entrava
+    if (S.legenda) S.legendaOrig = JSON.parse(JSON.stringify(S.legenda));
     S.selected = -1;
     S.layerSel = null;
     S.fxSel = null;
@@ -4457,6 +4476,65 @@ function buildLegenda(d) {
   S.legSel = false;
 }
 function legendaMudou() { return !!S.legenda && JSON.stringify(S.legenda) !== JSON.stringify(S.legendaOrig); }
+// o estilo e o acompanhar (o que vale para todas as frases), sem os pedaços arrastados
+const semTempos = (L) => (L ? JSON.stringify({ ...L, tempos: undefined }) : '');
+const legendaEstiloMudou = () => !!S.legenda && semTempos(S.legenda) !== semTempos(S.legendaOrig);
+
+/* Arrastar um pedaço da faixa de legenda (vista Final) o leva no tempo: segundos a mais ou a
+ * menos em `S.legenda.tempos[i0]`, sem passar por cima do pedaço vizinho. Tocar sem arrastar
+ * continua escolhendo a legenda inteira. O Salvar manda o começo de antes e o de agora; o
+ * agente desloca as palavras no captions.json com o legenda_tempos.py e refaz o vídeo. */
+const deslocCap = (c) => (S.legenda && S.legenda.tempos && S.legenda.tempos[c.i0]) || 0;
+function limitesCap(k) {
+  const c = S.captions[k], p = S.captions[k - 1], q = S.captions[k + 1];
+  const lo = (p ? p.end + deslocCap(p) : 0) - c.start;
+  const hi = (q ? q.start + deslocCap(q) : S.videoDuration || totalT()) - c.end;
+  return [Math.min(0, lo), Math.max(0, hi)];
+}
+function holdCap(k, x) {
+  if (G.mode !== 'pan' || G.moved || !S.captions[k] || !S.legenda) return;
+  const before = snap();
+  const [lo, hi] = limitesCap(k);
+  G.mode = 'cap';
+  G.cap = { k, x0: x, d0: deslocCap(S.captions[k]), lo, hi, before };
+  S.legSel = true; S.selected = -1; S.layerSel = null; S.fxSel = null; S.insSel = -1; S.cenaSel = -1; S.zoomSel = -1;
+  if (navigator.vibrate) navigator.vibrate(12);
+  video.pause();
+  G.ultX = x;
+  bordaRola();
+  drawCenaBox(); renderTimeline(); renderToolbar();
+}
+function dragCap(x) {
+  const D = G.cap, c = S.captions[D.k];
+  if (!c) return;
+  // no quadro, e só então no limite: arredondar depois passava da vizinha (0,067 s numa folga de 0,060)
+  const fps = S.fps || 30;
+  const d = +Math.max(D.lo, Math.min(D.hi, Math.round((D.d0 + (x - D.x0) / S.pps) * fps) / fps)).toFixed(3);
+  const t = { ...(S.legenda.tempos || {}) };
+  if (Math.abs(d) < 0.001) delete t[c.i0]; else t[c.i0] = d;
+  if (Object.keys(t).length) S.legenda.tempos = t; else delete S.legenda.tempos;
+  const tip = $('trimTip');
+  const encostou = d && (d <= D.lo + 1e-6 || d >= D.hi - 1e-6) ? ' (encostou na frase vizinha)' : '';
+  tip.textContent = d ? `"${c.text}" ${d > 0 ? '+' : ''}${d.toFixed(2)} s${encostou}` : `"${c.text}" no lugar`;
+  tip.classList.remove('hidden');
+  if (!G.capQueued) {
+    G.capQueued = true;
+    requestAnimationFrame(() => { G.capQueued = false; renderTimeline(); refreshHeader(); });
+  }
+}
+function endCap() {
+  const D = G.cap, c = S.captions[D.k];
+  G.mode = null;
+  $('trimTip').classList.add('hidden');
+  if (c && deslocCap(c) !== D.d0) remember(D.before); // tocar sem arrastar não conta
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+// para o Salvar: cada pedaço arrastado, pelas palavras do captions.json, com o começo de antes e o novo
+function temposLegenda() {
+  const T = (S.legenda && S.legenda.tempos) || {};
+  return Object.keys(T).map((i0) => S.captions.find((c) => c.i0 === +i0)).filter(Boolean)
+    .map((c) => ({ palavra: c.i0, palavras: c.n, deMs: c.ms, paraMs: Math.round(c.ms + deslocCap(c) * 1000) }));
+}
 function tapLegenda() {
   S.legSel = !S.legSel;
   S.selected = -1; S.layerSel = null; S.fxSel = null; S.insSel = -1; S.cenaSel = -1; S.zoomSel = -1;

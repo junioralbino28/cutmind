@@ -120,10 +120,11 @@ under a full-frame effect (split screen, a scene) it is covered. Proven by `test
 | `leg-segue` | "a legenda acompanhando meu corpo" | `captions.acompanhar: true`; then `camadas_edit_data.py <edit>` (it tracks the face into `public/rastreio.json`) and re-render |
 | `leg-posicao` | "a legenda mais para cima" | the caption position row above (`captionPositions`) |
 | `leg-original` | "volta a legenda como estava" | the previous `captions.estilo` / `captions.acompanhar` |
+| caption piece moved in time (drag a piece of the caption track in Final) | "a frase 'é por isso' entra meio segundo antes" | find the words in `captions.json` (index of the first, how many, its `startMs`), then `legenda_tempos.py <edit> --tempos '[{"palavra": i, "palavras": n, "deMs": <startMs>, "paraMs": <startMs − 500>}]'`; it refuses a shift over the neighbouring word. Re-render |
 
 Phase 2 is short-form only for the style gate; on longform ask the layer questions in
 chat (`SKILL.md`, "The Estilo panel"). Caption positions are proven by
-`tests/test_caption_positions.py`.
+`tests/test_caption_positions.py`; caption pieces moved in time by `tests/test_legenda_tempos.py`.
 
 ## Editor-only controls (no file behind them)
 

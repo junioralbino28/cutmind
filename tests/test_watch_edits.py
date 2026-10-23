@@ -145,6 +145,17 @@ def test_aviso_da_legenda(tmp_path):
     aviso = digest(p)
     assert "legenda mudada" in aviso and "fonte=Bebas Neue" in aviso and "ACOMPANHA" in aviso
     assert "captions" in aviso and "camadas_edit_data.py" in aviso
+    assert "legenda_tempos.py" not in aviso  # nada arrastado no tempo: nada a dizer
+
+
+def test_aviso_dos_pedacos_da_legenda_levados_no_tempo(tmp_path):
+    p = tmp_path / "preview_edits.json"
+    p.write_text(json.dumps({"type": "timeline-edits", "editData": {"legenda": {
+        "estilo": None, "acompanhar": False,
+        "tempos": [{"palavra": 12, "palavras": 3, "deMs": 8540, "paraMs": 8040}]}}}), encoding="utf-8")
+    aviso = digest(p)
+    assert "1 pedaço levado" in aviso and "legenda_tempos.py" in aviso
+    assert "palavras 12–14" in aviso and "-0.50 s" in aviso
 
 
 def test_corte_e_camadas_no_mesmo_salvar_pede_remapear(tmp_path):

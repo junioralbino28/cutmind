@@ -141,6 +141,14 @@ def digest(p: Path) -> str:
         parts.append("  legenda (edit-data.json `captions`): grave `estilo` (null = tire a chave) e `acompanhar`; "
                      "com acompanhar, rode camadas_edit_data.py (ele faz o rastreio do rosto) e renderize: "
                      + "; ".join(oque))
+        tempos = leg.get("tempos") or []
+        if tempos:  # pedaços arrastados no tempo, na vista Final
+            parts.append(f"  legenda: {_plural(len(tempos), 'pedaço levado', 'pedaços levados')} no tempo → "
+                         "legenda_tempos.py <edit> (desloca as palavras no captions.json) e renderize:")
+            for t in tempos:
+                de, para = t.get("deMs", 0) / 1000, t.get("paraMs", 0) / 1000
+                parts.append(f"  · palavras {t.get('palavra')}–{t.get('palavra', 0) + t.get('palavras', 1) - 1}: "
+                             f"{fmt(de)} → {fmt(para)} ({para - de:+.2f} s)")
     cam = ed.get("camera") or {}
     if cam.get("zooms"):
         mud = [i for i in (cam.get("mudou") or []) if 0 <= i < len(cam["zooms"])]
