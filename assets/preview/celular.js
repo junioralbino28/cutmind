@@ -50,6 +50,7 @@ const app = $('app');
  * com muitas faixas, empilhada ela encolhia no meio da tela. `?leiaute=empilhado` volta. */
 const DESK_MQ = matchMedia('(min-width: 1024px) and (hover: hover) and (pointer: fine)');
 const isDesk = () => document.documentElement.classList.contains('desk');
+const ladoAtivo = () => isDesk() && ['lado', 'em-pe'].every((c) => document.documentElement.classList.contains(c));
 function aplicarDesk() {
   const forca = new URLSearchParams(location.search).get('leiaute');
   const on = forca ? ['computador', 'empilhado'].includes(forca) : DESK_MQ.matches;
@@ -952,7 +953,7 @@ const VIDEO_TRACK_H = 56;
 const MOVE_TILE = 60; // largura de cada tomada enquanto se move uma
 const tileWidth = () => {
   const ar = video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 9 / 16;
-  return Math.max(24, Math.round((VIDEO_TRACK_H - 3) * ar));
+  return Math.max(24, Math.round((VIDEO_TRACK_H * (S.kFaixa || 1) - 3) * ar));
 };
 
 let lanes = []; // elementos que andam juntos sob a agulha
@@ -961,8 +962,14 @@ function renderTimeline() {
   lanes = [];
   const width = `${Math.max(totalT(), 0.1) * S.pps}px`;
   const plan = trackPlan();
+  const vaos = 6 * (plan.length - 1);
+  /* lado a lado: a linha do tempo fica com a altura que a prévia liberou, e as faixas crescem
+     (até 1,6x) em vez de sobrar vão: menos apertadas e mais fáceis de pegar com o mouse */
+  const soma = plan.reduce((a, t) => a + t.h, 0);
+  S.kFaixa = ladoAtivo() ? Math.min(1.6, Math.max(1, (innerHeight * 0.47 - 36 - vaos) / soma)) : 1;
+  for (const t of plan) t.h = Math.round(t.h * S.kFaixa);
   // régua (30) + respiro (6) + faixas e os vãos entre elas
-  const need = 36 + plan.reduce((a, t) => a + t.h, 0) + 6 * (plan.length - 1);
+  const need = 36 + plan.reduce((a, t) => a + t.h, 0) + vaos;
   // no computador a linha do tempo acompanha a janela: ~1/4 da altura, e a prévia fica com o resto
   const [tlMin, tlMax] = isDesk()
     ? [Math.min(260, Math.max(170, Math.round(innerHeight * 0.26))), Math.round(innerHeight * 0.45)]

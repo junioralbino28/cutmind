@@ -779,8 +779,20 @@ kbd {
 /* o aviso da biblioteca fica na faixa onde o painel abre, para o painel cobri-lo como antes */
 .desk.lado.em-pe .desk-col.lib { border-right: 0; justify-content: flex-start; }
 .desk.lado.em-pe .desk-col.lib p { width: calc(var(--col-l) - 48px); }
-/* os painéis da biblioteca abrem colados na coluna da prévia, não na borda da janela */
-.desk.lado.em-pe #sheet, .desk.lado.em-pe #trilhaSheet, .desk.lado.em-pe #fxSheet, .desk.lado.em-pe #modeloSheet { left: var(--col-v); }
+/* os menus da biblioteca abrem em cima, colados na coluna da prévia e na largura toda até as
+   propriedades: as opções viram grade, mais delas à vista de uma vez */
+.desk.lado.em-pe #sheet, .desk.lado.em-pe #trilhaSheet, .desk.lado.em-pe #fxSheet, .desk.lado.em-pe #modeloSheet {
+  left: var(--col-v); width: calc(100vw - var(--col-v) - var(--col-r));
+}
+.desk.lado.em-pe .tr-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); align-content: start; column-gap: 6px; }
+.desk.lado.em-pe .tr-lista > :not(.tr-row) { grid-column: 1 / -1; } /* dica e "Carregando…" na linha toda */
+.desk.lado.em-pe .mod-grade { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.desk.lado.em-pe .cards.wide { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+/* os cartões em pé (Edição) crescem com a altura do menu: largura agora sobra */
+.desk.lado.em-pe .cards.tall .face { height: clamp(150px, calc(100vh - var(--top-h) - var(--tool-h) - var(--tl-h) - 190px), 280px); }
+/* com as faixas mais altas, o nome nos blocos sobe junto */
+.desk.lado.em-pe .chip { font-size: 11px; }
+.desk.lado.em-pe .take .t-label, .desk.lado.em-pe .take .t-vel, .desk.lado.em-pe .take .t-vol { font-size: 10.5px; }
 
 /* ---------- estado vazio (sem vídeo ainda) ---------- */
 .empty {
