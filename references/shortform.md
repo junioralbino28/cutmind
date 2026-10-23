@@ -59,6 +59,8 @@ the Estilo panel at the end of Fase 1; every key maps to something here:
 | `elements.zoomCuts` | the hard zoom change ON each cut (~1.10–1.22, cycles) |
 | `elements.flashCut` | `transitions[]` in edit-data.json — see "Flash na transição" |
 | `elements.musicAI` | Phase 3 via `treblo_music.py`; OFF → deliver with voice only |
+| `modelo` (`{id, nome}`) | the user applied a saved style template (Estilo → Modelos). The picks above already ARE the template's. Its filter, transition, colour and soundtrack came in the `preview_edits.json` of the same Salvar (`efeitos`, `camadas`): apply that file too. `modelos.py mostrar <id>` shows the template |
+| `legenda` (`{estilo, acompanhar}`) | the template's caption look → `captions.estilo` / `captions.acompanhar` in edit-data.json, the same as `editData.legenda` from a Salvar |
 | `note` | free text — read it, it overrides the defaults above |
 
 An unchecked box is an explicit NO, not a silence. Copy the picks into
@@ -762,6 +764,12 @@ and the UI opens its own tab, sitting between FASE 1 and FASE 2:
   `zoomAuto` (automação de zoom in), `zoomCuts` (zoom in/out nos cortes),
   `flashCut` (flash na transição), `musicAI` (trilha sonora com IA), plus a
   free-text observation field.
+- **Modelos** — the look of a video kept under a name (`helpers/modelos.py`,
+  `~/.cutmind/modelos`). The first card saves this video's look; every other card is
+  a template drawn over this video's own frame, with its filter, colour, headline and
+  caption. Tapping one previews it; Aplicar puts its filter and colour on every take,
+  its transition on every cut and its soundtrack from start to end (the same Salvar),
+  then saves the style with `modelo` and `legenda`.
 
 Saving writes `<edit>/preview_style.json` (its OWN file — a style pick and a
 timeline correction are different screens at different moments, and one shared

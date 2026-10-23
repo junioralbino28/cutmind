@@ -126,6 +126,26 @@ Phase 2 is short-form only for the style gate; on longform ask the layer questio
 chat (`SKILL.md`, "The Estilo panel"). Caption positions are proven by
 `tests/test_caption_positions.py`; caption pieces moved in time by `tests/test_legenda_tempos.py`.
 
+## Projects and style templates (`~/.cutmind`)
+
+Both live outside any project, in `~/.cutmind` (`CUTMIND_HOME` moves it): the list in
+`projetos.json`, the template files in `modelos/`.
+
+| Editor tool | Chat request | What to do |
+|---|---|---|
+| house button → Projetos | "quais projetos eu tenho?" | `projetos.py listar` (id, name, phase, length, folder) |
+| (the list starts with only the open project) | "acha meus vídeos antigos" | `projetos.py procurar <folders>`: registers every `*/edit/state.json` it finds, 4 levels down |
+| tap a project card | "abre o vídeo da padaria no editor" | `curl -s -X POST http://127.0.0.1:<port>/api/projetos/abrir -H "Content-Type: application/json" -d '{"id": "<id>"}'` (from this computer no code is needed). The editor and the phone reload, the watcher announces the switch; from then on work in that folder |
+| Novo projeto | "começa um vídeo novo chamado X" | the usual Phase 1 start (`<videos_dir>/edit/state.json`), then `projetos.py registrar <edit>` (it prints the id) and open it as above |
+| Estilo → Modelos → Salvar o estilo deste vídeo | "guarda o visual deste vídeo como modelo Canal de Receitas" | write the template as the editor builds it: `nome`; `estilo` = `state.json` `style` (`edit`, `headline`, `captions`, `accent`, `elements`); `legenda` = `captions.estilo` + `acompanhar` from edit-data.json; `filtro` (`pacote`, `intensidade`), `transicao` (`pacote`, `duracao`) and `ajuste` (the `ajustes` dict) only when `efeitos.json` uses ONE of that kind, the same in every item; `trilha` (`pacote`, `volume`) from the `camadas.json` audio item marked `trilha`, when there is one. Leave out what the video does not have. Then `modelos.py salvar <file>`: it validates, makes the id from the name and saves (same name = replaces). The format is in the docstring of `helpers/modelos.py` |
+| Estilo → Modelos → tap + Aplicar | "edita com o modelo Canal de Receitas", "usa o modelo da marca X neste vídeo" | `modelos.py mostrar <id>`, then write what the editor writes: `estilo` → `state.json` `style` (keep `note` and `captionPositions`), as if picked in the Estilo panel, so no `awaitingStyle`; `legenda` → `captions.estilo` / `captions.acompanhar` in edit-data.json; `filtro` and `ajuste` → in `efeitos.json`, remove the items of that kind and add one per take over its window (`out`, `dur` from `tomadas_no_corte`); `transicao` → the same, one per cut, at the `out` of every take after the first; `trilha` → remove the `camadas.json` audio items marked `trilha`, then `pacotes.py camada <edit> <pacote> --volume <volume>`. A null key leaves that part of the video as it is. Then the Phase 2 path: `efeitos_render.py`, render, `mixar_final.py` |
+| the trash on a template card | "apaga o modelo X" | `modelos.py apagar <id>`; the videos that used it do not change |
+
+A template holds the look, never the content: cuts, texts, images, effect scenes and
+caption positions stay with each video. Proven by `tests/test_projetos.py` (list, open,
+new project, the 409 on a stale Salvar), `tests/test_watch_edits.py` (the switch notice)
+and `tests/test_modelos.py` (the format, the routes, `salvar` from the command line).
+
 ## Speed of the finished video (`velocidade.json`, after Phase 3)
 
 | Editor tool | Chat request | What to write | Then |

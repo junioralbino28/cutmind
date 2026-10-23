@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -128,6 +129,20 @@ def test_rotas_dos_modelos(srv):
 def test_celular_sem_codigo_nao_mexe_nos_modelos(srv):
     r, _ = pedir(srv, "POST", "/api/modelos", {"modelo": COMPLETO}, remoto=True)
     assert r.status == 403 and md.listar() == []
+
+
+def test_salvar_pela_linha_de_comando(tmp_path):
+    # o caminho do chat: o agente escreve o JSON e o helper valida, dá o id e grava
+    cli = [sys.executable, "-X", "utf8", str(Path(md.__file__)), "salvar"]
+    arq = tmp_path / "modelo.json"
+    arq.write_bytes(json.dumps(COMPLETO, ensure_ascii=False).encode("utf-8"))
+    r = subprocess.run([*cli, str(arq)], capture_output=True, text=True, encoding="utf-8")
+    assert r.returncode == 0 and r.stdout.startswith("salvo: canal-de-receitas")
+    assert md.obter("canal-de-receitas")["filtro"]["pacote"] == "filme-pb"
+    arq.write_bytes(json.dumps({**COMPLETO, "trilha": {"pacote": "../x"}}).encode("utf-8"))
+    r = subprocess.run([*cli, str(arq)], capture_output=True, text=True, encoding="utf-8")
+    assert r.returncode == 1 and "trilha.pacote" in r.stdout
+    assert md.obter("canal-de-receitas")["trilha"]["pacote"] == "lofi-01"  # o recusado não gravou
 
 
 def test_nome_do_pacote_vai_no_modelo():

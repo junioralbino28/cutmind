@@ -22,6 +22,7 @@ cortes, e a trilha entra do começo ao fim (o editor faz e manda pelo Salvar).
 
     python modelos.py listar
     python modelos.py mostrar <id>
+    python modelos.py salvar <arquivo.json>   (pelo chat: o mesmo que o Salvar da aba)
     python modelos.py apagar <id>
 """
 from __future__ import annotations
@@ -230,6 +231,7 @@ def main() -> int:
     sub.add_parser("listar")
     for c in ("mostrar", "apagar"):
         sub.add_parser(c).add_argument("id")
+    sub.add_parser("salvar").add_argument("arquivo", type=Path)
     a = ap.parse_args()
     if a.cmd == "listar":
         for m in listar():
@@ -239,6 +241,13 @@ def main() -> int:
     elif a.cmd == "mostrar":
         m = obter(a.id)
         print(json.dumps(m, ensure_ascii=False, indent=2) if m else "não existe")
+    elif a.cmd == "salvar":
+        try:
+            m = salvar(json.loads(a.arquivo.read_text(encoding="utf-8")))
+        except (OSError, ValueError) as e:  # ModeloInvalido e JSON quebrado são ValueError
+            print(f"recusado: {e}")
+            return 1
+        print(f"salvo: {m['id']}  {m['nome']}")
     else:
         print("apagado" if apagar(a.id) else "não existe")
     return 0

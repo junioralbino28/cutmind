@@ -56,6 +56,19 @@ It opens only with the cut saved (the phrases come from the rendered cut) and a
 transcript of it. The spots travel in `preview_style.json` as `captionPositions`;
 the agent side is in `references/shortform.md` ("Where each phrase sits").
 
+## Style templates (Estilo → Modelos)
+
+The last tab of the Estilo panel, so it opens once the cut is approved, like the rest of
+the panel. The first card, **Salvar o estilo deste vídeo**, asks for a name and keeps the
+look: the Estilo picks, the captions' Text look, and the filter, transition, Ajustar and
+library soundtrack when the video uses one of each. Every other card is a template drawn
+over this video's frame with the template's filter and colour, its name and what it
+carries underneath. Tapping a card shows it on the preview on top; closing the panel
+without Aplicar brings back the style you had. **Aplicar** puts it on the whole video and
+saves at once. The trash on a card deletes the template; the videos that used it do not
+change. Templates live on the computer (`~/.cutmind/modelos`), so every project shows
+them, on the phone too.
+
 ## Turning it on
 
 1. Only when the user asks ("abre no celular", "quero editar pelo celular"). The
@@ -82,6 +95,23 @@ the agent side is in `references/shortform.md` ("Where each phrase sits").
 that video is the source: start Phase 1. With a cut ready, ask what it is for.
 Delete `preview_upload.json` once handled. Limits: `--max-upload-gb` (default 8)
 and the disk is never filled past its last 512 MB.
+
+## Projects (the house button)
+
+The house next to the brand opens **Projetos**: a card per project with a frame of it, the
+name, the length, the phase and when it last changed, the open one marked. On the phone
+it fills the screen, two cards per row. Tapping a card opens that project in the same
+editor. There is one server, so there is one open project: the computer and the phone
+switch together, and the phone's code keeps working.
+
+- With changes not saved, the editor does not leave the project: it asks for Salvar or
+  Descartar first. When the OTHER screen opens another project while this one holds
+  changes, this one says so and offers **Voltar para este** (the server goes back and
+  the changes can be saved) or **Descartar**. A Salvar still aimed at the old project is
+  refused (409), never written into the new one; so is an Enviar.
+- **Novo projeto** asks for a name, makes `<name>/edit/` next to the open project's
+  folder (a repeated name gets " 2") and opens it empty. The videos come with
+  **Enviar** and land in that new folder, and the agent starts the cut.
 
 ## Images and audio (layers)
 
@@ -261,3 +291,8 @@ editor").
 - `/api/celular` (links + QR) answers only this computer.
 - `/gen/frame` (the trim-handle preview) only reads sources listed in `edl.json`
   by name — never a path from the request.
+- `/api/projetos/abrir` takes an id from the list (`~/.cutmind/projetos.json`), never a
+  path. A new project's name keeps only letters, digits, spaces, `-` and `_` (no dot, no
+  slash, no Windows reserved name), so the folder lands next to the open project and
+  nowhere else. A template is checked field by field (`modelos.normalize`) before it is
+  written, and its id comes from its name.

@@ -97,6 +97,8 @@ the track reference you load after the gate.
 
 Interface:
 - **`preview_server.py --root <edit> [--port 4820] [--host 0.0.0.0]`** — serves the standard preview interface (see the Preview interface section). App code lives at `assets/preview/` and is IMMUTABLE. `--host` opens it to the phone, with a code — only when the user asks; read `references/celular.md` first.
+- **`projetos.py listar|procurar <pastas>|registrar <edit>|aberto`** — the editor's Projetos screen: the list lives outside any project, in `~/.cutmind/projetos.json` (`CUTMIND_HOME` moves the folder). The server registers the `edit/` it starts with; `procurar` registers the projects that already exist (`*/edit/state.json`, 4 levels down) — run it once on the user's video folders so the screen is not empty. `aberto` says which project the editor is showing.
+- **`modelos.py listar|mostrar <id>|salvar <arquivo.json>|apagar <id>`** — style templates: the look of one video kept under a name (`~/.cutmind/modelos/<id>.json`) to apply to another. Only the look, never the content. Saving or applying one from the chat: `references/pelo-chat.md`.
 
 ## Preview interface (standard — launch it at the start of every edit)
 
@@ -135,6 +137,19 @@ denying. Confirmed in production; nothing in Settings fixed it.
 
 **Keep state.json fresh** — bump `phase` and `message` at each milestone (cut rendered, cut approved, Phase 2 rendered…). The UI polls and hot-reloads by itself; waveform + filmstrip regenerate automatically when cut.mp4 changes.
 
+**Projetos (the house button at the top).** The editor lists every project (cover frame,
+name, length, phase, last change) and opens another one in place: the server switches
+its root without restarting, by the list id and never by a path, and the open editor
+and the phone reload. **Novo projeto** asks for a name and makes
+`<name>/edit/state.json` next to the open project's folder (`"novo": true`); its videos
+arrive through **Enviar** (`preview_upload.json`), and that is your cue to start Phase 1
+there. You learn about a switch from the watcher: the server writes
+`~/.cutmind/aberto.json` and `watch_edits.py` prints **O EDITOR ABRIU OUTRO PROJETO**
+with the folder. With `--uma-vez` it exits on it: start it again on that folder. A
+persistent Monitor moves there by itself. From then on every file of the edit is in
+that folder. A Salvar from a screen still showing the old project gets 409 and the
+editor offers to go back to it, so two projects never mix.
+
 The timeline shows one track per KIND: markers, captions, video, audio (the mix),
 **A1 / A2** (the J-cut takes), **text** overlays (hook), **images** (inserts + any
 data-driven CustomGraphics windows), soundtrack. Anything you leave in code instead
@@ -169,6 +184,12 @@ The catalog of options and what each pick means is in the track reference, which
 you read next anyway — **`references/shortform.md`**. Short-form only: the gate
 has no longform vocabulary yet, so on a longform job skip `awaitingStyle` and ask
 the layer questions in chat.
+
+The panel's last tab, **Modelos**, keeps the look of this video under a name and
+applies a saved one (a client's brand, say). Applying it sends the save with `modelo`
+and `legenda`, and the filter, transition, colour and soundtrack in the same Salvar's
+`preview_edits.json`. When the user names a template in the chat ("edita com o modelo
+da marca X"), apply it yourself and skip `awaitingStyle`: `references/pelo-chat.md`.
 
 **When the user saves timeline edits**, the UI writes `<edit>/preview_edits.json`
 (never touches edl.json) and `watch_edits.py` notifies you automatically. To apply:
@@ -218,6 +239,7 @@ maps each tool to its file, field, helper and check.
 | colour (Ajustar), filters, transitions | Colour, filters and transitions (`efeitos.json`) |
 | images, audio, texts, soundtracks, muting the video | Images, audio, text and soundtracks (`camadas.json`) |
 | hook and insert timing, caption style, caption position | Phase 2 blocks, style and captions |
+| opening another project, saving or applying a style template | Projects and style templates |
 
 ---
 
