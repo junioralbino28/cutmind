@@ -544,12 +544,15 @@ const HookInner: React.FC<{totalFrames: number}> = ({totalFrames}) => {
   // the editor's Text panel: a catalog font (one weight for every line), colour, size and outline
   const E = H.estilo ?? {};
   const escolhida = typeof E.fonte === 'string' && E.fonte in CATALOGO ? E.fonte : null;
+  // the two lines are balanced and fitted by MEASURED width: a chosen font measures only after it loaded
+  const prontas = useFontesProntas(!!escolhida);
   const fam = escolhida ? familiaCss(escolhida) : fontFamily;
   const pesoE = escolhida ? Number(E.peso) || CATALOGO[escolhida].peso : null;
   const k = Number(E.tamanho) > 0 ? Math.min(3, Math.max(0.3, Number(E.tamanho))) : 1;
   const S0 = HL_STYLES[styleId] ?? HL_STYLES.outline;
   const S: HlStyle = pesoE ? {...S0, weights: [pesoE, pesoE]} : S0;
   const peso = (padrao: number) => pesoE ?? padrao;
+  if (!prontas) return null;
   const raw = (H.text ?? (H.lines || []).join(' ')).trim();
   const lines = twoLines(styleId === 'card' ? raw.toUpperCase() : raw, S.weights, fam);
   // fontSizePx is a CEILING, never a fixed size. As a hard override it silently
