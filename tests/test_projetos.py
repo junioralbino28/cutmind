@@ -226,3 +226,30 @@ def test_main_registra_e_marca_aberto(tmp_path, monkeypatch):
         ps.main()
     assert chamado and pj.aberto()["id"] == pj.id_de(a) and pj.por_id(pj.id_de(a)) == a.resolve()
     assert os.environ["CUTMIND_HOME"] in str(pj.casa())
+
+
+def test_salvar_de_outro_projeto_e_recusado(srv):
+    """O PC tinha o projeto A; o celular abriu o B. O Salvar do PC (com o id do A) não grava no B."""
+    pedir(srv.port, "POST", "/api/projetos/abrir", {"id": pj.id_de(srv.b)})
+    r, out = pedir(srv.port, "POST", "/api/save", {"type": "timeline-edits", "projeto": pj.id_de(srv.a), "notes": []})
+    assert r.status == 409 and "outro projeto" in json.loads(out)["error"]
+    assert not (srv.b / "preview_edits.json").exists() and not (srv.a / "preview_edits.json").exists()
+    # com o id certo, grava, e o id não vai para o arquivo do agente
+    r, _ = pedir(srv.port, "POST", "/api/save", {"type": "timeline-edits", "projeto": pj.id_de(srv.b), "notes": []})
+    assert r.status == 200
+    assert "projeto" not in json.loads((srv.b / "preview_edits.json").read_text(encoding="utf-8"))
+    # editor antigo, sem o id: continua gravando como antes
+    r, _ = pedir(srv.port, "POST", "/api/save", {"type": "style-setup"})
+    assert r.status == 200 and (srv.b / "preview_style.json").exists()
+
+
+def test_envio_de_outro_projeto_e_recusado(srv):
+    pedir(srv.port, "POST", "/api/projetos/abrir", {"id": pj.id_de(srv.b)})
+    conn = http.client.HTTPConnection("127.0.0.1", srv.port, timeout=20)
+    conn.request("POST", f"/api/upload?name=v.mp4&projeto={pj.id_de(srv.a)}", body=b"x" * 100,
+                 headers={"Content-Length": "100"})
+    r = conn.getresponse()
+    r.read()
+    conn.close()
+    assert r.status == 409
+    assert not (srv.b.parent / "v.mp4").exists()

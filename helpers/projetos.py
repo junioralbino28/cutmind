@@ -160,7 +160,7 @@ def criar(base: Path, nome: str) -> Path:
     edit = pasta / "edit"
     edit.mkdir(parents=True)
     estado = {"project": nome.strip()[:NOME_MAX], "phase": 0, "video": "cut.mp4", "edl": "edl.json",
-              "message": "Projeto novo: mande os vídeos pelo Enviar e o agente começa o corte.", "novo": True}
+              "message": "Projeto novo: escolha o vídeo e o agente começa o corte.", "novo": True}
     _gravar(edit / "state.json", estado)
     registrar(edit)
     return edit

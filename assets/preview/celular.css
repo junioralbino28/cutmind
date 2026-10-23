@@ -694,6 +694,36 @@ button { font-family: inherit; cursor: pointer; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .modal-head h3 { font-size: 15px; font-weight: 800; }
 #helpModal .modal-card { width: min(480px, calc(100% - 32px)); }
+
+/* ---------- Projetos (botão de casa no topo) ---------- */
+.proj-btn { padding: 0 9px; gap: 6px; }
+.proj-btn .tb-ico svg { width: 18px; height: 18px; }
+#projModal .modal-card.proj-card { width: min(880px, calc(100% - 32px)); max-height: calc(100dvh - 48px); }
+.proj-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; overflow-y: auto; padding: 2px; min-height: 0; }
+.pj { position: relative; display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 8px;
+  background: var(--surface); border: 1px solid var(--line2); border-radius: 10px; color: var(--text); }
+.pj:hover { border-color: rgba(248, 112, 0, 0.5); }
+.pj.on { border-color: var(--brand); }
+.pj-capa { aspect-ratio: 3 / 4; border-radius: 7px; background: var(--surface3) center / cover no-repeat;
+  display: grid; place-items: center; color: var(--dim2); }
+.pj-capa svg { width: 28px; height: 28px; }
+.pj-nome { font-size: 13px; font-weight: 700; line-height: 1.25; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.pj-meta { font-size: 11.5px; color: var(--dim); }
+.pj-selo { position: absolute; top: 14px; left: 14px; font-size: 10.5px; font-weight: 800; padding: 3px 7px;
+  border-radius: 999px; background: var(--brand); color: var(--brand-ink); }
+.pj.novo .pj-capa { background: transparent; border: 1.5px dashed var(--line2); color: var(--brand); }
+.proj-novo { display: flex; gap: 8px; }
+.proj-novo input { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line2);
+  background: var(--surface); color: var(--text); font: inherit; font-size: 13px; }
+.proj-info { font-size: 12px; color: var(--dim); }
+.proj-info:empty { display: none; }
+.troca-txt { font-size: 13px; color: var(--dim); line-height: 1.5; }
+.troca-acoes { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+/* no celular a tela Projetos ocupa tudo, duas colunas */
+html:not(.desk) #projModal .modal-card.proj-card { width: 100%; height: 100dvh; max-height: none; border-radius: 0;
+  padding: calc(14px + var(--safe-t)) 16px calc(14px + var(--safe-b)); }
+html:not(.desk) .proj-grade { grid-template-columns: repeat(2, 1fr); }
 .help-list { list-style: none; display: flex; flex-direction: column; gap: 9px; font-size: 12.5px; color: var(--dim); }
 .help-list li { display: grid; grid-template-columns: 130px 1fr; gap: 10px; align-items: baseline; }
 .help-list li > span:first-child { color: var(--text); font-weight: 600; }

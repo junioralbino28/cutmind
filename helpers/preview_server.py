@@ -596,6 +596,13 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(body, dict):
             self._json({"error": "invalid JSON"}, 400)
             return
+        # o editor manda o id do projeto que ele mostra: se outro aparelho abriu outro
+        # projeto no meio, estes ajustes não vão parar na pasta errada
+        pid = body.pop("projeto", None)
+        if pid is not None and pid != pj.id_de(self.root):
+            self._json({"error": "outro projeto foi aberto no editor; volte para este (Projetos) para salvar",
+                        "aberto": pj.id_de(self.root)}, 409)
+            return
         body["savedAt"] = time.strftime("%Y-%m-%d %H:%M:%S")
         # The style pick goes to its own file. It is a one-time setup decision,
         # not a correction, and sharing preview_edits.json would make one save
@@ -759,6 +766,10 @@ class Handler(BaseHTTPRequestHandler):
         para <edit>/midia/ (são camadas do projeto, que o editor põe na linha do tempo)."""
         if self.upload_dir is None:
             self._fail(404, "envio desligado")
+            return
+        pid = (parse_qs(query).get("projeto") or [None])[0]
+        if pid is not None and pid != pj.id_de(self.root):
+            self._fail(409, "outro projeto foi aberto no editor; volte para este (Projetos) para enviar")
             return
         raw_len = self.headers.get("Content-Length")
         if raw_len is None:

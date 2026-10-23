@@ -126,6 +126,8 @@ const ICON = {
   alvo: sv('<circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/>'),
   // seleção em massa: a caixa tracejada; "tudo": as duas pontas do vídeo
   selecionar: sv('<rect x="3.5" y="5" width="17" height="14" rx="2.2" stroke-dasharray="3.2 2.6"/><path d="M8 12h8"/>'),
+  // a tela Projetos: a casa
+  casa: sv('<path d="M4 10.8 12 4.5l8 6.3"/><path d="M6 9.5v9a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 18 18.5v-9"/><path d="M10 20v-5h4v5"/>'),
   tudo: sv('<path d="M3.5 12h17M7 8.5 3.5 12 7 15.5M17 8.5l3.5 3.5-3.5 3.5"/>'),
 };
 
@@ -748,6 +750,15 @@ async function poll() {
     if (res.status === 403) { setLocked(true); setTimeout(poll, 4000); return; }
     setLocked(false);
     const data = await res.json();
+    // outro projeto aberto (aqui na tela Projetos, ou no celular): sem ajuste pendente, recarrega
+    const pid = data.projeto && data.projeto.id;
+    if (pid && S.projetoId && pid !== S.projetoId) {
+      if (dirtyCount() === 0) { location.reload(); return; }
+      avisaTroca(pid);
+      setTimeout(poll, 2000);
+      return;
+    }
+    if (pid) S.projetoId = pid;
     S.lastData = data; // o Descartar volta a ela
     const sig = assinatura(data);
     if (sig !== S.lastSig) {
@@ -1791,6 +1802,11 @@ document.addEventListener('keydown', (e) => {
     if (k === 'Escape') fechaCelular();
     return;
   }
+  if (!$('trocaModal').classList.contains('hidden')) return; // a escolha é pelos dois botões
+  if (!$('projModal').classList.contains('hidden')) {
+    if (k === 'Escape') fechaProjetos();
+    return;
+  }
   const ajuda = !$('helpModal').classList.contains('hidden');
   if (k === '?' && !ctrl) { e.preventDefault(); mostraAjuda(!ajuda); return; }
   if (k === 'Escape') {
@@ -1853,6 +1869,112 @@ document.addEventListener('keydown', (e) => {
 $('btnHelp').addEventListener('click', () => mostraAjuda(true));
 $('helpClose').addEventListener('click', () => mostraAjuda(false));
 $('helpModal').addEventListener('click', (e) => { if (e.target === $('helpModal')) mostraAjuda(false); });
+
+// ---------- Projetos (botão de casa) ----------
+/* A tela lista o que o servidor conhece (~/.cutmind/projetos.json): capa, nome, duração,
+ * fase e a última mudança. Abrir troca o projeto do servidor inteiro, então o celular
+ * conectado acompanha. Com ajuste sem salvar, nada troca: salve ou descarte antes. */
+function quandoFoi(ts) {
+  const s = Math.max(0, Date.now() / 1000 - ts);
+  if (s < 90) return 'agora';
+  if (s < 3600) return `há ${Math.round(s / 60)} min`;
+  if (s < 86400) return `há ${Math.round(s / 3600)} h`;
+  const d = Math.round(s / 86400);
+  return d === 1 ? 'ontem' : `há ${d} dias`;
+}
+function faseDoProjeto(p) {
+  if (p.novo) return 'Novo';
+  if (p.aguardandoEstilo) return 'Estilo';
+  if (p.fase >= 2) return 'Final';
+  return p.fase === 1 ? 'Corte' : 'Começando';
+}
+function fechaProjetos() { $('projModal').classList.add('hidden'); }
+async function abreProjetos() {
+  $('projModal').classList.remove('hidden');
+  $('projNovo').classList.add('hidden');
+  $('projInfo').textContent = 'Carregando…';
+  try {
+    const d = await (await fetch('/api/projetos')).json();
+    $('projInfo').textContent = d.projetos.length > 1 ? '' : 'Por enquanto só este. Os próximos vídeos que você editar aparecem aqui.';
+    desenhaProjetos(d.projetos);
+  } catch (e) {
+    $('projInfo').textContent = 'Não consegui ler a lista de projetos. O editor ainda está ligado no computador?';
+  }
+}
+function desenhaProjetos(lista) {
+  const g = $('projGrade');
+  g.innerHTML = `<button class="pj novo" type="button" data-novo="1"><div class="pj-capa">${ICON.mais}</div>
+    <div class="pj-nome">Novo projeto</div><div class="pj-meta">envie os vídeos e o agente corta</div></button>`;
+  for (const p of lista) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pj' + (p.aberto ? ' on' : '');
+    b.dataset.id = p.id;
+    const dur = p.duracao > 0 ? ` · ${fmtShort(p.duracao)}` : '';
+    b.innerHTML = `<div class="pj-capa">${p.temCapa ? '' : ICON.final}</div>
+      ${p.aberto ? '<span class="pj-selo">aberto</span>' : ''}
+      <div class="pj-nome">${escSvg(p.nome)}</div><div class="pj-meta">${faseDoProjeto(p)}${dur} · ${quandoFoi(p.mudou)}</div>`;
+    // a capa por URL (com o id), sem montar CSS com texto do projeto
+    if (p.temCapa) b.querySelector('.pj-capa').style.backgroundImage = `url("/gen/projeto-capa?id=${encodeURIComponent(p.id)}&v=${Math.round(p.mudou)}")`;
+    b.title = p.mensagem || p.nome;
+    g.appendChild(b);
+  }
+}
+async function abreProjeto(id) {
+  if (id === S.projetoId) { fechaProjetos(); return; }
+  const n = dirtyCount();
+  if (n) { toast(`${n === 1 ? 'Há 1 ajuste' : `Há ${n} ajustes`} sem salvar aqui. Salve ou descarte antes de trocar de projeto.`, 4200); return; }
+  try {
+    const out = await (await fetch('/api/projetos/abrir', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }) })).json();
+    if (!out.ok) throw new Error(out.error || 'falhou');
+    location.reload();
+  } catch (e) { toast(`Não abri o projeto: ${e.message}`, 4000); }
+}
+$('projIco').innerHTML = ICON.casa;
+$('btnProjetos').addEventListener('click', abreProjetos);
+$('projClose').addEventListener('click', fechaProjetos);
+$('projModal').addEventListener('click', (e) => {
+  if (e.target === $('projModal')) { fechaProjetos(); return; }
+  const card = e.target.closest('.pj');
+  if (!card) return;
+  if (card.dataset.novo) {
+    if (dirtyCount()) { toast('Salve ou descarte seus ajustes antes de começar outro projeto.', 4000); return; }
+    $('projNovo').classList.remove('hidden');
+    $('projNome').focus();
+  } else abreProjeto(card.dataset.id);
+});
+$('projNovo').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const nome = $('projNome').value.trim();
+  if (!nome) { $('projNome').focus(); return; }
+  try {
+    const out = await (await fetch('/api/projetos/novo', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome }) })).json();
+    if (!out.ok) throw new Error(out.error || 'falhou');
+    location.reload(); // o projeto novo abre vazio, pedindo os vídeos (Enviar)
+  } catch (err) { toast(`Não criei o projeto: ${err.message}`, 4200); }
+});
+// outro aparelho trocou o projeto e este tinha ajustes: voltar (o servidor reabre este) ou descartar
+function avisaTroca(novoId) {
+  if (S.trocaAvisada === novoId) return;
+  S.trocaAvisada = novoId;
+  const n = dirtyCount();
+  $('trocaTxt').textContent = `Outro aparelho abriu outro projeto neste editor, e aqui ${n === 1 ? 'há 1 ajuste' : `há ${n} ajustes`} `
+    + `sem salvar em "${(S.state && S.state.project) || 'este projeto'}". Volte para ele para salvar, ou descarte e siga no outro.`;
+  $('trocaModal').classList.remove('hidden');
+}
+$('trocaVoltar').addEventListener('click', async () => {
+  try {
+    const out = await (await fetch('/api/projetos/abrir', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: S.projetoId }) })).json();
+    if (!out.ok) throw new Error(out.error || 'falhou');
+    S.trocaAvisada = null;
+    $('trocaModal').classList.add('hidden');
+    toast('Voltou para este projeto. Agora dá para salvar.', 3200);
+  } catch (e) { toast(`Não voltei: ${e.message}`, 4000); }
+});
+$('trocaDescartar').addEventListener('click', () => location.reload());
 
 function loop() {
   const now = performance.now() / 1000;
@@ -2291,7 +2413,7 @@ function sendVideo(file) {
   $('upCancel').textContent = 'Cancelar';
   const xhr = new XMLHttpRequest();
   upXhr = xhr;
-  xhr.open('POST', `/api/upload?name=${encodeURIComponent(file.name)}`);
+  xhr.open('POST', `/api/upload?name=${encodeURIComponent(file.name)}${S.projetoId ? `&projeto=${S.projetoId}` : ''}`);
   xhr.upload.onprogress = (e) => {
     if (!e.lengthComputable) return;
     const f = e.loaded / e.total;
@@ -2827,6 +2949,7 @@ $('sheetClose').addEventListener('click', closeStyle);
 $('sheetApply').addEventListener('click', async () => {
   const payload = {
     type: 'style-setup',
+    projeto: S.projetoId,
     rerender: !S.state.awaitingStyle,
     edit: S.style.edit,
     editName: styleName('edits', S.style.edit),
@@ -2845,7 +2968,11 @@ $('sheetApply').addEventListener('click', async () => {
   };
   try {
     const res = await fetch('/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    if (!(await res.json()).ok) throw new Error('falhou');
+    const out = await res.json();
+    if (!out.ok) {
+      if (out.error) { toast(`Não enviei: ${out.error}`, 4500); return; }
+      throw new Error('falhou');
+    }
     S.savedPending = true;
     closeStyle();
     refreshHeader();
@@ -3122,7 +3249,8 @@ $('btnSave').addEventListener('click', () => salvar());
 /* Manda ao agente tudo o que está por salvar (e as marcações). `aviso` troca a mensagem do fim
  * (a caixa de pedido tem a sua). Devolve se o servidor aceitou. */
 async function salvar(aviso) {
-  const payload = { type: 'timeline-edits' };
+  // o id do projeto vai junto: se outro aparelho trocou o projeto, o servidor recusa (409)
+  const payload = { type: 'timeline-edits', projeto: S.projetoId };
   const soCamadas = !edlDirty() && !S.notes.length;
   if (edlDirty()) payload.edl = edlPayload();
   const comBlocos = insertsDirty();

@@ -28,6 +28,8 @@
 
   <header class="topbar">
     <div class="brand"><img src="/assets/cutmind-simbolo.svg" alt="CutMind"></div>
+    <!-- a tela Projetos: os outros vídeos, abrir de onde parou, começar um novo -->
+    <button class="tb-btn ghost proj-btn" id="btnProjetos" type="button" title="Projetos" aria-label="Projetos"><span class="tb-ico" id="projIco"></span><span class="desk-only">Projetos</span></button>
     <!-- o que está na prévia: o corte (para aprovar) ou o vídeo final -->
     <button class="mode" id="btnMode" type="button" aria-label="Trocar entre o corte e o vídeo final">
       <span id="modeLabel">Corte</span><span class="mode-sub" id="projectSub">carregando…</span><span class="mode-car" id="modeCar"></span>
@@ -290,6 +292,35 @@
       <button class="tb-btn" id="phoneClose" type="button">Fechar</button>
     </div>
     <div class="phone-body" id="phoneBody"></div>
+  </div>
+</div>
+
+<!-- Projetos: um cartão por projeto (capa, nome, duração, fase, última mudança); tocar abre aquele
+     projeto neste editor, de onde parou. "Novo projeto" cria a pasta e o agente começa o corte. -->
+<div class="modal hidden" id="projModal" role="dialog" aria-modal="true" aria-labelledby="projTitle">
+  <div class="modal-card proj-card">
+    <div class="modal-head">
+      <h3 id="projTitle">Projetos</h3>
+      <button class="tb-btn" id="projClose" type="button">Fechar</button>
+    </div>
+    <form class="proj-novo hidden" id="projNovo">
+      <input id="projNome" type="text" maxlength="60" placeholder="Nome do projeto (ex.: Reels da semana)" aria-label="Nome do projeto novo">
+      <button class="tb-btn primary" type="submit">Criar</button>
+    </form>
+    <p class="proj-info" id="projInfo"></p>
+    <div class="proj-grade" id="projGrade"></div>
+  </div>
+</div>
+
+<!-- outro aparelho abriu outro projeto enquanto este tinha ajustes sem salvar -->
+<div class="modal hidden" id="trocaModal" role="dialog" aria-modal="true" aria-labelledby="trocaTitle">
+  <div class="modal-card">
+    <div class="modal-head"><h3 id="trocaTitle">Outro projeto foi aberto</h3></div>
+    <p class="troca-txt" id="trocaTxt"></p>
+    <div class="troca-acoes">
+      <button class="tb-btn ghost" id="trocaDescartar" type="button">Descartar e abrir o outro</button>
+      <button class="tb-btn primary" id="trocaVoltar" type="button">Voltar para este</button>
+    </div>
   </div>
 </div>
 
