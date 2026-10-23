@@ -526,3 +526,39 @@ def test_usar_pacote_desconhecido_ou_pedido_torto(srv, trilhas):
     assert r.status == 404 and "desconhecido" in json.loads(corpo)["error"]
     r, corpo = _post_json(srv, "/api/pacotes/usar", ["não", "é", "objeto"], remoto=True, cookie=CODIGO)
     assert r.status == 400
+
+
+def test_dois_salvar_antes_do_agente_somam_e_nao_se_apagam(srv):
+    """Cada Salvar leva só o que mudou desde o anterior: gravado por cima, o primeiro sumia
+    antes de o agente aplicá-lo (aconteceu no teste real: 3 efeitos de um Salvar perdidos do
+    arquivo 25 s depois, por um Salvar só do Gráfico)."""
+    cena = lambda ref, tipo, y: {"ref": ref, "tipo": tipo, "start": 1.0, "end": 2.0, "desligada": False,
+                                 "texto": {"x": 540, "y": y}, "textos": {}, "estilo": None}
+    _salvar(srv, {"type": "timeline-edits", "notes": [{"start": 1, "end": 2, "text": "um"}],
+                  "editData": {"cenas": [cena(2, "papel", 300), cena(5, "capa", 480)],
+                               "camera": {"zooms": [1.1, 1.0], "mudou": [0]}}})
+    r, _ = _salvar(srv, {"type": "timeline-edits", "notes": [{"start": 3, "end": 4, "text": "dois"}],
+                         "editData": {"cenas": [cena(5, "capa", 500), cena(6, "grafico", 360)],
+                                      "camera": {"zooms": [1.1, 1.3], "mudou": [1]}}})
+    assert r.status == 200
+    d = json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))
+    assert [n["text"] for n in d["notes"]] == ["um", "dois"]
+    assert [(c["ref"], c["texto"]["y"]) for c in d["editData"]["cenas"]] == [(2, 300), (5, 500), (6, 360)]
+    assert d["editData"]["camera"] == {"zooms": [1.1, 1.3], "mudou": [0, 1]}
+
+
+def test_salvar_depois_que_o_agente_aplicou_comeca_do_zero(srv):
+    _salvar(srv, {"type": "timeline-edits", "editData": {"cenas": [{"ref": 1, "tipo": "mural"}]}})
+    (srv.edit / "preview_edits.json").unlink()  # o agente aplicou e apagou
+    _salvar(srv, {"type": "timeline-edits", "editData": {"cenas": [{"ref": 3, "tipo": "app"}]}})
+    d = json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))
+    assert [c["ref"] for c in d["editData"]["cenas"]] == [3]
+
+
+def test_juntar_troca_o_que_vem_inteiro():
+    velho = {"type": "timeline-edits", "edl": {"ranges": [1]}, "camadas": {"faixas": [1]},
+             "editData": {"inserts": [{"ref": 0, "start": 1}], "hook": {"endSec": 3}}}
+    novo = {"type": "timeline-edits", "edl": {"ranges": [2]}, "editData": {"inserts": [{"ref": 0, "start": 2}]}}
+    d = ps.juntar_salvamentos(velho, novo)
+    assert d["edl"] == {"ranges": [2]} and d["camadas"] == {"faixas": [1]}
+    assert d["editData"] == {"inserts": [{"ref": 0, "start": 2}], "hook": {"endSec": 3}}

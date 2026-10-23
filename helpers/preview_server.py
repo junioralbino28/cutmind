@@ -134,6 +134,38 @@ _upload_lock = threading.Lock()
 _frame_slots = threading.BoundedSemaphore(2)  # ffmpeg de quadro avulso ao mesmo tempo
 
 
+# blocos da Fase 2 que o editor manda INTEIROS (todos os de cada tipo) quando algum anda
+BLOCOS_F2 = ("inserts", "splitInserts", "splitVideos", "hook", "behind", "wordAccents", "numeros")
+
+
+def juntar_salvamentos(velho: dict, novo: dict) -> dict:
+    """Two saves before the agent applies the first: the second ADDS to the first.
+
+    Each save carries only what changed since the previous one (the editor resets its
+    reference on Save), so writing it over a pending preview_edits.json lost the first
+    one. Notes add up; effects merge by `ref` (newest wins); the zoom list is always the
+    whole list, and its `mudou` adds up; whole-state keys (`edl.ranges`, the Phase 2
+    blocks of a kind, camadas, efeitos) are replaced by the newest.
+    """
+    out = {**velho, **{k: v for k, v in novo.items() if k not in ("notes", "editData")}}
+    notas = (velho.get("notes") or []) + (novo.get("notes") or [])
+    if notas:
+        out["notes"] = notas
+    ev, en = velho.get("editData") or {}, novo.get("editData") or {}
+    if ev or en:
+        ed = {**ev, **{k: v for k, v in en.items() if k not in ("cenas", "camera")}}
+        if ev.get("cenas") or en.get("cenas"):
+            por_ref = {c["ref"]: c for c in ev.get("cenas") or []}
+            por_ref.update({c["ref"]: c for c in en.get("cenas") or []})
+            ed["cenas"] = [por_ref[k] for k in sorted(por_ref)]
+        if en.get("camera"):
+            cam_novo = dict(en["camera"])
+            cam_novo["mudou"] = sorted(set((ev.get("camera") or {}).get("mudou") or []) | set(cam_novo.get("mudou") or []))
+            ed["camera"] = cam_novo
+        out["editData"] = ed
+    return out
+
+
 def ensure_token(root: Path) -> str:
     """O código que o celular precisa ter quando o servidor abre para a rede.
 
@@ -572,6 +604,14 @@ class Handler(BaseHTTPRequestHandler):
             if "efeitos" in body:
                 ef.save(self.root / "efeitos.json", body["efeitos"])
         out = self.root / name
+        if name == "preview_edits.json" and out.exists():
+            # o agente ainda não aplicou o Salvar anterior: o novo SOMA a ele, não o apaga
+            try:
+                velho = json.loads(out.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                velho = None
+            if isinstance(velho, dict):
+                body = juntar_salvamentos(velho, body)
         tmp = out.with_suffix(".tmp")
         tmp.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(out)
