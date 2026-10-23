@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "helpers"))
@@ -68,6 +69,34 @@ def test_aviso_separa_o_pedido_escrito_das_marcacoes(tmp_path):
     assert "PEDIDO (agulha em 0:12.50, fase 2) troca a música do final" in aviso
     assert "[0:03.00 → 0:05.00] (fase 1) tira essa pausa" in aviso
     assert "0:12.50 → 0:12.50" not in aviso  # o pedido não vira um trecho de duração zero
+
+
+def test_uma_vez_sai_no_primeiro_aviso(tmp_path):
+    """`--uma-vez` roda como tarefa em segundo plano (sem o prazo do Monitor): o que já estava
+    pendente sai na hora, e sem nada pendente ele espera o próximo Salvar e termina com o aviso."""
+    import subprocess
+    vigia = Path(__file__).resolve().parents[1] / "helpers" / "watch_edits.py"
+    nota = {"type": "timeline-edits", "notes": [{"start": 1, "end": 1, "text": "pedido", "geral": True}]}
+    pend = tmp_path / "pendente"
+    pend.mkdir()
+    (pend / "preview_edits.json").write_text(json.dumps(nota), encoding="utf-8")
+    r = subprocess.run([sys.executable, "-X", "utf8", str(vigia), str(pend), "--uma-vez"],
+                       capture_output=True, text=True, encoding="utf-8", timeout=20)
+    assert r.returncode == 0 and "1 pedido escrito" in r.stdout
+
+    vazio = tmp_path / "vazio"
+    vazio.mkdir()
+    p = subprocess.Popen([sys.executable, "-X", "utf8", str(vigia), str(vazio), "--uma-vez"],
+                         stdout=subprocess.PIPE, text=True, encoding="utf-8")
+    try:
+        time.sleep(1.0)
+        assert p.poll() is None  # sem nada pendente, fica esperando
+        (vazio / "preview_edits.json").write_text(json.dumps(nota), encoding="utf-8")
+        out, _ = p.communicate(timeout=20)
+    finally:
+        if p.poll() is None:
+            p.kill()
+    assert p.returncode == 0 and "PEDIDO (agulha em 0:01.00" in out
 
 
 def test_aviso_conta_as_camadas(tmp_path):

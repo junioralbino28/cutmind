@@ -14,6 +14,11 @@ Run this under the Monitor tool so every save notifies the session automatically
             description="marcações do preview", persistent=True)
 
 Each stdout line is one notification. Stays quiet while nothing changes.
+
+Where the Monitor expires (Claude Code 2.1.309 caps it at 30 min and has no `persistent`),
+run it with `--uma-vez` as a background task instead (Bash `run_in_background`): it waits
+as long as the session lives, prints the first save (or what is already pending) and exits,
+which notifies the session. Apply it, delete the file, and start it again.
 """
 from __future__ import annotations
 
@@ -322,7 +327,9 @@ def fmt(t: float) -> str:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").expanduser().resolve()
+    uma_vez = "--uma-vez" in sys.argv[1:]  # sai no primeiro aviso: tarefa em segundo plano, sem prazo
+    args = [a for a in sys.argv[1:] if a != "--uma-vez"]
+    root = Path(args[0] if args else ".").expanduser().resolve()
     watched = {
         root / "preview_edits.json": digest,
         root / "preview_style.json": style_digest,
@@ -330,12 +337,17 @@ def main() -> int:
     }
     # a file already sitting there at startup means it is pending — say so once
     last: dict[Path, float | None] = {}
+    pendente = False
     for target, fn in watched.items():
         last[target] = target.stat().st_mtime if target.exists() else None
         if last[target] is not None:
             print(fn(target), flush=True)
+            pendente = True
+    if uma_vez and pendente:
+        return 0
 
     while True:
+        avisou = False
         for target, fn in watched.items():
             try:
                 cur = target.stat().st_mtime if target.exists() else None
@@ -345,8 +357,11 @@ def main() -> int:
                 last[target] = cur
                 time.sleep(0.15)  # let the atomic replace settle before reading
                 print(fn(target), flush=True)
+                avisou = True
             elif cur is None:
                 last[target] = None  # applied and deleted — re-arm for the next save
+        if uma_vez and avisou:
+            return 0
         time.sleep(2)
 
 
