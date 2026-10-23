@@ -84,6 +84,7 @@ import camadas as cam  # mesma pasta deste arquivo
 import efeitos as ef  # mesma pasta deste arquivo
 import velocidade as vel  # mesma pasta deste arquivo
 import pacotes as pk  # mesma pasta deste arquivo
+import projetos as pj  # mesma pasta deste arquivo
 
 APP_DIR = Path(__file__).resolve().parent.parent / "assets" / "preview"
 EFEITOS_DIR = APP_DIR.parent / "efeitos"
@@ -134,6 +135,7 @@ _thumb_lock = threading.Lock()
 _thumb_state: dict[str, float] = {}  # video path -> mtime generated
 _upload_lock = threading.Lock()
 _frame_slots = threading.BoundedSemaphore(2)  # ffmpeg de quadro avulso ao mesmo tempo
+_troca_lock = threading.Lock()  # abrir outro projeto troca a pasta do servidor inteiro
 
 
 # blocos da Fase 2 que o editor manda INTEIROS (todos os de cada tipo) quando algum anda
@@ -343,10 +345,11 @@ def gen_thumbs(video: Path, out_dir: Path) -> None:
 
 
 class Handler(BaseHTTPRequestHandler):
-    root: Path  # set on the class by main()
+    root: Path  # set on the class by main(); a tela Projetos troca por outro (_trocar)
     token: str | None = None  # só existe quando o servidor abre para a rede
     allow_hosts: tuple[str, ...] = ()
     upload_dir: Path | None = None
+    upload_dir_fixo = False  # --upload-dir dado: não acompanha a troca de projeto
     max_upload: int = 8 * 1024 ** 3
     bind_host: str = "127.0.0.1"
     pacotes: pk.Pacotes | None = None  # a biblioteca; nasce no primeiro pedido
@@ -546,6 +549,10 @@ class Handler(BaseHTTPRequestHandler):
             self._thumbs(path[len("/gen/thumbs/"):])
         elif path == "/api/state":
             self._state()
+        elif path == "/api/projetos":
+            self._projetos()
+        elif path == "/gen/projeto-capa":
+            self._projeto_capa(query)
         elif path == "/api/midia":
             self._midia()
         elif path == "/api/pacotes":
@@ -566,6 +573,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in ("/api/pacotes/usar", "/api/pacotes/favorito"):
             self._pacote_post(path)
+            return
+        if path in ("/api/projetos/abrir", "/api/projetos/novo"):
+            self._projeto_post(path)
             return
         if path != "/api/save":
             self._fail(404, "unknown route")
@@ -921,6 +931,91 @@ class Handler(BaseHTTPRequestHandler):
                     "duracao": p["duracao"]})
 
     # ---- dynamic bits ----
+    # ---- projetos (a tela Projetos do editor) ----
+    def _projetos(self) -> None:
+        """Os cartões: os projetos da lista (~/.cutmind/projetos.json), o mais mexido primeiro."""
+        atual = pj.id_de(self.root)
+        itens = []
+        for x in pj.lista():
+            try:
+                r = pj.resumo(Path(x["edit"]))
+            except OSError:
+                continue
+            r["aberto"] = r["id"] == atual
+            itens.append(r)
+        if not any(r["aberto"] for r in itens):
+            # o aberto sempre aparece, mesmo quando ~/.cutmind não deixou gravar a lista
+            try:
+                r = pj.resumo(self.root)
+                r["aberto"] = True
+                itens.append(r)
+            except OSError:
+                pass
+        itens.sort(key=lambda r: r["mudou"], reverse=True)
+        self._json({"aberto": atual, "projetos": itens})
+
+    def _projeto_capa(self, query: str) -> None:
+        pid = (parse_qs(query).get("id") or [""])[0]
+        edit = self.root if pid == pj.id_de(self.root) else pj.por_id(pid)
+        if not edit:
+            self._json({"error": "projeto fora da lista"}, 404)
+            return
+        with _frame_slots:
+            p = pj.capa(edit)
+        if p:
+            self._send_file(p)
+        else:
+            self._json({"error": "projeto sem vídeo ainda"}, 404)
+
+    def _projeto_post(self, path: str) -> None:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self._fail(400, "invalid Content-Length")
+            return
+        if length > 10_000:
+            self._fail(413, "pedido grande demais")
+            return
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, json.JSONDecodeError):
+            body = None
+        if not isinstance(body, dict):
+            self._json({"error": "pedido inválido"}, 400)
+            return
+        if path.endswith("/abrir"):
+            # só pelo id da lista: ninguém abre pela rede uma pasta que não esteja nela
+            edit = pj.por_id(body.get("id"))
+            if not edit or not (edit / "state.json").is_file():
+                self._json({"error": "projeto não encontrado"}, 404)
+                return
+        else:
+            # pasta nova ao lado da pasta de vídeos do projeto aberto (Downloads/<nome>/edit)
+            try:
+                edit = pj.criar(self.root.parent.parent, str(body.get("nome") or ""))
+            except ValueError as e:
+                self._json({"error": str(e)}, 400)
+                return
+            except OSError as e:
+                self._json({"error": f"não consegui criar a pasta: {e}"}, 500)
+                return
+        self._trocar(edit)
+        self._json({"ok": True, "id": pj.id_de(edit), "pasta": edit.parent.name})
+
+    def _trocar(self, edit: Path) -> None:
+        """O editor passa a mostrar outro projeto. O código do celular não muda (fica na
+        memória); o agente sabe pelo ~/.cutmind/aberto.json, que o watch_edits.py vigia."""
+        cls = type(self)
+        with _troca_lock:
+            cls.root = edit.resolve()
+            if not cls.upload_dir_fixo:
+                cls.upload_dir = cls.root.parent
+            try:
+                pj.registrar(cls.root)
+                pj.marcar_aberto(cls.root)
+            except OSError as e:
+                sys.stderr.write(f"[{time.strftime('%H:%M:%S')}] lista de projetos: {e}\n")
+
     def _state(self) -> None:
         state_p = self.root / "state.json"
         state: dict = {}
@@ -960,6 +1055,8 @@ class Handler(BaseHTTPRequestHandler):
         video = self._current_video()
         self._json({
             "state": state,
+            # o editor recarrega quando este id muda (outro projeto aberto, aqui ou no celular)
+            "projeto": {"id": pj.id_de(self.root)},
             "edl": edl,
             "mtimes": mtimes,
             "videoDuration": probe_duration(video) if video else 0,
@@ -1096,10 +1193,16 @@ def main() -> None:
     Handler.root = root
     Handler.allow_hosts = tuple(args.allow_host)
     Handler.upload_dir = upload_dir
+    Handler.upload_dir_fixo = args.upload_dir is not None
     Handler.max_upload = int(args.max_upload_gb * 1024 ** 3)
     Handler.bind_host = args.host
     if not is_local_bind(args.host):
         Handler.token = ensure_token(root)
+    try:  # a tela Projetos lista este projeto, e o agente sabe qual está aberto
+        pj.registrar(root)
+        pj.marcar_aberto(root)
+    except OSError as e:
+        print(f"aviso: lista de projetos ({pj.casa()}) não gravada: {e}", flush=True)
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"CutMind preview -> http://{pc_host(args.host)}:{args.port}  (root: {root})", flush=True)
     if Handler.token:

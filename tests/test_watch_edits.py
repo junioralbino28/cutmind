@@ -274,3 +274,73 @@ def test_aviso_do_gancho_e_do_numero(tmp_path):
     assert "2 textos de destaque mudados" in aviso
     assert "gancho: bloco em x=540 y=520" in aviso and 'text="Só 2% cortaram"' in aviso and "fonte=Anton" in aviso
     assert "número #0" in aviso and 'valor="6"' in aviso and "tamanho=0.8" in aviso
+
+
+# ---- a tela Projetos: o vigia segue o projeto aberto no editor (~/.cutmind/aberto.json) ----
+def _proj(base, nome, **extra):
+    edit = base / nome / "edit"
+    edit.mkdir(parents=True)
+    (edit / "state.json").write_text(json.dumps({"project": nome, "phase": 1, **extra}), encoding="utf-8")
+    return edit
+
+
+def _vigia(pasta, *flags):
+    import subprocess
+    vigia = Path(__file__).resolve().parents[1] / "helpers" / "watch_edits.py"
+    return subprocess.Popen([sys.executable, "-X", "utf8", str(vigia), str(pasta), *flags],
+                            stdout=subprocess.PIPE, text=True, encoding="utf-8")
+
+
+def test_uma_vez_avisa_quando_o_editor_abre_outro_projeto(tmp_path):
+    import projetos as pj
+    a, b = _proj(tmp_path, "A"), _proj(tmp_path, "Novo", phase=0, novo=True)
+    pj.marcar_aberto(a)
+    p = _vigia(a, "--uma-vez")
+    try:
+        time.sleep(1.0)
+        assert p.poll() is None
+        pj.marcar_aberto(b)
+        out, _ = p.communicate(timeout=20)
+    finally:
+        if p.poll() is None:
+            p.kill()
+    assert p.returncode == 0
+    assert f"O EDITOR ABRIU OUTRO PROJETO: Novo — {b.resolve()}" in out
+    assert "projeto novo" in out and "Enviar" in out
+
+
+def test_aberto_antigo_ao_ligar_nao_e_aviso(tmp_path):
+    """aberto.json de outra sessão (editor fechado) não derruba o vigia que acabou de ligar."""
+    import projetos as pj
+    a, b = _proj(tmp_path, "A"), _proj(tmp_path, "B")
+    pj.marcar_aberto(b)
+    p = _vigia(a, "--uma-vez")
+    try:
+        time.sleep(2.5)
+        assert p.poll() is None
+        (a / "preview_edits.json").write_text(json.dumps({"type": "timeline-edits", "notes": [
+            {"start": 1, "end": 1, "text": "pedido", "geral": True}]}), encoding="utf-8")
+        out, _ = p.communicate(timeout=20)
+    finally:
+        if p.poll() is None:
+            p.kill()
+    assert "1 pedido escrito" in out and "OUTRO PROJETO" not in out
+
+
+def test_sem_uma_vez_passa_a_vigiar_a_pasta_nova(tmp_path):
+    import projetos as pj
+    a, b = _proj(tmp_path, "A"), _proj(tmp_path, "B")
+    pj.marcar_aberto(a)
+    p = _vigia(a)
+    try:
+        time.sleep(1.0)
+        pj.marcar_aberto(b)
+        time.sleep(3.0)
+        (b / "preview_edits.json").write_text(json.dumps({"type": "timeline-edits", "notes": [
+            {"start": 2, "end": 2, "text": "no projeto B", "geral": True}]}), encoding="utf-8")
+        time.sleep(3.0)
+    finally:
+        p.kill()
+    out, _ = p.communicate(timeout=20)
+    assert f"OUTRO PROJETO: B — {b.resolve()}" in out
+    assert "no projeto B" in out

@@ -19,6 +19,11 @@ Where the Monitor expires (Claude Code 2.1.309 caps it at 30 min and has no `per
 run it with `--uma-vez` as a background task instead (Bash `run_in_background`): it waits
 as long as the session lives, prints the first save (or what is already pending) and exits,
 which notifies the session. Apply it, delete the file, and start it again.
+
+It also watches `~/.cutmind/aberto.json` (projetos.py): when the user opens ANOTHER project
+in the editor's Projetos screen (or creates a new one), it says which and where. With
+`--uma-vez` it exits on that too: from then on the work is in that folder, so restart the
+watcher there. Without it, it follows the new folder by itself.
 """
 from __future__ import annotations
 
@@ -26,6 +31,8 @@ import json
 import sys
 import time
 from pathlib import Path
+
+import projetos as pj  # mesma pasta deste arquivo
 
 
 def digest(p: Path) -> str:
@@ -360,6 +367,30 @@ def upload_digest(p: Path) -> str:
     return "\n".join(out)
 
 
+def troca_digest(edit: Path) -> str:
+    """O usuário abriu outro projeto no editor (tela Projetos), no PC ou no celular."""
+    try:
+        st = json.loads((edit / "state.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        st = {}
+    out = [f"O EDITOR ABRIU OUTRO PROJETO: {st.get('project') or edit.parent.name} — {edit}"]
+    if st.get("novo") and not (edit / "edl.json").exists():
+        out.append("  · projeto novo, criado pelo editor, ainda sem corte: os vídeos chegam pelo Enviar "
+                   "(preview_upload.json); com eles, siga a Fase 1 nessa pasta.")
+    else:
+        out.append(f"  · fase {st.get('phase')}: {st.get('message') or ''}".rstrip())
+    pend = [n for n in ("preview_edits.json", "preview_style.json", "preview_upload.json") if (edit / n).exists()]
+    if pend:
+        out.append(f"  · pendente lá: {', '.join(pend)}")
+    out.append(f"  Daqui em diante o trabalho é nessa pasta: ligue o vigia nela ({edit}).")
+    return "\n".join(out)
+
+
+def _aberto() -> str | None:
+    ab = pj.aberto()
+    return ab.get("edit") if ab else None
+
+
 def fmt(t: float) -> str:
     m, s = divmod(max(0.0, float(t)), 60)
     return f"{int(m)}:{s:05.2f}"
@@ -369,11 +400,18 @@ def main() -> int:
     uma_vez = "--uma-vez" in sys.argv[1:]  # sai no primeiro aviso: tarefa em segundo plano, sem prazo
     args = [a for a in sys.argv[1:] if a != "--uma-vez"]
     root = Path(args[0] if args else ".").expanduser().resolve()
-    watched = {
-        root / "preview_edits.json": digest,
-        root / "preview_style.json": style_digest,
-        root / "preview_upload.json": upload_digest,
-    }
+
+    def vigiar(pasta: Path) -> dict:
+        return {
+            pasta / "preview_edits.json": digest,
+            pasta / "preview_style.json": style_digest,
+            pasta / "preview_upload.json": upload_digest,
+        }
+
+    watched = vigiar(root)
+    # só a TROCA conta: o projeto que já estava aberto quando o vigia ligou não é aviso
+    # (pode ser de outra sessão, com o editor fechado)
+    aberto_antes = _aberto()
     # a file already sitting there at startup means it is pending — say so once
     last: dict[Path, float | None] = {}
     pendente = False
@@ -387,6 +425,17 @@ def main() -> int:
 
     while True:
         avisou = False
+        aberto = _aberto()
+        if aberto and aberto != aberto_antes:
+            aberto_antes = aberto
+            novo = Path(aberto).resolve()
+            if novo != root:
+                print(troca_digest(novo), flush=True)
+                if uma_vez:
+                    return 0
+                # Monitor: passa a vigiar a pasta nova; o que está pendente lá já foi dito
+                root, watched = novo, vigiar(novo)
+                last = {t: (t.stat().st_mtime if t.exists() else None) for t in watched}
         for target, fn in watched.items():
             try:
                 cur = target.stat().st_mtime if target.exists() else None
