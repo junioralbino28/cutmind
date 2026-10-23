@@ -192,7 +192,8 @@ the layer questions in chat.
   - `cenas` — ONLY the effects that changed, each by `ref` (its index in `cenas[]`): `desligada` (true = the effect is off: drop it or set the flag), `texto` (`{x, y}`, the centre of the effect's movable block in 1080×1920 frame px; null = the component's default place), `textos` (the text fields: `palavra`, `titulo`, `frase`…; a list is one line per item) and `estilo` (`fonte` = a family of the font catalog, `peso`, `cor`, `tamanho` as a multiplier, `contorno` in px, `corContorno`; null = the effect's own look). Write those four keys into `cenas[ref]` as they come and re-render only each effect's window (`start`–`end`).
   - `destaques` — the hook (`alvo: "hook"`) and on-screen numbers (`alvo: "numero"`, `ref`) the user changed in the same Text panel: `texto` (centre in frame px), `estilo` (as above) and `textos` — the hook's `text` (write it to `hook.text` and drop `lines`), a number's `prefixo`, `valor` (store it as a number), `sufixo`, `rotulo`. Re-render each one's window (the hook from 0 to `hook.endSec`).
   - `camera` — `zooms`, the WHOLE list, one base zoom per take (the template reads `zooms[i % length]`, so one per take is per take), and `mudou`, the takes the user changed: replace `camera.zooms` and re-render those takes.
-- `camadas` — images and audio the user put on the timeline (the server already wrote `<edit>/camadas.json`): images → `camadas_edit_data.py`, sound → `mixar_final.py` (`references/shortform.md`, "Layers from the editor").
+  - `legenda` — the captions' Text panel, whole: `estilo` (same keys as above; null = drop `captions.estilo`) and `acompanhar` (the captions move with the person) → `captions.estilo` / `captions.acompanhar` in edit-data.json; with `acompanhar`, run `camadas_edit_data.py` (it tracks the face) and re-render.
+- `camadas` — images, audio and TEXTS the user put on the timeline (the server already wrote `<edit>/camadas.json`): images and texts → `camadas_edit_data.py` (it also makes the person's cut-out for what goes behind them and the face track for what follows them), sound → `mixar_final.py` (`references/shortform.md`, "Layers from the editor").
 - `efeitos` — filters and transitions from the library, plus each take's Ajustar (`ajuste`) (the server already wrote `<edit>/efeitos.json`) → `efeitos_render.py <edit>` writes `remotion/public/cut.mp4` with them, then re-render (`references/shortform.md`, "Effects from the editor").
 
 Then delete `preview_edits.json` and update `state.json`.
@@ -206,7 +207,7 @@ maps each tool to its file, field, helper and check.
 |---|---|
 | takes: trim, remove, reorder, split, duplicate, volume, speed, speed curve | The takes (`edl.json`) |
 | colour (Ajustar), filters, transitions | Colour, filters and transitions (`efeitos.json`) |
-| images, audio, soundtracks, muting the video | Images, audio and soundtracks (`camadas.json`) |
+| images, audio, texts, soundtracks, muting the video | Images, audio, text and soundtracks (`camadas.json`) |
 | hook and insert timing, caption style, caption position | Phase 2 blocks, style and captions |
 
 ---

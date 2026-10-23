@@ -244,6 +244,16 @@ backwards on every long word.
   and still read as the same style; 9 already looked heavy. Absent or 0 = no
   outline, the look the Estilo panel previews. Check a still over the lightest part
   of the frame before the full render.
+- **The user's own font, colour, size and outline** (the captions' Text panel in the
+  editor) arrive as `captions.estilo`: `fonte` (a family of `src/fontes.ts`) + `peso`,
+  `cor`, `tamanho` (×), `contorno` (px, over `strokePx`), `corContorno`. The karaoke and
+  the three static styles take all of it, and the grouping by width follows the new
+  font and size (a narrower font fits more words per cue); `stacked` and `scatter` take
+  only `tamanho` — their fonts and colours ARE the style. Absent = each style as drawn.
+- **`captions.acompanhar: true`** moves the whole caption layer with the person: by how
+  far the face (`public/rastreio.json` through the camera) is from where it usually sits
+  on screen (the median), capped at ±160 px sideways and ±300 px up and down so the
+  action rail stays clear. Every style follows, the hand-placed phrases included.
 
 ### karaoke (default), STACKED or SCATTER
 
@@ -608,17 +618,29 @@ Verify `max_volume ≤ -1 dB` (`-af volumedetect`). Copy to `edit/final.mp4`.
 
 ## Layers from the editor (`camadas.json`)
 
-The user can put images and audio on the timeline (editor: **Áudio** / **Imagem**;
+The user can put images, audio and texts on the timeline (editor: **Áudio** /
+**Imagem** / **Texto**, with **Modelos** for two or three texts in mixed fonts at once;
 `references/celular.md`). The project file is `<edit>/camadas.json`, times in
 cut.mp4 seconds, schema in `helpers/camadas.py`; every save also carries it in
 `preview_edits.json`, and `watch_edits.py` lists each item.
 
-1. **Images** → `uv run python -X utf8 helpers/camadas_edit_data.py <edit>`. Each
-   visible image becomes an `inserts[]` card (the upper-zone card above, marked
+1. **Images and texts** → `uv run python -X utf8 helpers/camadas_edit_data.py <edit>`.
+   Each visible image becomes an `inserts[]` card (the upper-zone card above, marked
    `"camada": <id>`) and is copied to `public/midia/camada-<id>.<ext>` — a name with
    no spaces or accents for `staticFile`. Only those inserts are touched, and they
-   go last (on top, as in the editor). Re-run after every save: hidden or deleted
-   layers leave the edit-data. Then re-render.
+   go last (on top, as in the editor). An image with `atras` becomes the big card
+   behind the person instead (`behind[]`, marked the same way). Each visible text
+   becomes a `textos[]` item, drawn by `src/CamadasTexto.tsx` exactly as the editor
+   showed it: centre `x`/`y`, the Text panel's `estilo`, `curva` (an arc). For a text
+   or image with `atras` the helper makes the person's cut-out of that window
+   (`public/pessoa-<id>-<first frame>-<frames>.mov`, `person_matte.py`, ~30 s per 3 s
+   on CPU); for a text with `acompanhar` (and for `captions.acompanhar`) it tracks the
+   face into `public/rastreio.json` (`face_track.py`, its own file — the camera's
+   `track.json` stays as it is). Both are redone when the window or `cut.mp4` change;
+   `--sem-recorte` only prints the commands. Re-run after every save: hidden or deleted
+   layers leave the edit-data. Then re-render. Something behind the person sits on the
+   bare picture: a full-frame effect in the same window (split screen, a scene that
+   redraws the frame) covers it — the editor warns when the user turns it on there.
 2. **Sound** → `uv run python -X utf8 helpers/mixar_final.py <edit> --render out/render.mp4`
    replaces the hand-written re-mux above, same rules: picture range/tags fixed,
    voice from cut.mp4 with the 1-frame delay — left **out** when the user turned the
@@ -633,8 +655,9 @@ cut.mp4 seconds, schema in `helpers/camadas.py`; every save also carries it in
    above) and only adds the layers; it refuses when the video's sound is off,
    because voice and SFX come mixed there. `--mostrar` prints the command. It
    prints the colour tags and the peak when done.
-3. **Verify** like any delivery: a still inside each image window, the layer
-   audible in its window, a silenced layer and a hidden image absent.
+3. **Verify** like any delivery: a still inside each image and text window, the layer
+   audible in its window, a silenced layer and a hidden image or text absent, and a
+   text behind the person actually cut by the head.
 
 **Same save re-cuts?** The layer times belong to the cut that was on screen. When
 `preview_edits.json` also carries `edl`, map every `inicio` before step 1: find the

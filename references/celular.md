@@ -111,11 +111,14 @@ Each layer is a track, as in any editor:
 - A header pinned at the left: speaker (audio) or eye (image), plus a lock. The
   video track gets a speaker too: it turns the original sound off (in Corte). The
   speaker in the play row only mutes the phone's preview, nothing else.
-- Tap selects: **Voltar · Volume · Melhorar · Excluir** for audio (volume 0–200%;
-  Melhorar asks the agent to clean the noise and run the voice chain — not offered on
-  a library track, where it would only damage the music), **Voltar · Excluir** for an
-  image. Hold and drag moves it; the white handles trim (audio
-  cannot stretch past its file). A locked layer cannot be selected or moved.
+- Tap selects: **Voltar · Volume · Melhorar · Duplicar · Excluir** for audio (volume
+  0–200%; Melhorar asks the agent to clean the noise and run the voice chain — not
+  offered on a library track, where it would only damage the music), **Voltar · Atrás
+  da pessoa · Duplicar · Excluir** for an image (behind the person it becomes the big
+  card behind the head; the preview shows it there, see-through). Hold and drag moves
+  it; the white handles trim (audio cannot stretch past its file). **Duplicar** (and
+  Ctrl+D) copies the layer into a new track right above, same time. A locked layer
+  cannot be selected or moved.
 - Images are tracks above the video, audio below the original sound. The timeline
   grows with the layers up to a ceiling, then the tracks get thinner.
 - Corte plays the audio layers along with the video and shows the image where the
@@ -134,6 +137,39 @@ the layer shows.
 
 The agent side (images → inserts, sound → final mix) is in `references/shortform.md`,
 "Layers from the editor".
+
+## Texts (layers)
+
+**Texto** in the toolbar opens **Texto · Modelos**. **Texto** puts "Seu texto" at the
+needle (centre of the frame, 3 s) on a track of its own and opens the Text panel with the
+words selected, so typing replaces them. **Modelos** shows six mixes of two or three
+texts in different fonts (the "Zoom / do seu / vídeo" kind), each card drawn over the
+frame at the needle; tapping one adds every line as its own text track, same time, in
+one undo step.
+
+- The Text panel: what is written (line breaks kept), font (the 94 of the catalog, by
+  tab), colour, size (20–500%), outline and its colour, **Curva** (−100 to 100: the line
+  bends into an arc) and height. Everything changes live on the video; **Pronto** keeps
+  it as one undo step, **Cancelar** goes back, an emptied text removes the layer.
+- On the video: tap a text to select it, drag to move it (it snaps to the middle, both
+  ways), tap the selected one to open the panel; the arrow keys nudge it 2 px (Shift,
+  10). The text is drawn with the final render's numbers (`src/CamadasTexto.tsx`), so
+  what you see is where it lands — checked within 3–5 px against a render.
+- Selected: **Voltar · Editar · Atrás da pessoa · Acompanhar · Duplicar · Excluir**.
+  Behind the person and following the person happen in the final video (the agent cuts
+  the person out and tracks the face); the preview shows the text in front, and follows
+  the face when the track already exists. Turning "behind" on over a full-frame effect
+  (split screen, an effect of the agent) warns that it will be covered there.
+- Corte shows every text; Final shows only the ones the video does not have yet.
+
+## The captions in the final video
+
+In Final, tapping any phrase of the caption track selects the whole caption:
+**Voltar · Texto · Acompanhar · Posição · Original**. **Texto** opens the Text panel for
+all the phrases (font, colour, size, outline; on the stacked and scattered styles only
+the size — their fonts and colours are the style) and previews the phrase at the needle
+in Corte, where the video has no burned caption. **Acompanhar** makes the captions move
+with the person; **Posição** opens "Posição das frases". Salvar sends `editData.legenda`.
 
 ## Filters and transitions
 
