@@ -123,7 +123,13 @@ button { font-family: inherit; cursor: pointer; }
   overflow: hidden;
   background: #000;
 }
-.player:fullscreen { border-radius: 0; }
+/* tela cheia: do PALCO, não do player. O navegador estica o elemento em tela cheia até a tela
+   inteira; um player em pé esticado num monitor deitado ficava 1920×1080 e o vídeo, com
+   object-fit: cover, saía cortado em cima e embaixo. O palco centraliza o player e o mede por
+   ele mesmo (cqw/cqh): o vídeo fica inteiro, com faixas pretas dos lados. */
+/* !important: .desk .stage e .app.styling .stage, mais adiante, têm o mesmo peso e dariam margem */
+.stage:fullscreen { padding: 0 !important; background: #000; }
+.stage:fullscreen .player { border-radius: 0; }
 .tap-play { position: absolute; inset: 0; background: transparent; border: 0; }
 /* ao aparar: quadro do vídeo de origem na alça, enquadrado como o vídeo */
 .peek { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; background: #000; z-index: 3; pointer-events: none; }

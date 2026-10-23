@@ -1543,7 +1543,9 @@ $('btnPlay').innerHTML = ICON.play;
 $('btnMute').innerHTML = ICON.vol;
 $('btnFull').innerHTML = ICON.cheia;
 $('btnFull').addEventListener('click', () => {
-  if (player.requestFullscreen) player.requestFullscreen().catch(() => {});
+  // a tela cheia é do PALCO, não do player (ver .stage:fullscreen no CSS)
+  const palco = $('stage');
+  if (palco.requestFullscreen) palco.requestFullscreen().catch(() => {});
   else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen(); // iPhone: só o vídeo vai para a tela cheia
 });
 function togglePlay() {
