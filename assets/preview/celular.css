@@ -161,6 +161,13 @@ button { font-family: inherit; cursor: pointer; }
 .ov-tx-w.fantasma .ov-tx { color: transparent !important; -webkit-text-stroke-color: transparent !important; }
 .ov-tx-w.fantasma text { fill: transparent; stroke: transparent; }
 .ov-tx-w.trav .ov-tx, .ov-tx-w.trav text { pointer-events: none; cursor: default; }
+/* a frase da legenda com o estilo do painel aberto, no lugar do estilo (prévia aproximada) */
+.ov-leg { position: absolute; inset: 0; container-type: size; overflow: hidden; z-index: 3; pointer-events: none; }
+.ov-leg-txt {
+  position: absolute; left: 50%; translate: -50% -50%;
+  white-space: nowrap; line-height: 1.1; letter-spacing: -0.09cqw;
+  text-shadow: 0 0.37cqw 1.85cqw rgba(0, 0, 0, 0.55);
+}
 /* efeito do agente escolhido: a moldura do bloco que se arrasta, no lugar e no tamanho dele
    no quadro 1080x1920 (o centro em left/top). Acima do toque de play, que fica por baixo */
 .ov-cena {
@@ -406,7 +413,9 @@ button { font-family: inherit; cursor: pointer; }
   box-shadow: inset 2px 0 0 var(--dim2);
   pointer-events: none;
 }
-.chip.cap { box-shadow: inset 2px 0 0 #8fb4ff; }
+.chip.cap { box-shadow: inset 2px 0 0 #8fb4ff; pointer-events: auto; }
+/* escolhida, a legenda é uma só: todas as frases acendem */
+.chip.cap.sel { outline: 1.5px solid #fff; outline-offset: -1px; }
 .chip.txt { box-shadow: inset 2px 0 0 #e7c27d; }
 .chip.ins { box-shadow: inset 2px 0 0 #b49cf0; }
 /* o que a pessoa marcou para o agente arrumar: laranja da marca */

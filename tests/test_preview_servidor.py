@@ -562,3 +562,15 @@ def test_juntar_troca_o_que_vem_inteiro():
     d = ps.juntar_salvamentos(velho, novo)
     assert d["edl"] == {"ranges": [2]} and d["camadas"] == {"faixas": [1]}
     assert d["editData"] == {"inserts": [{"ref": 0, "start": 2}], "hook": {"endSec": 3}}
+
+
+def test_juntar_soma_os_destaques_pelo_alvo():
+    """O gancho mudado num Salvar e um número no seguinte: os dois chegam ao agente
+    (cada Salvar só leva o que mudou desde o anterior)."""
+    gancho = {"alvo": "hook", "estilo": {"cor": "#ffe500"}}
+    numero = {"alvo": "numero", "ref": 1, "estilo": {"tamanho": 0.8}}
+    numero_de_novo = {"alvo": "numero", "ref": 1, "estilo": {"tamanho": 1.2}}
+    d = ps.juntar_salvamentos({"editData": {"destaques": [gancho, numero]}},
+                              {"editData": {"destaques": [numero_de_novo], "legenda": {"acompanhar": True}}})
+    assert d["editData"]["destaques"] == [gancho, numero_de_novo]
+    assert d["editData"]["legenda"] == {"acompanhar": True}

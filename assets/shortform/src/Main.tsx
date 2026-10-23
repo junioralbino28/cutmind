@@ -36,8 +36,8 @@ import {StackedCaptions} from './StackedCaptions';
 import {ScatterCaptions} from './ScatterCaptions';
 import {SimpleCaptions, SIMPLE_VARIANTS} from './SimpleCaptions';
 import {spotFor, spotCentre, type Spot} from './captionPlace';
-import {CATALOGO, carregarFontesUsadas, familiaCss} from './fontes';
-import {CamadasTexto, type Texto} from './CamadasTexto';
+import {CATALOGO, carregarFontesUsadas, familiaCss, useFontesProntas} from './fontes';
+import {CamadasTexto, rostoNaTela, type Texto} from './CamadasTexto';
 
 const {fontFamily} = loadFont('normal', {weights: ['400', '600', '900']});
 
@@ -102,6 +102,12 @@ export type EditData = {
     stackedOffsetY?: number;
     fontScale?: number;
     sfx?: {enabled?: boolean; clickVolume?: number; scratchVolume?: number};
+    // the editor's Text panel for the captions: `fonte` (a family of fontes.ts) and `peso`,
+    // `cor`, `contorno`, `corContorno` for the karaoke and the three static styles; `tamanho`
+    // (a multiplier) for every style. Absent = each style exactly as designed
+    estilo?: {fonte?: string; peso?: number; cor?: string; tamanho?: number; contorno?: number; corContorno?: string};
+    // the captions move with the person (the face in public/rastreio.json), every style
+    acompanhar?: boolean;
   };
   inserts: Insert[];
   behind: Behind[];
@@ -342,9 +348,20 @@ const CaptionShell: React.FC<{fromFrame: number; spot: Spot | null; boxW: number
   );
 };
 
+// `captions.estilo` (the editor's Text panel): a catalog font, colour, size and outline
+const CE = D.captions.estilo ?? {};
+const CAP_FONTE = typeof CE.fonte === 'string' && CE.fonte in CATALOGO ? CE.fonte : null;
+const K_FAM = CAP_FONTE ? familiaCss(CAP_FONTE) : fontFamily;
+const K_PESO = CAP_FONTE ? Number(CE.peso) || CATALOGO[CAP_FONTE].peso : 900;
+const K_SIZE = D.captions.fontSize * (Number(CE.tamanho) > 0 ? clamp(Number(CE.tamanho), 0.3, 3) : 1);
+const K_CONTORNO = Number(CE.contorno) > 0 ? Number(CE.contorno) : 0;
+
 const Karaoke: React.FC = () => {
   const {fps, durationInFrames} = useVideoConfig();
   const C = D.captions;
+  // the line is fitted by its MEASURED width: a chosen font measures only after it loaded
+  const prontas = useFontesProntas(!!CAP_FONTE);
+  if (!prontas) return null;
   return (
     <>
       {LINES.map((line, i) => {
@@ -355,9 +372,9 @@ const Karaoke: React.FC = () => {
         const lineText = line.map((w) => cleanW(w.text)).join(' ');
         const {width} = measureText({
           text: lineText,
-          fontFamily,
-          fontSize: C.fontSize,
-          fontWeight: 900,
+          fontFamily: K_FAM,
+          fontSize: K_SIZE,
+          fontWeight: K_PESO,
           letterSpacing: '-1px',
         });
         // safe-margin fit: scale down so the line clears the platform action rail
@@ -365,18 +382,19 @@ const Karaoke: React.FC = () => {
         const spot = spotFor(from / fps, nextFrom / fps);
         return (
           <Sequence key={i} from={from} durationInFrames={duration} layout="none">
-            <CaptionShell fromFrame={from} spot={spot} boxW={width * fit} boxH={C.fontSize * fit}>
+            <CaptionShell fromFrame={from} spot={spot} boxW={width * fit} boxH={K_SIZE * fit}>
               <div
                 style={{
-                  fontFamily,
-                  fontWeight: 900,
-                  fontSize: C.fontSize,
-                  color: 'white',
+                  fontFamily: K_FAM,
+                  fontWeight: K_PESO,
+                  fontSize: K_SIZE,
+                  color: CE.cor || 'white',
                   lineHeight: 1,
                   letterSpacing: -1,
                   whiteSpace: 'nowrap',
                   scale: String(fit),
                   textShadow: '0 4px 20px rgba(0,0,0,0.55)',
+                  ...(K_CONTORNO > 0 ? {WebkitTextStroke: `${K_CONTORNO}px ${CE.corContorno || '#000'}`, paintOrder: 'stroke fill'} : {}),
                 }}
               >
                 {line.map((w, j) => (
@@ -650,6 +668,38 @@ const HookIntro: React.FC = () => {
   );
 };
 
+// ============ CAPTIONS THAT FOLLOW THE PERSON (`captions.acompanhar`) ============
+// The whole caption layer, every style and the phrases the user placed included, moves by
+// how far the face (public/rastreio.json, through the camera) is from where it usually sits
+// on screen: the median over the video. Kept inside ±SEGUE px so the action rail and the
+// frame edges stay clear (the karaoke is 720 wide: 180 px of room on each side).
+const SEGUE = {x: 160, y: 300};
+let rostoDeSempre: readonly [number, number] | null | undefined;
+const medianaDoRosto = (width: number, height: number, fps: number) => {
+  if (rostoDeSempre !== undefined) return rostoDeSempre;
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (let g = 0; g < Math.round(D.durationSec * fps); g += 2) {
+    const p = rostoNaTela(g, width, height, fps);
+    if (!p) break;
+    xs.push(p[0]);
+    ys.push(p[1]);
+  }
+  const med = (a: number[]) => [...a].sort((p, q) => p - q)[Math.floor(a.length / 2)];
+  rostoDeSempre = xs.length ? ([med(xs), med(ys)] as const) : null;
+  return rostoDeSempre;
+};
+const LegendaSegue: React.FC<{children: React.ReactNode}> = ({children}) => {
+  const frame = useCurrentFrame();
+  const {width, height, fps} = useVideoConfig();
+  const ref = D.captions.acompanhar ? medianaDoRosto(width, height, fps) : null;
+  const p = ref ? rostoNaTela(frame, width, height, fps) : null;
+  if (!ref || !p) return <>{children}</>;
+  const dx = clamp(p[0] - ref[0], -SEGUE.x, SEGUE.x);
+  const dy = clamp(p[1] - ref[1], -SEGUE.y, SEGUE.y);
+  return <AbsoluteFill style={{translate: `${dx.toFixed(2)}px ${dy.toFixed(2)}px`}}>{children}</AbsoluteFill>;
+};
+
 // ============ MAIN ============
 export const Main: React.FC = () => {
   return (
@@ -664,15 +714,17 @@ export const Main: React.FC = () => {
       <CustomGraphics />
       <CamadasTexto />
       {D.hook.enabled ? <HookIntro /> : null}
-      {D.captions.enabled
-        ? D.captions.style === 'stacked'
-          ? <StackedCaptions />
-          : D.captions.style === 'scatter'
-            ? <ScatterCaptions />
-            : SIMPLE_VARIANTS[D.captions.style as string]
-              ? <SimpleCaptions variant={D.captions.style as string} />
-              : <Karaoke />
-        : null}
+      {D.captions.enabled ? (
+        <LegendaSegue>
+          {D.captions.style === 'stacked'
+            ? <StackedCaptions />
+            : D.captions.style === 'scatter'
+              ? <ScatterCaptions />
+              : SIMPLE_VARIANTS[D.captions.style as string]
+                ? <SimpleCaptions variant={D.captions.style as string} />
+                : <Karaoke />}
+        </LegendaSegue>
+      ) : null}
     </AbsoluteFill>
   );
 };

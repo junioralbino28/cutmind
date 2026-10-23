@@ -143,9 +143,10 @@ def juntar_salvamentos(velho: dict, novo: dict) -> dict:
 
     Each save carries only what changed since the previous one (the editor resets its
     reference on Save), so writing it over a pending preview_edits.json lost the first
-    one. Notes add up; effects merge by `ref` (newest wins); the zoom list is always the
-    whole list, and its `mudou` adds up; whole-state keys (`edl.ranges`, the Phase 2
-    blocks of a kind, camadas, efeitos) are replaced by the newest.
+    one. Notes add up; effects merge by `ref` and the hook/number texts by `alvo` + `ref`
+    (newest wins); the zoom list is always the whole list, and its `mudou` adds up;
+    whole-state keys (`edl.ranges`, the Phase 2 blocks of a kind, camadas, efeitos, the
+    captions' `legenda`) are replaced by the newest.
     """
     out = {**velho, **{k: v for k, v in novo.items() if k not in ("notes", "editData")}}
     notas = (velho.get("notes") or []) + (novo.get("notes") or [])
@@ -153,11 +154,16 @@ def juntar_salvamentos(velho: dict, novo: dict) -> dict:
         out["notes"] = notas
     ev, en = velho.get("editData") or {}, novo.get("editData") or {}
     if ev or en:
-        ed = {**ev, **{k: v for k, v in en.items() if k not in ("cenas", "camera")}}
+        ed = {**ev, **{k: v for k, v in en.items() if k not in ("cenas", "camera", "destaques")}}
         if ev.get("cenas") or en.get("cenas"):
             por_ref = {c["ref"]: c for c in ev.get("cenas") or []}
             por_ref.update({c["ref"]: c for c in en.get("cenas") or []})
             ed["cenas"] = [por_ref[k] for k in sorted(por_ref)]
+        if ev.get("destaques") or en.get("destaques"):  # o gancho e cada número, como os efeitos
+            chave = lambda c: (c.get("alvo"), c.get("ref"))  # noqa: E731
+            por_alvo = {chave(c): c for c in ev.get("destaques") or []}
+            por_alvo.update({chave(c): c for c in en.get("destaques") or []})
+            ed["destaques"] = list(por_alvo.values())
         if en.get("camera"):
             cam_novo = dict(en["camera"])
             cam_novo["mudou"] = sorted(set((ev.get("camera") or {}).get("mudou") or []) | set(cam_novo.get("mudou") or []))

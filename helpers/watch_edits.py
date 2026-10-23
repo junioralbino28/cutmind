@@ -122,6 +122,14 @@ def digest(p: Path) -> str:
             if est:
                 oque.append("estilo " + ", ".join(f"{k}={v}" for k, v in est.items()))
             parts.append(f"  · {alvo}: " + "; ".join(oque))
+    leg = ed.get("legenda")
+    if leg:
+        head.append("legenda mudada")
+        oque = [f"estilo {', '.join(f'{k}={v}' for k, v in leg['estilo'].items())}" if leg.get("estilo") else "estilo do desenho (sem `estilo`)",
+                "ACOMPANHA a pessoa" if leg.get("acompanhar") else "parada"]
+        parts.append("  legenda (edit-data.json `captions`): grave `estilo` (null = tire a chave) e `acompanhar`; "
+                     "com acompanhar, rode camadas_edit_data.py (ele faz o rastreio do rosto) e renderize: "
+                     + "; ".join(oque))
     cam = ed.get("camera") or {}
     if cam.get("zooms"):
         mud = [i for i in (cam.get("mudou") or []) if 0 <= i < len(cam["zooms"])]

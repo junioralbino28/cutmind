@@ -69,6 +69,13 @@ Then copy `cut.mp4` into `public/` and generate the data files below.
     // of the frame, `at` = the phrase's first word on the cut timeline.
     // A phrase's own spot beats "all", and both beat the windows.
     "positions": {"all": null, "phrases": [{"at": 12.48, "x": 0.5, "y": 0.3}]},
+    // optional, from the editor's Text panel for the captions: a font of src/fontes.ts,
+    // colour, size (×) and outline for the karaoke and the three static styles; on
+    // "stacked"/"scatter" only `tamanho` counts (their fonts and colours ARE the style)
+    "estilo": {"fonte": "Bebas Neue", "peso": 400, "cor": "#ffe500", "tamanho": 1.3, "contorno": 6, "corContorno": "#000000"},
+    // optional: the whole caption layer moves with the face in public/rastreio.json
+    // (camadas_edit_data.py makes it), by its distance from the face's usual place, ±160/±300 px
+    "acompanhar": false,
     "style": "karaoke"               // "karaoke" (default) | "stacked" (see below)
     // when "stacked": run caption_style.py → public/caption-cues.json, then the
     // stacked style renders (multi-font stack + pencil outline + click/scratch).

@@ -23,6 +23,7 @@ import {measureText} from '@remotion/layout-utils';
 import captions from '../public/captions.json';
 import editData from '../public/edit-data.json';
 import {seamAt, spotCentre, spotFor} from './captionPlace';
+import {CATALOGO, familiaCss, useFontesProntas} from './fontes';
 
 const POPPINS = loadPoppins('normal', {weights: ['600']}).fontFamily;
 const BASKERVILLE = loadBaskerville('normal', {weights: ['700']}).fontFamily;
@@ -49,6 +50,12 @@ const C = (editData as any).captions ?? {};
 // soft shadow alone is not enough (off-white text over a white shirt vanished).
 // Painted under the fill, so only the outer half shows. 0 or absent = no outline.
 const STROKE = Math.max(0, Math.min(16, Number(C.strokePx) || 0));
+// `captions.estilo` (the editor's Text panel): a catalog font, colour, size and outline over
+// the variant; the grouping by width follows the new font and size
+const E = C.estilo ?? {};
+const FONTE: string | null = typeof E.fonte === 'string' && E.fonte in CATALOGO ? E.fonte : null;
+const K = Number(E.tamanho) > 0 ? Math.max(0.3, Math.min(3, Number(E.tamanho))) : 1;
+const CONTORNO = E.contorno !== undefined && E.contorno !== null ? Math.max(0, Number(E.contorno) || 0) : STROKE;
 export const SIMPLE_VARIANTS: Record<string, Variant> = {
   simples: {
     family: POPPINS,
@@ -151,7 +158,13 @@ function splitTwo(words: Word[], V: Variant): Word[][] {
 export const SimpleCaptions: React.FC<{variant: string}> = ({variant}) => {
   const frame = useCurrentFrame();
   const {fps, durationInFrames, width, height} = useVideoConfig();
-  const V = SIMPLE_VARIANTS[variant] ?? SIMPLE_VARIANTS.simples;
+  // the cues are grouped by MEASURED width: a chosen font measures only after it loaded
+  const prontas = useFontesProntas(!!FONTE);
+  if (!prontas) return null;
+  const V0 = SIMPLE_VARIANTS[variant] ?? SIMPLE_VARIANTS.simples;
+  const V: Variant = FONTE
+    ? {...V0, family: familiaCss(FONTE), weight: Number(E.peso) || CATALOGO[FONTE].peso, size: V0.size * K}
+    : {...V0, size: V0.size * K};
   const cues = buildCues(captions as Word[], V);
 
   let idx = -1;
@@ -188,7 +201,7 @@ export const SimpleCaptions: React.FC<{variant: string}> = ({variant}) => {
           fontSize: V.size,
           letterSpacing: V.tracking,
           lineHeight: 1.18,
-          color: OFFWHITE,
+          color: E.cor || OFFWHITE,
           whiteSpace: 'pre',
           // scaleY only squats the glyphs — the line grouping is measured on
           // WIDTH, so unlike the horizontal squeeze this changes no line breaks
@@ -197,8 +210,8 @@ export const SimpleCaptions: React.FC<{variant: string}> = ({variant}) => {
               ? undefined
               : `scale(${V.squeeze}, ${V.squeezeY})`,
           textShadow: '0 4px 18px rgba(0,0,0,0.55)',
-          WebkitTextStroke: STROKE ? `${STROKE}px rgba(0,0,0,0.9)` : undefined,
-          paintOrder: STROKE ? 'stroke fill' : undefined,
+          WebkitTextStroke: CONTORNO ? `${CONTORNO}px ${E.corContorno || 'rgba(0,0,0,0.9)'}` : undefined,
+          paintOrder: CONTORNO ? 'stroke fill' : undefined,
         }}
       >
         {lines.map((ln, i) => (

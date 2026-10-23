@@ -4,6 +4,7 @@
  * of @remotion/google-fonts and its file downloads from Google only when a video uses it, with
  * the one weight it is drawn with. Generated from the verified catalog: edit the list, not by hand.
  */
+import {useEffect, useState} from 'react';
 import {cancelRender, continueRender, delayRender} from 'remotion';
 
 type Fonte = {peso: number; subsets: string[]; load: () => Promise<unknown>};
@@ -127,6 +128,21 @@ export const carregarFonte = (nome: string, peso?: number) => {
 /** Settles once every family asked for so far has loaded. Measure text only after it:
  * measureText() keeps the first width it sees, and before the load that is the fallback font's. */
 export const fontesProntas = () => Promise.all(carregando).then(() => undefined);
+
+/** For a component that MEASURES text in a catalog font: false until the fonts loaded (the
+ * frame waits meanwhile), then true. Without `precisa` it is true from the start. */
+export const useFontesProntas = (precisa: boolean) => {
+  const [prontas, setProntas] = useState(!precisa);
+  const [h] = useState(() => (precisa ? delayRender('fontes antes de medir o texto') : null));
+  useEffect(() => {
+    if (h === null) return;
+    fontesProntas().then(() => {
+      setProntas(true);
+      continueRender(h);
+    });
+  }, [h]);
+  return prontas;
+};
 
 /** Every `estilo.fonte` in edit-data.json (effects, hook, numbers…): each family loads once. */
 export const carregarFontesUsadas = (dados: unknown) => {

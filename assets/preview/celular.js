@@ -571,6 +571,7 @@ function buildInsertsDraft() {
   S.insSel = -1;
   buildCenasDraft(d);
   buildDestaques(d);
+  buildLegenda(d);
 }
 const isText = (c) => c.kind === 'hook' || c.kind === 'word' || c.kind === 'numero';
 // o bloco andou ou foi aparado desde o último vídeo do agente (ou o último Salvar)
@@ -597,7 +598,7 @@ function diffBase() {
 const edlDirty = () => diffBase() > 0;
 function dirtyCount() {
   return diffBase() + S.notes.length + S.insertsDraft.filter(insMudou).length + (camadasDirty() ? 1 : 0) + (efeitosDirty() ? 1 : 0)
-    + S.cenasDraft.filter(cenaMudou).length + zoomMudados() + destaquesMudados().length;
+    + S.cenasDraft.filter(cenaMudou).length + zoomMudados() + destaquesMudados().length + (legendaMudou() ? 1 : 0);
 }
 const isChanged = (r) => {
   const b = S.base.find((x) => x.uid === r.uid);
@@ -641,6 +642,8 @@ function snap() {
     cenaSel: S.cenaSel,
     zooms: S.zoomDraft ? [...S.zoomDraft] : null,
     zoomSel: S.zoomSel,
+    legenda: S.legenda ? JSON.parse(JSON.stringify(S.legenda)) : null,
+    legSel: S.legSel,
   };
 }
 function remember(before) {
@@ -674,6 +677,8 @@ function restore(s) {
   S.cenaSel = s.cenaSel != null && s.cenaSel < S.cenasDraft.length ? s.cenaSel : -1;
   if (s.zooms && S.zoomDraft && s.zooms.length === S.zoomDraft.length) S.zoomDraft = [...s.zooms];
   S.zoomSel = s.zoomSel != null && S.zoomDraft && s.zoomSel < S.zoomDraft.length ? s.zoomSel : -1;
+  if (S.legenda && s.legenda) S.legenda = s.legenda;
+  S.legSel = !!(S.legenda && s.legSel);
   drawCenaBox();
   applyMute();
   S.t = clampT(S.t);
@@ -979,7 +984,7 @@ function renderTimeline() {
     else if (tr.id === 'caps') {
       for (const c of S.captions) {
         const a = renderedToDraft(c.start), b = renderedToDraft(c.end);
-        const chip = el('div', 'chip cap', lane);
+        const chip = el('div', `chip cap${S.legSel ? ' sel' : ''}${legendaMudou() ? ' dirty' : ''}`, lane);
         chip.style.left = `${a * S.pps}px`;
         chip.style.width = `${Math.max((b - a) * S.pps, 4)}px`;
         chip.textContent = c.text;
@@ -1548,6 +1553,10 @@ function tapAt(target) {
     renderTimeline(); renderToolbar();
     return;
   }
+  // a legenda é uma só: tocar em qualquer frase da faixa escolhe todas
+  const cp = target && target.closest && target.closest('.chip.cap');
+  if (cp && S.view === 'final' && S.legenda) { tapLegenda(); return; }
+  S.legSel = false;
   const note = target && target.closest && target.closest('.chip.note');
   if (note) { openNote(note.dataset.id, false); return; }
   const lc = target && target.closest && target.closest('.chip.layer');
@@ -1773,7 +1782,9 @@ function followDraft() {
 const ATALHO = { dividir: 'Ctrl+B', duplicar: 'Ctrl+D', excluir: 'Delete', marcar: 'M', voltar: 'Esc' };
 const DICA = { volume: 'Volume', velocidade: 'Velocidade e curva', intensidade: 'Intensidade do filtro',
   texto: 'Texto novo na agulha', 'texto-editar': 'Texto, fonte, cor, tamanho, contorno, curva e altura',
-  'texto-atras': 'No vídeo final, o texto passa atrás da pessoa', 'texto-segue': 'No vídeo final, o texto anda junto com a pessoa' };
+  'texto-atras': 'No vídeo final, o texto passa atrás da pessoa', 'texto-segue': 'No vídeo final, o texto anda junto com a pessoa',
+  'leg-texto': 'Fonte, cor, tamanho e contorno de todas as frases', 'leg-segue': 'No vídeo final, a legenda anda junto com a pessoa',
+  'leg-posicao': 'O lugar de cada frase da legenda', 'leg-original': 'A legenda como o agente fez' };
 function renderToolbar() {
   const tb = $('toolbar');
   const ctx = $('ctxbar');
@@ -1783,7 +1794,8 @@ function renderToolbar() {
   const isel = !lsel && !fsel && S.view === 'final' && S.insSel >= 0 ? S.insertsDraft[S.insSel] || null : null;
   const csel = !lsel && !fsel && !isel && S.view === 'final' && S.cenaSel >= 0 ? S.cenasDraft[S.cenaSel] || null : null;
   const zsel = !lsel && !fsel && !isel && !csel && S.view === 'final' && S.zoomDraft && S.zoomSel >= 0;
-  const algum = !!(sel || lsel || fsel || isel || csel || zsel);
+  const lgsel = !lsel && !fsel && !isel && !csel && !zsel && S.view === 'final' && S.legSel && !!S.legenda;
+  const algum = !!(sel || lsel || fsel || isel || csel || zsel || lgsel);
   if (algum) { S.audioMenu = false; S.importMenu = false; S.fxMenu = false; }
   const amenu = S.audioMenu, imenu = S.importMenu, fmenu = S.fxMenu;
   tb.classList.toggle('hidden', !!(algum || amenu || imenu || fmenu));
@@ -1865,6 +1877,14 @@ function renderToolbar() {
     tool(ctx, 'cena-original', 'Original', { icon: ICON.original, disabled: !cenaMudou(csel) });
     return;
   }
+  if (lgsel) { // a legenda do vídeo final: o texto dela, acompanhar a pessoa e o lugar das frases
+    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
+    tool(ctx, 'leg-texto', 'Texto', { icon: ICON.texto });
+    tool(ctx, 'leg-segue', 'Acompanhar', { icon: ICON.alvo, on: S.legenda.acompanhar });
+    tool(ctx, 'leg-posicao', 'Posição', { icon: ICON.mover, disabled: !S.style || !S.style.captions || S.style.captions === 'none' });
+    tool(ctx, 'leg-original', 'Original', { icon: ICON.original, disabled: !legendaMudou() });
+    return;
+  }
   if (zsel) { // o zoom de uma tomada no vídeo final
     const z = S.zoomDraft[S.zoomSel];
     tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
@@ -1933,6 +1953,10 @@ document.addEventListener('click', (e) => {
     case 'texto-editar': openTextoCamada(false); break;
     case 'texto-atras': textoLiga('atras'); break;
     case 'texto-segue': textoLiga('acompanhar'); break;
+    case 'leg-texto': openLegendaTexto(); break;
+    case 'leg-segue': legendaSegue(); break;
+    case 'leg-posicao': soltaEscolha(); enterPosMode(); break;
+    case 'leg-original': if (legendaMudou()) { remember(); S.legenda = JSON.parse(JSON.stringify(S.legendaOrig)); renderTimeline(); renderToolbar(); refreshHeader(); } break;
     case 'excluir':
       if (S.layerSel) deleteLayerSel();
       else if (S.fxSel) deleteFxSel();
@@ -1977,7 +2001,7 @@ document.addEventListener('click', (e) => {
 });
 
 function soltaEscolha() {
-  S.selected = -1; S.layerSel = null; S.fxSel = null; S.insSel = -1; S.cenaSel = -1; S.zoomSel = -1;
+  S.selected = -1; S.layerSel = null; S.fxSel = null; S.insSel = -1; S.cenaSel = -1; S.zoomSel = -1; S.legSel = false;
   S.audioMenu = false; S.importMenu = false; S.fxMenu = false;
   renderTimeline(); renderToolbar(); drawCenaBox();
 }
@@ -2931,7 +2955,8 @@ $('btnSave').addEventListener('click', async () => {
   const comBlocos = insertsDirty();
   const comCenas = S.cenasDraft.some(cenaMudou), comZoom = zoomMudados() > 0;
   const dqs = destaquesMudados();
-  const comF2 = comBlocos || comCenas || comZoom || dqs.length > 0;
+  const comLegenda = legendaMudou();
+  const comF2 = comBlocos || comCenas || comZoom || dqs.length > 0 || comLegenda;
   if (comF2) payload.editData = {};
   if (comBlocos) { // blocos da Fase 2: todos os de cada tipo, pelo `ref`, como a desktop antiga mandava
     const de = (k) => S.insertsDraft.filter((c) => c.kind === k);
@@ -2952,6 +2977,8 @@ $('btnSave').addEventListener('click', async () => {
   if (dqs.length) payload.editData.destaques = dqs.map((c) => ({ alvo: c.tipo, ...(c.tipo === 'numero' ? { ref: c.ref } : {}), ...cenaValor(c) }));
   // zoom: a lista inteira, uma por tomada (o template usa zooms[i] quando há uma para cada)
   if (comZoom) payload.editData.camera = { zooms: S.zoomDraft.map((z) => +z.toFixed(3)), mudou: S.zoomDraft.map((z, i) => i).filter((i) => S.zoomDraft[i] !== S.zoomOrig[i]) };
+  // a legenda: o estilo do painel de Texto e o acompanhar, inteiros (vão para `captions` no edit-data)
+  if (comLegenda) payload.editData.legenda = { estilo: S.legenda.estilo || null, acompanhar: !!S.legenda.acompanhar };
   if (camadasDirty()) payload.camadas = camadasParaSalvar();
   const comEfeitos = efeitosDirty();
   if (comEfeitos) payload.efeitos = S.efeitos;
@@ -3653,8 +3680,9 @@ $('ovCena').addEventListener('pointercancel', fimCenaDrag);
  * vidro, o brilho e a perspectiva só aparecem quando o agente refaz o trecho). Pronto guarda um
  * passo do desfazer; Cancelar volta ao que estava quando o painel abriu. */
 const CORES_TEXTO = ['#ffffff', '#000000', '#ffe500', '#e8ff5a', '#c6ff3d', '#34e3c0', '#2f6bff', '#7a3cff', '#ff2d55', '#ff8a3d', '#b0101b'];
-// `c`: o efeito, gancho ou número aberto; `camada`: o id da camada de texto aberta (um ou outro)
-const painel = { c: null, camada: null, antes: null, valor: null, cat: null };
+// `c`: o efeito, gancho ou número aberto; `camada`: o id da camada de texto aberta;
+// `legenda`: o painel é o da legenda (um dos três por vez)
+const painel = { c: null, camada: null, legenda: false, antes: null, valor: null, cat: null, vista: null };
 function campoTexto(box, rotulo) {
   const sec = el('div', 'tx-sec', box);
   el('div', 'tx-rot', sec).textContent = rotulo;
@@ -3733,7 +3761,7 @@ function fonteGrade(box, atual, escolhe) {
 function openCenaTexto() {
   const c = alvoSel();
   if (!c) return;
-  painel.c = c; painel.camada = null; painel.antes = snap(); painel.valor = cenaValor(c);
+  painel.c = c; painel.camada = null; painel.legenda = false; painel.antes = snap(); painel.valor = cenaValor(c);
   const d = CENA_ESTILO[c.tipo];
   const pode = (k) => !!d && (d.so ? d.so.includes(k) : !(d.sem || []).includes(k));
   if (d && pode('fonte')) CutMindFontes.carregarTodas();
@@ -3782,6 +3810,7 @@ function openCenaTexto() {
 function fechaTexto(guarda) {
   showSheet($('cenaSheet'), false);
   if (painel.camada) { fechaTextoCamada(guarda); return; }
+  if (painel.legenda) { fechaLegenda(guarda); return; }
   const c = painel.c;
   painel.c = null;
   if (!c) return;
@@ -4057,7 +4086,7 @@ $('ovTextos').addEventListener('pointerdown', (e) => {
   video.pause();
   if (!txDrag.jaEscolhido) {
     S.layerSel = hit.it.id;
-    S.selected = -1; S.insSel = -1; S.cenaSel = -1; S.zoomSel = -1; S.fxSel = null;
+    S.selected = -1; S.insSel = -1; S.cenaSel = -1; S.zoomSel = -1; S.fxSel = null; S.legSel = false;
     renderTimeline(); renderToolbar(); drawCenaBox();
   }
   window.addEventListener('pointermove', txMove);
@@ -4104,6 +4133,7 @@ function openTextoCamada(novo) {
   if (!hit || hit.f.tipo !== 'texto') return;
   const it = hit.it;
   painel.c = null;
+  painel.legenda = false;
   painel.camada = it.id;
   painel.antes = snap();
   painel.valor = JSON.parse(JSON.stringify(it));
@@ -4147,6 +4177,124 @@ function fechaTextoCamada(guarda) {
     } else if (JSON.stringify(hit.it) !== JSON.stringify(painel.valor)) remember(painel.antes);
   }
   renderTimeline(); renderToolbar(); refreshHeader(); desenhaTextos();
+}
+
+/* ---------- a legenda do vídeo final ----------
+ * Tocar na faixa de legenda (vista Final) escolhe a legenda inteira: o painel de Texto muda a
+ * fonte, a cor, o tamanho e o contorno de todas as frases (`captions.estilo` no edit-data; na
+ * empilhada e na espalhada, só o tamanho: as fontes e as cores SÃO o estilo), "Acompanhar" faz
+ * a legenda andar com a pessoa (`captions.acompanhar`) e "Posição" abre o lugar das frases.
+ * Com o painel aberto, a prévia vai para o Corte (sem a legenda queimada) e mostra a frase da
+ * agulha com o estilo novo. */
+const LEG_PADRAO = {
+  karaoke: { fonte: 'Poppins', peso: 900, cor: '#ffffff', px: () => +capsCfg().fontSize || KARAOKE_LINE },
+  simples: { fonte: 'Poppins', peso: 600, cor: '#f4f1e9', px: () => STATIC_VARIANTS.simples.size },
+  serifada: { fonte: 'Libre Baskerville', peso: 700, cor: '#f4f1e9', px: () => STATIC_VARIANTS.serifada.size },
+  classica: { fonte: 'Inter', peso: 500, cor: '#f4f1e9', px: () => STATIC_VARIANTS.classica.size },
+};
+const estiloDaLegenda = () => capsCfg().style || 'karaoke';
+function buildLegenda(d) {
+  const c = d.captions;
+  S.legenda = c && c.enabled ? { estilo: c.estilo ? JSON.parse(JSON.stringify(c.estilo)) : null, acompanhar: !!c.acompanhar } : null;
+  S.legendaOrig = S.legenda ? JSON.parse(JSON.stringify(S.legenda)) : null;
+  S.legSel = false;
+}
+function legendaMudou() { return !!S.legenda && JSON.stringify(S.legenda) !== JSON.stringify(S.legendaOrig); }
+function tapLegenda() {
+  S.legSel = !S.legSel;
+  S.selected = -1; S.layerSel = null; S.fxSel = null; S.insSel = -1; S.cenaSel = -1; S.zoomSel = -1;
+  drawCenaBox(); renderTimeline(); renderToolbar();
+}
+function legendaSegue() {
+  if (!S.legenda) return;
+  remember();
+  S.legenda.acompanhar = !S.legenda.acompanhar;
+  toast(S.legenda.acompanhar ? 'A legenda anda junto com a pessoa no vídeo final (o agente rastreia o rosto)' : 'A legenda fica parada', 2800);
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+// o que vale agora: o escolhido no painel por cima do desenho do estilo
+function legendaEfetiva() {
+  const d = LEG_PADRAO[estiloDaLegenda()] || LEG_PADRAO.karaoke;
+  const e = (S.legenda && S.legenda.estilo) || {};
+  const C = capsCfg();
+  return {
+    fonte: e.fonte || d.fonte,
+    peso: +e.peso || (e.fonte ? CutMindFontes.pesoDe(e.fonte) : d.peso),
+    cor: e.cor || d.cor,
+    tamanho: +e.tamanho > 0 ? +e.tamanho : 1,
+    contorno: e.contorno != null ? +e.contorno : estiloDaLegenda() === 'karaoke' ? 0 : +C.strokePx || 0,
+    corContorno: e.corContorno || '#000000',
+    px: d.px(),
+  };
+}
+function legMuda(fn) {
+  if (!S.legenda) return;
+  fn(S.legenda);
+  if (S.legenda.estilo && !Object.keys(S.legenda.estilo).length) S.legenda.estilo = null;
+  desenhaLegendaPrevia(true);
+  if (!S.textoFila) {
+    S.textoFila = true;
+    requestAnimationFrame(() => { S.textoFila = false; renderTimeline(); refreshHeader(); });
+  }
+}
+const legEstilo = (k, v) => legMuda((L) => { L.estilo = { ...(L.estilo || {}), [k]: v }; });
+function openLegendaTexto() {
+  if (!S.legenda) return;
+  const so = LEG_PADRAO[estiloDaLegenda()] ? null : ['tamanho']; // empilhada e espalhada: só o tamanho
+  painel.c = null; painel.camada = null; painel.legenda = true;
+  painel.antes = snap();
+  painel.valor = JSON.parse(JSON.stringify(S.legenda));
+  painel.vista = S.view;
+  if (S.view !== 'corte') switchView('corte'); // o corte não tem a legenda queimada: a prévia não sai dobrada
+  CutMindFontes.carregarTodas();
+  $('cenaSheetNome').textContent = 'Texto da legenda';
+  const box = $('cenaCampos');
+  box.innerHTML = '';
+  const e = legendaEfetiva();
+  if (!so) {
+    fonteGrade(box, e.fonte, (f) => legMuda((L) => { L.estilo = { ...(L.estilo || {}), fonte: f.familia, peso: f.peso }; }));
+    paletaCores(campoTexto(box, 'Cor'), e.cor, S.style && S.style.accent, (cor) => legEstilo('cor', cor));
+  }
+  regua(campoTexto(box, 'Tamanho'), 30, 300, 5, Math.round(e.tamanho * 100), (v) => `${v}%`, (v) => legEstilo('tamanho', +(v / 100).toFixed(2)));
+  if (!so) {
+    const sec = campoTexto(box, 'Contorno');
+    regua(sec, 0, 30, 1, e.contorno, (v) => (v ? `${v} px` : 'sem'), (v) => legEstilo('contorno', v));
+    paletaCores(sec, e.corContorno, null, (cor) => legEstilo('corContorno', cor));
+  }
+  el('p', 'tx-dica', box).textContent = so
+    ? 'Neste estilo as fontes e as cores fazem parte do desenho: aqui muda o tamanho. A altura de cada frase fica em "Posição".'
+    : 'Vale para todas as frases. A altura de cada frase fica em "Posição".';
+  showSheet($('cenaSheet'), true);
+  desenhaLegendaPrevia(true);
+}
+function fechaLegenda(guarda) {
+  painel.legenda = false;
+  if (!guarda) S.legenda = JSON.parse(JSON.stringify(painel.valor));
+  else if (JSON.stringify(S.legenda) !== JSON.stringify(painel.valor)) remember(painel.antes);
+  desenhaLegendaPrevia(true);
+  if (painel.vista === 'final' && S.view !== 'final') switchView('final');
+  S.legSel = S.view === 'final';
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+// a frase da agulha com o estilo escolhido, no lugar do estilo (a prévia aproximada do painel)
+let legSig = '';
+function desenhaLegendaPrevia(forca) {
+  const box = $('ovLeg');
+  if (!box) return;
+  if (!painel.legenda || !S.legenda || !S.captions.length) { if (box.innerHTML) { box.innerHTML = ''; legSig = ''; } return; }
+  const rt = draftToRendered(S.t);
+  const c = S.captions.find((x) => rt >= x.start - 0.05 && rt < x.end + 0.4) || S.captions.find((x) => x.start >= rt) || S.captions[S.captions.length - 1];
+  const e = legendaEfetiva();
+  const sig = JSON.stringify([c.text, e, estiloDaLegenda()]);
+  if (!forca && sig === legSig) return;
+  legSig = sig;
+  box.innerHTML = '';
+  const t = el('div', 'ov-leg-txt', box);
+  t.textContent = c.text;
+  const cq = (v) => `${((v / FRAME_W) * 100).toFixed(4)}cqw`;
+  const y = S.style ? capCenter({ ...S.style, captions: estiloDaLegenda() }, 'abertura') : 0.76;
+  Object.assign(t.style, { top: pct(y), fontFamily: `"${e.fonte}"`, fontWeight: e.peso, fontSize: cq(e.px * e.tamanho), color: e.cor });
+  if (e.contorno > 0) { t.style.webkitTextStroke = `${cq(e.contorno)} ${e.corContorno}`; t.style.paintOrder = 'stroke fill'; }
 }
 function toggleMelhorar() {
   const hit = camItem(S.layerSel);
@@ -4482,6 +4630,7 @@ function syncLayers() {
     ov.classList.toggle('hidden', !img);
   }
   desenhaTextos();
+  desenhaLegendaPrevia(false);
 }
 ['fileAudio', 'fileImagem'].forEach((id) => {
   $(id).addEventListener('change', (e) => {

@@ -115,6 +115,10 @@ under a full-frame effect (split screen, a scene) it is covered. Proven by `test
 | `cena-original` | "volta o efeito como estava" | the previous values of those keys |
 | `zoom-valor`, `zoom-sem` | "a tomada 4 sem zoom", "mais zoom na 2" | `camera.zooms`: one base zoom per take (expand the cycle to one per take first, as the editor does); `zoom-sem` = 1. Re-render those takes |
 | `zoom-original` | "volta o zoom da 4" | the previous value |
+| `leg-texto` | "legenda em Bebas amarela", "a legenda maior, com contorno" | `captions.estilo` in `edit-data.json`: `fonte` + `peso`, `cor`, `tamanho` (×), `contorno` (px), `corContorno` (the karaoke and the three static styles); on `stacked`/`scatter` only `tamanho` counts. Re-render |
+| `leg-segue` | "a legenda acompanhando meu corpo" | `captions.acompanhar: true`; then `camadas_edit_data.py <edit>` (it tracks the face into `public/rastreio.json`) and re-render |
+| `leg-posicao` | "a legenda mais para cima" | the caption position row above (`captionPositions`) |
+| `leg-original` | "volta a legenda como estava" | the previous `captions.estilo` / `captions.acompanhar` |
 
 Phase 2 is short-form only for the style gate; on longform ask the layer questions in
 chat (`SKILL.md`, "The Estilo panel"). Caption positions are proven by

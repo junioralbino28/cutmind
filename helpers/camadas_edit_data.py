@@ -10,8 +10,9 @@ acento para o `staticFile` do Remotion.
 Textos: cada texto visível vira um item de `textos[]` (src/CamadasTexto.tsx desenha), na
 ordem das faixas. A lista inteira é deste helper. Um texto "atrás da pessoa" precisa do
 recorte dela na janela dele, `public/pessoa-<id>-<quadro inicial>-<quadros>.mov`
-(person_matte.py); um texto que "acompanha" precisa do rosto rastreado no corte,
-`public/rastreio.json` (face_track.py). O helper faz os dois quando faltam ou ficaram velhos
+(person_matte.py); um texto que "acompanha", e a legenda com `captions.acompanhar`, precisam
+do rosto rastreado no corte, `public/rastreio.json` (face_track.py). O helper faz os dois
+quando faltam ou ficaram velhos
 (mudou a janela, mudou o cut.mp4) e apaga os recortes que não servem mais. Com
 --sem-recorte, só avisa o comando, e o texto sai na frente até o recorte existir.
 
@@ -117,7 +118,9 @@ def _textos(edit: Path, public: Path, d: dict, camadas: dict, recortar: bool) ->
         textos.append(t)
 
     rastreio = public / RASTREIO
-    if any(t.get("acompanhar") for t in textos) and not _rastreio_serve(rastreio, cut):
+    # o rosto serve aos textos que acompanham e à legenda que acompanha (`captions.acompanhar`)
+    segue = any(t.get("acompanhar") for t in textos) or bool((d.get("captions") or {}).get("acompanhar"))
+    if segue and not _rastreio_serve(rastreio, cut):
         cmd = [sys.executable, "-X", "utf8", str(HELPERS / "face_track.py"), str(cut), "-o", str(rastreio)]
         if recortar and cut.is_file() and _rodar(cmd) and _rastreio_serve(rastreio, cut):
             feitos.append(RASTREIO)

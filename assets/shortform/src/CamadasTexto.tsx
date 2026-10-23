@@ -16,12 +16,12 @@
  * The editor's preview draws the texts with these same numbers (assets/preview/celular.js).
  * A later text draws over an earlier one, like the layers in the editor.
  */
-import React, {useEffect, useState} from 'react';
-import {AbsoluteFill, Sequence, continueRender, delayRender, useCurrentFrame, useVideoConfig} from 'remotion';
+import React from 'react';
+import {AbsoluteFill, Sequence, useCurrentFrame, useVideoConfig} from 'remotion';
 import {measureText} from '@remotion/layout-utils';
 import editData from '../public/edit-data.json';
 import rastreio from '../public/rastreio.json';
-import {CATALOGO, carregarFonte, familiaCss, fontesProntas} from './fontes';
+import {CATALOGO, carregarFonte, familiaCss, useFontesProntas} from './fontes';
 import {DynamicVideo, cameraAt} from './Main';
 import {VIDEO_LAG} from './videoLag';
 
@@ -53,22 +53,8 @@ const curvaDe = (t: Texto) => Math.max(-100, Math.min(100, Number(t.curva) || 0)
 // every family the texts use loads before the first frame, the default one too
 for (const t of TEXTOS) carregarFonte(fonteDe(t), pesoDe(t));
 
+// a curved text needs its width: it measures only after the fonts loaded (useFontesProntas)
 const MEDE = TEXTOS.some((t) => curvaDe(t) !== 0);
-
-// A curved text needs its width, and measureText() keeps the first width it sees:
-// measuring before the font loaded would bend the arc for the fallback font, for good.
-const useFontesProntas = () => {
-  const [prontas, setProntas] = useState(!MEDE);
-  const [h] = useState(() => (MEDE ? delayRender('textos curvos: fontes') : null));
-  useEffect(() => {
-    if (h === null) return;
-    fontesProntas().then(() => {
-      setProntas(true);
-      continueRender(h);
-    });
-  }, [h]);
-  return prontas;
-};
 
 /** The baseline arc of a curved text, in frame px. The line covers |curva|/100 of half a
  * circle, and its middle keeps the block's centre (x, y): the baseline runs 0.35 em below it. */
@@ -87,8 +73,9 @@ export const arcoDoTexto = (x: number, y: number, size: number, largura: number,
 };
 
 // where the tracked face is on screen at a GLOBAL frame: the picture shown there is cut.mp4's
-// frame (g − VIDEO_LAG), drawn through the camera of frame g
-const rostoNaTela = (g: number, width: number, height: number, fps: number) => {
+// frame (g − VIDEO_LAG), drawn through the camera of frame g. The captions that follow the
+// person (Main.tsx) use it too
+export const rostoNaTela = (g: number, width: number, height: number, fps: number) => {
   if (!PONTOS.length) return null;
   const [cx, cy] = PONTOS[Math.max(0, Math.min(PONTOS.length - 1, g - VIDEO_LAG))];
   const {S, tx, ty} = cameraAt(g, width, height, fps);
@@ -179,7 +166,7 @@ const TextoEl: React.FC<{t: Texto; from: number; prontas: boolean}> = ({t, from,
 // picture); without it, the others, over the effects and under the hook and captions
 export const CamadasTexto: React.FC<{atras?: boolean}> = ({atras = false}) => {
   const {fps} = useVideoConfig();
-  const prontas = useFontesProntas();
+  const prontas = useFontesProntas(MEDE);
   return (
     <>
       {TEXTOS.map((t, i) => {

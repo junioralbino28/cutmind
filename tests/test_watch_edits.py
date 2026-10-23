@@ -95,6 +95,15 @@ def test_aviso_conta_os_textos(tmp_path):
     assert "textos[]" in aviso
 
 
+def test_aviso_da_legenda(tmp_path):
+    p = tmp_path / "preview_edits.json"
+    p.write_text(json.dumps({"type": "timeline-edits", "editData": {"legenda": {
+        "estilo": {"fonte": "Bebas Neue", "peso": 400, "cor": "#ffe500", "tamanho": 1.3}, "acompanhar": True}}}), encoding="utf-8")
+    aviso = digest(p)
+    assert "legenda mudada" in aviso and "fonte=Bebas Neue" in aviso and "ACOMPANHA" in aviso
+    assert "captions" in aviso and "camadas_edit_data.py" in aviso
+
+
 def test_corte_e_camadas_no_mesmo_salvar_pede_remapear(tmp_path):
     """Os tempos das camadas são do corte que estava na tela: se o mesmo Salvar refaz o
     corte, o agente tem de levar as camadas para o corte novo antes de montar."""

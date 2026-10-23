@@ -67,10 +67,12 @@ const fitFont = (text: string, base: number, avail = 900, factor = 0.59): number
 
 // -------- config (optional overrides in edit-data.json → captions) --------
 type SfxCfg = {enabled?: boolean; clickVolume?: number; scratchVolume?: number};
-type CapCfg = {stackedOffsetY?: number; fontScale?: number; sfx?: SfxCfg};
+type CapCfg = {stackedOffsetY?: number; fontScale?: number; sfx?: SfxCfg; estilo?: {tamanho?: number}};
 const CAP = ((editData as {captions?: CapCfg}).captions ?? {}) as CapCfg;
 const OFFSET_Y = CAP.stackedOffsetY ?? 0.156; // fraction of height, below center
-const FONT_SCALE = CAP.fontScale ?? 0.8;
+// the editor's Text panel changes only the size here: the fonts and colours ARE the style
+const TAMANHO = Number(CAP.estilo?.tamanho) > 0 ? Math.max(0.3, Math.min(3, Number(CAP.estilo?.tamanho))) : 1;
+const FONT_SCALE = (CAP.fontScale ?? 0.8) * TAMANHO;
 const SFX = CAP.sfx ?? {};
 const SFX_ON = SFX.enabled !== false;
 const CLICK_VOL = SFX.clickVolume ?? 0.45;

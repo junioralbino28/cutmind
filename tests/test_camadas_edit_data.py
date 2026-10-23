@@ -164,3 +164,13 @@ def test_acompanhar_rastreia_o_rosto_quando_falta_ou_ficou_velho(projeto, ferram
     os.utime(public / "rastreio.json", (cut.stat().st_mtime - 60,) * 2)  # o corte mudou depois do rastreio
     assert aplicar(edit)["feitos"] == ["rastreio.json"]
     assert [c[3].endswith("face_track.py") for c in ferramentas] == [True, True]
+
+
+def test_legenda_que_acompanha_tambem_pede_o_rastreio(projeto, ferramentas):
+    edit, public, _ = projeto
+    (public / "cut.mp4").write_bytes(b"mp4")
+    d = json.loads((public / "edit-data.json").read_text(encoding="utf-8"))
+    d["captions"] = {"enabled": True, "acompanhar": True}
+    (public / "edit-data.json").write_text(json.dumps(d), encoding="utf-8")
+    _camadas(edit, [])  # nenhum texto: só a legenda pede
+    assert aplicar(edit)["feitos"] == ["rastreio.json"]
