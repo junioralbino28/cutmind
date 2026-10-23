@@ -87,7 +87,7 @@ editor").
 | `melhorar` | "limpa o ruído desse áudio" | the item's `melhorar: true` (noise reduction + voice chain in `mixar_final.py`) |
 | `texto` | "escreve PROMOÇÃO no meio da tela dos 5 aos 8 s" | a new `tipo: "texto"` track with `{"texto", "inicio", "duracao", "x": 540, "y": 960}` (the CENTRE, frame px; `\n` breaks the line) |
 | `texto-editar` | "o texto em Anton amarelo, maior, com contorno preto", "curva o texto pra cima" | the item's `estilo`: `fonte` (a family of `assets/preview/fontes.js`, with its `peso`), `cor`, `tamanho` (× 96 px), `contorno` (px), `corContorno`; `curva` −100 to 100; `x`/`y` to move it |
-| `texto-atras` | "põe o texto atrás de mim" | the item's `atras: true`; `camadas_edit_data.py` makes the cut-out of that window (`person_matte.py`, ~30 s per 3 s on CPU) |
+| `atras` | "põe o texto atrás de mim", "essa imagem atrás de mim" | the item's `atras: true` (text or image); `camadas_edit_data.py` makes the cut-out of that window (`person_matte.py`, ~30 s per 3 s on CPU). An image then becomes the big card behind the person (`behind[]`) instead of the top card |
 | `texto-segue` | "o texto acompanhando meu corpo" | the item's `acompanhar: true`; `camadas_edit_data.py` tracks the face (`face_track.py` → `public/rastreio.json`) |
 | `duplicar` (on a layer) | "repete esse texto embaixo" | copy the item into a NEW track (new ids), same time; change what differs |
 | `excluir` (on a layer) | "tira a imagem" | drop the item (and the track when empty) |

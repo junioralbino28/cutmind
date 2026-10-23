@@ -166,6 +166,35 @@ def test_acompanhar_rastreia_o_rosto_quando_falta_ou_ficou_velho(projeto, ferram
     assert [c[3].endswith("face_track.py") for c in ferramentas] == [True, True]
 
 
+def test_imagem_atras_da_pessoa_vira_behind_no_quadro_do_recorte(projeto, ferramentas):
+    edit, public, agente = projeto
+    (public / "cut.mp4").write_bytes(b"mp4")
+    d = json.loads((public / "edit-data.json").read_text(encoding="utf-8"))
+    do_agente = {"kind": "words", "matte": "fg.mov", "start": 1.0, "dur": 1.0, "words": []}
+    d["behind"] = [do_agente]
+    (public / "edit-data.json").write_text(json.dumps(d), encoding="utf-8")
+    img = _img("i1", "midia/outro.jpg", 2.01, 1.5)
+    img["itens"][0]["atras"] = True
+    _camadas(edit, [img])
+    r = aplicar(edit)
+    assert r["feitos"] == ["pessoa-i1-1-60-45.mov"] and r["inserts"] == 1
+    ed = json.loads((public / "edit-data.json").read_text(encoding="utf-8"))
+    assert ed["inserts"] == [agente]  # o cartão de cima não ganhou a imagem
+    assert ed["behind"] == [do_agente, {"kind": "image", "src": "midia/camada-i1-1.jpg", "matte": "pessoa-i1-1-60-45.mov",
+                                        "start": 2.0, "dur": 1.5, "camada": "i1-1"}]
+
+
+def test_imagem_atras_sem_recorte_fica_no_cartao_de_cima(projeto):
+    edit, public, _ = projeto
+    (public / "cut.mp4").write_bytes(b"mp4")
+    img = _img("i1", "midia/outro.jpg", 2, 1.5)
+    img["itens"][0]["atras"] = True
+    _camadas(edit, [img])
+    r = aplicar(edit, recortar=False)
+    assert len(r["pendentes"]) == 1 and "person_matte.py" in r["pendentes"][0]
+    assert [i.get("camada") for i in _inserts(public)] == [None, "i1-1"]
+
+
 def test_legenda_que_acompanha_tambem_pede_o_rastreio(projeto, ferramentas):
     edit, public, _ = projeto
     (public / "cut.mp4").write_bytes(b"mp4")

@@ -19,6 +19,7 @@ viram `inserts` no edit-data, `camadas_edit_data.py`) e o som do vídeo final
                    "atras": false, "acompanhar": false, "curva": 0}]}]}
 
 Cada faixa é uma camada: áudio tem "mudo", imagem e texto têm "oculto", todas têm "travado".
+Uma imagem com `"atras": true` vira o cartão grande atrás da pessoa, em vez do cartão de cima.
 Um texto tem o centro em `x`/`y` (px do quadro 1080x1920, podendo sair um pouco dele), quebra
 de linha com "\n" e o `estilo` do painel de Texto: `fonte` (uma família do catálogo de
 fontes), `peso`, `cor` e `corContorno` (#rrggbb), `tamanho` (× 96 px) e `contorno` (px). Com
@@ -174,6 +175,8 @@ def normalize(obj: object) -> dict:
             item = {"id": iid, "arquivo": _arquivo(it.get("arquivo"), tipo),
                     "inicio": _num(it.get("inicio", 0), "inicio"),
                     "duracao": _num(it.get("duracao", 0), "duracao", 0.05)}
+            if tipo == "imagem" and it.get("atras"):  # o cartão grande, atrás da pessoa
+                item["atras"] = True
             if tipo == "audio":
                 item["corte"] = _num(it.get("corte", 0), "corte")
                 item["volume"] = _num(it.get("volume", 1), "volume", 0.0, 2.0)

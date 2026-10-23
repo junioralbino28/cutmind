@@ -142,6 +142,9 @@ button { font-family: inherit; cursor: pointer; }
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
   z-index: 2; pointer-events: none;
 }
+/* imagem atrás da pessoa: o cartão grande do vídeo final (Main.tsx, BehindImageEl: 1000×1250 px,
+   40 do topo, canto 30). Sem o recorte ao vivo, a prévia o mostra transparente sobre a pessoa */
+.ov-img.atras { top: 2.083%; width: 92.593%; height: 65.104%; border-radius: 3% / 2.4%; opacity: 0.72; }
 /* camadas de texto, no lugar e no tamanho do vídeo final (src/CamadasTexto.tsx). A caixa é o
    container: 1cqw = 1% da largura da prévia, a mesma conta dos 1080 px do quadro. Só o texto
    pega o toque; o resto do vídeo continua tocando e pausando */

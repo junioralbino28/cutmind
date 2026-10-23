@@ -4,8 +4,9 @@
 Imagens: cada imagem visível vira um item de `inserts[]` — o cartão arredondado da zona de
 cima, o mesmo dos inserts do agente — com `"camada": <id do item>`. Só esses são mexidos: os
 inserts do agente ficam como estão, e as camadas entram por último (ficam por cima, como no
-editor). O arquivo é copiado para `public/midia/camada-<id>.<ext>`, um nome sem espaço nem
-acento para o `staticFile` do Remotion.
+editor). A imagem com `atras` vira um item de `behind[]` (o cartão grande atrás da pessoa),
+com o recorte da janela dela. O arquivo é copiado para `public/midia/camada-<id>.<ext>`, um
+nome sem espaço nem acento para o `staticFile` do Remotion.
 
 Textos: cada texto visível vira um item de `textos[]` (src/CamadasTexto.tsx desenha), na
 ordem das faixas. A lista inteira é deste helper. Um texto "atrás da pessoa" precisa do
@@ -73,28 +74,47 @@ def _rastreio_serve(arq: Path, cut: Path) -> bool:
     return not cut.is_file() or arq.stat().st_mtime >= cut.stat().st_mtime
 
 
-def _textos(edit: Path, public: Path, d: dict, camadas: dict, recortar: bool) -> tuple[list, list, list]:
-    """Os textos do edit-data, os comandos que ficaram por rodar e os arquivos feitos agora."""
-    fps = float(d.get("fps") or 30)
-    cut = public / "cut.mp4"
-    pendentes: list[str] = []
-    feitos: list[str] = []
-    # os recortes que valem agora, por id (um texto escondido guarda o dele), com a janela
-    # em quadros no nome: mudou a janela, o recorte velho não serve mais
-    validos: dict[str, tuple[str, int, int]] = {}
-    for f in camadas["faixas"]:
-        if f["tipo"] != "texto":
-            continue
-        for it in f["itens"]:
-            if it["atras"]:
-                ini_f = round(it["inicio"] * fps)
-                n_f = max(1, round((it["inicio"] + it["duracao"]) * fps) - ini_f)
-                validos[it["id"]] = (f"{RECORTE}{it['id']}-{ini_f}-{n_f}.mov", ini_f, n_f)
-    nomes = {v[0] for v in validos.values()}
-    for velho in public.glob(f"{RECORTE}*.mov"):  # só os recortes que este helper fez
-        if velho.name not in nomes:
-            velho.unlink()
+class _Recortes:
+    """Os recortes da pessoa que valem agora, por id do item (texto ou imagem com `atras`; um
+    escondido guarda o seu), com a janela em quadros no nome: mudou a janela, o velho sai."""
 
+    def __init__(self, public: Path, camadas: dict, fps: float, recortar: bool):
+        self.public, self.fps, self.recortar = public, fps, recortar
+        self.cut = public / "cut.mp4"
+        self.validos: dict[str, tuple[str, int, int]] = {}
+        for f in camadas["faixas"]:
+            for it in f["itens"]:
+                if f["tipo"] in ("texto", "imagem") and it.get("atras"):
+                    ini_f = round(it["inicio"] * fps)
+                    n_f = max(1, round((it["inicio"] + it["duracao"]) * fps) - ini_f)
+                    self.validos[it["id"]] = (f"{RECORTE}{it['id']}-{ini_f}-{n_f}.mov", ini_f, n_f)
+        nomes = {v[0] for v in self.validos.values()}
+        for velho in public.glob(f"{RECORTE}*.mov"):  # só os recortes que este helper fez
+            if velho.name not in nomes:
+                velho.unlink()
+        self.feitos: list[str] = []
+        self.pendentes: list[str] = []
+
+    def de(self, iid: str) -> str | None:
+        """O recorte do item, feito agora se faltava; None se ficou por fazer."""
+        nome, ini_f, n_f = self.validos[iid]
+        if not (self.public / nome).is_file():
+            cmd = _cmd_recorte(self.cut, self.public / nome, ini_f, n_f, self.fps)
+            if self.recortar and self.cut.is_file() and _rodar(cmd) and (self.public / nome).is_file():
+                self.feitos.append(nome)
+            else:
+                self.pendentes.append(_linha(cmd))
+        return nome if (self.public / nome).is_file() else None
+
+    def janela(self, iid: str) -> tuple[float, float]:
+        """Começo e duração do recorte em segundos, no quadro exato dele."""
+        _, ini_f, n_f = self.validos[iid]
+        return round(ini_f / self.fps, 6), round(n_f / self.fps, 6)
+
+
+def _textos(public: Path, d: dict, camadas: dict, rec: _Recortes) -> list:
+    """Os textos do edit-data; o rastreio do rosto quando um texto ou a legenda acompanham."""
+    cut = public / "cut.mp4"
     textos = []
     for it in cam.textos(camadas):
         t = {"id": it["id"], "texto": it["texto"], "start": it["inicio"],
@@ -106,15 +126,9 @@ def _textos(edit: Path, public: Path, d: dict, camadas: dict, recortar: bool) ->
         if it["acompanhar"]:
             t["acompanhar"] = True
         if it["atras"]:
-            nome, ini_f, n_f = validos[it["id"]]
-            if not (public / nome).is_file():
-                cmd = _cmd_recorte(cut, public / nome, ini_f, n_f, fps)
-                if recortar and cut.is_file() and _rodar(cmd) and (public / nome).is_file():
-                    feitos.append(nome)
-                else:
-                    pendentes.append(_linha(cmd))
-            if (public / nome).is_file():
-                t["matte"] = nome
+            matte = rec.de(it["id"])
+            if matte:
+                t["matte"] = matte
         textos.append(t)
 
     rastreio = public / RASTREIO
@@ -122,13 +136,13 @@ def _textos(edit: Path, public: Path, d: dict, camadas: dict, recortar: bool) ->
     segue = any(t.get("acompanhar") for t in textos) or bool((d.get("captions") or {}).get("acompanhar"))
     if segue and not _rastreio_serve(rastreio, cut):
         cmd = [sys.executable, "-X", "utf8", str(HELPERS / "face_track.py"), str(cut), "-o", str(rastreio)]
-        if recortar and cut.is_file() and _rodar(cmd) and _rastreio_serve(rastreio, cut):
-            feitos.append(RASTREIO)
+        if rec.recortar and cut.is_file() and _rodar(cmd) and _rastreio_serve(rastreio, cut):
+            rec.feitos.append(RASTREIO)
         else:
-            pendentes.append(_linha(cmd))
+            rec.pendentes.append(_linha(cmd))
     if not rastreio.is_file():  # o template importa o arquivo: sem rastreio, ele fica neutro
         rastreio.write_text(json.dumps({"neutral": True, "points": []}), encoding="utf-8")
-    return textos, pendentes, feitos
+    return textos
 
 
 def aplicar(edit: Path, edit_data: Path | None = None, recortar: bool = True) -> dict:
@@ -140,7 +154,9 @@ def aplicar(edit: Path, edit_data: Path | None = None, recortar: bool = True) ->
     destino.mkdir(exist_ok=True)
     for velho in destino.glob(f"{PREFIXO}*"):  # só as cópias que este helper fez
         velho.unlink()
+    rec = _Recortes(ed_p.parent, camadas, float(d.get("fps") or 30), recortar)
     inserts = [i for i in d.get("inserts") or [] if "camada" not in i]
+    behind = [b for b in d.get("behind") or [] if "camada" not in b]
     faltando = []
     for it in cam.aparecem(camadas):
         origem = edit / it["arquivo"]
@@ -149,17 +165,24 @@ def aplicar(edit: Path, edit_data: Path | None = None, recortar: bool = True) ->
             continue
         nome = f"{PREFIXO}{it['id']}{origem.suffix.lower()}"
         shutil.copy2(origem, destino / nome)
-        inserts.append({"src": f"{cam.MIDIA_DIR}/{nome}", "start": it["inicio"],
-                        "end": round(it["inicio"] + it["duracao"], 3), "camada": it["id"]})
+        src = f"{cam.MIDIA_DIR}/{nome}"
+        matte = rec.de(it["id"]) if it.get("atras") else None
+        if matte:  # o cartão grande atrás da pessoa (BehindSubject), no quadro exato do recorte
+            start, dur = rec.janela(it["id"])
+            behind.append({"kind": "image", "src": src, "matte": matte, "start": start, "dur": dur, "camada": it["id"]})
+        else:  # o cartão de cima; com o recorte por fazer, também (e o comando fica avisado)
+            inserts.append({"src": src, "start": it["inicio"], "end": round(it["inicio"] + it["duracao"], 3), "camada": it["id"]})
     d["inserts"] = inserts
-    textos, pendentes, feitos = _textos(edit, ed_p.parent, d, camadas, recortar)
+    if behind or "behind" in d:
+        d["behind"] = behind
+    textos = _textos(ed_p.parent, d, camadas, rec)
     if textos or "textos" in d:
         d["textos"] = textos
     tmp = ed_p.with_suffix(".tmp")
     tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(ed_p)
-    return {"inserts": sum(1 for i in inserts if "camada" in i), "textos": len(textos),
-            "faltando": faltando, "pendentes": pendentes, "feitos": feitos}
+    return {"inserts": sum(1 for i in inserts if "camada" in i) + sum(1 for b in behind if "camada" in b),
+            "textos": len(textos), "faltando": faltando, "pendentes": rec.pendentes, "feitos": rec.feitos}
 
 
 def main() -> int:
@@ -176,7 +199,8 @@ def main() -> int:
     for f in r["faltando"]:
         print(f"  FALTA {f} — o arquivo não está em midia/; a camada ficou fora", file=sys.stderr)
     for c in r["pendentes"]:
-        print(f"  FALTA rodar (o texto sai na frente da pessoa ou parado até lá): {c}", file=sys.stderr)
+        print(f"  FALTA rodar (até lá, o que vai atrás da pessoa sai na frente, e o que acompanha fica parado): {c}",
+              file=sys.stderr)
     return 1 if r["faltando"] or r["pendentes"] else 0
 
 

@@ -1782,7 +1782,7 @@ function followDraft() {
 const ATALHO = { dividir: 'Ctrl+B', duplicar: 'Ctrl+D', excluir: 'Delete', marcar: 'M', voltar: 'Esc' };
 const DICA = { volume: 'Volume', velocidade: 'Velocidade e curva', intensidade: 'Intensidade do filtro',
   texto: 'Texto novo na agulha', 'texto-editar': 'Texto, fonte, cor, tamanho, contorno, curva e altura',
-  'texto-atras': 'No vídeo final, o texto passa atrás da pessoa', 'texto-segue': 'No vídeo final, o texto anda junto com a pessoa',
+  atras: 'No vídeo final, a camada passa atrás da pessoa', 'texto-segue': 'No vídeo final, o texto anda junto com a pessoa',
   'leg-texto': 'Fonte, cor, tamanho e contorno de todas as frases', 'leg-segue': 'No vídeo final, a legenda anda junto com a pessoa',
   'leg-posicao': 'O lugar de cada frase da legenda', 'leg-original': 'A legenda como o agente fez' };
 function renderToolbar() {
@@ -1898,9 +1898,10 @@ function renderToolbar() {
     tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
     if (lsel.f.tipo === 'texto') {
       tool(ctx, 'texto-editar', 'Editar', { icon: ICON.texto });
-      tool(ctx, 'texto-atras', 'Atrás da pessoa', { icon: ICON.pessoa, on: lsel.it.atras });
+      tool(ctx, 'atras', 'Atrás da pessoa', { icon: ICON.pessoa, on: lsel.it.atras });
       tool(ctx, 'texto-segue', 'Acompanhar', { icon: ICON.alvo, on: lsel.it.acompanhar });
     }
+    if (lsel.f.tipo === 'imagem') tool(ctx, 'atras', 'Atrás da pessoa', { icon: ICON.pessoa, on: !!lsel.it.atras });
     if (aud) {
       tool(ctx, 'volume', `${Math.round(lsel.it.volume * 100)}%`);
       // Melhorar é a cadeia de voz (tira ruído): numa música da biblioteca só estragaria
@@ -1951,7 +1952,7 @@ document.addEventListener('click', (e) => {
     case 'duplicar': if (S.layerSel) duplicateLayerSel(); else duplicateSelected(); break;
     case 'texto': addTexto(); break;
     case 'texto-editar': openTextoCamada(false); break;
-    case 'texto-atras': textoLiga('atras'); break;
+    case 'atras': textoLiga('atras'); break;
     case 'texto-segue': textoLiga('acompanhar'); break;
     case 'leg-texto': openLegendaTexto(); break;
     case 'leg-segue': legendaSegue(); break;
@@ -3153,6 +3154,7 @@ function renderLayerTrack(track, lane, f) {
     }
     el('span', 'l-name', chip).textContent = it.trilha ? (S.trilhaNomes[it.trilha] || it.trilha) : nomeMidia(it.arquivo);
     if (it.melhorar) el('span', 'l-tag', chip).innerHTML = ICON.melhorar;
+    if (it.atras) el('span', 'l-tag', chip).innerHTML = ICON.pessoa;
     if (it.id === S.layerSel) {
       chip.classList.add('sel');
       const l = el('div', 'lh l', chip);
@@ -3931,13 +3933,20 @@ function addTexto() {
   renderTimeline(); renderToolbar(); refreshHeader(); drawCenaBox();
   openTextoCamada(true);
 }
+// liga e desliga `atras` (texto ou imagem) e `acompanhar` (texto) da camada escolhida
 function textoLiga(k) {
   const hit = camItem(S.layerSel);
-  if (!hit || hit.f.tipo !== 'texto') return;
+  if (!hit || !(hit.f.tipo === 'texto' || (hit.f.tipo === 'imagem' && k === 'atras'))) return;
   remember();
   hit.it[k] = !hit.it[k];
   const liga = hit.it[k];
-  if (k === 'atras') toast(liga ? 'No vídeo final o texto passa atrás da pessoa (a prévia mostra na frente)' : 'O texto volta para a frente', 2800);
+  // efeito de tela inteira no mesmo trecho (tela dividida, efeito do agente) cobre o que fica atrás da pessoa
+  const a = hit.it.inicio, b = hit.it.inicio + hit.it.duracao;
+  const cobre = k === 'atras' && liga && [...S.cenasDraft.filter((c) => !c.desligada), ...S.insertsDraft.filter((c) => c.kind === 'split' || c.kind === 'splitvideo')]
+    .find((c) => isFinite(c.start) && isFinite(c.end) && c.start < b && c.end > a);
+  if (cobre) { toast(`Atenção: ${cobre.nome || 'a tela dividida'} ocupa a tela inteira nesse trecho e cobre o que fica atrás da pessoa`, 4200); renderTimeline(); renderToolbar(); refreshHeader(); return; }
+  if (hit.f.tipo === 'imagem') toast(liga ? 'No vídeo final a imagem vira o cartão grande atrás da pessoa (a prévia mostra por cima, transparente)' : 'A imagem volta para o cartão de cima', 3200);
+  else if (k === 'atras') toast(liga ? 'No vídeo final o texto passa atrás da pessoa (a prévia mostra na frente)' : 'O texto volta para a frente', 2800);
   else toast(liga ? (S.rastreio ? 'O texto anda junto com a pessoa' : 'O texto anda junto com a pessoa no vídeo final (o agente rastreia o rosto)') : 'O texto fica parado', 2800);
   renderTimeline(); renderToolbar(); refreshHeader();
 }
@@ -4603,14 +4612,15 @@ function syncLayers() {
   const playing = !video.paused && !video.ended && !G.mode;
   const rt = corte ? draftToRendered(S.t) : 0;
   const vivos = new Set();
-  let img = '';
+  let img = '', imgAtras = false;
   if (corte && S.camadas) {
     for (const f of S.camadas.faixas) {
       for (const it of f.itens) {
         const dentro = rt >= it.inicio && rt < it.inicio + it.duracao;
         if (!dentro) continue;
         // a camada mais nova fica por cima, como no vídeo final (os inserts dela entram por último)
-        if (f.tipo === 'imagem') { if (!f.oculto) img = it.arquivo; continue; }
+        if (f.tipo === 'imagem') { if (!f.oculto) { img = it.arquivo; imgAtras = !!it.atras; } continue; }
+        if (f.tipo === 'texto') continue; // os textos: desenhaTextos
         if (f.mudo || !playing) continue;
         vivos.add(it.id);
         const a = audioEl(it);
@@ -4629,6 +4639,7 @@ function syncLayers() {
     if (img) ov.src = `/media/${img}`;
     ov.classList.toggle('hidden', !img);
   }
+  $('ovImg').classList.toggle('atras', imgAtras); // o cartão grande de trás, no lugar dele no vídeo final
   desenhaTextos();
   desenhaLegendaPrevia(false);
 }
