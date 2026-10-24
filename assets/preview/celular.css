@@ -479,6 +479,15 @@ button { font-family: inherit; cursor: pointer; }
 /* o botão das faixas A1/A2 na faixa do áudio, e o nome delas */
 .th-b.jcut svg { transition: transform 0.16s ease; }
 .th-b.jcut[aria-expanded='true'] svg { transform: rotate(180deg); }
+/* Melhorar voz: a escolha aparece na faixa do som; tocar abre o painel */
+.voz-tag {
+  display: flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px 0 6px;
+  border: 1px solid rgba(248, 112, 0, 0.5); border-radius: 10px;
+  background: var(--surface2); color: #ffb377;
+  font-size: 11px; font-weight: 700; white-space: nowrap;
+}
+.voz-tag svg { width: 12px; height: 12px; display: block; }
+.voz-tag.dirty { border-style: dashed; }
 .th.th-tag { pointer-events: none; padding: 0 14px 0 8px; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; color: var(--dim); }
 .ablock {
   position: absolute; top: 2px; bottom: 2px;
@@ -589,6 +598,24 @@ button { font-family: inherit; cursor: pointer; }
 .lh.r { right: -12px; border-radius: 0 3px 3px 0; }
 .vol-range { width: calc(100% - 32px); margin: 16px 16px 8px; accent-color: var(--brand); }
 .vol-nota { margin: 0 16px 6px; font-size: 12px; line-height: 1.4; color: var(--dim); }
+/* Melhorar voz: o andamento do preparo e os dois reguladores */
+.voz-prep { padding: 8px 16px 6px; }
+.voz-prep > p:first-child { margin: 0 0 8px; font-size: 13px; line-height: 1.4; }
+.voz-prep .vol-nota { margin: 8px 0 0; }
+.voz-prep.erro > p:first-child { color: #ff8a80; }
+.voz-prep #vozDeNovo { margin-top: 10px; }
+.voz-barra { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.voz-barra i { display: block; height: 100%; width: 0; background: var(--brand); transition: width 0.4s; }
+.voz-prep.erro .voz-barra { display: none; }
+.voz-reg { display: grid; grid-template-columns: 50px 1fr 42px; align-items: center; gap: 10px; padding: 12px 16px 0; }
+.voz-reg b { font-size: 13px; }
+.voz-reg span { font-size: 12px; color: var(--dim); text-align: right; font-variant-numeric: tabular-nums; }
+.voz-reg .vol-range { width: 100%; margin: 0; }
+.voz-ponta { display: flex; justify-content: space-between; padding: 2px 68px 2px 76px; font-size: 11px; color: var(--dim2); }
+.voz-regs { padding-bottom: 8px; }
+.voz-dica { margin-top: 10px; }
+.voz-regs.off { opacity: 0.35; pointer-events: none; }
+#vozOriginal[aria-pressed='true'] { border-color: var(--brand); color: #ffb377; }
 /* Velocidade: as marcas embaixo da régua, cada uma no seu lugar da escala */
 .vel-marcas { position: relative; height: 26px; margin: 0 16px 4px; }
 .vel-modos { padding-top: 8px; padding-bottom: 4px; }
@@ -818,11 +845,11 @@ kbd {
 .desk .sheet .sheet-grip { display: none; }
 .desk #sheet, .desk #trilhaSheet, .desk #fxSheet, .desk #modeloSheet { left: 0; right: auto; width: var(--col-l); transform: translateX(-102%); border-right: 1px solid var(--line); }
 .desk #noteSheet, .desk #volSheet, .desk #velSheet, .desk #ajSheet, .desk #fxIntSheet,
-.desk #tomZoomSheet, .desk #cenaSheet { left: auto; right: 0; width: var(--col-r); transform: translateX(102%); border-left: 1px solid var(--line); overflow-y: auto; }
+.desk #tomZoomSheet, .desk #cenaSheet, .desk #vozSheet { left: auto; right: 0; width: var(--col-r); transform: translateX(102%); border-left: 1px solid var(--line); overflow-y: auto; }
 /* aberto: a id acima (que esconde de lado) pesa mais que .open, então a regra repete as ids */
 .desk #sheet.open, .desk #trilhaSheet.open, .desk #fxSheet.open, .desk #modeloSheet.open,
 .desk #noteSheet.open, .desk #volSheet.open, .desk #velSheet.open, .desk #ajSheet.open, .desk #fxIntSheet.open,
-.desk #tomZoomSheet.open, .desk #cenaSheet.open { transform: none; }
+.desk #tomZoomSheet.open, .desk #cenaSheet.open, .desk #vozSheet.open { transform: none; }
 /* na coluna, o painel de Texto usa a altura toda: os campos rolam, os botões ficam embaixo */
 .desk #cenaSheet { display: flex; flex-direction: column; }
 .desk #cenaSheet .cena-campos { flex: 1; max-height: none; }

@@ -711,6 +711,42 @@ was cut out.
 
 ---
 
+## Melhorar voz (the video's own voice)
+
+The editor's **Áudio → Melhorar voz** (and the tag on the audio track once something
+is chosen) opens two dials, like Adobe Podcast's enhancer: **Voz**, from the voice
+only cleaned (0) to a studio timbre (100), and **Fundo**, from the voice alone (0) to
+the original room (100). Fundo 100 with Voz 0 is the original. The panel plays the
+choice live over the video; **Pronto** keeps it in the draft and **Salvar** sends
+`melhorar` (`{voz, fundo}` or `{desligar: true}`).
+
+How it works (`helpers/melhorar_voz.py`, approved by ear on 23/10):
+- **Prepare**, once per cut, from the cut's own sound (`<edit>/.melhorar/`): the clean
+  voice (DeepFilterNet, a mask: same voice, same timing, noise removed), the room
+  (original − clean), the studio timbre (Sidon fp32, generative) and five Voz steps.
+  The steps mix only the MAGNITUDE of the spectrum (log interpolation) over the clean
+  voice's phase; mixing waveforms sounds doubled. The editor's server runs it in a
+  separate process when the panel opens (progress in `.melhorar/andamento.json`); from
+  the chat `aplicar` prepares by itself. Cost on an i3: ~1.3 s per second of audio;
+  peak memory ~3.9 GB with 12 GB of RAM or more (Sidon in 30 s pieces with 3 s of
+  context), ~2 GB below that (15 s pieces). Models, ~1 GB, download once into
+  `~/.cutmind/voz` (`CUTMIND_VOZ_DIR`), or ahead of time with `melhorar_voz.py baixar`.
+- **Apply**: `melhorar_voz.py aplicar <edit> --voz N --fundo M` computes the exact
+  mix (not the editor's blend of two steps), swaps only the sound of `cut.mp4` (same
+  samples count, same timing, the kit's −14 LUFS) and of `remotion/public/cut.mp4`
+  when that copy is of the same cut. With a final video, rebuild its sound:
+  `mixar_final.py` takes the voice from `cut.mp4` (with `--base render`, re-render
+  first: the voice then comes from Remotion's audio).
+- **Remove**: `melhorar_voz.py restaurar <edit>` (the original stream, byte for byte).
+- **State**: `melhorar_voz.py estado <edit>` prints JSON — `preparo` (`nenhum`,
+  `preparando`, `pronto`, `velho` = the cut changed), `aplicado`, `escolha`,
+  `reaplicar`. **A re-render of the cut brings the original sound back**: after
+  `render.py`, `reaplicar: true` means run `aplicar <edit>` with no numbers.
+- Limits: the editor previews up to 3 min of video (longer: the dials still work, the
+  user just does not hear them first); `preparar` refuses past 10 min.
+
+---
+
 ## Speed of the finished video (`velocidade.json`)
 
 On the Final view the user selects everything (Ctrl+A or **Selecionar**) or a span

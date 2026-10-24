@@ -181,6 +181,12 @@ def digest(p: Path) -> str:
         if edl:
             parts.append("  ⚠ O corte mudou no mesmo Salvar: os trechos são do final ANTIGO. Refaça o final, "
                          "leve os trechos para ele (grave a duração nova) e só então acelere.")
+    if "melhorar" in d:
+        head.append(f"melhorar voz: {melhorar_resumo(d['melhorar'])}")
+        parts += melhorar_linhas(d["melhorar"], bool(edl))
+    elif edl and voz_aplicada(p.parent):
+        parts.append("  ⚠ Melhorar voz está aplicado: o corte refeito volta com o som original. Depois do "
+                     "render.py, rode melhorar_voz.py aplicar <edit> (sem números: a última escolha).")
     if not head:
         head.append("ajustes salvos")
 
@@ -310,6 +316,31 @@ def efeitos_linhas(e: dict) -> list[str]:
 
 def _x(f: float) -> str:
     return f"{float(f):g}".replace(".", ",") + "×"
+
+
+def melhorar_resumo(m: dict) -> str:
+    return "tirar (o som original volta)" if m.get("desligar") else f"Voz {m['voz']}%, Fundo {m['fundo']}%"
+
+
+def melhorar_linhas(m: dict, corte_mudou: bool) -> list[str]:
+    """Melhorar voz, a voz do próprio vídeo (melhorar_voz.py; references/shortform.md, "Melhorar voz")."""
+    depois = " Depois do render.py." if corte_mudou else ""
+    if m.get("desligar"):
+        return [f"  Melhorar voz: tirar → melhorar_voz.py restaurar <edit> (o som original volta ao cut.mp4, "
+                f"byte a byte).{depois} Com vídeo final, refaça o som dele (mixar_final.py)."]
+    return [f"  Melhorar voz: Voz {m['voz']}% (0 = limpa, 100 = estúdio) e Fundo {m['fundo']}% (o ambiente "
+            f"original) → melhorar_voz.py aplicar <edit> --voz {m['voz']} --fundo {m['fundo']}: troca só o som "
+            f"do cut.mp4 e prepara antes se o corte mudou.{depois} Com vídeo final, refaça o som dele "
+            "(mixar_final.py)."]
+
+
+def voz_aplicada(edit: Path) -> bool:
+    """O cut.mp4 de agora tem a voz melhorada? (o estado do melhorar_voz.py, sem rodar nada)"""
+    try:
+        e = json.loads((edit / ".melhorar" / "estado.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return bool(isinstance(e, dict) and (e.get("aplicado") or {}).get("hash"))
 
 
 def velocidade_resumo(v: dict) -> str:

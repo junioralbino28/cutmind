@@ -184,6 +184,19 @@ def test_voz_limpa_atrasada_e_realinhada(projeto):
     assert np.abs(limpa[:-7] - ref[:-7]).max() < 1e-6
 
 
+def test_pedacos_do_mesmo_tamanho_sem_passar_do_bloco():
+    # 82,6 s em blocos fixos de 30 s deixavam um último pedaço de 4,8 s, com pouco contexto
+    for seg, bloco in ((82.6, 30.0), (89.9, 30.0), (43.0, 30.0), (60.0, 30.0), (29.0, 30.0), (95.0, 15.0)):
+        x = _fala(seg, 3)
+        cortes = mv.pedacos(x, bloco)
+        k = -(-len(x) // int(bloco * SR))
+        assert len(cortes) == k and cortes[0][0] == 0 and cortes[-1][1] == len(x)
+        assert all(b - a <= bloco * SR and a % 3 == 0 for a, b in cortes)
+        if k > 1:
+            ideal = len(x) / k
+            assert all(0.7 * ideal <= b - a <= 1.3 * ideal for a, b in cortes), (seg, bloco, cortes)
+
+
 def test_pedacos_cortam_no_quieto_e_emendam_sem_marca():
     x = _fala(5.0, 2)
     cortes = mv.pedacos(x, bloco=1.5)

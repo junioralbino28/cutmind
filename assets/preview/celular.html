@@ -269,6 +269,31 @@
   </footer>
 </section>
 
+<!-- painel: Melhorar voz, a voz do próprio vídeo (melhorar_voz.py prepara no computador) -->
+<section class="sheet small" id="vozSheet" aria-hidden="true">
+  <div class="sheet-grip"></div>
+  <div class="note-head"><b>Melhorar voz</b><span id="vozEstado"></span></div>
+  <div class="voz-prep hidden" id="vozPrep">
+    <p id="vozPrepTexto">Preparando a voz…</p>
+    <div class="voz-barra"><i id="vozPrepBarra"></i></div>
+    <p class="vol-nota" id="vozPrepNota"></p>
+    <button class="tb-btn" id="vozDeNovo" type="button">Tentar de novo</button>
+  </div>
+  <div class="voz-regs off" id="vozRegs">
+    <div class="voz-reg"><b>Voz</b><input class="vol-range" id="vozVoz" type="range" min="0" max="100" step="1" value="50" aria-label="Voz: de limpa a estúdio"><span id="vozVozVal">50%</span></div>
+    <div class="voz-ponta"><span>limpa</span><span>estúdio</span></div>
+    <div class="voz-reg"><b>Fundo</b><input class="vol-range" id="vozFundo" type="range" min="0" max="100" step="1" value="20" aria-label="Fundo: de só a voz ao ambiente original"><span id="vozFundoVal">20%</span></div>
+    <div class="voz-ponta"><span>só a voz</span><span>ambiente original</span></div>
+    <p class="vol-nota voz-dica">Dê play e arraste: o som muda na hora. Original toca a gravação como veio.</p>
+  </div>
+  <footer class="sheet-foot">
+    <button class="tb-btn" id="vozOriginal" type="button" aria-pressed="false">Original</button>
+    <button class="tb-btn ghost" id="vozTirar" type="button">Tirar</button>
+    <div class="t-spacer"></div>
+    <button class="tb-btn primary" id="vozOk" type="button">Pronto</button>
+  </footer>
+</section>
+
 <input type="file" id="fileInput" accept="video/*" hidden>
 <input type="file" id="fileAudio" accept="audio/*" hidden>
 <input type="file" id="fileImagem" accept="image/*" hidden>

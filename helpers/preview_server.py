@@ -35,7 +35,8 @@ Routes:
                         <edit>/preview_style.json when body.type=="style-setup";
                         com `camadas`, grava também <edit>/camadas.json (camadas.py);
                         com `efeitos`, <edit>/efeitos.json (efeitos.py); com
-                        `velocidade`, <edit>/velocidade.json (velocidade.py)
+                        `velocidade`, <edit>/velocidade.json (velocidade.py); com
+                        `melhorar`, a Voz e o Fundo escolhidos (o agente aplica)
   /api/upload   POST    ?name=<arquivo>, corpo = o arquivo. Vídeo → pasta dos
                         vídeos (pai do <edit>) + aviso em <edit>/preview_upload.json;
                         imagem e áudio → <edit>/midia/ (camadas do projeto)
@@ -46,6 +47,12 @@ Routes:
                         cache (baixa e abre o zip na primeira vez)
   /api/pacotes/usar      POST {id}: baixa o pacote e copia para <edit>/midia/
   /api/pacotes/favorito  POST {id, on}: favorito fica no cache, mesmo cheio
+  /api/melhorar          GET  Melhorar voz (melhorar_voz.py): se o preparo vale para o corte
+                         de agora, a escolha, o que está aplicado, o que foi salvo e ainda
+                         não aplicado (`pendente`) e as faixas da prévia (servidas em /media/)
+  /api/melhorar/andamento GET  só o andamento do preparo (leve: o editor pergunta a cada segundo)
+  /api/melhorar/preparar POST  começa o preparo num processo à parte (~1 s por s de áudio,
+                         até ~4 GB de memória; na 1ª vez baixa os modelos)
 
 Quem entra: por padrão o servidor ouve só em 127.0.0.1 e atende só este
 computador (e o celular ligado por `adb reverse`, que chega como 127.0.0.1).
@@ -86,6 +93,7 @@ import velocidade as vel  # mesma pasta deste arquivo
 import pacotes as pk  # mesma pasta deste arquivo
 import projetos as pj  # mesma pasta deste arquivo
 import modelos as md  # mesma pasta deste arquivo
+import melhorar_voz as mv  # mesma pasta deste arquivo
 
 APP_DIR = Path(__file__).resolve().parent.parent / "assets" / "preview"
 EFEITOS_DIR = APP_DIR.parent / "efeitos"
@@ -137,6 +145,59 @@ _thumb_state: dict[str, float] = {}  # video path -> mtime generated
 _upload_lock = threading.Lock()
 _frame_slots = threading.BoundedSemaphore(2)  # ffmpeg de quadro avulso ao mesmo tempo
 _troca_lock = threading.Lock()  # abrir outro projeto troca a pasta do servidor inteiro
+_voz_lock = threading.Lock()
+_voz_jobs: dict[str, subprocess.Popen] = {}  # pasta edit → o processo do preparo da voz
+
+
+def comando_preparo(edit: Path) -> list[str]:
+    """O preparo da voz roda num processo à parte: é pesado (~1 s por s de áudio e até ~4 GB de
+    memória) e a memória volta quando ele termina. Os testes trocam por um falso."""
+    return [sys.executable, "-X", "utf8", str(Path(__file__).resolve().parent / "melhorar_voz.py"),
+            "preparar", str(edit)]
+
+
+def iniciar_preparo(edit: Path) -> bool:
+    """False quando já tem um preparo rodando para esta pasta (deste servidor ou do agente)."""
+    edit = edit.resolve()
+    with _voz_lock:
+        p = _voz_jobs.get(str(edit))
+        if p is not None and p.poll() is None:
+            return False
+        a = mv.andamento(edit)
+        if a and a["vivo"]:
+            return False
+        pasta = edit / mv.PASTA
+        pasta.mkdir(exist_ok=True)
+        (pasta / "andamento.json").unlink(missing_ok=True)  # o "pronto" de antes não vale para este
+        with open(pasta / "preparo.log", "ab") as log:
+            _voz_jobs[str(edit)] = subprocess.Popen(
+                comando_preparo(edit), stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return True
+
+
+def andamento_preparo(edit: Path) -> dict | None:
+    """O andamento do preparo, também nos dois instantes que o arquivo não mostra: o processo
+    acabou de nascer (ainda não escreveu nada) e o processo morreu sem escrever o fim."""
+    edit = edit.resolve()
+    p = _voz_jobs.get(str(edit))
+    a = mv.andamento(edit)
+    if p is None:
+        return a
+    if p.poll() is None:
+        return a or {"etapa": "comecando", "n": 0, "de": 0, "texto": "Começando o preparo", "fracao": 0.0,
+                     "vivo": True}
+    if a is None or a.get("etapa") not in ("pronto", "falhou"):
+        try:
+            linhas = (edit / mv.PASTA / "preparo.log").read_text(encoding="utf-8", errors="replace").splitlines()
+            ultima = next((x.strip() for x in reversed(linhas) if x.strip()), "")
+        except OSError:
+            ultima = ""
+        erro = ultima.removeprefix("erro: ") if ultima.startswith("erro: ") else (
+            "o preparo parou sem terminar" + (f" ({ultima[:200]})" if ultima else ""))
+        return {"etapa": "falhou", "n": 0, "de": 0, "texto": "O preparo parou", "fracao": 0.0, "erro": erro,
+                "vivo": False}
+    return a
 
 
 # blocos da Fase 2 que o editor manda INTEIROS (todos os de cada tipo) quando algum anda
@@ -556,6 +617,10 @@ class Handler(BaseHTTPRequestHandler):
             self._projeto_capa(query)
         elif path == "/api/modelos":
             self._json({"modelos": md.listar()})
+        elif path == "/api/melhorar":
+            self._melhorar()
+        elif path == "/api/melhorar/andamento":
+            self._json(andamento_preparo(self.root) or {"etapa": None})
         elif path == "/api/midia":
             self._midia()
         elif path == "/api/pacotes":
@@ -582,6 +647,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in ("/api/modelos", "/api/modelos/apagar"):
             self._modelo_post(path)
+            return
+        if path == "/api/melhorar/preparar":
+            self._melhorar_preparar()
             return
         if path != "/api/save":
             self._fail(404, "unknown route")
@@ -626,6 +694,8 @@ class Handler(BaseHTTPRequestHandler):
                     body["efeitos"] = ef.normalize(body["efeitos"])
                 if "velocidade" in body:
                     body["velocidade"] = vel.normalize(body["velocidade"])
+                if "melhorar" in body:
+                    body["melhorar"] = mv.normalizar_escolha(body["melhorar"])
             except cam.CamadasInvalidas as e:
                 self._json({"error": f"camadas: {e}"}, 400)
                 return
@@ -634,6 +704,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             except vel.VelocidadeInvalida as e:
                 self._json({"error": f"velocidade: {e}"}, 400)
+                return
+            except mv.VozErro as e:
+                self._json({"error": f"melhorar voz: {e}"}, 400)
                 return
             if "camadas" in body:
                 cam.save(self.root / "camadas.json", body["camadas"])
@@ -1002,6 +1075,40 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": "pedido inválido"}, 400)
             return None
         return body
+
+    # ---- melhorar voz (melhorar_voz.py) ----
+    def _melhorar(self) -> None:
+        s = mv.situacao(self.root)
+        a = andamento_preparo(self.root)
+        if a and (a.get("vivo") or a.get("etapa") == "falhou"):
+            s["andamento"] = {k: a.get(k) for k in ("etapa", "n", "de", "texto", "fracao", "erro", "vivo")}
+            if a.get("vivo"):
+                s["preparo"] = "preparando"
+        try:
+            salvo = json.loads((self.root / "preview_edits.json").read_text(encoding="utf-8")).get("melhorar")
+        except (OSError, ValueError, AttributeError):
+            salvo = None
+        if isinstance(salvo, dict):
+            s["pendente"] = salvo  # salvo no editor e ainda não aplicado pelo agente
+        self._json(s)
+
+    def _melhorar_preparar(self) -> None:
+        if self._corpo_pequeno() is None:
+            return
+        try:
+            mv.video(self.root)
+        except mv.VozErro as e:
+            self._json({"error": str(e)}, 409)
+            return
+        if mv.situacao(self.root)["preparo"] == "pronto":
+            self._json({"ok": True, "pronto": True})
+            return
+        try:
+            novo = iniciar_preparo(self.root)
+        except OSError as e:
+            self._json({"error": f"não consegui começar o preparo: {e}"}, 500)
+            return
+        self._json({"ok": True, "novo": novo, "andamento": andamento_preparo(self.root)})
 
     def _modelo_post(self, path: str) -> None:
         """Salvar o estilo deste vídeo como modelo, ou apagar um (~/.cutmind/modelos)."""

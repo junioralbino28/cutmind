@@ -158,6 +158,21 @@ finished video that is retimed, not the cut. To speed up only the speech of one 
 use the take's `velocidade` (Phase 1) instead. Proven by `tests/test_velocidade_final.py`
 (a flash and a beep stay together at 2× and 0.5×, the beep keeps its pitch).
 
+## Melhorar voz (the video's own voice, `melhorar_voz.py`)
+
+| Editor tool | Chat request | What to do |
+|---|---|---|
+| Áudio → `melhorar-voz`, the dials, Pronto | "melhora a voz", "voz de estúdio 60%, fundo 20%", "tira o barulho de fundo da minha voz" | `melhorar_voz.py aplicar <edit> --voz N --fundo M` (no numbers: the last choice, or 50 and 20). Voz 0 = the voice cleaned (DeepFilterNet), 100 = studio timbre (Sidon); Fundo 0 = voice only, 100 = the whole room back. "Só limpar" = `--voz 0 --fundo 0`; "mais natural" = a little Fundo (10–30) |
+| `vozTirar` | "tira a melhoria da voz", "volta a voz original" | `melhorar_voz.py restaurar <edit>` |
+
+The first time on a cut it prepares (~1.3 s per second of audio on an i3, ~1 GB of
+models downloaded once); say so before a long video. The dials are heard, not read:
+when the user has no numbers in mind, apply 50/20 and point them to the editor panel,
+where dragging changes the sound live. With a final video, rebuild its sound
+(`mixar_final.py`). Proven by `tests/test_melhorar_voz.py` (the tracks, the alignment,
+the exact mix, the restore) and `tests/test_preview_voz.py` (the server and the panel's
+files).
+
 ## Editor-only controls (no file behind them)
 
 `voltar`, `cortar` (selects the take under the needle), the A1/A2 caret on the audio track

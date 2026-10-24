@@ -107,6 +107,7 @@ const ICON = {
   cadeado: sv('<rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>'),
   cadeadoAberto: sv('<rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 6.6-1.6"/>'),
   melhorar: sv('<path d="M3.5 12h2.2M7.7 8.5v7M11.9 5.5v13M16.1 8.5v7M20.3 12h-2.2"/>'),
+  voz: sv('<rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.8 11.5a6.2 6.2 0 0 0 12.4 0M12 17.7v2.8"/>'),
   volume: sv('<path d="M4.5 9.5v5h3.2l4.8 4V5.5l-4.8 4z"/><path d="M15.8 9a4 4 0 0 1 0 6"/>'),
   estrela: sv('<path d="M12 3.8l2.5 5.1 5.6.8-4 3.9.9 5.6L12 16.6l-5 2.6.9-5.6-4-3.9 5.6-.8z"/>'),
   estrelaCheia: sv('<path d="M12 3.8l2.5 5.1 5.6.8-4 3.9.9 5.6L12 16.6l-5 2.6.9-5.6-4-3.9 5.6-.8z" fill="currentColor"/>'),
@@ -404,7 +405,9 @@ const S = {
   jcutOpen: lerPref('cutmind.jcutOpen') === '1', // faixas A1/A2 do J-cut abertas (lembrado)
   mudoUsuario: false, // o alto-falante da linha do play (só a prévia; não vai para o vídeo)
   midiaDur: {},       // duração de cada áudio de midia/, lida do arquivo
-  audioMenu: false,   // Áudio tocado: a barra mostra Trilhas / Do celular
+  audioMenu: false,   // Áudio tocado: a barra mostra Trilhas / Do celular / Melhorar voz
+  melhorar: null,     // Melhorar voz no rascunho: {voz, fundo} ou {desligar: true}; null = não mexeu
+  melhorarBase: 'null', // o que o vídeo tem (ou terá quando o agente aplicar o último Salvar)
   importMenu: false,  // Importar (ou o + da faixa) tocado: a barra mostra Vídeo / Imagem / Áudio
   trilhas: null,      // a biblioteca do kit (lista do servidor), carregada ao abrir
   trilhaNomes: {},    // id da trilha → nome, para o bloco na linha do tempo
@@ -616,7 +619,7 @@ const edlDirty = () => diffBase() > 0;
 function dirtyCount() {
   return diffBase() + S.notes.length + S.insertsDraft.filter(insMudou).length + (camadasDirty() ? 1 : 0) + (efeitosDirty() ? 1 : 0)
     + S.cenasDraft.filter(cenaMudou).length + zoomMudados() + destaquesMudados().length + (legendaMudou() ? 1 : 0)
-    + (velDirty() ? 1 : 0);
+    + (velDirty() ? 1 : 0) + (melhorarDirty() ? 1 : 0);
 }
 const isChanged = (r) => {
   const b = S.base.find((x) => x.uid === r.uid);
@@ -666,6 +669,7 @@ function snap() {
     legSel: S.legSel,
     vel: JSON.parse(JSON.stringify(S.vel)),
     faixa: S.faixa ? { ...S.faixa } : null,
+    melhorar: S.melhorar ? { ...S.melhorar } : null,
   };
 }
 function remember(before) {
@@ -702,6 +706,7 @@ function restore(s) {
   if (S.legenda && s.legenda) S.legenda = s.legenda;
   S.legSel = !!(S.legenda && s.legSel);
   if (s.vel) S.vel = s.vel;
+  if ('melhorar' in s) S.melhorar = s.melhorar;
   S.faixa = s.faixa && S.view === 'final' ? s.faixa : null;
   drawCenaBox();
   applyMute();
@@ -764,13 +769,13 @@ async function poll() {
     if (sig !== S.lastSig) {
       // com Filtros/Transições aberto também espera: recarregar apagava a prévia tocando e a
       // escolha, e o "Usar" seguinte não fazia nada (o agente regravando o final a cada 2 s)
-      if (dirtyCount() === 0 && !S.styling && !fxAberto()) {
+      if (dirtyCount() === 0 && !S.styling && !fxAberto() && !vozAberto()) {
         S.lastSig = sig;
         await applyState(data);
       } else if (!S.newStateWarned) { // uma vez só, até a versão nova entrar
         S.newStateWarned = true;
         toast(S.styling ? 'Chegou uma versão nova: ela aparece quando você fechar o Estilo.'
-          : fxAberto() ? 'Chegou uma versão nova: ela aparece quando você fechar este painel.'
+          : fxAberto() || vozAberto() ? 'Chegou uma versão nova: ela aparece quando você fechar este painel.'
           : isDesk() ? 'Chegou uma versão nova do agente. Salve ou descarte seus ajustes para ver.'
             : 'Chegou uma versão nova — salve seus ajustes para ver', 4500);
       }
@@ -803,6 +808,8 @@ async function applyState(data) {
     curva: r.curva && Array.isArray(r.curva.pontos) ? { nome: r.curva.nome || 'personalizar', pontos: r.curva.pontos.map((p) => [+p[0], +p[1]]) } : null }));
   S.draft = S.rendered.map((r, i) => ({ ...r, uid: `o${i}`, from: i, orig: { start: r.start, end: r.end } }));
   S.base = baseOf(S.draft);
+  S.melhorar = null;
+  vozCarregaInfo().then(() => { renderTimeline(); refreshHeader(); });
   S.selected = -1;
   forgetHistory(); // corte novo: as fotos antigas são de outras tomadas
 
@@ -1015,6 +1022,7 @@ function renderTimeline() {
       track.classList.toggle('mudo', S.view === 'corte' && S.camadas.video.mudo);
       el('canvas', 'wave', track).id = 'wave';
       if (temJcut() && !S.posMode) jcutHead(track);
+      vozEtiqueta(track);
       continue;
     }
     const lane = el('div', 'lane', track);
@@ -2042,7 +2050,8 @@ const DICA = { volume: 'Volume', velocidade: 'Velocidade e curva', intensidade: 
   'leg-posicao': 'O lugar de cada frase da legenda', 'leg-original': 'A legenda como o agente fez',
   selecionar: 'Escolhe o vídeo todo (imagem, som, legenda e efeitos juntos); no computador, arrastar no vão escolhe um trecho',
   'vel-trecho': 'Velocidade de tudo no trecho: nada sai do lugar', 'vel-normal': 'O trecho volta à velocidade normal',
-  tudo: 'O vídeo inteiro' };
+  tudo: 'O vídeo inteiro',
+  'melhorar-voz': 'A voz do vídeo mais limpa ou com som de estúdio, e quanto do ambiente fica' };
 function renderToolbar() {
   const tb = $('toolbar');
   const ctx = $('ctxbar');
@@ -2105,6 +2114,7 @@ function renderToolbar() {
     tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
     tool(ctx, 'trilhas', 'Trilhas', { icon: ICON.audio });
     tool(ctx, 'do-celular', 'Do celular', { icon: ICON.enviar });
+    tool(ctx, 'melhorar-voz', 'Melhorar voz', { icon: ICON.voz });
     return;
   }
   if (tmenu) { // Texto: um texto solto na agulha, ou um modelo de dois ou três textos em fontes misturadas
@@ -2225,6 +2235,7 @@ document.addEventListener('click', (e) => {
     case 'audio': S.audioMenu = true; S.importMenu = false; S.fxMenu = false; S.textMenu = false; renderToolbar(); break;
     case 'trilhas': S.audioMenu = false; renderToolbar(); openTrilhas(); break;
     case 'do-celular': S.audioMenu = false; renderToolbar(); $('fileAudio').click(); break;
+    case 'melhorar-voz': S.audioMenu = false; renderToolbar(); openVoz(); break;
     case 'voltar': soltaEscolha(); break;
     case 'dividir': splitSelected(); break;
     case 'duplicar': if (S.layerSel) duplicateLayerSel(); else duplicateSelected(); break;
@@ -3532,6 +3543,9 @@ async function salvar(aviso) {
   // (corte refeito depois = outra duração: o velocidade_final.py para antes de aplicar)
   const comVel = velDirty();
   if (comVel) payload.velocidade = { versao: 1, duracao: +fimFinal().toFixed(3), trechos: S.vel.trechos };
+  // Melhorar voz: a Voz e o Fundo escolhidos, ou {desligar}; o agente aplica no cut.mp4
+  const comVoz = melhorarDirty();
+  if (comVoz) payload.melhorar = S.melhorar;
   if (S.notes.length) {
     payload.notes = S.notes.map((n) => ({
       start: +n.start.toFixed(3),
@@ -3560,6 +3574,7 @@ async function salvar(aviso) {
     S.camadasBase = camSig();
     S.efeitosBase = fxSig();
     S.velBase = velSig();
+    if (comVoz) { S.melhorarBase = JSON.stringify(S.melhorar); vozCarregaInfo().then(() => renderTimeline()); }
     S.faixa = null;
     S.insertsDraft.forEach((c) => { c.orig = { start: c.start, end: c.end }; });
     S.cenasDraft.forEach((c) => { c.orig = cenaValor(c); });
@@ -3577,7 +3592,9 @@ async function salvar(aviso) {
     forgetHistory(); // o que foi enviado ao agente não se desfaz daqui
     renderTimeline(); renderToolbar(); refreshHeader();
     const oque = comEfeitos ? (comCamadas ? 'Camadas e efeitos salvos' : 'Efeitos salvos') : 'Camadas salvas';
-    toast(aviso || (!soCamadas ? 'Ajustes enviados. O agente refaz o corte.'
+    const soVoz = comVoz && soCamadas && !comF2 && !comVel && !comCamadas && !comEfeitos;
+    toast(aviso || (soVoz ? 'Melhorar voz enviado. O agente aplica a voz no vídeo.'
+      : !soCamadas ? 'Ajustes enviados. O agente refaz o corte.'
       : comF2 ? 'Ajustes enviados. O agente refaz só os trechos do vídeo final que mudaram.'
         : comVel && !comCamadas && !comEfeitos ? 'Velocidade salva. O agente faz o vídeo de entrega com ela.'
           : `${oque}. O agente põe no vídeo final.`), 3000);
@@ -5576,8 +5593,278 @@ function syncVolTomada() {
 }
 
 // prévia: o som do vídeo, o som de cada camada e a imagem por cima
+/* ---------- Melhorar voz: a voz do próprio vídeo, com o regulador do Adobe Podcast ----------
+ * O preparo é uma vez por corte, no computador (helpers/melhorar_voz.py, que o servidor roda num
+ * processo à parte): voz limpa, fundo e 5 degraus de Voz, todos com a mesma fase. Com o painel
+ * aberto o vídeo fica mudo e o Web Audio toca a mistura aprovada na escuta, presa ao relógio do
+ * vídeo: dois degraus vizinhos por vez (mesma fase: misturar não dobra a voz) mais o fundo.
+ * Pronto guarda a escolha no rascunho; o Salvar leva `melhorar` ao agente, que aplica no cut.mp4. */
+const VOZ_FAIXAS = ['voz-000', 'voz-025', 'voz-050', 'voz-075', 'voz-100', 'fundo', 'original'];
+const VOZ_PREVIA_MAX = 180; // s: acima disso a prévia decodificada pesa demais no celular
+const VOZ = { aberto: false, info: null, buf: null, preparado: null, ac: null, master: null, nos: null, fontes: [],
+  off: 0, t0: 0, rate: 1, original: false, antes: null, vistaAntes: null, timer: 0, regs: false, voz: 50, fundo: 20 };
+const vozAberto = () => VOZ.aberto;
+const vozNumeros = (x) => (x && Number.isFinite(x.voz) ? { voz: x.voz, fundo: x.fundo } : null);
+// o que o vídeo tem, ou terá quando o agente aplicar: o salvo e ainda não aplicado, senão o aplicado
+const vozBase = (info) => (info && (info.pendente || info.aplicado)) || null;
+const melhorarDirty = () => S.melhorar != null && JSON.stringify(S.melhorar) !== S.melhorarBase;
+async function vozCarregaInfo() {
+  try {
+    const r = await fetch('/api/melhorar');
+    if (!r.ok) return null;
+    VOZ.info = await r.json();
+  } catch (e) { return null; }
+  S.melhorarBase = JSON.stringify(vozBase(VOZ.info));
+  return VOZ.info;
+}
+function vozRotulo() {
+  const v = S.melhorar || vozBase(VOZ.info);
+  if (!v) return '';
+  return v.desligar ? 'Voz original' : `Voz ${v.voz} · Fundo ${v.fundo}`;
+}
+function vozEtiqueta(track) {
+  const rot = vozRotulo();
+  if (!rot || S.posMode) return;
+  const th = track.querySelector('.th') || el('div', 'th', track);
+  const b = el('button', `voz-tag${melhorarDirty() ? ' dirty' : ''}`, th);
+  b.type = 'button';
+  b.innerHTML = `${ICON.voz}<span>${rot}</span>`;
+  b.title = melhorarDirty() ? 'Melhorar voz (falta salvar)' : 'Melhorar voz';
+}
+document.addEventListener('click', (e) => { if (e.target.closest('.voz-tag')) openVoz(); });
+
+function vozValores() {
+  $('vozVoz').value = VOZ.voz;
+  $('vozFundo').value = VOZ.fundo;
+  $('vozVozVal').textContent = `${VOZ.voz}%`;
+  $('vozFundoVal').textContent = `${VOZ.fundo}%`;
+  $('vozOriginal').setAttribute('aria-pressed', String(VOZ.original));
+}
+function vozRegs(on) {
+  VOZ.regs = on;
+  $('vozRegs').classList.toggle('off', !on);
+  $('vozOriginal').disabled = !on || !VOZ.buf;
+}
+/* a barra pesa cada etapa pelo tempo que ela leva (medido em 23/10 num vídeo de 82 s: limpar 9 s,
+ * estúdio 96 s, degraus 4 s); o download dos modelos, na 1ª vez, tem a barra dele */
+const VOZ_PESO = { limpar: 0.08, estudio: 0.88, degraus: 0.04 };
+function vozFracao(a) {
+  if (a.etapa === 'baixar') return a.fracao || 0;
+  let f = 0;
+  for (const e of Object.keys(VOZ_PESO)) {
+    if (e === a.etapa) return f + VOZ_PESO[e] * (a.fracao || 0);
+    f += VOZ_PESO[e];
+  }
+  return 0;
+}
+/* o andamento do preparo (`a`), um erro, ou só um aviso; sem nada, esconde */
+function vozMostra({ a = null, erro = '', texto = '', nota = '' } = {}) {
+  const box = $('vozPrep');
+  const algo = a || erro || texto || nota;
+  box.classList.toggle('hidden', !algo);
+  box.classList.toggle('erro', !!erro);
+  $('vozDeNovo').classList.toggle('hidden', !erro);
+  $('vozPrepTexto').textContent = erro ? `Não deu: ${erro}`
+    : a ? `${a.texto || 'Preparando a voz'}…` : texto;
+  $('vozPrepBarra').style.width = a && a.de ? `${Math.round(vozFracao(a) * 100)}%` : '0%';
+  $('vozPrepNota').textContent = nota;
+  $('vozPrepNota').classList.toggle('hidden', !nota);
+  $('vozEstado').textContent = a ? 'preparando' : '';
+}
+function vozNotaPreparo() {
+  const m = (VOZ.info && VOZ.info.modelos) || {};
+  const min = Math.max(1, Math.round((((VOZ.info && VOZ.info.duracao) || S.videoDuration) * 1.3) / 60));
+  return (m.prontos === false && m.faltam_mb ? `Na primeira vez o computador baixa os modelos de voz (${m.faltam_mb} MB). ` : '')
+    + `O preparo leva cerca de ${min} min e é uma vez por corte. Pode fechar: ele continua no computador.`;
+}
+async function openVoz() {
+  if (VOZ.aberto || !S.videoDuration) return;
+  soltaEscolha();
+  VOZ.aberto = true;
+  VOZ.antes = snap();
+  VOZ.vistaAntes = S.view;
+  if (S.view === 'final') switchView('corte'); // a prévia segue o relógio do corte
+  if (!VOZ.ac) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) VOZ.ac = new AC();
+  }
+  if (VOZ.ac && VOZ.ac.state === 'suspended') VOZ.ac.resume(); // no toque: o navegador deixa
+  const v = vozNumeros(S.melhorar) || vozNumeros(vozBase(VOZ.info)) || vozNumeros(VOZ.info && VOZ.info.escolha) || { voz: 50, fundo: 20 };
+  VOZ.voz = v.voz; VOZ.fundo = v.fundo; VOZ.original = false;
+  vozValores();
+  vozRegs(false);
+  vozMostra({ texto: 'Conferindo a voz deste vídeo…' });
+  showSheet($('vozSheet'), true);
+  await vozCarregaInfo();
+  vozSegue(false);
+}
+async function vozSegue(deNovo) {
+  if (!VOZ.aberto) return;
+  const i = VOZ.info;
+  if (!i) { vozMostra({ erro: 'o editor não respondeu. Ele ainda está ligado no computador?' }); return; }
+  if (i.preparo === 'pronto') {
+    if ((i.duracao || S.videoDuration) > VOZ_PREVIA_MAX) { // escolhe sem ouvir: os números valem igual
+      vozMostra({ nota: 'Vídeo longo: a prévia toca até 3 min de vídeo. A Voz e o Fundo escolhidos valem do mesmo jeito.' });
+      vozRegs(true);
+      return;
+    }
+    if (VOZ.preparado !== i.preparado || !VOZ.buf) await vozBaixaFaixas(i);
+    else vozPronto();
+    return;
+  }
+  const a = i.andamento;
+  if (!deNovo && a && a.etapa === 'falhou') { vozMostra({ erro: a.erro || 'o preparo parou' }); return; }
+  if (i.preparo !== 'preparando') { // nenhum, ou o corte mudou desde o último preparo
+    try {
+      const r = await fetch('/api/melhorar/preparar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const out = await r.json();
+      if (!r.ok) { vozMostra({ erro: out.error || 'não consegui começar o preparo' }); return; }
+      if (out.pronto) { await vozCarregaInfo(); vozSegue(false); return; }
+    } catch (e) { vozMostra({ erro: 'não consegui começar o preparo' }); return; }
+  }
+  vozAcompanha();
+}
+function vozAcompanha() {
+  clearTimeout(VOZ.timer);
+  const passo = async () => {
+    if (!VOZ.aberto) return;
+    let a = null;
+    try { a = await (await fetch('/api/melhorar/andamento')).json(); } catch (e) { /* servidor reiniciando */ }
+    if (!VOZ.aberto) return;
+    if (a && a.etapa === 'pronto') { await vozCarregaInfo(); vozSegue(false); return; }
+    if (a && a.etapa === 'falhou') { vozMostra({ erro: a.erro || 'o preparo parou' }); return; }
+    vozMostra({ a: a && a.etapa ? a : { texto: 'Começando o preparo', n: 0, de: 0 }, nota: vozNotaPreparo() });
+    VOZ.timer = setTimeout(passo, 700);
+  };
+  passo();
+}
+async function vozBaixaFaixas(i) {
+  const prep = i.preparado;
+  vozMostra({ texto: 'Carregando a prévia…' });
+  try {
+    const bufs = await Promise.all(VOZ_FAIXAS.map(async (k) => {
+      const r = await fetch(`/media/${i.previa[k].split('/').map(encodeURIComponent).join('/')}`);
+      if (!r.ok) throw new Error(`${k}: ${r.status}`);
+      return VOZ.ac.decodeAudioData(await r.arrayBuffer());
+    }));
+    if (!VOZ.aberto || !VOZ.info || VOZ.info.preparado !== prep) return;
+    VOZ.buf = bufs;
+    VOZ.preparado = prep;
+  } catch (e) {
+    vozMostra({ erro: `não consegui carregar a prévia (${e.message})` });
+    return;
+  }
+  vozPronto();
+}
+function vozPronto() {
+  vozMostra();
+  vozRegs(true);
+  applyMute();
+  vozSincroniza();
+}
+/* o som: as 7 faixas começam juntas no ponto do vídeo, e cada uma tem um ganho */
+// suave: as faixas que estavam tocando saem em ~10 ms (uma correção de desvio sem estalo)
+function vozPara(suave) {
+  const t = VOZ.ac ? VOZ.ac.currentTime : 0;
+  if (suave && VOZ.nos) VOZ.nos.forEach((no) => no.gain.setTargetAtTime(0, t, 0.004));
+  VOZ.fontes.forEach((s) => { try { s.stop(suave ? t + 0.04 : 0); } catch (e) { /* já parou */ } });
+  VOZ.fontes = [];
+  VOZ.nos = null;
+}
+function vozGanhos() {
+  const n = 5, g = new Array(n).fill(0);
+  if (VOZ.original) return [...g, 0, 1];
+  const v = (VOZ.voz / 100) * (n - 1), i = Math.min(n - 2, Math.floor(v)), f = v - i;
+  g[i] = 1 - f; g[i + 1] = f;
+  return [...g, VOZ.fundo / 100, 0];
+}
+function vozAplica(imediato) {
+  if (!VOZ.nos) return;
+  const g = vozGanhos(), t = VOZ.ac.currentTime;
+  VOZ.nos.forEach((no, k) => { if (imediato) no.gain.value = g[k]; else no.gain.setTargetAtTime(g[k], t, 0.015); });
+}
+// o volume da tomada e os dois silenciar, como no som do próprio vídeo
+function vozVolume() {
+  if (!VOZ.master) return;
+  const mudo = S.mudoUsuario || (S.view === 'corte' && S.camadas.video.mudo);
+  VOZ.master.gain.setTargetAtTime(mudo ? 0 : video.volume, VOZ.ac.currentTime, 0.01);
+}
+function vozSincroniza(correcao) {
+  vozPara(correcao);
+  if (!correcao) VOZ.correcoes = 0;
+  if (!VOZ.aberto || !VOZ.buf || !VOZ.ac || video.paused || video.seeking || video.ended) return;
+  if (VOZ.ac.state === 'suspended') VOZ.ac.resume();
+  if (!VOZ.master) { VOZ.master = VOZ.ac.createGain(); VOZ.master.connect(VOZ.ac.destination); }
+  // o que sai na caixa de som atrasa a latência do áudio: começa à frente, para cair com a imagem
+  const lat = VOZ.ac.outputLatency || VOZ.ac.baseLatency || 0;
+  const quando = VOZ.ac.currentTime + 0.03;
+  VOZ.rate = video.playbackRate || 1;
+  VOZ.off = video.currentTime + (quando - VOZ.ac.currentTime + lat) * VOZ.rate;
+  VOZ.t0 = quando + lat;
+  if (VOZ.off >= VOZ.buf[0].duration) return;
+  VOZ.nos = VOZ.buf.map((b) => {
+    const g = VOZ.ac.createGain();
+    if (correcao) g.gain.value = 0; // entra junto com a saída das antigas
+    g.connect(VOZ.master);
+    const s = VOZ.ac.createBufferSource();
+    s.buffer = b;
+    s.playbackRate.value = VOZ.rate;
+    s.connect(g);
+    s.start(quando, Math.max(0, VOZ.off));
+    VOZ.fontes.push(s);
+    return g;
+  });
+  if (correcao) {
+    const g = vozGanhos();
+    VOZ.nos.forEach((no, k) => no.gain.setTargetAtTime(g[k], quando, 0.004));
+  } else vozAplica(true);
+  vozVolume();
+}
+['playing', 'seeked', 'ratechange'].forEach((ev) => video.addEventListener(ev, () => { if (VOZ.aberto) vozSincroniza(); }));
+['pause', 'seeking', 'waiting', 'ended', 'emptied'].forEach((ev) => video.addEventListener(ev, () => { if (VOZ.nos) vozPara(); }));
+video.addEventListener('volumechange', vozVolume);
+// o relógio do áudio e o do vídeo andam juntos, mas não são o mesmo: passou de 45 ms, recomeça.
+// Logo depois do play o vídeo ainda está assentando (medido: ~40 ms no 1º segundo), então ali a
+// correção vale a partir de 15 ms, duas vezes no máximo
+video.addEventListener('timeupdate', () => {
+  if (!VOZ.nos || video.paused) return;
+  const d = VOZ.off + (VOZ.ac.currentTime - VOZ.t0) * VOZ.rate - video.currentTime;
+  const comeco = VOZ.ac.currentTime - VOZ.t0 < 1.5 && (VOZ.correcoes || 0) < 2;
+  if (Math.abs(d) > (comeco ? 0.015 : 0.045)) {
+    VOZ.correcoes = (VOZ.correcoes || 0) + 1;
+    vozSincroniza(true);
+  }
+});
+$('vozVoz').addEventListener('input', () => { VOZ.voz = +$('vozVoz').value; VOZ.original = false; vozValores(); vozAplica(false); });
+$('vozFundo').addEventListener('input', () => { VOZ.fundo = +$('vozFundo').value; VOZ.original = false; vozValores(); vozAplica(false); });
+$('vozOriginal').addEventListener('click', () => { VOZ.original = !VOZ.original; vozValores(); vozAplica(false); });
+$('vozDeNovo').addEventListener('click', () => { vozMostra({ texto: 'Começando de novo…' }); vozSegue(true); });
+$('vozOk').addEventListener('click', () => closeVoz('pronto'));
+$('vozTirar').addEventListener('click', () => closeVoz('tirar'));
+document.addEventListener('keydown', (e) => { if (VOZ.aberto && e.key === 'Escape') { e.preventDefault(); closeVoz(null); } });
+/* Pronto guarda a escolha; Tirar volta o vídeo ao som original; fechar sem nada (Esc) não muda */
+function closeVoz(acao) {
+  if (!VOZ.aberto) return;
+  clearTimeout(VOZ.timer);
+  VOZ.aberto = false;
+  vozPara();
+  showSheet($('vozSheet'), false);
+  const antes = JSON.stringify(S.melhorar);
+  const base = vozBase(VOZ.info);
+  if (acao === 'tirar') S.melhorar = base && !base.desligar ? { desligar: true } : null;
+  else if (acao === 'pronto' && VOZ.regs) S.melhorar = { voz: VOZ.voz, fundo: VOZ.fundo };
+  if (S.melhorar && JSON.stringify(S.melhorar) === S.melhorarBase) S.melhorar = null; // é o que o vídeo já tem
+  if (JSON.stringify(S.melhorar) !== antes) remember(VOZ.antes);
+  VOZ.original = false;
+  applyMute();
+  if (VOZ.vistaAntes === 'final' && S.view !== 'final' && hasFinal()) switchView('final');
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+
 function applyMute() {
-  video.muted = S.mudoUsuario || (S.view === 'corte' && S.camadas.video.mudo);
+  // com a prévia do Melhorar voz tocando, o som é dela: o do vídeo sai
+  video.muted = (VOZ.aberto && !!VOZ.buf) || S.mudoUsuario || (S.view === 'corte' && S.camadas.video.mudo);
+  vozVolume();
 }
 const AUD = new Map(); // id do item → <audio>
 function audioEl(it) {

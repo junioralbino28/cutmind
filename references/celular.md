@@ -42,6 +42,19 @@ as `volume` in each `edl.ranges` item (only when not 100%), and `render.py` appl
 as the last step, after loudnorm, so the final video matches the preview (SKILL.md,
 "EDL format").
 
+## Melhorar voz
+
+**Áudio → Melhorar voz** opens a small panel with two dials: **Voz** (clean → studio)
+and **Fundo** (voice only → the original room), 50% and 20% the first time. On a cut
+that was never prepared the panel starts the preparation on the computer and shows its
+progress ("Limpando a voz", "Criando a voz de estúdio, parte 2 de 3", "Montando os
+reguladores"); closing it does not stop it. Once ready, the video plays muted and the
+panel plays the voice, held to the video's clock (play, pause, jumping between takes,
+take speed and volume), so dragging changes the sound while the mouth keeps in sync.
+**Original** compares with the recording as it came. **Pronto** keeps the choice (it
+enters undo and shows as a tag on the audio track, dashed until saved); **Tirar** puts
+the original sound back. **Salvar** sends it to the agent, which applies it to the cut.
+
 ## Placing the captions
 
 Estilo → Legenda → **Posição** switches the Corte view to placing mode: the

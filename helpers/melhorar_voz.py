@@ -446,16 +446,26 @@ def pedaco_do_computador() -> tuple[float, float]:
 
 
 def pedacos(voz: np.ndarray, bloco: float) -> list[tuple[int, int]]:
-    """Corta em pedaços de até `bloco` s, cada corte no meio dos 100 ms mais quietos da voz
-    entre 2/3 e o fim do bloco. O corte cai em múltiplo de 3 amostras (16 kHz exato)."""
-    n, passo = len(voz), SR // 10
+    """Corta em pedaços do mesmo tamanho, o menor número deles que cabe em `bloco` s cada: um
+    pedaço curto sobrando no fim ouve pouco contexto (82,6 s em blocos fixos de 30 s deixavam um
+    último de 4,8 s). Cada corte cai no meio dos 100 ms mais quietos da voz a até 15% do ponto
+    ideal, nunca deixando o resto maior do que cabe; e em múltiplo de 3 amostras (16 kHz exato)."""
+    n, passo, b = len(voz), SR // 10, int(bloco * SR)
+    k = -(-n // b)
+    if k <= 1:
+        return [(0, n)]
+    ideal = n / k
     cortes = [0]
-    while n - cortes[-1] > bloco * SR:
-        ini = cortes[-1] + int(bloco * SR * 2 / 3) // passo * passo
-        fim = cortes[-1] + int(bloco * SR) // passo * passo
-        j = voz[ini:fim].reshape(-1, passo)
-        k = int(np.argmin((j ** 2).mean(1)))
-        cortes.append((ini + k * passo + passo // 2) // 3 * 3)
+    for j in range(1, k):
+        alvo = j * ideal
+        lo = max(cortes[-1] + passo, int(alvo - 0.15 * ideal), n - (k - j) * b)
+        hi = min(cortes[-1] + b, int(alvo + 0.15 * ideal))
+        if hi - lo >= passo:
+            q = voz[lo:lo + (hi - lo) // passo * passo].reshape(-1, passo)
+            c = lo + int(np.argmin((q ** 2).mean(1))) * passo + passo // 2
+        else:
+            c = lo
+        cortes.append(-(-c // 3) * 3)  # para cima: o resto nunca passa do bloco
     cortes.append(n)
     return list(zip(cortes[:-1], cortes[1:]))
 
@@ -667,6 +677,7 @@ def situacao(edit: Path) -> dict:
     if a and (a["vivo"] or a.get("etapa") == "falhou"):
         out["andamento"] = {k: a.get(k) for k in ("etapa", "n", "de", "texto", "fracao", "erro", "vivo")}
     if preparo == "pronto":
+        out["preparado"] = e["preparado"]  # mudou: o editor busca as faixas de novo
         out["previa"] = {**{f"voz-{d:03d}": f"{PASTA}/previa/voz-{d:03d}.flac" for d in DEGRAUS},
                          "fundo": f"{PASTA}/previa/fundo.flac", "original": f"{PASTA}/previa/original.flac"}
     try:
@@ -737,7 +748,7 @@ def preparar(edit: Path, de_novo: bool = False, eco: bool = True, pedaco: tuple[
         modelo = estudio or Sidon(pasta_modelos())
         bloco, contexto = pedaco or pedaco_do_computador()
         es = estudio_em_pedacos(orig, lp, modelo, bloco, contexto, lambda i, k: prog.andou(
-            i / k, f"{ETAPAS['estudio']}" + (f" (parte {min(i + 1, k)} de {k})" if k > 1 else "")))
+            i / k, f"{ETAPAS['estudio']}" + (f", parte {min(i + 1, k)} de {k}" if k > 1 else "")))
         del modelo  # o Sidon solta ~1 GB de memória antes dos degraus
         t["estudio"] = time.time() - t0
 
@@ -784,6 +795,16 @@ def _numero(v: object, nome: str) -> int:
     if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 100:
         raise VozErro(f"{nome} vai de 0 a 100")
     return int(round(v))
+
+
+def normalizar_escolha(v: object) -> dict:
+    """O que o editor manda no Salvar: {"voz": 0–100, "fundo": 0–100}, ou {"desligar": true} para
+    o vídeo voltar ao som original."""
+    if v == {"desligar": True}:
+        return {"desligar": True}
+    if not isinstance(v, dict) or set(v) != {"voz", "fundo"}:
+        raise VozErro("a escolha é {voz, fundo} de 0 a 100, ou {desligar: true}")
+    return {"voz": _numero(v["voz"], "a Voz"), "fundo": _numero(v["fundo"], "o Fundo")}
 
 
 def mistura(edit: Path, voz: int, fundo: int) -> np.ndarray:

@@ -213,6 +213,30 @@ def test_aviso_conta_os_efeitos_e_diz_quem_aplica(tmp_path):
     assert "ajuste de 0:02.00 a 0:05.50: brilho +20, vinheta -35" in aviso
 
 
+def test_aviso_do_melhorar_voz_diz_o_comando(tmp_path):
+    edit = tmp_path / "edit"
+    edit.mkdir()
+    p = edit / "preview_edits.json"
+    p.write_text(json.dumps({"melhorar": {"voz": 70, "fundo": 10}}), encoding="utf-8")
+    out = digest(p)
+    assert "melhorar voz: Voz 70%, Fundo 10%" in out
+    assert "melhorar_voz.py aplicar <edit> --voz 70 --fundo 10" in out
+    p.write_text(json.dumps({"melhorar": {"desligar": True}}), encoding="utf-8")
+    assert "melhorar_voz.py restaurar <edit>" in digest(p)
+
+
+def test_corte_refeito_com_a_voz_aplicada_lembra_de_reaplicar(tmp_path):
+    edit = tmp_path / "edit"
+    (edit / ".melhorar").mkdir(parents=True)
+    p = edit / "preview_edits.json"
+    p.write_text(json.dumps({"edl": {"ranges": [{"source": "C0001", "start": 0, "end": 2}]}}), encoding="utf-8")
+    assert "Melhorar voz" not in digest(p)  # sem voz aplicada, nada a lembrar
+    (edit / ".melhorar" / "estado.json").write_text(json.dumps({"versao": 1, "aplicado": {"voz": 50, "fundo": 20,
+                                                                                         "hash": "ab" * 32}}),
+                                                     encoding="utf-8")
+    assert "Melhorar voz está aplicado" in digest(p)
+
+
 def test_aviso_junta_o_que_um_modelo_repete(tmp_path):
     # o modelo de estilo põe o mesmo filtro e ajuste em cada tomada e a mesma transição em cada corte
     p = tmp_path / "preview_edits.json"
