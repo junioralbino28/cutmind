@@ -236,6 +236,10 @@ def aplicar(edit: Path, edit_data: Path | None = None, recortar: bool = True) ->
         c["matte"], c["pessoa"] = nome, cenas.resumo(p)
         c["layout"] = {**cenas.layout(c["tipo"], p, c), **_arquivos(edit, public, pasta, c, usados, r["faltando"])}
         r["prontos"] += 0 if c.get("desligada") else 1
+        for k in ("esquerda", "direita") if c["tipo"] == "capa" else ():
+            if c.get(k) and not c["layout"]["colunas"][k]:
+                r["avisos"].append(f"cenas[{i}] ({c['tipo']}): as chamadas `{k}` não cabem fora da pessoa nesta tomada e "
+                                   "ficam fora do vídeo; use um lado só ou outra tomada")
     medidas.gravar(validos)
     for velho in pasta.iterdir():  # a pasta é toda deste helper
         if velho.is_file() and velho.name != MEDIDAS and velho.name not in usados:

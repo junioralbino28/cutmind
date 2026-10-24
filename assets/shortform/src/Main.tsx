@@ -12,12 +12,15 @@
  * Audio: keep layers low (whoosh ~0.09, pop ~0.12, music ~0.0445) and always run
  * a final loudnorm pass on the render — voice + music + SFX summed will clip.
  */
+import {useEffect, useState} from 'react';
 import {
   AbsoluteFill,
   Audio,
   Img,
   OffthreadVideo,
   Sequence,
+  continueRender,
+  delayRender,
   staticFile,
   interpolate,
   Easing,
@@ -38,8 +41,11 @@ import {SimpleCaptions, SIMPLE_VARIANTS} from './SimpleCaptions';
 import {spotFor, spotCentre, type Spot} from './captionPlace';
 import {CATALOGO, carregarFontesUsadas, familiaCss, useFontesProntas} from './fontes';
 import {CamadasTexto, rostoNaTela, type Texto} from './CamadasTexto';
+import {Cenas} from './cenas';
+import type {Cena} from './cenas/comum';
 
-const {fontFamily} = loadFont('normal', {weights: ['400', '600', '900']});
+const POPPINS = loadFont('normal', {weights: ['400', '600', '900']});
+const {fontFamily} = POPPINS;
 
 // ============ TYPES + DATA ====================================================
 type Caption = {text: string; startMs: number; endMs: number};
@@ -113,6 +119,9 @@ export type EditData = {
   behind: Behind[];
   // the text layers of the editor (CamadasTexto.tsx): written by camadas_edit_data.py, never by hand
   textos?: Texto[];
+  // the effects that take the person off the background (src/cenas/): the agent writes the items,
+  // helpers/cenas_edit_data.py adds `matte`, `pessoa` and `layout` to each one before the render
+  cenas?: Cena[];
   soundtrack: {enabled: boolean; file: string; volume: number};
 };
 
@@ -220,10 +229,31 @@ const BehindImageEl: React.FC<{src: string; totalFrames: number}> = ({src, total
   );
 };
 
+// A word wider than LARGURA_ATRAS shrinks until it fits (a long word used to leave the frame).
+// It is measured only after Poppins loaded: measureText() keeps the first width it sees.
+const LARGURA_ATRAS = 1000;
+const tamanhoAtras = (t: string) => {
+  const w = measureText({text: t, fontFamily, fontSize: 360, fontWeight: 900, letterSpacing: '-12px'}).width;
+  return w > LARGURA_ATRAS ? Math.floor((360 * LARGURA_ATRAS) / w) : 360;
+};
+const usePoppinsPronta = () => {
+  const [pronta, setPronta] = useState(false);
+  const [h] = useState(() => delayRender('Poppins antes de medir a palavra atrás da pessoa'));
+  useEffect(() => {
+    POPPINS.waitUntilDone().then(() => {
+      setPronta(true);
+      continueRender(h);
+    });
+  }, [h]);
+  return pronta;
+};
+
 const BehindWordsEl: React.FC<{words: {t: string; at: number}[]; startSec: number; totalFrames: number}> = ({words, startSec, totalFrames}) => {
   const f = useCurrentFrame();
   const {fps} = useVideoConfig();
+  const pronta = usePoppinsPronta();
   const scrim = interpolate(f, [0, 8, totalFrames - 8, totalFrames], [0, 1, 1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+  if (!pronta) return null;
   return (
     <AbsoluteFill style={{justifyContent: 'flex-start', alignItems: 'center', paddingTop: 180}}>
       <AbsoluteFill style={{background: 'rgba(0,0,0,0.26)', opacity: scrim}} />
@@ -235,7 +265,7 @@ const BehindWordsEl: React.FC<{words: {t: string; at: number}[]; startSec: numbe
         const pop = interpolate(local, [0, 6], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.back(1.7))});
         const op = interpolate(local, [0, 4], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
         return (
-          <div key={i} style={{position: 'absolute', fontFamily, fontWeight: 900, fontSize: 360, color: '#fff', opacity: op, scale: String(0.72 + 0.28 * pop), letterSpacing: -12, textShadow: '0 6px 30px rgba(0,0,0,0.5)'}}>
+          <div key={i} style={{position: 'absolute', fontFamily, fontWeight: 900, fontSize: tamanhoAtras(w.t), color: '#fff', opacity: op, scale: String(0.72 + 0.28 * pop), letterSpacing: -12, textShadow: '0 6px 30px rgba(0,0,0,0.5)'}}>
             {w.t}
           </div>
         );
@@ -717,6 +747,9 @@ export const Main: React.FC = () => {
       <CamadasTexto atras />
       <BehindSubject />
       <Inserts />
+      {/* the effects redraw the whole frame of their window: above the picture, the inserts and
+          what sits behind the person; below the front texts, the hook and the captions */}
+      <Cenas />
       <CustomGraphics />
       <CamadasTexto />
       {D.hook.enabled ? <HookIntro /> : null}

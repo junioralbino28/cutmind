@@ -3955,7 +3955,7 @@ function endInsDrag() {
  * continua sendo o vídeo de agora: a moldura mostra para onde o bloco vai, e o Salvar
  * leva as mudanças pelo `ref` para o agente refazer só os trechos tocados. */
 const CENA_NOME = {
-  corteZoom: 'Corte no zoom', revelacao: 'Revelação', papel: 'Recorte de papel', mural: 'Mural', parede: 'Parede de fotos',
+  fundo: 'Fundo', corteZoom: 'Corte no zoom', revelacao: 'Revelação', papel: 'Recorte de papel', mural: 'Mural', parede: 'Parede de fotos',
   capa: 'Capa de revista', grafico: 'Gráfico', app: 'App', checklist: 'Checklist', zoomDigital: 'Zoom digital',
   saindo: 'Saindo da tela', rabisco: 'Rabisco', vertigem: 'Vertigem', celular: 'Celular', vidro: 'Vidro', orbita: 'Órbita', chroma: 'Site',
 };

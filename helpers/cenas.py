@@ -323,17 +323,22 @@ def _vidro(p: dict, c: dict) -> dict:
 
 def _capa(p: dict, c: dict) -> dict:
     """`baseline` e `tamanho` do nome da revista: atrás da cabeça, que cobre o pé dele, e abaixo da
-    linha do topo (o nome começa em 300 ou mais). `colunas`: as chamadas dos lados, abaixo do nome e
-    fora da pessoa (`null` quando não cabem)."""
+    linha do topo (o nome começa em 300 ou mais). `colunas`: onde fica cada lista de chamadas
+    (`esquerda`, `direita`), abaixo do nome e fora da pessoa, com o `lado` do quadro em que ficou. A
+    lista cujo lado não tem espaço vai para o outro, se ele está livre; sem lugar, fica `null`."""
     topo = p["topo"]
     tam = c.get("tamanho") or max(220.0, min(330.0, (topo - 300) / 0.54))
     baseline = max(topo + 0.18 * tam, 300 + 0.72 * tam)
     y = max(820.0, baseline + 80)
     x0, x1 = _lado(p, y, y + 460)
     we, wd = min(262.0, x0 - 40), min(180.0, W - 22 - x1)
-    return {"baseline": round(baseline), "tamanho": round(tam), "colunas": {
-        "esquerda": {"x": 40, "y": round(y), "w": round(we)} if we >= 140 else None,
-        "direita": {"x": round(W - 22 - wd), "y": round(y), "w": round(wd)} if wd >= 120 else None}}
+    lados = {"esquerda": {"x": 40, "y": round(y), "w": round(we), "lado": "esquerda"} if we >= 140 else None,
+             "direita": {"x": round(W - 22 - wd), "y": round(y), "w": round(wd), "lado": "direita"} if wd >= 120 else None}
+    colunas = dict(lados)
+    for k, outro in (("esquerda", "direita"), ("direita", "esquerda")):
+        if c.get(k) and not lados[k] and lados[outro] and not c.get(outro):
+            colunas = {k: lados[outro], outro: None}
+    return {"baseline": round(baseline), "tamanho": round(tam), "colunas": colunas}
 
 
 # os recortes de jornal como foram desenhados (x, y, w, h, giro): dois em cima, dois dos lados

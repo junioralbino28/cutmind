@@ -145,6 +145,15 @@ def test_layout_capa(topo):
         assert col and cenas.cobre(p, (col["x"], col["y"], col["w"], 400)) == 0
 
 
+def test_layout_capa_leva_as_chamadas_para_o_lado_livre():
+    p = _pessoa(x0=0, x1=700)  # a pessoa encosta na borda esquerda: só a direita tem espaço
+    col = cenas.layout("capa", p, {"nome": "X", "esquerda": [["a", "b"]]})["colunas"]
+    assert col["direita"] is None and col["esquerda"]["lado"] == "direita" and col["esquerda"]["x"] >= 700
+    # com as duas listas, cada uma fica no seu lado: a que não cabe fica fora (e o helper avisa)
+    col = cenas.layout("capa", p, {"nome": "X", "esquerda": [["a", "b"]], "direita": [["c", "d"]]})["colunas"]
+    assert col["esquerda"] is None and col["direita"]["lado"] == "direita"
+
+
 def test_layout_grafico():
     baixa = _pessoa(base=1500)
     lay = cenas.layout("grafico", baixa, {"valores": [0.2, 0.5, 1], "etiqueta": "ESCALA"})
@@ -268,6 +277,22 @@ def test_desligada_guarda_o_recorte_mas_nao_ganha_um_novo(projeto):
     a, b = _lidas(public)
     assert (len(chamadas), r["pendentes"], r["prontos"]) == (1, [], 0)
     assert a["matte"] == "cena-30-60.mov" and "matte" not in b
+
+
+@com_ffmpeg
+def test_capa_avisa_as_chamadas_que_ficaram_sem_lugar(projeto, monkeypatch):
+    edit, public, _ = projeto
+
+    def larga(cmd):  # a pessoa ocupa a largura toda, como num close com as mãos nas bordas
+        m = np.zeros((480, 270), bool)
+        m[150:, :] = True
+        _gravar_recorte(Path(cmd[cmd.index("-o") + 1]), [m] * 3, w=270, h=480)
+        return True
+    monkeypatch.setattr(ce, "_rodar", larga)
+    _cenas(public, [{"tipo": "capa", "start": 1.0, "end": 3.0, "nome": "EQUIPE", "esquerda": [["ANTES", "horas"]]}])
+    r = ce.aplicar(edit)
+    assert len(r["avisos"]) == 1 and "`esquerda`" in r["avisos"][0]
+    assert _lidas(public)[0]["layout"]["colunas"] == {"esquerda": None, "direita": None}
 
 
 def test_sem_o_extra_de_recorte_avisa_o_comando(projeto, monkeypatch):
