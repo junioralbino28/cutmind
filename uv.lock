@@ -325,46 +325,6 @@ wheels = [
 ]
 
 [[package]]
-name = "cutmind"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "opencv-python-headless" },
-    { name = "pillow" },
-    { name = "requests" },
-    { name = "segno" },
-    { name = "whisperx" },
-    { name = "yt-dlp" },
-]
-
-[package.optional-dependencies]
-animations = [
-    { name = "manim", version = "0.19.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "manim", version = "0.20.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-]
-matting = [
-    { name = "torch" },
-    { name = "torchvision" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "manim", marker = "extra == 'animations'" },
-    { name = "numpy" },
-    { name = "opencv-python-headless", specifier = "==4.10.0.84" },
-    { name = "pillow" },
-    { name = "requests" },
-    { name = "segno", specifier = ">=1.6" },
-    { name = "torch", marker = "extra == 'matting'" },
-    { name = "torchvision", marker = "extra == 'matting'" },
-    { name = "whisperx" },
-    { name = "yt-dlp" },
-]
-provides-extras = ["animations", "matting"]
-
-[[package]]
 name = "certifi"
 version = "2026.6.17"
 source = { registry = "https://pypi.org/simple" }
@@ -673,6 +633,51 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/99/4a/21f325a9d0925d8ad24b04249adf29bf9909442967603634f7f6d4acbb79/ctranslate2-4.8.1-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:4242a7f8e285f922525f4cffd5b1fb43cbacc61d0611cf54832e9c447d030840", size = 39529085, upload-time = "2026-07-03T12:39:32.627Z" },
     { url = "https://files.pythonhosted.org/packages/cb/e7/37da1a7500b57496a5269318c4f57962ea0c26dcac06b85222d7831acf00/ctranslate2-4.8.1-cp313-cp313-win_amd64.whl", hash = "sha256:d52499f05a60a791aeadee28d609efa130142f376d1ea76b2b1c593bb01f8827", size = 19220784, upload-time = "2026-07-03T12:39:35.74Z" },
 ]
+
+[[package]]
+name = "cutmind"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "onnxruntime", version = "1.24.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "onnxruntime", version = "1.28.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "opencv-python-headless" },
+    { name = "pillow" },
+    { name = "requests" },
+    { name = "segno" },
+    { name = "transformers" },
+    { name = "whisperx" },
+    { name = "yt-dlp" },
+]
+
+[package.optional-dependencies]
+animations = [
+    { name = "manim", version = "0.19.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "manim", version = "0.20.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+matting = [
+    { name = "torch" },
+    { name = "torchvision" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "manim", marker = "extra == 'animations'" },
+    { name = "numpy" },
+    { name = "onnxruntime" },
+    { name = "opencv-python-headless", specifier = "==4.10.0.84" },
+    { name = "pillow" },
+    { name = "requests" },
+    { name = "segno", specifier = ">=1.6" },
+    { name = "torch", marker = "extra == 'matting'" },
+    { name = "torchvision", marker = "extra == 'matting'" },
+    { name = "transformers" },
+    { name = "whisperx" },
+    { name = "yt-dlp" },
+]
+provides-extras = ["animations", "matting"]
 
 [[package]]
 name = "cycler"

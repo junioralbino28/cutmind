@@ -29,6 +29,12 @@ dependencies = [
     # QR code do "abrir no celular" (preview_server.py). Python puro, sem
     # biblioteca nativa: no Windows nada de DLL para instalar à parte.
     "segno>=1.6",
+    # Melhorar voz (melhorar_voz.py): o Sidon roda pelo ONNX e o extrator de
+    # características dele vem do transformers. Os dois já chegam pelo whisperx;
+    # ficam aqui porque o kit os importa direto. Os modelos (~1 GB) baixam no
+    # primeiro uso, não na instalação.
+    "onnxruntime",
+    "transformers",
 ]
 
 [project.optional-dependencies]
