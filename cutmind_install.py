@@ -591,6 +591,10 @@ def main() -> None:
         log("Reinicie o agente para ele carregar a nova versão.")
     else:
         log(f"Tudo pronto! O CutMind está instalado e pronto para usar no {onde}.")
+        # A dúvida do primeiro piloto real: instalar "no projeto" ou "no Claude todo".
+        # A pasta da conversa da instalação não importa; dizer isso evita que a pessoa
+        # instale de novo em cada pasta de vídeos.
+        log("Ele fica na pasta geral de skills e vale para todos os seus projetos, não só para esta pasta.")
         log()
         log("Reinicie o agente e abra uma nova sessão chamando a skill CutMind.")
         log()

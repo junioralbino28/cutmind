@@ -14,6 +14,11 @@ editing, read `SKILL.md`. Always read `helpers/` — that's where the scripts li
 > type; not having to is the point of asking you. The only thing that goes back to
 > them is a password or an admin prompt you cannot answer.
 >
+> 0. **The install is global, not per project.** The session you install from can be
+>    open in any folder; the skill goes to the agent's general skills directory and
+>    serves every project. If the user asks where or in which project to install, say
+>    exactly that. Desktop apps make them pick a folder first, and the first real
+>    user asked.
 > 1. **Detect the OS**, and on Windows which shell you are in.
 > 2. **`uv`.** If `uv --version` fails, install it: `winget install --id astral-sh.uv -e`
 >    (Windows), `brew install uv` (macOS), `curl -LsSf https://astral.sh/uv/install.sh | sh`
@@ -182,7 +187,8 @@ is ready to wait. Better to let their first real clip be the test.
 
 Tell the user, in one short message:
 
-- Where the skill is installed.
+- Where the skill is installed, and that it is the general skills directory: it
+  serves every project, so they never install it again per folder.
 - That they should `cd` into their footage folder and start their agent there.
 - That all outputs land in `<videos_dir>/edit/` — the skill directory stays clean.
 - That the first transcription downloads its models once.

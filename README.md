@@ -22,10 +22,18 @@ só entra quem abriu pelo link ou QR, que levam um código deste computador.
 
 ## Instalar
 
-Peça ao seu agente (Claude Code ou Codex): **"instala o CutMind pra mim:
-https://github.com/junioralbino28/cutmind"**. Ele roda o instalador, instala o que
-faltar (uv, ffmpeg, Node.js) e confere se tudo funciona. O passo a passo dele está
-em [install.md](install.md).
+Peça ao seu agente (Claude Code ou Codex): **"instala o CutMind pra mim, na pasta
+geral de skills, para usar em todos os projetos: https://github.com/junioralbino28/cutmind"**.
+Ele roda o instalador, instala o que faltar (uv, ffmpeg, Node.js) e confere se tudo
+funciona. O passo a passo dele está em [install.md](install.md).
+
+A instalação é do seu agente, não de um projeto: abra a conversa da instalação em
+qualquer pasta. O CutMind vai para a pasta geral de skills (`~/.claude/skills/cutmind`
+no Claude Code) e aparece em toda conversa nova. Para editar, abra depois uma conversa
+nova DENTRO da pasta dos vídeos: o kit cria ali a pasta `edit/` daquele projeto.
+
+Recebeu o kit num zip? Extraia e peça: **"instala o CutMind a partir da pasta
+<onde você extraiu>, na pasta geral de skills"**.
 
 À mão, é um comando só:
 
