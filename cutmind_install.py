@@ -79,9 +79,10 @@ NODE_MIN = 18
 
 # Espaço em disco, em GB como o Windows mostra (base 1024). Medido numa instalação no
 # Windows em 24/10/2026: o .venv ocupa 2,1 GB; a primeira transcrição em português baixa
-# mais 4,0 GB de modelos (Whisper large-v3-turbo 1,6 GB e o alinhador wav2vec2 2,4 GB);
-# e um projeto editado do começo ao fim ocupou 3,3 GB. Abaixo de ESPACO_DEPS_GB o uv sync
-# nem começa: baixaria até encher o disco e pararia no meio do torch.
+# mais 5,3 GB de modelos (Whisper large-v3, o padrão do transcribe.py, 2,9 GB, e o
+# alinhador wav2vec2, 2,4 GB); e um projeto editado do começo ao fim ocupou 3,3 GB. Abaixo
+# de ESPACO_DEPS_GB o uv sync nem começa: baixaria até encher o disco e pararia no meio do
+# torch.
 ESPACO_DEPS_GB = 3
 ESPACO_TRABALHO_GB = 12
 
@@ -582,7 +583,7 @@ def main() -> None:
         livre = espaco_livre(dests)
         if livre and livre[0] < ESPACO_TRABALHO_GB:
             log(f"  · espaço     — sobram {_gb(livre[0])} em {livre[1]}: a primeira transcrição"
-                " ainda baixa uns 4 GB de modelos, e um vídeo editado ocupa uns 3 GB."
+                " ainda baixa uns 5 GB de modelos, e um vídeo editado ocupa uns 3 GB."
                 f" Deixe pelo menos {ESPACO_TRABALHO_GB} GB livres.")
     if shutil.which("ffmpeg"):
         log("  ok ffmpeg")
