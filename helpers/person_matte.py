@@ -4,20 +4,21 @@ background).
 
 Uses Robust Video Matting (RVM) — a recurrent video matting model with clean,
 temporally-stable hair edges. Reads a video, estimates the person + alpha per
-frame (carrying recurrent state for stability), and writes an **alpha WebM**
-(VP9 `yuva420p`) of the person over transparency. In Remotion, layer:
+frame (carrying recurrent state for stability), and writes an **alpha .mov**
+(ProRes 4444 `yuva444p10le`) of the person over transparency; `.webm` (VP9
+alpha) only when you name the output that way. In Remotion, layer:
 
     <DynamicVideo src="cut.mp4">     {/* base: background + person */}
       {behindElement}                {/* the thing that goes behind */}
     </DynamicVideo>
-    <DynamicVideo src="fg.webm" />   {/* person on top → element sits behind */}
+    <DynamicVideo src="fg.mov" />    {/* person on top → element sits behind */}
 
-Needs the `matting` extra (torch): `uv sync --extra matting`.
+Needs the `matting` extra (torch + torchvision): `uv sync --extra matting`.
 
 Usage:
-    python helpers/person_matte.py cut.mp4 -o remotion/public/fg.webm
-    python helpers/person_matte.py cut.mp4 -o fg.webm --model resnet50   # higher quality, slower
-    python helpers/person_matte.py cut.mp4 -o fg.webm --start 8 --duration 6
+    python helpers/person_matte.py cut.mp4 -o remotion/public/fg.mov
+    python helpers/person_matte.py cut.mp4 -o fg.mov --model resnet50   # higher quality, slower
+    python helpers/person_matte.py cut.mp4 -o fg.mov --start 8 --duration 6
 """
 from __future__ import annotations
 
@@ -49,10 +50,24 @@ def auto_downsample_ratio(h: int, w: int) -> float:
     return min(512 / max(h, w), 1.0)
 
 
+def ler_janela(cap, start_f: int, n: int):
+    """Frames start_f .. start_f+n-1 of an open cv2.VideoCapture, as RGB, one at a
+    time. Frame 0 of the matte must be frame start_f of the cut: the effects lay the
+    matte over the base picture frame by frame (tests/test_cenas.py checks the seek)."""
+    if start_f:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_f)
+    for _ in range(n):
+        ok, bgr = cap.read()
+        if not ok:
+            return
+        yield cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+
+
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Matte the person out of a video → alpha WebM (RVM)")
+    ap = argparse.ArgumentParser(description="Matte the person out of a video → alpha .mov (RVM)")
     ap.add_argument("video", type=Path)
-    ap.add_argument("-o", "--output", type=Path, required=True, help="Output .webm (VP9 alpha)")
+    ap.add_argument("-o", "--output", type=Path, required=True,
+                    help="Output .mov (ProRes 4444 alpha, the default); .webm = VP9 alpha, less reliable")
     ap.add_argument("--model", choices=["mobilenetv3", "resnet50"], default="mobilenetv3",
                     help="mobilenetv3 = fast/good (default); resnet50 = best edges, slower")
     ap.add_argument("--device", default="auto", help="auto | mps | cuda | cpu")
@@ -78,8 +93,6 @@ def main() -> None:
 
     start_f = int(round(args.start * fps))
     end_f = total if args.duration is None else min(total, start_f + int(round(args.duration * fps)))
-    if start_f:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, start_f)
     n_frames = max(0, end_f - start_f)
     ratio = args.downsample if args.downsample is not None else auto_downsample_ratio(H, W)
     print(f"input: {W}x{H} @ {fps:.3f}fps | frames {start_f}..{end_f} ({n_frames}) | downsample_ratio={ratio:.3f}")
@@ -112,11 +125,7 @@ def main() -> None:
     rec = [None] * 4
     done = 0
     with torch.no_grad():
-        while done < n_frames:
-            ok, bgr = cap.read()
-            if not ok:
-                break
-            rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        for rgb in ler_janela(cap, start_f, n_frames):
             src = torch.from_numpy(rgb).float().div(255.0).permute(2, 0, 1).unsqueeze(0).to(device)
             _fgr, pha, *rec = model(src, *rec, downsample_ratio=ratio)
             a = pha.clamp(0, 1)[0, 0].cpu().numpy()                   # H,W alpha
