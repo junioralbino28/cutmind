@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -90,6 +91,11 @@ def call_whisperx(
     The import is deferred so that `--help`, and any caller that only needs the
     module's other helpers, does not pay torch's import cost.
     """
+    # O alinhador de português só tem `pytorch_model.bin` na versão principal do Hugging
+    # Face. Sem esta chave o transformers baixa em segundo plano um `model.safetensors` de
+    # 1,2 GB, de um pedido de conversão, "para a próxima vez", e nunca o usa: o modelo
+    # carregado é o .bin com ou sem ela (medido em 24/10/2026). Só aceita "true".
+    os.environ.setdefault("DISABLE_SAFETENSORS_CONVERSION", "true")
     try:
         import whisperx
     except ImportError as e:
