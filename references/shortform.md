@@ -71,6 +71,14 @@ when the user reopens Posição), clear `awaitingStyle`, delete `preview_style.j
    ```bash
    cp -R <skill>/assets/shortform/. <edit>/remotion/ && cd <edit>/remotion && npm install
    ```
+   Only for a NEW `remotion/`: run over an existing one, it overwrites the video's data in
+   `public/` and the project's `CustomGraphics.tsx`. A project scaffolded with an older kit
+   keeps that kit's template code, and what the kit gained since (the `cenas[]` effects, for
+   one) silently stays out of the render: `atualizar_template.py <edit>` replaces only the
+   immutable code (`src/` minus `CustomGraphics.tsx`, `scripts/`, the configs; `public/` is
+   never touched), keeps the replaced files in `<edit>/.template-anterior/` and runs
+   `npm install` when `package.json` changed. `cenas_edit_data.py` stops and says so when
+   the project's template cannot draw the effects.
 2. **Generate machine data into `remotion/public/`:**
    - `cp cut.mp4 remotion/public/` — or, when `<edit>/efeitos.json` has items,
      `uv run python -X utf8 helpers/efeitos_render.py <edit>` instead (it writes
@@ -883,7 +891,7 @@ skill prompt is resent every turn.
 
 ## Helpers de Fase 2/3
 
-- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte, ONNX Runtime; `--motor torch` and resnet50 need `uv sync --extra matting`) · **`cenas_edit_data.py`** (prepares `cenas[]`: cut-out, measurement, `layout`, backgrounds; `references/cenas.md`) · **`render_janelas.py`** (re-renders only some windows and splices them into `out/render.mp4`; then `mixar_final.py`) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`pacotes.py`** (kit library: `listar --tipo trilha`, `camada <edit> <id>`, `abrir <id>`) · **`efeitos_render.py`** (filters and transitions from the editor into `public/cut.mp4`) · **`velocidade_final.py`** (the editor's speed spans on the finished video → `final-entrega.mp4`) · **`legenda_tempos.py`** (caption pieces the user dragged in time → `captions.json`) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental).
+- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte, ONNX Runtime; `--motor torch` and resnet50 need `uv sync --extra matting`) · **`cenas_edit_data.py`** (prepares `cenas[]`: cut-out, measurement, `layout`, backgrounds; `references/cenas.md`) · **`render_janelas.py`** (re-renders only some windows and splices them into `out/render.mp4`; then `mixar_final.py`) · **`atualizar_template.py`** (a project scaffolded with an older kit gets this kit's template code; `public/` and `CustomGraphics.tsx` stay) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`pacotes.py`** (kit library: `listar --tipo trilha`, `camada <edit> <id>`, `abrir <id>`) · **`efeitos_render.py`** (filters and transitions from the editor into `public/cut.mp4`) · **`velocidade_final.py`** (the editor's speed spans on the finished video → `final-entrega.mp4`) · **`legenda_tempos.py`** (caption pieces the user dragged in time → `captions.json`) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental).
 
 ---
 

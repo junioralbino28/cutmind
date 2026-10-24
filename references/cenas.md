@@ -31,6 +31,10 @@ them yet: `cenas_edit_data.py` refuses them with the list above.
    every item (an error names the field and nothing is written), cuts the person out of each
    window, measures them in the cut-out, computes where each thing goes (`layout`) and copies the
    backgrounds and images to `public/cenas/`. Exit 1 = read its `FALTA`/`AVISO`/`ERRO` lines.
+   A project scaffolded with an older kit has template code that cannot draw the effects: the
+   helper stops before cutting anything and names the files, and
+   `uv run python -X utf8 helpers/atualizar_template.py <edit>` brings this kit's template
+   code (the video's data and `CustomGraphics.tsx` stay). Then run the helper again.
 4. **Render.** The first time, the whole video. After a change to effects that were already
    rendered, only their windows: `uv run python -X utf8 helpers/render_janelas.py <edit>
    --janelas <start>-<end>[,<start>-<end>...]` renders those frames (2 extra on each side),

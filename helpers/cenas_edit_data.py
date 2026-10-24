@@ -42,7 +42,23 @@ PASTA = "cenas"  # em public/
 MEDIDAS = "medidas.json"  # em public/cenas/
 KIT = Path(__file__).resolve().parents[1]
 FUNDOS_DIR = KIT / "assets" / "preview" / "fundos"
+TEMPLATE_CENAS = KIT / "assets" / "shortform" / "src" / "cenas"
 FOTO_PX = 448  # o quadrado de cada foto da Parede: o cartão mostra 222 px, o dobro fica nítido
+
+
+def template_falta(remotion: Path) -> list[str]:
+    """O que o template do projeto não tem para desenhar os efeitos (vazio = desenha). Um projeto
+    montado com um kit anterior não tem `src/cenas/`, ou tem uma versão velha dela, e o render sairia
+    sem os efeitos, sem erro nenhum. Sem `src/Main.tsx` (edit-data avulso), não há o que conferir."""
+    src = remotion / "src"
+    if not (src / "Main.tsx").is_file():
+        return []
+    texto = lambda p: p.read_bytes().replace(b"\r\n", b"\n")  # noqa: E731 (o fim de linha não conta)
+    falta = [f"src/cenas/{p.name}" for p in sorted(TEMPLATE_CENAS.iterdir()) if p.is_file()
+             and (not (src / "cenas" / p.name).is_file() or texto(src / "cenas" / p.name) != texto(p))]
+    if "<Cenas />" not in (src / "Main.tsx").read_text(encoding="utf-8"):
+        falta.append("src/Main.tsx")
+    return falta
 
 
 def _tem_recorte() -> bool:
@@ -202,10 +218,13 @@ def aplicar(edit: Path, edit_data: Path | None = None, recortar: bool = True) ->
     d = json.loads(ed_p.read_text(encoding="utf-8"))
     lista = d.get("cenas") or []
     r = {"cenas": len(lista), "prontos": 0, "feitos": [], "medidos": [], "pendentes": [], "faltando": [],
-         "avisos": [], "sem_extra": False,
+         "avisos": [], "sem_extra": False, "template": [],
          "erros": [f"cenas[{i}] ({c.get('tipo') if isinstance(c, dict) else '?'}): {m}"
                    for i, c in enumerate(lista) for m in cenas.validar(c)]}
     if r["erros"]:
+        return r
+    r["template"] = template_falta(ed_p.parent.parent) if lista else []
+    if r["template"]:  # antes de recortar: com o template velho, o recorte não apareceria
         return r
     public = ed_p.parent
     pasta = public / PASTA
@@ -269,6 +288,11 @@ def main() -> int:
         for e in r["erros"]:
             print(f"  ERRO {e}", file=sys.stderr)
         print("nada foi gravado: corrija o cenas[] do edit-data.json e rode de novo", file=sys.stderr)
+        return 1
+    if r["template"]:
+        print(f"  ERRO o template deste projeto é de um kit anterior e não desenha os efeitos ({', '.join(r['template'])}): "
+              f"rode `atualizar_template.py {a.edit}` (troca só o código do template) e depois este de novo", file=sys.stderr)
+        print("nada foi gravado", file=sys.stderr)
         return 1
     print(f"{r['cenas']} efeito(s) no edit-data.json, {r['prontos']} pronto(s) para o render")
     for f in r["feitos"]:

@@ -27,7 +27,7 @@ description: Conversation-driven video editing for short-form vertical (Reels, T
 8. **Strategy confirmation before execution.**
 9. **All session outputs in `<videos_dir>/edit/`** — never inside the cutmind repo.
 10. **PHASE 2 is Remotion-only** — no ffmpeg/PIL burned text or overlays.
-11. **PHASE 2 is data-driven.** Scaffold by copying the track template; describe the video in `public/edit-data.json`. **Never read or edit the template TSX** (`src/Main.tsx` etc.) — the only editable code file is `src/CustomGraphics.tsx`, only for bespoke graphics.
+11. **PHASE 2 is data-driven.** Scaffold by copying the track template; describe the video in `public/edit-data.json`. **Never read or edit the template TSX** (`src/Main.tsx` etc.) — the only editable code file is `src/CustomGraphics.tsx`, only for bespoke graphics. A project scaffolded with an older kit gets this kit's template code from `helpers/atualizar_template.py <edit>`, never from a second scaffold copy (it would overwrite the video's data).
 12. **Verify numerically first.** Run `verify_cut.py` on every rendered cut; open images only for flagged junctions. Batch any multi-frame look into one `contact_sheet.py` / `grade.py --candidates` montage.
 13. **Never Read machine data into context**: `transcripts/*.json` (raw), `captions.json`, `track.json`, `segments.json`, matte/track binaries. Read `takes_packed.md` and helper stdout instead.
 
