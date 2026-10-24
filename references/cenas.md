@@ -31,7 +31,12 @@ them yet: `cenas_edit_data.py` refuses them with the list above.
    every item (an error names the field and nothing is written), cuts the person out of each
    window, measures them in the cut-out, computes where each thing goes (`layout`) and copies the
    backgrounds and images to `public/cenas/`. Exit 1 = read its `FALTA`/`AVISO`/`ERRO` lines.
-4. **Render.**
+4. **Render.** The first time, the whole video. After a change to effects that were already
+   rendered, only their windows: `uv run python -X utf8 helpers/render_janelas.py <edit>
+   --janelas <start>-<end>[,<start>-<end>...]` renders those frames (2 extra on each side),
+   splices them into `out/render.mp4` by frame number and keeps its sound; then
+   `mixar_final.py` as after a full render. A changed sound (soundtrack, sound effect) needs
+   the full render.
 5. **Check a still inside each window**, after the elements came in (about 2 s into the take):
    the person whole with no straight edge, the text readable against what is really behind it,
    nothing over the face. `cenas_edit_data.py` prints a warning when it had to leave something

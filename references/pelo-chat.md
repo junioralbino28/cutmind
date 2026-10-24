@@ -126,7 +126,9 @@ under a full-frame effect (split screen, a scene) it is covered. Proven by `test
 After ANY change to an effect (`cena-` rows: on/off, text, place, a new one), run
 `cenas_edit_data.py <edit>` before re-rendering: the positions depend on the texts, and an
 unchanged window keeps its cut-out and its measurement, so it takes seconds
-(`tests/test_cenas.py`).
+(`tests/test_cenas.py`). "Re-render the window" = `render_janelas.py <edit> --janelas
+<start>-<end>,...` (only those frames, spliced into `out/render.mp4`; `tests/test_render_janelas.py`),
+then `mixar_final.py`.
 
 Phase 2 is short-form only for the style gate; on longform ask the layer questions in
 chat (`SKILL.md`, "The Estilo panel"). Caption positions are proven by

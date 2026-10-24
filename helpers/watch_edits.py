@@ -112,6 +112,9 @@ def digest(p: Path) -> str:
                      "quadro 1080x1920; null = o lugar padrão do componente) e os textos, rode "
                      "cenas_edit_data.py <edit> (as posições dependem dos textos) e refaça só a janela de "
                      "cada um (references/cenas.md):")
+        janelas = ",".join(f'{c.get("start", 0):g}-{c.get("end", 0):g}' for c in cenas)
+        parts.append(f"    depois: render_janelas.py <edit> --janelas {janelas} e mixar_final.py "
+                     "<edit> --render <remotion>/out/render.mp4")
         for c in cenas:
             oque = ["DESLIGAR" if c.get("desligada") else "ligado"]
             t = c.get("texto")
