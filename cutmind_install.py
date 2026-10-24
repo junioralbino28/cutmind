@@ -77,6 +77,14 @@ AGENT_DIRS: list[tuple[str, Path]] = [
 # the same Node runs the user's other projects.
 NODE_MIN = 18
 
+# Espaço em disco, em GB como o Windows mostra (base 1024). Medido numa instalação no
+# Windows em 24/10/2026: o .venv ocupa 2,1 GB; a primeira transcrição em português baixa
+# mais 4,0 GB de modelos (Whisper large-v3-turbo 1,6 GB e o alinhador wav2vec2 2,4 GB);
+# e um projeto editado do começo ao fim ocupou 3,3 GB. Abaixo de ESPACO_DEPS_GB o uv sync
+# nem começa: baixaria até encher o disco e pararia no meio do torch.
+ESPACO_DEPS_GB = 3
+ESPACO_TRABALHO_GB = 12
+
 SKILL_PAYLOAD = (
     "README.md",
     "SKILL.md",
@@ -308,18 +316,81 @@ def _rmtree(path: Path) -> None:
         shutil.rmtree(path, onerror=handler)
 
 
-def run_uv_sync(dest: Path) -> bool:
-    """Install the Python dependencies. Returns False if uv is missing."""
-    if not shutil.which("uv"):
-        return False
+def run_uv_sync(dest: Path) -> str | None:
+    """Install the Python dependencies. Returns None on success, else the end of the error."""
     log("  instalando dependências (torch + whisperx, alguns GB na primeira vez)…")
     r = subprocess.run(["uv", "sync", "--directory", str(dest)],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
     if r.returncode != 0:
+        erro = (r.stderr or "").strip()[-600:]
         log("  ! uv sync falhou:")
-        log("    " + (r.stderr or "").strip()[-600:])
-        return True    # uv exists; the failure is a separate problem
-    return True
+        log("    " + erro)
+        return erro or f"uv sync saiu com o código {r.returncode}"
+    return None
+
+
+def instalar_dependencias(dests: list[Path]) -> tuple[str, str] | None:
+    """uv sync em cada destino. None quando deu certo; senão (tipo, detalhe), com o
+    tipo "espaco" (o disco não comporta, ou encheu no meio) ou "falhou".
+
+    O resumo do fim depende disto. No primeiro piloto real o uv sync parou no meio do
+    torch com o disco cheio, e a instalação terminou dizendo "Tudo pronto!".
+    """
+    # Destino sem .venv é instalação do zero, uns 2 GB de pacotes. Com o .venv lá o uv
+    # só acerta a diferença, e barrar por espaço impediria uma atualização pequena.
+    if any(not (d / ".venv").exists() for d in dests):
+        livre = espaco_livre(dests + [p for p in (_cache_do_uv(),) if p])
+        if livre and livre[0] < ESPACO_DEPS_GB:
+            return "espaco", f"{_gb(livre[0])} livres em {livre[1]}"
+    for d in dests:
+        erro = run_uv_sync(d)
+        if erro:
+            if not _disco_cheio(erro):
+                return "falhou", erro
+            livre = espaco_livre([d])
+            return "espaco", (f"{_gb(livre[0])} livres em {livre[1]}" if livre
+                              else "o disco encheu")
+    return None
+
+
+def _disco_cheio(erro: str) -> bool:
+    """O uv parou por disco cheio? O texto vem no idioma do sistema ("Espaço
+    insuficiente no disco", "No space left on device") e o número do erro não, mas
+    112 no Linux é outra coisa (host fora do ar): por isso o número depende do sistema."""
+    codigo = 112 if sys.platform == "win32" else 28
+    return bool(re.search(rf"os error {codigo}\b|no space left on device"
+                          r"|not enough space on the disk|insuficiente no disco", erro, re.I))
+
+
+def _cache_do_uv() -> Path | None:
+    """Onde o uv guarda os pacotes: os GB do torch entram ali antes de chegar ao .venv."""
+    try:
+        r = subprocess.run(["uv", "cache", "dir"], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    caminho = (r.stdout or "").strip()
+    return Path(caminho) if r.returncode == 0 and caminho else None
+
+
+def espaco_livre(pastas: list[Path]) -> tuple[float, str] | None:
+    """O menor espaço livre (GB) entre os discos dessas pastas, e qual disco é."""
+    menor = None
+    for p in pastas:
+        q = Path(p)
+        while not q.exists() and q.parent != q:   # o cache do uv só nasce no 1º download
+            q = q.parent
+        try:
+            gb = shutil.disk_usage(q).free / 2**30
+        except OSError:
+            continue
+        if menor is None or gb < menor[0]:
+            menor = (gb, q.anchor or str(q))
+    return menor
+
+
+def _gb(valor: float) -> str:
+    return f"{valor:.1f}".replace(".", ",") + " GB"
 
 
 def hint(tool: str) -> str:
@@ -487,13 +558,12 @@ def main() -> None:
     # from whichever copy the agent loaded. Syncing only the first one left the
     # second agent with a skill that imports nothing. uv hardlinks from its
     # global cache, so the extra copies are cheap.
-    # `if dests else False` claimed uv was missing when there was simply nothing
-    # to sync — which is what a run that skipped every destination looks like.
-    # Fall back to asking the system.
-    if args.skip_deps:
-        have_uv = bool(shutil.which("uv"))
-    else:
-        have_uv = all(run_uv_sync(d) for d in dests) if dests else bool(shutil.which("uv"))
+    # Whether uv exists is asked of the system, never inferred from the sync: a run
+    # that skipped every destination has nothing to sync and still has uv.
+    have_uv = bool(shutil.which("uv"))
+    deps_erro = None
+    if have_uv and dests and not args.skip_deps:
+        deps_erro = instalar_dependencias(dests)
 
     log()
     log("verificação:")
@@ -503,6 +573,17 @@ def main() -> None:
         log(f"  x uv         — necessário: {hint('uv')}")
     else:
         log("  ok uv")
+    if deps_erro:
+        motivo = (f"falta espaço no disco ({deps_erro[1]})" if deps_erro[0] == "espaco"
+                  else "o uv sync falhou (o erro está acima)")
+        log(f"  x dependências — {motivo}. Sem elas a transcrição não funciona.")
+    elif have_uv and dests and not args.skip_deps:
+        log("  ok dependências")
+        livre = espaco_livre(dests)
+        if livre and livre[0] < ESPACO_TRABALHO_GB:
+            log(f"  · espaço     — sobram {_gb(livre[0])} em {livre[1]}: a primeira transcrição"
+                " ainda baixa uns 4 GB de modelos, e um vídeo editado ocupa uns 3 GB."
+                f" Deixe pelo menos {ESPACO_TRABALHO_GB} GB livres.")
     if shutil.which("ffmpeg"):
         log("  ok ffmpeg")
     else:
@@ -570,9 +651,20 @@ def main() -> None:
         log("  e rode este comando de novo — o que já instalou permanece.")
 
     log()
+    if deps_erro:
+        if deps_erro[0] == "espaco":
+            log("NÃO terminou: falta espaço no disco. Libere até ter uns"
+                f" {ESPACO_DEPS_GB + ESPACO_TRABALHO_GB} GB livres (Lixeira, arquivos"
+                " temporários, vídeos e instaladores velhos) e rode este comando de novo.")
+        else:
+            log("NÃO terminou: as dependências do Python não instalaram (o erro está acima)."
+                " Resolva e rode este comando de novo.")
     if missing:
         log(f"Falta instalar: {', '.join(missing)}. Rode os comandos acima e"
             " depois este comando de novo.")
+    if deps_erro:
+        sys.exit(1)   # quem roda isto por um agente vê a falha também pelo código de saída
+    if missing:
         return
 
     if skipped:

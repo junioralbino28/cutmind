@@ -32,11 +32,16 @@ editing, read `SKILL.md`. Always read `helpers/` — that's where the scripts li
 >
 >    It copies the skill into every agent it finds, runs `uv sync` (torch + WhisperX: a
 >    few GB the first time; tell the user it is downloading, then wait), installs
->    Node.js LTS when it is missing, and ends with a checklist.
+>    Node.js LTS when it is missing, and ends with a checklist. It needs ~3 GB free to
+>    install and will not start the download with less; plan for ~15 GB free in all
+>    (the first transcription fetches ~4 GB of models, and each edited video takes a
+>    few GB). If it ends with `NÃO terminou`, nothing is ready, whatever else it printed.
 > 4. **Fix every `x` in the checklist** and run the installer again. ffmpeg is the usual
 >    one: `winget install Gyan.FFmpeg` / `brew install ffmpeg` (reload the PATH as in
 >    step 2). On Linux, `sudo apt-get install -y ffmpeg` needs the user's password: that
->    exact line is the one thing you hand over.
+>    exact line is the one thing you hand over. For `falta espaço no disco`, help the
+>    user free space: list what takes the most room and let them choose; never delete
+>    anything on your own.
 > 5. **Verify** (below) and **hand off** (end of this file).
 
 ## What the install consists of
