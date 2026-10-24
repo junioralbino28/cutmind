@@ -367,6 +367,53 @@ def test_sem_uma_vez_passa_a_vigiar_a_pasta_nova(tmp_path):
     assert "no projeto B" in out
 
 
+ESTILO = {"edit": "limpa", "headline": "misto", "captions": "serifada", "accent": "#ff5200",
+          "elements": {"zoomAuto": True, "zoomCuts": True}, "captionPositions": {"all": None, "phrases": []}, "note": ""}
+
+
+def _projeto_com_estilo(tmp_path, estilo_fino=None):
+    (tmp_path / "remotion" / "public").mkdir(parents=True)
+    (tmp_path / "state.json").write_text(json.dumps({"phase": 2, "style": ESTILO,
+                                                     "editData": "remotion/public/edit-data.json"}), encoding="utf-8")
+    cap = {"enabled": True, "style": "serifada", **({"estilo": estilo_fino} if estilo_fino else {})}
+    (tmp_path / "remotion" / "public" / "edit-data.json").write_text(json.dumps({"captions": cap}), encoding="utf-8")
+    return tmp_path / "preview_style.json"
+
+
+def test_estilo_igual_ao_do_video_nao_manda_refazer(tmp_path):
+    # o Aplicar sem mudar nada, ou um modelo igual ao vídeo: refazer a Fase 2 daria o mesmo vídeo
+    from watch_edits import style_digest
+    p = _projeto_com_estilo(tmp_path, {"fonte": "Anton"})
+    salvo = {"type": "style-setup", "rerender": True, **ESTILO, "accent": "#FF5200"}
+    p.write_text(json.dumps(salvo), encoding="utf-8")
+    assert "SEM MUDANÇA" in style_digest(p) and "REFAÇA" not in style_digest(p)
+    p.write_text(json.dumps({**salvo, "legenda": {"estilo": {"fonte": "Anton"}, "acompanhar": False}}), encoding="utf-8")
+    assert "SEM MUDANÇA" in style_digest(p)  # a legenda fina é a que o edit-data já tem
+    p.write_text(json.dumps({**salvo, "legenda": {"estilo": {"fonte": "Bebas Neue"}}}), encoding="utf-8")
+    assert "REFAÇA a Fase 2" in style_digest(p)
+    p.write_text(json.dumps({**salvo, "captions": "karaoke"}), encoding="utf-8")
+    assert "REFAÇA a Fase 2" in style_digest(p)
+    p.write_text(json.dumps({**salvo, "rerender": False}), encoding="utf-8")
+    assert "monte a Fase 2" in style_digest(p)  # a 1ª escolha sempre monta
+
+
+def test_aviso_do_modelo_diz_o_que_ele_leva(tmp_path):
+    import modelos as md
+    from watch_edits import style_digest
+    p = tmp_path / "preview_style.json"
+
+    def aviso(mid, nome):
+        p.write_text(json.dumps({"type": "style-setup", "rerender": True, **ESTILO, "captions": "karaoke",
+                                 "modelo": {"id": mid, "nome": nome}}), encoding="utf-8")
+        return style_digest(p)
+
+    md.salvar({"nome": "Só estilo", "estilo": {"captions": "karaoke"}})
+    md.salvar({"nome": "Com filtro", "estilo": {}, "filtro": {"pacote": "f-ambar"}, "trilha": {"pacote": "lofi-01"}})
+    assert "é só o Estilo" in aviso("so-estilo", "Só estilo")
+    assert "filtro, trilha dele vêm no preview_edits.json" in aviso("com-filtro", "Com filtro")
+    assert "se tiver, vêm no preview_edits.json" in aviso("apagado", "Apagado")  # modelo que já não existe
+
+
 def test_aviso_de_estilo_conta_o_modelo_aplicado(tmp_path):
     from watch_edits import style_digest
     p = tmp_path / "preview_style.json"

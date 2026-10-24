@@ -32,6 +32,7 @@ import sys
 import time
 from pathlib import Path
 
+import modelos as md  # mesma pasta deste arquivo
 import projetos as pj  # mesma pasta deste arquivo
 
 
@@ -332,6 +333,34 @@ def velocidade_linhas(v: dict) -> list[str]:
     return out
 
 
+def _sem_mudanca(p: Path, d: dict) -> bool:
+    """Uma troca de Estilo que repete o que o vídeo já tem (o Aplicar sem mudar nada, ou um
+    modelo igual ao vídeo): refazer a Fase 2 custaria minutos e daria o mesmo vídeo."""
+    if not d.get("rerender"):
+        return False  # a 1ª escolha sempre monta a Fase 2
+    try:
+        st = json.loads((p.parent / "state.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    atual = st.get("style") or {}
+    if any((atual.get(k) or None) != (d.get(k) or None) for k in ("edit", "headline", "captions", "elements",
+                                                                     "captionPositions")):
+        return False
+    if str(atual.get("accent") or "").lower() != str(d.get("accent") or "").lower() or \
+            (atual.get("note") or "").strip() != (d.get("note") or "").strip():
+        return False
+    leg = d.get("legenda")
+    if leg:  # a legenda fina do modelo mora no edit-data
+        try:
+            cap = json.loads((p.parent / st["editData"]).read_text(encoding="utf-8")).get("captions") or {}
+        except (KeyError, TypeError, OSError, json.JSONDecodeError):
+            return False
+        if (cap.get("estilo") or None) != (leg.get("estilo") or None) or \
+                bool(cap.get("acompanhar")) != bool(leg.get("acompanhar")):
+            return False
+    return True
+
+
 def style_digest(p: Path) -> str:
     """The gate choice: what Fase 2 should be built as."""
     try:
@@ -342,11 +371,14 @@ def style_digest(p: Path) -> str:
     els = d.get("elementNames") or [
         k for k, v in (d.get("elements") or {}).items() if v
     ]
-    head = (
-        "TROCA DE ESTILO NO PREVIEW ({}) — REFAÇA a Fase 2 assim:"
-        if d.get("rerender")
-        else "ESTILO ESCOLHIDO NO PREVIEW ({}) — monte a Fase 2 assim:"
-    ).format(d.get("savedAt", ""))
+    if _sem_mudanca(p, d):
+        head = ("ESTILO APLICADO SEM MUDANÇA NO PREVIEW ({}): é o Estilo que o vídeo já tem, nada a "
+                "refazer na Fase 2; apague o preview_style.json. O mesmo Estilo:")
+    elif d.get("rerender"):
+        head = "TROCA DE ESTILO NO PREVIEW ({}) — REFAÇA a Fase 2 assim:"
+    else:
+        head = "ESTILO ESCOLHIDO NO PREVIEW ({}) — monte a Fase 2 assim:"
+    head = head.format(d.get("savedAt", ""))
     out = [
         head,
         f'  · tipo de edição: {d.get("editName") or d.get("edit")}',
@@ -354,11 +386,20 @@ def style_digest(p: Path) -> str:
         f'  · legenda: {d.get("captionsName") or d.get("captions")}',
     ]
     # modelo de estilo (aba Modelos): o visual inteiro de outro vídeo. Filtro, transição, ajuste
-    # e trilha dele chegam pelo preview_edits.json do mesmo Aplicar (efeitos/camadas)
+    # e trilha dele chegam pelo preview_edits.json do mesmo Aplicar (efeitos/camadas); o que ele
+    # leva de fato está no arquivo do modelo
     modelo = d.get("modelo") or {}
     if modelo.get("nome"):
-        out.insert(1, f'  · MODELO "{modelo["nome"]}" aplicado (modelos.py mostrar {modelo.get("id", "?")}); '
-                      'filtro, transição, ajuste e trilha dele vêm no preview_edits.json')
+        m = md.obter(str(modelo.get("id") or "")) or {}
+        leva = [nome for k, nome in (("filtro", "filtro"), ("transicao", "transição"), ("ajuste", "ajuste"),
+                                     ("trilha", "trilha")) if m.get(k)]
+        if not m:
+            extra = "filtro, transição, ajuste e trilha dele, se tiver, vêm no preview_edits.json"
+        elif leva:
+            extra = f'{", ".join(leva)} dele vêm no preview_edits.json'
+        else:
+            extra = "ele não tem filtro, transição, ajuste nem trilha: é só o Estilo"
+        out.insert(1, f'  · MODELO "{modelo["nome"]}" aplicado (modelos.py mostrar {modelo.get("id", "?")}); {extra}')
     leg = (d.get("legenda") or {}).get("estilo") or {}
     if leg:
         bits = [f"{k}={v}" for k, v in leg.items()]

@@ -782,7 +782,9 @@ Writing `style` back is not bookkeeping — it is what keeps the tab open. The t
 is enabled while `awaitingStyle` OR `style` is set, so the user can return, change
 a caption style or tick one more element, and save again. That save arrives with
 `"rerender": true` and the watcher says **REFAÇA a Fase 2** — re-render with the
-new choices, don't treat it as a first pick.
+new choices, don't treat it as a first pick. When the picks are exactly the ones the
+video already has (Aplicar without changing anything, or a template equal to the video),
+it says **SEM MUDANÇA** instead: delete `preview_style.json` and re-render nothing.
 
 **The catalog lives in `STYLE_CATALOG` (`assets/preview/estilos.js`), not in a session.** A new editing
 or caption style is one entry there plus its implementation in the track
