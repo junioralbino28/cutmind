@@ -114,6 +114,7 @@ under a full-frame effect (split screen, a scene) it is covered. Proven by `test
 | `cena-texto` on the hook or a number block | "o gancho em Anton amarelo", "o 6 MIL menor" | `hook` / `numeros[i]` in `edit-data.json`: `texto`, `estilo` (same keys as the effects) and the text (`hook.text`; `prefixo`, `valor`, `sufixo`, `rotulo`). Re-render the window |
 | moving the effect's frame on the video, `cena-lugar` | "o texto do vidro mais para cima" | `cenas[i].texto = {x, y}`: the block's centre in 1080×1920 frame px (`cena-lugar` = `x: 540`); absent = the component's default place. Re-render the window |
 | `cena-original` | "volta o efeito como estava" | the previous values of those keys |
+| (from the chat only, for now) | "troca o fundo dessa parte por uma lousa", "põe uma capa de revista escrito EQUIPE na tomada 5", "faz o gráfico subindo quando eu falo dos 66%" | a new item in `cenas[]`: the type, the window = the take (`tomadas_no_corte`), the fields and the texts from that take's speech (`references/cenas.md`). Replacing an effect = change its `tipo` and fields in place. Then `cenas_edit_data.py <edit>` and re-render the window |
 | `zoom-valor`, `zoom-sem` | "a tomada 4 sem zoom", "mais zoom na 2" | `camera.zooms`: one base zoom per take (expand the cycle to one per take first, as the editor does); `zoom-sem` = 1. Re-render those takes |
 | `zoom-original` | "volta o zoom da 4" | the previous value |
 | `leg-texto` | "legenda em Bebas amarela", "a legenda maior, com contorno" | `captions.estilo` in `edit-data.json`: `fonte` + `peso`, `cor`, `tamanho` (×), `contorno` (px), `corContorno` (the karaoke and the three static styles); on `stacked`/`scatter` only `tamanho` counts. Re-render |
@@ -121,6 +122,11 @@ under a full-frame effect (split screen, a scene) it is covered. Proven by `test
 | `leg-posicao` | "a legenda mais para cima" | the caption position row above (`captionPositions`) |
 | `leg-original` | "volta a legenda como estava" | the previous `captions.estilo` / `captions.acompanhar` |
 | caption piece moved in time (drag a piece of the caption track in Final) | "a frase 'é por isso' entra meio segundo antes" | find the words in `captions.json` (index of the first, how many, its `startMs`), then `legenda_tempos.py <edit> --tempos '[{"palavra": i, "palavras": n, "deMs": <startMs>, "paraMs": <startMs − 500>}]'`; it refuses a shift over the neighbouring word. Re-render |
+
+After ANY change to an effect (`cena-` rows: on/off, text, place, a new one), run
+`cenas_edit_data.py <edit>` before re-rendering: the positions depend on the texts, and an
+unchanged window keeps its cut-out and its measurement, so it takes seconds
+(`tests/test_cenas.py`).
 
 Phase 2 is short-form only for the style gate; on longform ask the layer questions in
 chat (`SKILL.md`, "The Estilo panel"). Caption positions are proven by

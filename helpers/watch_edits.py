@@ -109,8 +109,9 @@ def digest(p: Path) -> str:
     if cenas:
         head.append(_plural(len(cenas), "efeito mudado", "efeitos mudados"))
         parts.append("  efeitos (edit-data.json `cenas[ref]`): grave `desligada`, `texto` (centro do bloco no "
-                     "quadro 1080x1920; null = o lugar padrão do componente) e os textos, e refaça só a "
-                     "janela de cada um (references/shortform.md):")
+                     "quadro 1080x1920; null = o lugar padrão do componente) e os textos, rode "
+                     "cenas_edit_data.py <edit> (as posições dependem dos textos) e refaça só a janela de "
+                     "cada um (references/cenas.md):")
         for c in cenas:
             oque = ["DESLIGAR" if c.get("desligada") else "ligado"]
             t = c.get("texto")

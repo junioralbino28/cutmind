@@ -96,7 +96,9 @@ is why helpers run as `uv run python helpers/…` — a bare `python` won't see 
 
 **The Python cap is load-bearing:** `requires-python = ">=3.10,<3.14"` exists
 because torch publishes no cp314 wheels. Without the cap, `uv` picks 3.14 and
-every torch-backed feature (transcription, matting) fails to install.
+every torch-backed feature (transcription, and matting through `--motor torch`)
+fails to install. The default matting runs on ONNX Runtime and downloads its model
+(~15 MB) on first use.
 
 If `uv` is missing: `brew install uv` (macOS), `winget install astral-sh.uv`
 (Windows), or the installer at https://docs.astral.sh/uv/. On Windows a

@@ -302,6 +302,7 @@ def test_aviso_dos_efeitos_e_do_zoom_da_fase_2(tmp_path):
     assert "#16 vidro" in aviso and "bloco em x=540 y=420" in aviso and 'palavra="GARGALO"' in aviso
     assert "estilo fonte=Bebas Neue, peso=400, tamanho=1.2" in aviso
     assert "#3 mural" in aviso and "DESLIGAR" in aviso
+    assert "cenas_edit_data.py" in aviso and "references/cenas.md" in aviso  # as posições dependem dos textos
     assert "tomada 2 → 120%" in aviso
     assert "inserts/gancho movidos" not in aviso  # só efeitos e zoom: nenhum bloco andou
 

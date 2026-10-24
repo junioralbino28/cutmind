@@ -15,6 +15,7 @@ import cenas  # noqa: E402
 INDEX = RAIZ / "assets" / "shortform" / "src" / "cenas" / "index.tsx"
 MAIN = RAIZ / "assets" / "shortform" / "src" / "Main.tsx"
 CELULAR = RAIZ / "assets" / "preview" / "celular.js"
+GUIA = RAIZ / "references" / "cenas.md"
 
 
 def _chaves(texto: str, inicio: str) -> set[str]:
@@ -34,6 +35,15 @@ def test_o_editor_conhece_o_nome_de_todo_tipo():
     nomes = _chaves(CELULAR.read_text(encoding="utf-8"), "const CENA_NOME = {")
     assert {"vidro", "orbita", "corteZoom"} <= nomes  # o detector funciona
     assert set(cenas.TIPOS) <= nomes, f"falta no CENA_NOME do celular.js: {sorted(set(cenas.TIPOS) - nomes)}"
+
+
+def test_o_guia_do_agente_explica_cada_tipo():
+    """references/cenas.md tem uma seção `### \\`tipo\\`` por tipo: o agente de outra pessoa só
+    usa o efeito que o guia ensina."""
+    secoes = re.findall(r"^### `(\w+)`", GUIA.read_text(encoding="utf-8"), re.M)
+    assert "vidro" in secoes  # o detector funciona
+    assert sorted(secoes) == sorted(cenas.TIPOS)
+    assert "references/cenas.md" in (RAIZ / "references" / "shortform.md").read_text(encoding="utf-8")
 
 
 def test_main_monta_os_efeitos_entre_os_inserts_e_o_custom_graphics():

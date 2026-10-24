@@ -472,8 +472,10 @@ headline lands across the speaker's mouth. Render one hook still after switching
 ## Behind-the-subject (element between person and background)
 
 Puts an image or giant word(s) BEHIND the person. Great on medium/wide shots;
-on tight close-ups anchor elements to the TOP (template already does). Needs
-the matting extra: `uv sync --extra matting` (torch).
+on tight close-ups anchor elements to the TOP (template already does). The cut-out
+runs on ONNX Runtime, part of the base install; the model (~15 MB) downloads on
+first use. For a whole new background, a magazine cover, a headline wall and the
+other effects that redraw the take, use `cenas[]` instead (next section).
 
 ```bash
 uv run python helpers/person_matte.py cut.mp4 -o remotion/public/fg_<name>.mov --start <s> --duration <d>
@@ -488,6 +490,17 @@ already encodes — do not re-learn them:
 - matte gets the same camera via `frameOffset` or the person drifts
 
 Matte ONLY the windows you need — each file's frame 0 = its window start.
+
+## Effects that take the person off the background (`cenas[]`)
+
+Seven effects redraw a whole take with the person cut out in front: a new background
+(`fundo`), a frosted-glass word (`vidro`), a magazine cover (`capa`), a headline wall
+(`mural`), a wall of photos (`parede`), a growing chart (`grafico`) and a web page with the
+person in a corner (`chroma`). Two or three per video, on the takes whose speech carries the
+idea, with the texts taken from that speech. Write the items in `edit-data.json` `cenas[]`,
+run `cenas_edit_data.py <edit>` (it cuts the person out of each window, measures them and
+places everything around them) and render. Types, fields, examples and limits:
+**`references/cenas.md`** — read it before the first effect.
 
 ## Illustrative images
 
@@ -870,7 +883,7 @@ skill prompt is resent every turn.
 
 ## Helpers de Fase 2/3
 
-- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte; `uv sync --extra matting`) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`pacotes.py`** (kit library: `listar --tipo trilha`, `camada <edit> <id>`, `abrir <id>`) · **`efeitos_render.py`** (filters and transitions from the editor into `public/cut.mp4`) · **`velocidade_final.py`** (the editor's speed spans on the finished video → `final-entrega.mp4`) · **`legenda_tempos.py`** (caption pieces the user dragged in time → `captions.json`) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental).
+- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte, ONNX Runtime; `--motor torch` and resnet50 need `uv sync --extra matting`) · **`cenas_edit_data.py`** (prepares `cenas[]`: cut-out, measurement, `layout`, backgrounds; `references/cenas.md`) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`pacotes.py`** (kit library: `listar --tipo trilha`, `camada <edit> <id>`, `abrir <id>`) · **`efeitos_render.py`** (filters and transitions from the editor into `public/cut.mp4`) · **`velocidade_final.py`** (the editor's speed spans on the finished video → `final-entrega.mp4`) · **`legenda_tempos.py`** (caption pieces the user dragged in time → `captions.json`) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental).
 
 ---
 
