@@ -59,6 +59,8 @@
       <div class="cap" id="ovCap"></div>
       <!-- camada de imagem debaixo da agulha: no lugar e no tamanho do cartão do vídeo final -->
       <img class="ov-img hidden" id="ovImg" alt="">
+      <!-- com o painel Fundo aberto: o fundo escolhido atrás da pessoa recortada, parado no quadro da agulha -->
+      <div class="ov-fundo hidden" id="ovFundo"><div class="fundo-bg" id="ovFundoBg"></div><div class="fundo-veu"></div><img class="fundo-pessoa" id="ovFundoPessoa" alt=""></div>
       <!-- camadas de texto debaixo da agulha, no lugar, na fonte e no tamanho do vídeo final -->
       <div class="ov-textos" id="ovTextos"></div>
       <!-- com o painel de Texto da legenda aberto: a frase da agulha com o estilo novo -->
@@ -207,6 +209,23 @@
   <div class="sheet-body tr-lista" id="fxLista"></div>
 </section>
 
+<!-- Fundo: um fundo novo atrás da pessoa na tomada da agulha; cada cartão é a pessoa recortada sobre um fundo -->
+<section class="sheet" id="fundoSheet" aria-hidden="true">
+  <div class="sheet-head">
+    <button class="sh-close" id="fundoClose" type="button" aria-label="Fechar"></button>
+    <b class="sh-title" id="fundoTitulo">Fundo</b>
+  </div>
+  <div class="sheet-body" id="fundoLista"></div>
+  <div class="fundo-regs off" id="fundoRegs">
+    <div class="voz-reg"><b>Escurecer</b><input class="vol-range" id="fundoEscurecer" type="range" min="0" max="60" step="1" value="25" aria-label="Escurecer o fundo"><span id="fundoEscurecerVal">25%</span></div>
+    <div class="voz-reg"><b>Desfoque</b><input class="vol-range" id="fundoDesfoque" type="range" min="0" max="20" step="1" value="0" aria-label="Desfocar o fundo"><span id="fundoDesfoqueVal">0</span></div>
+  </div>
+  <footer class="sheet-foot">
+    <div class="t-spacer"></div>
+    <button class="tb-btn primary" id="fundoOk" type="button">Pronto</button>
+  </footer>
+</section>
+
 <!-- modelos de texto: dois ou três textos de uma vez, em fontes misturadas, sobre o quadro da agulha -->
 <section class="sheet" id="modeloSheet" aria-hidden="true">
   <div class="sheet-head">
@@ -297,6 +316,7 @@
 <input type="file" id="fileInput" accept="video/*" hidden>
 <input type="file" id="fileAudio" accept="audio/*" hidden>
 <input type="file" id="fileImagem" accept="image/*" hidden>
+<input type="file" id="fileFundo" accept="image/*" hidden>
 <!-- envio de vídeo: vai em pedaços para a pasta dos vídeos no computador -->
 <section class="upload hidden" id="upload" role="status" aria-live="polite">
   <div class="up-row">

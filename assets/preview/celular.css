@@ -187,6 +187,33 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 10.5px; font-weight: 700; color: #fff; text-align: left;
   background: linear-gradient(transparent, rgba(0, 0, 0, 0.78));
 }
+/* Fundo: o cartão (e a prévia grande) é o fundo, o véu de Escurecer e a pessoa recortada, nas
+   contas do vídeo final (src/cenas/fundo.tsx): o desfoque em px do quadro de 1080 vira cqw da
+   caixa (100/1080 = 0,0926) e o fundo cresce um pouco com ele, para a borda borrada não aparecer */
+.fundo-bg {
+  position: absolute; inset: 0; background: #111 center / cover no-repeat;
+  transform: scale(calc(1.02 + var(--desfoque, 0) / 400));
+  filter: blur(calc(var(--desfoque, 0) * 0.0926cqw));
+}
+.fundo-veu { position: absolute; inset: 0; background: rgba(0, 0, 0, var(--veu, 0.25)); }
+.fundo-pessoa { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.fundo-card.on { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand); }
+/* no celular, uma fileira que rola de lado e cresce com a altura que sobra no painel (até 153 px):
+   as réguas e o Pronto ficam à vista do celular pequeno ao grande. A largura vem da altura */
+#fundoLista { display: flex; flex-direction: column; }
+#fundoLista .sheet-hint { flex: none; }
+.fundo-grade { flex: 1; min-height: 96px; display: flex; overflow-x: auto; scrollbar-width: none; padding-block: 2px; } /* a borda do escolhido não é cortada */
+.fundo-grade::-webkit-scrollbar { display: none; }
+.fundo-grade .mod-card { flex: none; width: auto; max-height: 153px; }
+.desk #fundoLista { display: block; }
+.desk .fundo-grade { display: grid; overflow: visible; }
+.desk .fundo-grade .mod-card { max-height: none; }
+.fundo-mais { display: grid; place-items: center; color: var(--dim); background: var(--surface3); }
+.fundo-mais svg { width: 26px; height: 26px; }
+.fundo-regs { flex: none; padding-bottom: 10px; border-top: 1px solid var(--line); }
+.fundo-regs.off { opacity: 0.35; pointer-events: none; }
+.fundo-regs .voz-reg { grid-template-columns: 76px 1fr 42px; }
+.ov-fundo { position: absolute; inset: 0; container-type: size; overflow: hidden; z-index: 1; pointer-events: none; }
 /* a frase da legenda com o estilo do painel aberto, no lugar do estilo (prévia aproximada) */
 .ov-leg { position: absolute; inset: 0; container-type: size; overflow: hidden; z-index: 3; pointer-events: none; }
 .ov-leg-txt {
@@ -843,11 +870,11 @@ kbd {
 }
 .desk .sheet.open { visibility: visible; }
 .desk .sheet .sheet-grip { display: none; }
-.desk #sheet, .desk #trilhaSheet, .desk #fxSheet, .desk #modeloSheet { left: 0; right: auto; width: var(--col-l); transform: translateX(-102%); border-right: 1px solid var(--line); }
+.desk #sheet, .desk #trilhaSheet, .desk #fxSheet, .desk #modeloSheet, .desk #fundoSheet { left: 0; right: auto; width: var(--col-l); transform: translateX(-102%); border-right: 1px solid var(--line); }
 .desk #noteSheet, .desk #volSheet, .desk #velSheet, .desk #ajSheet, .desk #fxIntSheet,
 .desk #tomZoomSheet, .desk #cenaSheet, .desk #vozSheet { left: auto; right: 0; width: var(--col-r); transform: translateX(102%); border-left: 1px solid var(--line); overflow-y: auto; }
 /* aberto: a id acima (que esconde de lado) pesa mais que .open, então a regra repete as ids */
-.desk #sheet.open, .desk #trilhaSheet.open, .desk #fxSheet.open, .desk #modeloSheet.open,
+.desk #sheet.open, .desk #trilhaSheet.open, .desk #fxSheet.open, .desk #modeloSheet.open, .desk #fundoSheet.open,
 .desk #noteSheet.open, .desk #volSheet.open, .desk #velSheet.open, .desk #ajSheet.open, .desk #fxIntSheet.open,
 .desk #tomZoomSheet.open, .desk #cenaSheet.open, .desk #vozSheet.open { transform: none; }
 /* na coluna, o painel de Texto usa a altura toda: os campos rolam, os botões ficam embaixo */
@@ -887,7 +914,7 @@ kbd {
 .desk.lado.em-pe .desk-col.lib { border-right: 0; }
 /* os menus da biblioteca abrem em cima, colados na coluna da prévia e na largura toda até as
    propriedades: as opções viram grade, mais delas à vista de uma vez */
-.desk.lado.em-pe #sheet, .desk.lado.em-pe #trilhaSheet, .desk.lado.em-pe #fxSheet, .desk.lado.em-pe #modeloSheet {
+.desk.lado.em-pe #sheet, .desk.lado.em-pe #trilhaSheet, .desk.lado.em-pe #fxSheet, .desk.lado.em-pe #modeloSheet, .desk.lado.em-pe #fundoSheet {
   left: var(--col-v); width: calc(100vw - var(--col-v) - var(--col-r));
 }
 .desk.lado.em-pe .tr-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); align-content: start; column-gap: 6px; }

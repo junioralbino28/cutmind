@@ -308,6 +308,26 @@ def test_aviso_dos_efeitos_e_do_zoom_da_fase_2(tmp_path):
     assert "inserts/gancho movidos" not in aviso  # só efeitos e zoom: nenhum bloco andou
 
 
+def test_aviso_do_fundo_criado_no_editor(tmp_path):
+    """O Fundo novo vem sem `ref`: o aviso manda acrescentar o item pronto; o desligado não entra e
+    não pede janela; o Fundo do agente trocado diz os `campos`."""
+    p = tmp_path / "preview_edits.json"
+    p.write_text(json.dumps({"type": "timeline-edits", "editData": {"cenas": [
+        {"ref": 1, "tipo": "fundo", "start": 2.0, "end": 5.0, "desligada": False, "texto": None, "textos": {},
+         "estilo": None, "campos": {"fundo": "fundos/neon", "escurecer": 0.3, "desfoque": 6}},
+        {"nova": True, "tipo": "fundo", "start": 9.5, "end": 12.25, "desligada": False, "texto": None, "textos": {},
+         "estilo": None, "campos": {"fundo": "midia/Cenário 1.jpg", "escurecer": 0.25, "desfoque": 0}},
+        {"nova": True, "tipo": "fundo", "start": 20.0, "end": 22.0, "desligada": True, "texto": None, "textos": {},
+         "estilo": None, "campos": {"fundo": "fundos/lousa", "escurecer": 0.25, "desfoque": 0}}]}}), encoding="utf-8")
+    aviso = digest(p)
+    assert "3 efeitos mudados" in aviso
+    assert "#1 fundo" in aviso and "fundo=fundos/neon, escurecer=0.3, desfoque=6" in aviso
+    assert ('NOVO fundo [0:09.50 → 0:12.25]: acrescente em cenas[] {"tipo": "fundo", "start": 9.5, "end": 12.25, '
+            '"fundo": "midia/Cenário 1.jpg", "escurecer": 0.25, "desfoque": 0}') in aviso
+    assert "NOVO fundo [0:20.00 → 0:22.00]: desligado no editor, não acrescente" in aviso
+    assert "render_janelas.py <edit> --janelas 2-5,9.5-12.25 " in aviso  # o desligado não pede janela
+
+
 def test_aviso_do_gancho_e_do_numero(tmp_path):
     """Gancho e número mudados no painel de Texto: o aviso diz onde gravar cada campo."""
     p = tmp_path / "preview_edits.json"

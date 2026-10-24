@@ -109,13 +109,26 @@ def digest(p: Path) -> str:
     if cenas:
         head.append(_plural(len(cenas), "efeito mudado", "efeitos mudados"))
         parts.append("  efeitos (edit-data.json `cenas[ref]`): grave `desligada`, `texto` (centro do bloco no "
-                     "quadro 1080x1920; null = o lugar padrão do componente) e os textos, rode "
-                     "cenas_edit_data.py <edit> (as posições dependem dos textos) e refaça só a janela de "
-                     "cada um (references/cenas.md):")
-        janelas = ",".join(f'{c.get("start", 0):g}-{c.get("end", 0):g}' for c in cenas)
-        parts.append(f"    depois: render_janelas.py <edit> --janelas {janelas} e mixar_final.py "
-                     "<edit> --render <remotion>/out/render.mp4")
+                     "quadro 1080x1920; null = o lugar padrão do componente), os textos e, num Fundo, os "
+                     "`campos` (`fundo`, `escurecer`, `desfoque` direto no item); `NOVO` = um efeito criado no "
+                     "editor, sem `ref`: acrescente em cenas[]. Rode cenas_edit_data.py <edit> (as posições "
+                     "dependem dos textos; o efeito novo ganha o recorte) e refaça só a janela de cada um "
+                     "(references/cenas.md):")
+        # o Fundo novo desligado nunca entrou no vídeo: não há janela para refazer
+        janelas = ",".join(f'{c.get("start", 0):g}-{c.get("end", 0):g}' for c in cenas
+                           if not (c.get("nova") and c.get("desligada")))
+        if janelas:
+            parts.append(f"    depois: render_janelas.py <edit> --janelas {janelas} e mixar_final.py "
+                         "<edit> --render <remotion>/out/render.mp4")
         for c in cenas:
+            onde = f'{c.get("tipo")} [{fmt(c.get("start", 0))} → {fmt(c.get("end", 0))}]'
+            if c.get("nova"):
+                if c.get("desligada"):
+                    parts.append(f"  · NOVO {onde}: desligado no editor, não acrescente")
+                else:
+                    item = {"tipo": c.get("tipo"), "start": c.get("start"), "end": c.get("end"), **(c.get("campos") or {})}
+                    parts.append(f"  · NOVO {onde}: acrescente em cenas[] {json.dumps(item, ensure_ascii=False)}")
+                continue
             oque = ["DESLIGAR" if c.get("desligada") else "ligado"]
             t = c.get("texto")
             if t:
@@ -125,8 +138,10 @@ def digest(p: Path) -> str:
             est = c.get("estilo") or {}
             if est:  # fonte (família do catálogo), cor, tamanho (×), contorno (px) e a cor dele
                 oque.append("estilo " + ", ".join(f"{k}={v}" for k, v in est.items()))
-            parts.append(f'  · #{c.get("ref")} {c.get("tipo")} [{fmt(c.get("start", 0))} → {fmt(c.get("end", 0))}]: '
-                         + "; ".join(oque))
+            campos = c.get("campos") or {}
+            if campos:  # o Fundo: a imagem, o véu e o desfoque
+                oque.append(", ".join(f"{k}={v}" for k, v in campos.items()))
+            parts.append(f'  · #{c.get("ref")} {onde}: ' + "; ".join(oque))
     destaques = ed.get("destaques") or []
     if destaques:
         head.append(_plural(len(destaques), "texto de destaque mudado", "textos de destaque mudados"))

@@ -28,6 +28,8 @@ Routes:
                         as frases da legenda Empilhado, pelo próprio diretor
                         (caption_style.py) sobre transcripts/cut.json — o modo
                         "Posição das frases" mostra as mesmas frases do render
+  /gen/recorte?t=       a pessoa no quadro t do corte, recortada (PNG com alfa,
+                        540x960): os cartões da ferramenta Fundo
   /api/state    GET     state.json + mtimes (UI polls this to hot-reload)
   /api/celular  GET     só no computador: links + QR code para abrir no celular
   /api/midia    GET     imagens e áudios do projeto (<edit>/midia/)
@@ -36,7 +38,9 @@ Routes:
                         com `camadas`, grava também <edit>/camadas.json (camadas.py);
                         com `efeitos`, <edit>/efeitos.json (efeitos.py); com
                         `velocidade`, <edit>/velocidade.json (velocidade.py); com
-                        `melhorar`, a Voz e o Fundo escolhidos (o agente aplica)
+                        `melhorar`, a Voz e o Fundo escolhidos (o agente aplica);
+                        os efeitos (`editData.cenas`) conferidos: o editor só cria
+                        o Fundo (conferir_cenas)
   /api/upload   POST    ?name=<arquivo>, corpo = o arquivo. Vídeo → pasta dos
                         vídeos (pai do <edit>) + aviso em <edit>/preview_upload.json;
                         imagem e áudio → <edit>/midia/ (camadas do projeto)
@@ -88,6 +92,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote
 
 import camadas as cam  # mesma pasta deste arquivo
+import cenas as cn  # mesma pasta deste arquivo
 import efeitos as ef  # mesma pasta deste arquivo
 import velocidade as vel  # mesma pasta deste arquivo
 import pacotes as pk  # mesma pasta deste arquivo
@@ -145,6 +150,8 @@ _thumb_state: dict[str, float] = {}  # video path -> mtime generated
 _upload_lock = threading.Lock()
 _frame_slots = threading.BoundedSemaphore(2)  # ffmpeg de quadro avulso ao mesmo tempo
 _troca_lock = threading.Lock()  # abrir outro projeto troca a pasta do servidor inteiro
+_recorte_lock = threading.Lock()  # um recorte da pessoa por vez: o modelo usa todos os núcleos
+RECORTE_CACHE = 30  # recortes guardados em .preview_cache/recorte (um por quadro pedido)
 _voz_lock = threading.Lock()
 _voz_jobs: dict[str, subprocess.Popen] = {}  # pasta edit → o processo do preparo da voz
 
@@ -204,6 +211,71 @@ def andamento_preparo(edit: Path) -> dict | None:
 BLOCOS_F2 = ("inserts", "splitInserts", "splitVideos", "hook", "behind", "wordAccents", "numeros")
 
 
+def recorte_disponivel() -> bool:
+    """O recorte da prévia roda pelo onnxruntime, da instalação base do kit."""
+    import importlib.util
+    return importlib.util.find_spec("onnxruntime") is not None
+
+
+def recorte_png(video: Path, t: float, destino: Path) -> None:
+    """A pessoa do quadro do corte em `t`, recortada como no vídeo final (person_matte.py, borda na
+    cor dela), em PNG 540x960 com alfa. Roda os 8 quadros até `t`: o modelo é recorrente e só acerta
+    a borda depois de alguns quadros."""
+    import cv2
+    from PIL import Image
+
+    import person_matte as pm  # mesma pasta deste arquivo
+    cap = cv2.VideoCapture(str(video))
+    try:
+        fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        q = int(round(t * fps))
+        ini = max(0, q - 7)
+        motor = pm.MotorOnnx(pm.auto_downsample_ratio(h, w))
+        ultimo = None
+        for rgb in pm.ler_janela(cap, ini, q - ini + 1):
+            ultimo = (rgb, *motor(rgb))
+    finally:
+        cap.release()
+    if ultimo is None:
+        raise ValueError("sem quadro nesse tempo")
+    Image.fromarray(pm.compor(*ultimo, cor="misturada"), "RGBA").resize((540, 960), Image.LANCZOS).save(destino)
+
+
+class CenasInvalidas(ValueError):
+    pass
+
+
+def conferir_cenas(root: Path, itens: list) -> list:
+    """Os efeitos que o editor manda no Salvar. Ele só CRIA o Fundo (`nova: true`) e, num Fundo, muda
+    os `campos` (`fundo`, `escurecer`, `desfoque`); o resto (ligar, texto, lugar, estilo) é por `ref`.
+    O fundo vem dos prontos do kit ou da mídia do projeto, que precisa existir."""
+    if not isinstance(itens, list):
+        raise CenasInvalidas("cenas: uma lista")
+    for i, c in enumerate(itens):
+        if not isinstance(c, dict):
+            raise CenasInvalidas(f"cenas[{i}]: um objeto")
+        if c.get("nova") and c.get("tipo") != "fundo":
+            raise CenasInvalidas(f"cenas[{i}]: o editor só cria o efeito Fundo (veio `{c.get('tipo')}`)")
+        if not c.get("nova") and not isinstance(c.get("ref"), int):
+            raise CenasInvalidas(f"cenas[{i}]: falta o `ref` do efeito")
+        campos = c.get("campos")
+        if campos is None:
+            continue
+        if c.get("tipo") != "fundo" or not isinstance(campos, dict):
+            raise CenasInvalidas(f"cenas[{i}]: `campos` só num Fundo")
+        item = {"tipo": "fundo", "start": c.get("start"), "end": c.get("end"),
+                **{k: campos[k] for k in ("fundo", "escurecer", "desfoque") if k in campos}}
+        erros = cn.validar(item)
+        if erros:
+            raise CenasInvalidas(f"cenas[{i}]: {'; '.join(erros)}")
+        if cn.midia(item["fundo"]):
+            p = (root / item["fundo"]).resolve()
+            if not p.is_relative_to(root.resolve()) or not p.is_file():
+                raise CenasInvalidas(f"cenas[{i}]: a imagem do fundo não está no projeto ({item['fundo']})")
+    return itens
+
+
 def juntar_salvamentos(velho: dict, novo: dict) -> dict:
     """Two saves before the agent applies the first: the second ADDS to the first.
 
@@ -222,8 +294,10 @@ def juntar_salvamentos(velho: dict, novo: dict) -> dict:
     if ev or en:
         ed = {**ev, **{k: v for k, v in en.items() if k not in ("cenas", "camera", "destaques")}}
         if ev.get("cenas") or en.get("cenas"):
-            por_ref = {c["ref"]: c for c in ev.get("cenas") or []}
-            por_ref.update({c["ref"]: c for c in en.get("cenas") or []})
+            # os do agente pelo `ref`; os novos (Fundo criado no editor) pela janela da tomada
+            chave = lambda c: (0, c["ref"], 0.0) if not c.get("nova") else (1, 0, float(c.get("start") or 0))  # noqa: E731
+            por_ref = {chave(c): c for c in ev.get("cenas") or []}
+            por_ref.update({chave(c): c for c in en.get("cenas") or []})
             ed["cenas"] = [por_ref[k] for k in sorted(por_ref)]
         if ev.get("destaques") or en.get("destaques"):  # o gancho e cada número, como os efeitos
             chave = lambda c: (c.get("alvo"), c.get("ref"))  # noqa: E731
@@ -592,6 +666,8 @@ class Handler(BaseHTTPRequestHandler):
             self._celular_info()
         elif path == "/gen/frame":
             self._frame(query)
+        elif path == "/gen/recorte":
+            self._recorte(query)
         elif path == "/gen/frases":
             self._frases(query)
         elif path.startswith("/assets/"):
@@ -696,6 +772,11 @@ class Handler(BaseHTTPRequestHandler):
                     body["velocidade"] = vel.normalize(body["velocidade"])
                 if "melhorar" in body:
                     body["melhorar"] = mv.normalizar_escolha(body["melhorar"])
+                if isinstance(body.get("editData"), dict) and "cenas" in body["editData"]:
+                    conferir_cenas(self.root, body["editData"]["cenas"])
+            except CenasInvalidas as e:
+                self._json({"error": f"efeitos do vídeo final: {e}"}, 400)
+                return
             except cam.CamadasInvalidas as e:
                 self._json({"error": f"camadas: {e}"}, 400)
                 return
@@ -810,6 +891,41 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._hdr(200, "image/jpeg", len(jpg))
         self.wfile.write(jpg)
+
+    def _recorte(self, query: str) -> None:
+        """A pessoa no quadro `t` (segundos do corte) recortada, em PNG com alfa: os cartões da
+        ferramenta Fundo a mostram sobre cada fundo antes de qualquer render. Um por vez, guardado
+        em .preview_cache/recorte (o mesmo quadro do mesmo corte não é recortado de novo)."""
+        try:
+            t = max(0.0, float((parse_qs(query).get("t") or ["0"])[0]))
+        except ValueError:
+            self._json({"error": "t inválido"}, 400)
+            return
+        video = self._current_video()
+        if not video:
+            self._json({"error": "o projeto ainda não tem o corte"}, 404)
+            return
+        if not recorte_disponivel():
+            self._json({"error": "o recorte precisa do onnxruntime, da instalação do kit: rode `uv sync` na pasta do kit"}, 409)
+            return
+        st = video.stat()
+        pasta = self.root / ".preview_cache" / "recorte"
+        arq = pasta / f"{round(t * 1000)}-{st.st_size}-{int(st.st_mtime)}.png"
+        if not arq.is_file():
+            with _recorte_lock:
+                if not arq.is_file():  # outro pedido igual pode ter feito enquanto este esperava
+                    pasta.mkdir(parents=True, exist_ok=True)
+                    tmp = arq.with_name(arq.stem + ".tmp.png")
+                    try:
+                        recorte_png(video, t, tmp)
+                        tmp.replace(arq)
+                    except Exception as e:  # o motivo vai para a tela, em vez de um 500 mudo
+                        tmp.unlink(missing_ok=True)
+                        self._json({"error": f"o recorte falhou: {e}"}, 500)
+                        return
+                    for velho in sorted(pasta.glob("*.png"), key=lambda p: p.stat().st_mtime)[:-RECORTE_CACHE]:
+                        velho.unlink(missing_ok=True)
+        self._send_file(arq)
 
     def _frases(self, query: str) -> None:
         """As frases do Empilhado vêm do diretor do render, não de uma cópia: ele

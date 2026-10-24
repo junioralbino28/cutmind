@@ -202,3 +202,9 @@ The effects show on the Efeitos track of the Final view. The user turns them on 
 the text, drags the block and changes the font and colour (`references/pelo-chat.md`, the `cena-`
 tools). The Salvar brings those changes by `ref`; write them into `cenas[ref]`, run
 `cenas_edit_data.py` and render.
+
+The Fundo is the one effect the user can also CREATE there (Efeitos → Fundo): each card shows them
+cut out on the needle's frame over a background, with Escurecer and Desfoque. It comes in the
+Salvar as `nova: true`, without `ref`, with the take's window and `campos` (`fundo`, `escurecer`,
+`desfoque`): append it to `cenas[]` and run the same two steps. The other six types are still
+created from the chat.
