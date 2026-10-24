@@ -241,6 +241,7 @@ def test_helper_faz_o_recorte_uma_vez_e_apaga_o_velho(projeto):
     assert (r["feitos"], r["pendentes"], r["erros"], r["prontos"]) == (["cena-30-60.mov"], [], [], 1)
     cmd = chamadas[0]
     assert cmd[cmd.index("--start") + 1] == "1.000000" and cmd[cmd.index("--duration") + 1] == "2.000000"
+    assert cmd[-2:] == ["--cor", "misturada"]  # fundo novo: a borda sem a cor do fundo antigo
     c = _lidas(public)[0]
     assert c["matte"] == "cena-30-60.mov" and abs(c["pessoa"]["topo"] - 500) <= 8 and "perfil" not in c["pessoa"]
     assert set(c["layout"]) == {"y", "tamanho"}

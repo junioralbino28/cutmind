@@ -19,8 +19,9 @@ não ganha um novo. Um efeito sem recorte fica fora do vídeo até o recorte exi
     python cenas_edit_data.py <edit> [--edit-data <caminho do edit-data.json>] [--sem-recorte]
 
 Sem --edit-data, usa o `editData` do state.json. Com --sem-recorte, só avisa o comando do recorte.
-Sem o extra de recorte (torch + torchvision), sai com exit 1 e diz como instalar. Depois,
-renderize (ou refaça só as janelas dos efeitos).
+O recorte roda pelo onnxruntime, da instalação base (o modelo, ~15 MB, baixa no primeiro uso), com a
+borda na cor da pessoa (`--cor misturada`), porque o fundo atrás dela é novo. Depois, renderize (ou
+refaça só as janelas dos efeitos).
 """
 from __future__ import annotations
 
@@ -45,7 +46,13 @@ FOTO_PX = 448  # o quadrado de cada foto da Parede: o cartão mostra 222 px, o d
 
 
 def _tem_recorte() -> bool:
-    return all(importlib.util.find_spec(m) is not None for m in ("torch", "torchvision"))
+    """O recorte roda pelo onnxruntime, que vem na instalação base do kit."""
+    return importlib.util.find_spec("onnxruntime") is not None
+
+
+def _cmd(cut: Path, saida: Path, ini_f: int, n_f: int, fps: float) -> list[str]:
+    # num fundo novo, a borda leva a cor da pessoa, não a do fundo antigo (person_matte.compor)
+    return _cmd_recorte(cut, saida, ini_f, n_f, fps) + ["--cor", "misturada"]
 
 
 def _janela(c: dict, fps: float) -> tuple[str, int, int]:
@@ -215,7 +222,7 @@ def aplicar(edit: Path, edit_data: Path | None = None, recortar: bool = True) ->
     for i, (c, (nome, q0, n)) in enumerate(zip(lista, janelas)):
         alvo = public / nome
         if not alvo.is_file() and not c.get("desligada"):
-            cmd = _cmd_recorte(cut, alvo, q0, n, fps)
+            cmd = _cmd(cut, alvo, q0, n, fps)
             if recortar and extra and cut.is_file() and _rodar(cmd) and alvo.is_file():
                 r["feitos"].append(nome)
             else:
@@ -273,7 +280,7 @@ def main() -> int:
     for f in r["faltando"]:
         print(f"  FALTA {f}", file=sys.stderr)
     if r["sem_extra"]:
-        print(f"  FALTA o extra de recorte (torch + torchvision): na pasta do kit ({KIT}), rode `uv sync --extra matting`",
+        print(f"  FALTA o onnxruntime, que vem na instalação do kit: na pasta do kit ({KIT}), rode `uv sync`",
               file=sys.stderr)
     for c in r["pendentes"]:
         print(f"  FALTA rodar (até lá, esse efeito fica fora do vídeo): {c}", file=sys.stderr)
