@@ -353,7 +353,10 @@ const CE = D.captions.estilo ?? {};
 const CAP_FONTE = typeof CE.fonte === 'string' && CE.fonte in CATALOGO ? CE.fonte : null;
 const K_FAM = CAP_FONTE ? familiaCss(CAP_FONTE) : fontFamily;
 const K_PESO = CAP_FONTE ? Number(CE.peso) || CATALOGO[CAP_FONTE].peso : 900;
-const K_SIZE = D.captions.fontSize * (Number(CE.tamanho) > 0 ? clamp(Number(CE.tamanho), 0.3, 3) : 1);
+// an edit-data built for another caption style has no `fontSize` (the static ones size
+// themselves): switching it to karaoke (a style template does) fell to the browser's ~16 px
+const K_BASE = Number(D.captions.fontSize) > 0 ? Number(D.captions.fontSize) : 61;
+const K_SIZE = K_BASE * (Number(CE.tamanho) > 0 ? clamp(Number(CE.tamanho), 0.3, 3) : 1);
 const K_CONTORNO = Number(CE.contorno) > 0 ? Number(CE.contorno) : 0;
 
 const Karaoke: React.FC = () => {

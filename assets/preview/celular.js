@@ -2988,6 +2988,16 @@ function escolheModelo(id) {
   updateSummary();
   applyLive();
 }
+// a transição de um modelo em cada corte, cabendo entre os cortes vizinhos (o começo e o fim
+// do vídeo contam): numa tomada mais curta que ela, as duas transições dessa tomada encurtam
+function transicoesNosCortes(rl, dur) {
+  if (!rl.length) return [];
+  const cortes = rl.slice(1).map((tk) => tk.out);
+  const ult = rl[rl.length - 1];
+  const lim = [0, ...cortes, ult.out + ult.dur];
+  return cortes.map((c, i) => ({ corte: +c.toFixed(3), duracao: +Math.min(dur, c - lim[i], lim[i + 2] - c).toFixed(3) }))
+    .filter((t) => t.duracao >= 0.1);
+}
 // Aplicar com um modelo escolhido: o que vai pelo Salvar (efeitos e trilha) antes do Estilo
 async function aplicaModeloDeEstilo(m) {
   const rl = renderedLayout();
@@ -3010,7 +3020,7 @@ async function aplicaModeloDeEstilo(m) {
       if (m.filtro) poe('f', { tipo: 'filtro', pacote: m.filtro.pacote, ...jan, ...(m.filtro.intensidade != null ? { intensidade: m.filtro.intensidade } : {}) });
       if (m.ajuste) poe('a', { tipo: 'ajuste', ...jan, ajustes: { ...m.ajuste } });
     }
-    if (m.transicao) for (const tk of rl.slice(1)) poe('t', { tipo: 'transicao', pacote: m.transicao.pacote, corte: +tk.out.toFixed(3), duracao: m.transicao.duracao });
+    if (m.transicao) for (const t of transicoesNosCortes(rl, m.transicao.duracao)) poe('t', { tipo: 'transicao', pacote: m.transicao.pacote, ...t });
     fxPreparar();
   }
   if (trilha) {
@@ -5861,7 +5871,11 @@ function fxJanela(it) {
 // 1 ms de folga: os tempos vão com 3 casas (até 0,5 ms além do corte), e sem ela o filtro
 // de uma tomada pegava o 1º quadro da seguinte. A mesma conta do efeitos_render.py.
 const fxDentro = (it, t) => { const [a, b] = fxJanela(it); return a - 1e-3 <= t && t < b - 1e-3; };
-const fxCruzam = (x, y) => { const [a, b] = fxJanela(x), [c, d] = fxJanela(y); return a < d - 1e-6 && c < b - 1e-6; };
+// cruzar é passar mais que a sobra do arredondamento (ENCOSTA no efeitos.py): duas tomadas
+// vizinhas se encostam com até 1 ms de sobra, e sem a folga o filtro de uma apagava o da
+// outra no Usar, e o Ajustar de uma abria o ajuste da vizinha
+const FX_ENCOSTA = 1.5e-3;
+const fxCruzam = (x, y) => { const [a, b] = fxJanela(x), [c, d] = fxJanela(y); return a < d - FX_ENCOSTA && c < b - FX_ENCOSTA; };
 
 async function loadEfeitos() {
   let e = null;

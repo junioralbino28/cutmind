@@ -30,8 +30,14 @@ import math
 import re
 from pathlib import Path
 
-MAX_ITENS = 100
+MAX_ITENS = 1000  # um modelo de estilo põe filtro, ajuste e transição em cada tomada
 MAX_T = 6 * 3600.0
+# Duas janelas que se encostam (o fim de uma tomada e o começo da seguinte) passam até 1 ms
+# uma na outra depois do arredondamento de 3 casas, com início e duração arredondados à
+# parte (47,967 + 4,667 = 52,634 contra o 52,633 da seguinte). Isso é encostar, não
+# sobrepor: o render (efeitos_render.FOLGA) e a prévia (fxDentro, no celular.js) já
+# descontam essa sobra. 2 ms ou mais é sobreposição de verdade.
+ENCOSTA = 1.5e-3
 TRANSICAO_MIN, TRANSICAO_MAX = 0.1, 5.0
 # a ordem é a da fileira de ferramentas do editor; o motor (assets/efeitos/motor.js) lê as mesmas chaves
 AJUSTES = ("brilho", "contraste", "saturacao", "exposicao", "temperatura", "matiz", "realces", "sombras", "vinheta")
@@ -71,7 +77,7 @@ def janela(item: dict) -> tuple[float, float]:
 def _sem_sobrepor(itens: list[dict], tipo: str, motivo: str) -> None:
     js = sorted(janela(i) for i in itens if i["tipo"] == tipo)
     for (_, fim), (ini, _) in zip(js, js[1:]):
-        if ini < fim - 1e-6:
+        if ini < fim - ENCOSTA:
             raise EfeitosInvalidos(motivo)
 
 

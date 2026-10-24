@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -66,6 +67,32 @@ def test_dois_filtros_ao_mesmo_tempo_ainda_nao():
         ef.normalize(e)
     e["itens"][-1]["inicio"] = 5.5  # encostado não é sobreposto
     assert len(ef.normalize(e)["itens"]) == 3
+
+
+def test_tomadas_vizinhas_arredondadas_se_encostam():
+    # o caso medido num vídeo de 21 tomadas: tomadas que se encontram em 52,6333 s. Com início e
+    # duração arredondados à parte, a 1ª vai até 52,634 e a 2ª começa em 52,633
+    tomadas = [(47.96667, 4.66667), (52.63333, 4.0), (56.63333, 2.1)]
+    itens = []
+    for i, (out, dur) in enumerate(tomadas):
+        jan = {"inicio": round(out, 3), "duracao": round(dur, 3)}
+        itens += [{"id": f"f{i}", "tipo": "filtro", "pacote": "f-ambar", **jan},
+                  {"id": f"a{i}", "tipo": "ajuste", **jan, "ajustes": {"brilho": 10}}]
+    assert len(ef.normalize({"versao": 1, "itens": itens})["itens"]) == 6
+    itens[2]["inicio"] = 52.632  # 2 ms dentro da tomada anterior já é sobrepor
+    with pytest.raises(ef.EfeitosInvalidos, match="ao mesmo tempo"):
+        ef.normalize({"versao": 1, "itens": itens})
+
+
+def test_editor_usa_a_mesma_folga_do_validador():
+    # o Usar e o Ajustar do editor (fxCruzam) decidem o que é a tomada vizinha com a mesma
+    # folga com que o Salvar (este validador) aceita duas janelas encostadas
+    js = (Path(__file__).resolve().parents[1] / "assets" / "preview" / "celular.js").read_text(encoding="utf-8")
+    m = re.search(r"const FX_ENCOSTA = ([0-9.e-]+);", js)
+    assert m, "FX_ENCOSTA sumiu do celular.js"
+    assert float(m.group(1)) == ef.ENCOSTA
+    linha = next(x for x in js.splitlines() if x.startswith("const fxCruzam"))
+    assert linha.count("FX_ENCOSTA") == 2
 
 
 def test_duas_transicoes_que_se_cruzam_sao_recusadas():

@@ -213,6 +213,27 @@ def test_aviso_conta_os_efeitos_e_diz_quem_aplica(tmp_path):
     assert "ajuste de 0:02.00 a 0:05.50: brilho +20, vinheta -35" in aviso
 
 
+def test_aviso_junta_o_que_um_modelo_repete(tmp_path):
+    # o modelo de estilo põe o mesmo filtro e ajuste em cada tomada e a mesma transição em cada corte
+    p = tmp_path / "preview_edits.json"
+    cortes = [0, 5.467, 13.567, 15.667, 19.7, 22.733]
+    itens = []
+    for i, (a, b) in enumerate(zip(cortes, cortes[1:])):
+        jan = {"inicio": a, "duracao": round(b - a, 3)}
+        itens += [{"id": f"f{i}", "tipo": "filtro", "pacote": "f-ambar", **jan, "intensidade": 0.7},
+                  {"id": f"a{i}", "tipo": "ajuste", **jan, "ajustes": {"brilho": 12}}]
+        if i:
+            itens.append({"id": f"t{i}", "tipo": "transicao", "pacote": "t-abrir-2", "corte": a, "duracao": 0.6})
+    itens.append({"id": "f9", "tipo": "filtro", "pacote": "f-ambar", "inicio": 30, "duracao": 2, "intensidade": 0.7})
+    p.write_text(json.dumps({"type": "timeline-edits", "efeitos": {"versao": 1, "itens": itens}}), encoding="utf-8")
+    aviso = digest(p)
+    assert 'filtro "f-ambar" de 0:00.00 a 0:22.73, intensidade 70% (5 trechos seguidos)' in aviso
+    assert 'filtro "f-ambar" de 0:30.00 a 0:32.00, intensidade 70%\n' in aviso  # com buraco antes: linha própria
+    assert "ajuste de 0:00.00 a 0:22.73: brilho +12 (5 trechos seguidos)" in aviso
+    assert 'transição "t-abrir-2" (0.6 s) em 4 cortes: 0:05.47, 0:13.57, 0:15.67, 0:19.70' in aviso
+    assert aviso.count("· filtro") == 2 and aviso.count("· transição") == 1
+
+
 def test_aviso_de_camadas_vazias(tmp_path):
     p = tmp_path / "preview_edits.json"
     p.write_text(json.dumps({"type": "timeline-edits", "camadas": {"video": {"mudo": False}, "faixas": []}}), encoding="utf-8")

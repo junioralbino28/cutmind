@@ -257,21 +257,52 @@ def efeitos_resumo(e: dict) -> str:
                                  n_a and _plural(n_a, "ajuste", "ajustes")) if x)
 
 
+def _aparencia(it: dict) -> tuple:
+    if it.get("tipo") == "ajuste":
+        return tuple(sorted((it.get("ajustes") or {}).items()))
+    return it.get("pacote"), it.get("intensidade" if it.get("tipo") == "filtro" else "duracao")
+
+
+def _fim(it: dict) -> float:
+    return float(it.get("inicio", 0)) + float(it.get("duracao", 0))
+
+
+def _linha_efeito(g: list[dict]) -> str:
+    it, n = g[0], len(g)
+    if it.get("tipo") == "transicao":
+        cortes = [fmt(float(x.get("corte", 0))) for x in g]
+        dur = f'{float(it.get("duracao", 0)):.1f} s'
+        if n == 1:
+            return f'  · transição "{it.get("pacote")}" no corte de {cortes[0]} ({dur})'
+        onde = ", ".join(cortes) if n <= 4 else f"de {cortes[0]} a {cortes[-1]}"
+        return f'  · transição "{it.get("pacote")}" ({dur}) em {n} cortes: {onde}'
+    de, ate = fmt(float(it.get("inicio", 0))), fmt(_fim(g[-1]))
+    seguidos = f" ({n} trechos seguidos)" if n > 1 else ""
+    if it.get("tipo") == "ajuste":
+        vals = ", ".join(f"{k} {int(v):+d}" for k, v in (it.get("ajustes") or {}).items())
+        return f"  · ajuste de {de} a {ate}: {vals}{seguidos}"
+    forca = f", intensidade {round(float(it['intensidade']) * 100)}%" if it.get("intensidade") is not None else ""
+    return f'  · filtro "{it.get("pacote")}" de {de} a {ate}{forca}{seguidos}'
+
+
 def efeitos_linhas(e: dict) -> list[str]:
+    """Um efeito por linha, mas o igual e seguido numa linha só: um modelo de estilo põe o mesmo
+    filtro e o mesmo ajuste em cada tomada e a mesma transição em cada corte (62 linhas num
+    vídeo de 21 tomadas), e o agente não precisa delas, porque o efeitos.json já está gravado."""
     out = ["  efeitos.json (gravado pelo editor), tempos do cut.mp4:"]
-    for it in e.get("itens") or []:
-        if it.get("tipo") == "filtro":
-            ini, dur = float(it.get("inicio", 0)), float(it.get("duracao", 0))
-            forca = (f", intensidade {round(float(it['intensidade']) * 100)}%"
-                     if it.get("intensidade") is not None else "")
-            out.append(f'  · filtro "{it.get("pacote")}" de {fmt(ini)} a {fmt(ini + dur)}{forca}')
-        elif it.get("tipo") == "ajuste":
-            ini, dur = float(it.get("inicio", 0)), float(it.get("duracao", 0))
-            vals = ", ".join(f"{k} {int(v):+d}" for k, v in (it.get("ajustes") or {}).items())
-            out.append(f"  · ajuste de {fmt(ini)} a {fmt(ini + dur)}: {vals}")
-        else:
-            out.append(f'  · transição "{it.get("pacote")}" no corte de {fmt(float(it.get("corte", 0)))} '
-                       f'({float(it.get("duracao", 0)):.1f} s)')
+    itens = e.get("itens") or []
+    for tipo in ("filtro", "ajuste", "transicao"):
+        chave = "corte" if tipo == "transicao" else "inicio"
+        grupos: list[list[dict]] = []
+        for it in sorted((x for x in itens if x.get("tipo") == tipo), key=lambda x: float(x.get(chave, 0))):
+            g = grupos[-1] if grupos else None
+            # filtro e ajuste só juntam encostados (a sobra do arredondamento é de até 1 ms)
+            if g and _aparencia(g[-1]) == _aparencia(it) and (
+                    tipo == "transicao" or abs(float(it.get("inicio", 0)) - _fim(g[-1])) <= 2e-3):
+                g.append(it)
+            else:
+                grupos.append([it])
+        out += [_linha_efeito(g) for g in grupos]
     out.append("  Efeitos → efeitos_render.py antes do render final (references/shortform.md, \"Efeitos\").")
     return out
 
