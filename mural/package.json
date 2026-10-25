@@ -1,0 +1,22 @@
+{
+  "name": "cutmind-mural",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "banco:local": "wrangler d1 migrations apply cutmind-mural --local",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "jose": "6.2.12"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.4.7",
+    "vitest": "4.1.12",
+    "wrangler": "4.152.0"
+  },
+  "overrides": {
+    "undici": "7.30.1",
+    "zod": "4.6.7"
+  }
+}

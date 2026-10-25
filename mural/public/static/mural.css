@@ -1,0 +1,69 @@
+:root {
+  --bg: #101010; --surface: #181818; --surface2: #222; --line: rgba(255, 255, 255, 0.09);
+  --text: #f3f3f3; --dim: #a6a6a6; --brand: #f87000; --brand-ink: #1b0c00; --ok: #22b24c;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 'Montserrat', system-ui, sans-serif; }
+a { color: inherit; }
+main { max-width: 1180px; margin: 0 auto; padding: 0 16px 48px; }
+.topo { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.marca { font-weight: 800; text-decoration: none; font-size: 17px; }
+.marca span { color: var(--brand); }
+.intro h1, .publicar h1, .admin h1 { font-size: 26px; margin: 24px 0 4px; }
+.intro p { color: var(--dim); margin: 0 0 20px; max-width: 640px; }
+.vazio { color: var(--dim); }
+/* 352 px no mínimo: o player do Instagram pede 326 px, e o cartão tem 13 px de folga e borda de cada lado */
+.grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 352px), 1fr)); gap: 16px; }
+.cartao { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.cartao.grande { max-width: 520px; margin: 24px 0 12px; }
+.cartao h2 { font-size: 16px; margin: 0; overflow-wrap: anywhere; }
+.cartao h2 a { text-decoration: none; }
+.meta, .quem { margin: 0; color: var(--dim); font-size: 12.5px; overflow-wrap: anywhere; }
+.quem .autor { color: var(--text); font-weight: 700; }
+.capa { position: relative; display: block; aspect-ratio: 1.6; background: #0b0b0b; border-radius: 10px; overflow: hidden; }
+.ritmo { position: absolute; left: 8%; top: 12%; width: 84%; height: 76%; }
+.ritmo .b { fill: rgba(255, 255, 255, 0.36); }
+.ritmo .b-drop { fill: var(--brand); }
+.ritmo .t { fill: #fff; }
+.fmt { position: absolute; right: 8px; bottom: 6px; font-size: 11px; font-weight: 700; color: var(--dim); }
+.post-tocar { background: var(--surface2); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 9px; font: inherit; font-weight: 700; cursor: pointer; }
+.post-tocar:hover { border-color: var(--brand); }
+.post iframe { display: block; width: 100%; border: 0; border-radius: 10px; background: #000; }
+.post.instagram iframe { height: 640px; }
+.post.tiktok iframe { height: 740px; }
+.post.youtube iframe { aspect-ratio: 9 / 16; max-height: 80vh; }
+.mais { display: inline-block; margin: 20px 0; color: var(--brand); font-weight: 700; }
+.usar { max-width: 520px; }
+@media (min-width: 900px) {
+  .pagina-modelo { display: grid; grid-template-columns: minmax(0, 480px) minmax(0, 1fr); gap: 40px; align-items: start; }
+  .pagina-modelo .lado { padding-top: 24px; }
+  .pagina-modelo .usar h2 { margin-top: 0; }
+}
+.usar h2 { font-size: 18px; margin: 20px 0 6px; }
+.usar ol { padding-left: 20px; color: var(--dim); }
+.usar b { color: var(--text); }
+.codigo { color: var(--dim); font-size: 13px; }
+code { background: var(--surface2); padding: 1px 6px; border-radius: 5px; color: var(--text); }
+.denunciar { max-width: 520px; margin-top: 24px; color: var(--dim); font-size: 13px; }
+.denunciar summary { cursor: pointer; }
+.denunciar form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+select, input { font: inherit; background: var(--surface2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; max-width: 100%; }
+button { font: inherit; }
+form button[type=submit], #copiar { background: var(--brand); color: var(--brand-ink); border: 0; border-radius: 10px; padding: 10px 18px; font-weight: 800; cursor: pointer; }
+form button[type=submit]:disabled { opacity: 0.5; cursor: default; }
+.aviso { margin: 4px 0 0; min-height: 1.4em; font-size: 13px; color: var(--dim); width: 100%; }
+.aviso.erro { color: #ff7a6b; }
+.publicar { max-width: 560px; }
+.publicar form { display: flex; flex-direction: column; gap: 14px; }
+.publicar label { display: flex; flex-direction: column; gap: 5px; font-weight: 700; font-size: 13.5px; }
+.opc { font-weight: 500; color: var(--dim); }
+.nota { color: var(--dim); font-size: 12.5px; margin: 0; }
+#pronto a { color: var(--brand); font-weight: 700; overflow-wrap: anywhere; }
+.admin table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.admin th, .admin td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.admin td.num { text-align: center; font-weight: 800; }
+.admin td.num.alerta { color: var(--brand); }
+.admin tr.removido td { opacity: 0.5; }
+.admin .acoes button { background: var(--surface2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; margin: 0 4px 4px 0; }
+small { color: var(--dim); }

@@ -1,0 +1,41 @@
+// O mural de modelos de montagem do CutMind (README.md desta pasta).
+// Este arquivo serve o teste local (`npm run dev`). Para publicar, copie-o para fora do repositório
+// com o id do banco, o domínio e as variáveis do Access, e use `wrangler deploy --config <cópia>`:
+// nenhum id de conta, domínio ou segredo entra aqui.
+{
+  "name": "cutmind-mural",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "upload_source_maps": true,
+  "assets": { "directory": "./public" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cutmind-mural",
+      // só o teste local usa este; o de verdade vem da cópia de publicar
+      "database_id": "00000000-0000-4000-8000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // rajadas: por local da Cloudflare e aproximado; o teto por dia é contado no banco (src/index.js)
+  "ratelimits": [
+    { "name": "LIMITE_PUBLICAR", "namespace_id": "4851", "simple": { "limit": 3, "period": 60 } },
+    { "name": "LIMITE_DENUNCIAR", "namespace_id": "4852", "simple": { "limit": 6, "period": 60 } }
+  ],
+  "vars": {
+    // a chave de teste do Turnstile, que sempre passa; a de verdade vem da cópia de publicar
+    "TURNSTILE_SITEKEY": "1x00000000000000000000AA",
+    "PUBLICAR_POR_DIA": "10",
+    "DENUNCIAR_POR_DIA": "30",
+    // o Access do painel admin (vazio aqui: fora do teste local, sem elas o admin recusa tudo)
+    "TEAM_DOMAIN": "",
+    "POLICY_AUD": "",
+    "ADMIN_EMAILS": ""
+  },
+  "observability": {
+    "enabled": true,
+    "logs": { "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.01 }
+  }
+}

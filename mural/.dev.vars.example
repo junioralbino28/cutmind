@@ -1,0 +1,6 @@
+# Copie para .dev.vars (fora do Git) para o teste local. Os valores abaixo são de TESTE:
+# o segredo do Turnstile que sempre passa e um sal qualquer para o hash do IP.
+TURNSTILE_SECRET=1x0000000000000000000000000000000AA
+SAL_IP=sal-so-do-teste-local
+# só no teste local: o painel admin abre sem o Access quando o pedido vem de 127.0.0.1 ou localhost
+ADMIN_LOCAL=1
