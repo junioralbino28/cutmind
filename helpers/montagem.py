@@ -7,6 +7,8 @@ vídeo em que cada troca de imagem cai numa batida.
     uv run python helpers/montagem.py conferir <edit> [--video <arquivo>] [--modelo-batida …]
     uv run python helpers/montagem.py aplicar <edit> [--lugar N [--midia <arquivo>] [--de <s>]] [--so-dados]
     uv run python helpers/montagem.py render <edit> [--modelo-batida …]
+    uv run python helpers/montagem.py montar <edit> [--so-dados]
+    uv run python helpers/montagem.py capturar <edit> --nome "Meu modelo" [--so-mostrar]
 
 `usar` faz tudo, em ordem:
   1. a grade de batida da música (batida.py; do cache quando essa música já foi analisada). A música
@@ -41,6 +43,11 @@ de onde cada lugar saiu no bloco `montagem.lugares` do edl.json; é dali que o `
 `render` refaz o vídeo como ele está (o que mudou foram as camadas, os textos ou os efeitos, que o
 Salvar já gravou) e confere.
 
+`montar` faz o `usar` que o editor pediu no Salvar (o Usar do painel Modelos de montagem:
+`montagem.usar` = {modelo, musica, midias} no preview_edits.json); o modelo vem do `montagens.py`
+e os arquivos, do midia/ do projeto. `capturar` guarda a montagem como ela está como modelo de
+montagem (os lugares em batidas, os textos e as transições das trocas).
+
 O modelo é um JSON:
 
     {"versao": 1, "id": "drop-rapido", "nome": "Drop rápido", "comeca": "forte", "drop_na_vaga": 5,
@@ -50,7 +57,9 @@ O modelo é um JSON:
 "forte" (a música entra no primeiro tempo forte) ou "batida" (na primeira batida). `textos`, opcional,
 põe textos trocáveis: [{"nome": "Título", "texto": "SEU TÍTULO", "vaga": 1, "batidas": 4, "x": 540,
 "y": 700, "estilo": {"fonte": "Anton", "cor": "#ffffff"}}] (sem `batidas`, o texto dura o lugar; o
-estilo é o do painel de Texto, camadas.py). Com `golpe` (o
+estilo é o do painel de Texto, camadas.py). `transicoes`, opcional, põe uma transição da biblioteca
+na troca que abre um lugar: [{"vaga": 3, "pacote": "t-zoom-central", "duracao": 0.4}] (centrada na
+troca e encurtada para caber entre as trocas vizinhas; o `usar` grava no efeitos.json). Com `golpe` (o
 padrão), a troca que cairia numa batida fraca vai para o golpe forte do contratempo vizinho, meia
 batida antes ou depois, quando ele é 1,5× mais forte que a batida: é o bumbo sincopado, que a grade
 sozinha deixa passar. `"golpe": false` corta só na grade.
@@ -172,9 +181,30 @@ def carregar_modelo(fonte: Path | dict) -> dict:
             raise ErroMontagem(f"texto {k}: {e}") from None
         textos.append({"nome": it["nome"], "texto": it["texto"], "vaga": vaga, "batidas": nb,
                        "x": it["x"], "y": it["y"], "estilo": it["estilo"]})
+    trans_in = m.get("transicoes") or []
+    if not isinstance(trans_in, list) or len(trans_in) > MAX_VAGAS:
+        raise ErroMontagem(f'"transicoes": uma lista de até {MAX_VAGAS}')
+    if trans_in and len(vagas) < 2:
+        raise ErroMontagem("transição precisa de uma troca: o modelo tem um lugar só")
+    transicoes: dict[int, dict] = {}
+    for k, t in enumerate(trans_in, 1):
+        if not isinstance(t, dict):
+            raise ErroMontagem(f"transição {k}: precisa ser um objeto")
+        vaga = _inteiro(t.get("vaga"), f"transição {k}, vaga (a troca que abre o lugar)", 2, len(vagas))
+        if vaga in transicoes:
+            raise ErroMontagem(f"transição {k}: a troca do lugar {vaga} já tem transição")
+        pacote = t.get("pacote")
+        if not isinstance(pacote, str) or not efeitos._PACOTE.fullmatch(pacote):
+            raise ErroMontagem(f"transição {k}: o pacote é o id de uma transição da biblioteca")
+        dur = t.get("duracao", 0.5)
+        if (isinstance(dur, bool) or not isinstance(dur, (int, float))
+                or not efeitos.TRANSICAO_MIN <= dur <= efeitos.TRANSICAO_MAX):
+            raise ErroMontagem(f"transição {k}: duração de {efeitos.TRANSICAO_MIN:g} a {efeitos.TRANSICAO_MAX:g} s")
+        transicoes[vaga] = {"vaga": vaga, "pacote": pacote, "duracao": round(float(dur), 3)}
     ident = str(m.get("id") or "montagem")
     return {"versao": 1, "id": ident, "nome": str(m.get("nome") or ident), "comeca": comeca,
-            "drop_na_vaga": drop, "golpe": golpe, "vagas": vagas, "textos": textos}
+            "drop_na_vaga": drop, "golpe": golpe, "vagas": vagas, "textos": textos,
+            "transicoes": [transicoes[v] for v in sorted(transicoes)]}
 
 
 # ---------- os lugares no tempo ----------
@@ -262,6 +292,26 @@ def janela_do_texto(plano: dict, grade: dict, vaga: int, batidas: int | None) ->
     z = int(np.argmin(np.abs(b - t0))) + sum(lg["batidas"] for lg in lug[:vaga - 1]) + batidas
     fim = plano["quadros"] if z >= len(b) else min(plano["quadros"], int(round((b[z] - t0) * plano.get("fps", FPS))))
     return q0, max(1, fim - q0)
+
+
+def transicoes_nos_lugares(plano: dict, transicoes: list[dict]) -> list[dict]:
+    """As transições do modelo como itens do efeitos.json: cada uma centrada na troca que abre o lugar
+    dela e cabendo entre as trocas vizinhas (o começo e o fim do vídeo contam), como as do modelo de
+    estilo (transicoesNosCortes, no editor). Uma que não cabe em 0,1 s sai, e a de um lugar que a
+    música não alcançou também."""
+    lug = plano["lugares"]
+    cortes = [lg["quadro"] / plano.get("fps", FPS) for lg in lug] + [plano["quadros"] / plano.get("fps", FPS)]
+    out = []
+    for t in transicoes:
+        k = t["vaga"]
+        if not 2 <= k <= len(lug):
+            continue
+        c = cortes[k - 1]
+        d = min(t["duracao"], c - cortes[k - 2], cortes[k] - c)
+        if d >= efeitos.TRANSICAO_MIN:
+            out.append({"id": f"t{k}", "tipo": "transicao", "pacote": t["pacote"], "corte": round(c, 3),
+                        "duracao": round(d, 3)})
+    return out
 
 
 def _no_golpe(b: np.ndarray, ac: list, z: int) -> tuple[float, bool]:
@@ -556,7 +606,7 @@ def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
                           + (" e para no último quadro" if p["congela"] else ""))
         ranges.append(r)
         # de onde o lugar saiu: é o que deixa refazer um lugar sem refazer os outros (aplicar)
-        lugares.append({"vaga": lugar["n"], "midia": _chave_midia(edit, arq), "de": de,
+        lugares.append({"vaga": lugar["n"], "midia": _chave_midia(edit, arq), "de": de, "batidas": lugar["batidas"],
                         **({"movimento": lugar["movimento"]} if lugar.get("movimento") else {})})
         print(f"  lugar {lugar['n']:>3}: {arq.name} → {lugar['quadros']} quadros"
               + (f", {p['velocidade']:.2f}×" if p["velocidade"] != 1.0 else ""), flush=True)
@@ -567,7 +617,7 @@ def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
            "montagem": {"modelo": modelo["id"], "nome": modelo["nome"], "musica": rel_musica,
                         "inicio_musica": plano["inicio_musica"], "bpm": grade.get("bpm"),
                         "confianca": grade.get("confianca"),
-                        "batidas": caminho_grade.relative_to(edit).as_posix(),
+                        "batidas": caminho_grade.relative_to(edit).as_posix(), "comeca": modelo["comeca"],
                         "drop_na_vaga": modelo["drop_na_vaga"], "golpe": modelo["golpe"],
                         "avisos": plano["avisos"], "lugares": lugares,
                         # todas as mídias dadas (inclusive as que sobraram): as opções do Trocar no editor
@@ -586,8 +636,19 @@ def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
     camadas["video"]["mudo"] = True  # só a música toca; o som dos clipes se religa no editor
     cam.save(cam_p, camadas)
 
-    _grava_json(edit / "state.json", {
-        "project": f"{modelo['nome']} (montagem)", "phase": 1, "video": "cut.mp4", "edl": "edl.json",
+    # a montagem é nova: os efeitos de antes eram de outros lugares; ficam as transições do modelo
+    ef_p = edit / "efeitos.json"
+    transicoes = transicoes_nos_lugares(plano, modelo["transicoes"])
+    if transicoes or ef_p.exists():
+        efeitos.save(ef_p, {"versao": 1, "itens": transicoes})
+
+    st_p = edit / "state.json"
+    try:  # o nome que a pessoa deu ao projeto (Nova montagem) fica
+        nome_projeto = json.loads(st_p.read_text(encoding="utf-8")).get("project")
+    except (OSError, ValueError, AttributeError):
+        nome_projeto = None
+    _grava_json(st_p, {
+        "project": nome_projeto or f"{modelo['nome']} (montagem)", "phase": 1, "video": "cut.mp4", "edl": "edl.json",
         "finalVideo": "final.mp4", "fps": FPS, "sourceDurations": duracoes,
         "message": f"Montagem na batida: {len(ranges)} lugares, {vd:.1f} s, {grade.get('bpm')} BPM"})
 
@@ -831,6 +892,128 @@ def aplicar(edit: Path, mudancas: list[dict] | None = None, so_dados: bool = Fal
 
 # ---------- a conferência ----------
 
+def _passo_da_batida(edit: Path, mont: dict) -> float:
+    """O tempo de uma batida da música da montagem: a mediana da grade (sem ela, pelo BPM)."""
+    try:
+        b = np.asarray(json.loads((edit / mont["batidas"]).read_text(encoding="utf-8"))["batidas"], dtype=float)
+        if len(b) > 1:
+            return float(np.median(np.diff(b)))
+    except (KeyError, OSError, ValueError, TypeError):
+        pass
+    bpm = mont.get("bpm")
+    return 60.0 / float(bpm) if isinstance(bpm, (int, float)) and not isinstance(bpm, bool) and bpm > 0 else 0.5
+
+
+def capturar(edit: Path, nome: str) -> dict:
+    """O modelo da montagem como ela está (o "Salvar como modelo de montagem"), para montagens.salvar:
+    os lugares em batidas; os textos das camadas (com o nome deles; o texto solto vira "Texto N") nas
+    batidas da janela deles; as transições que caem numa troca. O texto que começa no meio de um lugar
+    passa a começar com ele, porque o modelo só começa texto numa troca. O que não coube vai em
+    `avisos`."""
+    edit = Path(edit).resolve()
+    edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    mont = edl.get("montagem") or {}
+    por_vaga = {lg.get("vaga"): lg for lg in mont.get("lugares") or [] if isinstance(lg, dict)}
+    if not por_vaga:
+        raise ErroMontagem("este edl.json não é de uma montagem do montagem.py")
+    inicios, total = quadros_dos_lugares(edl)
+    limites = inicios + [total]
+    passo = _passo_da_batida(edit, mont)
+    vagas, batidas, avisos = [], [], []
+    for i, r in enumerate(edl["ranges"]):
+        lg = por_vaga.get(r.get("vaga")) or {}
+        nb = lg.get("batidas")
+        if isinstance(nb, bool) or not isinstance(nb, int) or nb < 1:  # montagem de antes das batidas guardadas
+            nb = max(1, round((limites[i + 1] - limites[i]) / FPS / passo))
+        batidas.append(nb)
+        vagas.append({"batidas": nb, **({"movimento": lg["movimento"]} if lg.get("movimento") else {})})
+
+    meio = 0.5 / FPS
+
+    def lugar_em(t: float) -> int:  # o índice do lugar em que o instante t cai
+        k = 0
+        while k + 1 < len(inicios) and inicios[k + 1] / FPS <= t + meio:
+            k += 1
+        return k
+
+    textos = []
+    for f in cam.load(edit / "camadas.json")["faixas"]:
+        if f.get("tipo") != "texto" or f.get("oculto"):
+            continue
+        for it in f["itens"]:
+            if len(textos) >= MAX_TEXTOS:
+                avisos.append(f"mais de {MAX_TEXTOS} textos: os seguintes ficaram de fora")
+                break
+            s = float(it["inicio"])
+            e = s + float(it["duracao"])
+            v, w = lugar_em(s), lugar_em(e - 2 * meio)
+            if abs(s - limites[v] / FPS) <= meio and abs(e - limites[w + 1] / FPS) <= meio:
+                nb = None if v == w else sum(batidas[v:w + 1])  # sem batidas, o texto dura o lugar
+            else:
+                nb = max(1, round((e - s) / passo))
+            textos.append({"nome": it.get("nome") or f"Texto {len(textos) + 1}", "texto": it["texto"],
+                           "vaga": v + 1, "batidas": nb, "x": it["x"], "y": it["y"], "estilo": it.get("estilo")})
+        else:
+            continue
+        break
+
+    transicoes, outros = [], 0
+    for it in efeitos.load(edit / "efeitos.json")["itens"]:
+        if it["tipo"] != "transicao":
+            outros += 1
+            continue
+        q = int(round(it["corte"] * FPS))
+        if q in inicios[1:]:
+            transicoes.append({"vaga": inicios.index(q) + 1, "pacote": it["pacote"],
+                               "duracao": max(efeitos.TRANSICAO_MIN, round(float(it["duracao"]), 3))})
+        else:
+            avisos.append(f"a transição em {it['corte']:.2f} s não cai numa troca de lugar e ficou de fora")
+    if outros:
+        avisos.append(f"{outros} filtro(s) ou ajuste(s) não entram no modelo de montagem (só as transições)")
+    drop = mont.get("drop_na_vaga")
+    return {"versao": 1, "nome": nome, "comeca": mont.get("comeca", "forte"),
+            "drop_na_vaga": drop if isinstance(drop, int) and 1 <= drop <= len(vagas) else None,
+            "golpe": mont.get("golpe", True) is not False, "vagas": vagas, "textos": textos,
+            "transicoes": transicoes, "avisos": avisos}
+
+
+def pedido_de_montar(edit: Path) -> dict | None:
+    """O "Usar" do painel Modelos de montagem, gravado pelo Salvar do editor: {modelo, musica, midias}."""
+    try:
+        pe = json.loads((Path(edit) / "preview_edits.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    p = (pe.get("montagem") or {}).get("usar") if isinstance(pe, dict) else None
+    return p if isinstance(p, dict) else None
+
+
+def montar(edit: Path, modelo_batida: str = batida.MODELO_PADRAO, so_dados: bool = False) -> dict:
+    """Faz o que o editor pediu no Salvar: a montagem com o modelo, a música e as fotos e clipes
+    escolhidos, todos arquivos do midia/ do projeto (o servidor conferiu; aqui confere de novo)."""
+    import montagens  # aqui dentro: o montagens.py importa este arquivo
+
+    edit = Path(edit).resolve()
+    p = pedido_de_montar(edit)
+    if not p:
+        raise ErroMontagem("o Salvar do editor não pediu montagem (preview_edits.json sem montagem.usar)")
+    modelo = montagens.obter(p.get("modelo"))
+    if not modelo:
+        raise ErroMontagem(f'o modelo de montagem "{p.get("modelo")}" não existe mais')
+    pasta = (edit / cam.MIDIA_DIR).resolve()
+
+    def do_projeto(rel: object) -> Path:
+        q = (edit / str(rel)).resolve()
+        if not isinstance(rel, str) or q.parent != pasta or not q.is_file():
+            raise ErroMontagem(f"arquivo fora do midia/ do projeto: {rel}")
+        return q
+
+    musica = do_projeto(p.get("musica"))
+    midias = [str(do_projeto(x)) for x in p.get("midias") or []]
+    if not midias:
+        raise ErroMontagem("o pedido não tem foto nem clipe")
+    return usar(modelo, musica, midias, edit, modelo_batida, so_dados)
+
+
 def quadros_dos_lugares(edl: dict, fps: int = FPS) -> tuple[list[int], int]:
     """O quadro do vídeo em que cada lugar começa, e o total."""
     inicios, pos = [], 0
@@ -1000,7 +1183,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(prog="montagem", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     u = sub.add_parser("usar", help="monta o projeto e o vídeo")
-    u.add_argument("modelo", type=Path)
+    u.add_argument("modelo", type=Path, help="o JSON do modelo, ou o id de um modelo guardado (montagens.py listar)")
     u.add_argument("--musica", type=Path, required=True)
     u.add_argument("--midias", nargs="+", required=True, help="arquivos ou pastas; arquivo@segundos para o ponto de entrada")
     u.add_argument("--edit", type=Path, required=True)
@@ -1021,10 +1204,22 @@ def main() -> int:
     rd = sub.add_parser("render", help="refaz o vídeo como está (camadas, textos ou efeitos mudaram) e confere")
     rd.add_argument("edit", type=Path)
     rd.add_argument("--modelo-batida", choices=sorted(batida.MODELOS), default=batida.MODELO_PADRAO)
+    mo = sub.add_parser("montar", help="monta pelo Salvar do editor (o Usar do painel Modelos de montagem)")
+    mo.add_argument("edit", type=Path)
+    mo.add_argument("--so-dados", action="store_true", help="escreve o projeto sem renderizar")
+    mo.add_argument("--modelo-batida", choices=sorted(batida.MODELOS), default=batida.MODELO_PADRAO)
+    ca = sub.add_parser("capturar", help="guarda a montagem como modelo de montagem (montagens.py)")
+    ca.add_argument("edit", type=Path)
+    ca.add_argument("--nome", required=True)
+    ca.add_argument("--so-mostrar", action="store_true", help="mostra o modelo sem guardar")
     a = ap.parse_args()
     try:
         if a.cmd == "usar":
-            r = usar(a.modelo, a.musica, a.midias, a.edit, a.modelo_batida, a.so_dados, a.substituir)
+            modelo = a.modelo
+            if not modelo.is_file():  # o id de um modelo guardado (montagens.py), além de um arquivo
+                import montagens  # aqui dentro: o montagens.py importa este arquivo
+                modelo = montagens.obter(str(a.modelo)) or a.modelo
+            r = usar(modelo, a.musica, a.midias, a.edit, a.modelo_batida, a.so_dados, a.substituir)
             print(_resumo_usar(r))
             if a.so_dados:
                 return 0
@@ -1045,6 +1240,28 @@ def main() -> int:
                 raise ErroMontagem("este edl.json não é de uma montagem do montagem.py")
             renderizar(a.edit)
             return 0 if conferir(a.edit, modelo_batida=a.modelo_batida)["ok"] else 1
+        if a.cmd == "montar":
+            r = montar(a.edit, a.modelo_batida, a.so_dados)
+            print(_resumo_usar(r))
+            if a.so_dados:
+                return 0
+            return 0 if conferir(a.edit, modelo_batida=a.modelo_batida)["ok"] else 1
+        if a.cmd == "capturar":
+            import montagens  # aqui dentro: o montagens.py importa este arquivo
+            m = capturar(a.edit, a.nome)
+            avisos = m.pop("avisos")
+            try:
+                if a.so_mostrar:
+                    print(json.dumps(montagens.normalize(m), ensure_ascii=False, indent=2))
+                else:
+                    m = montagens.salvar(m)
+                    print(f"salvo: {m['id']}  {m['nome']}  ({montagens.pasta() / (m['id'] + '.json')})")
+            except montagens.MontagemInvalida as e:
+                print(f"montagem: o modelo não foi guardado: {e}", file=sys.stderr)
+                return 2
+            for x in avisos:
+                print(f"  aviso: {x}")
+            return 0
         return 0 if conferir(a.edit, a.video, a.modelo_batida)["ok"] else 1
     except (ErroMontagem, batida.ErroBatida, cam.CamadasInvalidas, efeitos.EfeitosInvalidos) as e:
         print(f"montagem: {e}", file=sys.stderr)

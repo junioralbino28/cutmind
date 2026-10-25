@@ -135,3 +135,54 @@ def test_envio_para_um_lugar_fica_no_projeto_e_nao_avisa_o_agente(srv):
         "lugares": [{"vaga": 2, "midia": "midia/do celular.mp4"}]}
     r, _ = pedir(srv.port, "/api/upload?name=som.m4a&para=montagem", "POST", b"x" * 10, {"Content-Length": "10"})
     assert r.status == 415
+
+
+# ---- modelos de montagem (etapa 5) ----
+def _post(port, caminho, corpo):
+    dados = json.dumps(corpo).encode("utf-8")
+    return pedir(port, caminho, "POST", dados, {"Content-Type": "application/json", "Content-Length": str(len(dados))})
+
+
+def test_modelos_de_montagem_listar_guardar_e_apagar(srv):
+    r, dados = pedir(srv.port, "/api/montagens")
+    assert r.status == 200
+    kit = [m for m in json.loads(dados)["modelos"] if m["id"] == "drop-cedo"][0]
+    assert kit["doKit"] and kit["lugares"] == 34 and kit["ritmo"][:3] == [4, 4, 1]
+    # a montagem aberta vira modelo: o que vai nele sai do projeto gravado, nunca do pedido
+    edl = json.loads((srv.edit / "edl.json").read_text(encoding="utf-8"))
+    edl["ranges"] = [{"source": "a", "start": 0.0, "end": 1.0, "vaga": 1}, {"source": "b", "start": 0.0, "end": 0.5, "vaga": 2}]
+    for lg, nb in zip(edl["montagem"]["lugares"], (2, 1)):
+        lg["batidas"] = nb
+    (srv.edit / "edl.json").write_text(json.dumps(edl), encoding="utf-8")
+    r, dados = _post(srv.port, "/api/montagens", {"nome": "Meu ritmo", "vagas": [{"batidas": 64}]})
+    assert r.status == 200, dados
+    out = json.loads(dados)
+    assert out["modelo"]["id"] == "meu-ritmo" and out["modelo"]["ritmo"] == [2, 1] and out["avisos"] == []
+    assert "meu-ritmo" in [m["id"] for m in json.loads(pedir(srv.port, "/api/montagens")[1])["modelos"]]
+    assert _post(srv.port, "/api/montagens/apagar", {"id": "meu-ritmo"})[0].status == 200
+    assert _post(srv.port, "/api/montagens/apagar", {"id": "drop-cedo"})[0].status == 404  # o do kit fica
+    assert _post(srv.port, "/api/montagens", {"nome": ""})[0].status == 400
+
+
+def test_salvar_o_usar_de_um_modelo(srv):
+    pedido = {"modelo": "drop-cedo", "musica": "midia/musica.m4a", "midias": ["midia/nova.png"]}
+    r, dados = _post(srv.port, "/api/save", {"montagem": {"usar": pedido}})
+    assert r.status == 200, dados
+    assert json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))["montagem"] == {"usar": pedido}
+    # um Salvar de lugares antes de o agente montar não desfaz o pedido da montagem nova
+    assert _post(srv.port, "/api/save", {"montagem": {"lugares": [{"vaga": 1, "midia": "midia/nova.png"}]}})[0].status == 200
+    assert json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))["montagem"] == {"usar": pedido}
+    for ruim in ({**pedido, "modelo": "nao-existe"}, {**pedido, "musica": "midia/nova.png"},
+                 {**pedido, "musica": str(srv.fora)}, {**pedido, "midias": []}, {**pedido, "midias": [str(srv.fora)]},
+                 {**pedido, "midias": ["midia/../../segredo.png"]}, {**pedido, "midias": ["midia/musica.m4a"]}):
+        assert _post(srv.port, "/api/save", {"montagem": {"usar": ruim}})[0].status == 400, ruim
+
+
+def test_usar_vale_num_projeto_novo_e_nao_num_corte_de_fala(srv):
+    pedido = {"modelo": "drop-cedo", "musica": "midia/musica.m4a", "midias": ["midia/nova.png"]}
+    (srv.edit / "edl.json").unlink()  # a Nova montagem ainda não tem edl
+    assert _post(srv.port, "/api/save", {"montagem": {"usar": pedido}})[0].status == 200
+    (srv.edit / "edl.json").write_text(json.dumps({"sources": {}, "ranges": [{"source": "a", "start": 0, "end": 1}]}),
+                                       encoding="utf-8")
+    r, dados = _post(srv.port, "/api/save", {"montagem": {"usar": pedido}})
+    assert r.status == 400 and "Nova montagem" in json.loads(dados)["error"]

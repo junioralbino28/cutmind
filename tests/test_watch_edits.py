@@ -37,6 +37,18 @@ def test_aviso_da_montagem_manda_rodar_o_aplicar(tmp_path):
     assert "volume das tomadas" not in aviso  # sem tomada mudada no mesmo Salvar
 
 
+def test_usar_um_modelo_manda_rodar_o_montar(tmp_path):
+    p = tmp_path / "preview_edits.json"
+    midias = [f"midia/f{i:02d}.jpg" for i in range(14)]
+    p.write_text(json.dumps({"type": "timeline-edits", "montagem": {"usar": {
+        "modelo": "drop-cedo", "musica": "midia/funk.mp3", "midias": midias}}}), encoding="utf-8")
+    aviso = digest(p)
+    assert "MONTAGEM NOVA com o modelo drop-cedo" in aviso and "rode montagem.py montar <edit>" in aviso
+    assert "música: funk.mp3" in aviso and "14 fotos e clipes, na ordem: f00.jpg, f01.jpg" in aviso
+    assert aviso.count(".jpg") == 12 and "…" in aviso  # os primeiros 12; o resto o agente lê no arquivo
+    assert "montagem.py aplicar" not in aviso
+
+
 def test_camadas_de_uma_montagem_mandam_rodar_o_render_dela(tmp_path):
     p = tmp_path / "preview_edits.json"
     camadas = {"versao": 1, "video": {"mudo": True}, "faixas": [{"id": "modelo-texto-1", "tipo": "texto", "itens": [

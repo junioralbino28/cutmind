@@ -78,6 +78,15 @@ it (and renders the layers saved with it). Proven by `tests/test_montagem.py` (o
 middle leaves the project as it was, the beat is checked again) and
 `tests/test_preview_montagem.py` (what the editor may open and send).
 
+Montage templates are files (`helpers/montagens.py`): the user's in `~/.cutmind/montagens/`, the
+kit's in `assets/montagens/` (read-only). "Guarda esta montagem como modelo" is
+`montagem.py capturar <edit> --nome "Nome"` (slots in beats, the texts with their names, the
+transitions on the cuts; filters do not go in). "Faz uma montagem com o modelo X, a música Y e
+estas fotos" is `montagem.py usar <template id or JSON file> --musica <file> --midias <files>
+--edit <edit>` (`montagens.py listar` shows the ids). A template's `transicoes` (`[{vaga, pacote, duracao}]`) land in `efeitos.json` on
+the cut that opens each slot. The editor's Usar (the Modelos de montagem panel) saves
+`montagem.usar = {modelo, musica, midias}` and the watcher says to run `montagem.py montar <edit>`.
+
 ## Colour, filters and transitions (`efeitos.json`)
 
 Schema in `helpers/efeitos.py` (validate with `efeitos.normalize`); times in cut seconds.

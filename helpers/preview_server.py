@@ -65,6 +65,13 @@ Routes:
                          lugar (as mídias da montagem e as fotos e vídeos de midia/), com tipo e duração
   /gen/montagem-quadro?midia=&t=&h=  um quadro de uma dessas mídias (Trocar e a tira do Trecho)
   /gen/montagem-video?midia=          o clipe original de um lugar, para o Trecho tocar a janela
+  /api/montagens         GET  os modelos de montagem (montagens.py: os da pessoa e os do kit), com o
+                         resumo do cartão (o ritmo em batidas, os textos, o drop)
+  /api/montagens         POST {nome}: guarda a montagem aberta como modelo (montagem.py capturar)
+  /api/montagens/apagar  POST {id}: apaga um modelo da pessoa
+  /api/save com `montagem.usar` = {modelo, musica, midias}: o Usar do painel (a montagem inteira);
+                         conferido em conferir_usar, e o agente roda montagem.py montar
+  /api/projetos/novo     POST {nome, tipo?}: com tipo "montagem", o projeto nasce como montagem
 
 Quem entra: por padrão o servidor ouve só em 127.0.0.1 e atende só este
 computador (e o celular ligado por `adb reverse`, que chega como 127.0.0.1).
@@ -108,6 +115,8 @@ import projetos as pj  # mesma pasta deste arquivo
 import modelos as md  # mesma pasta deste arquivo
 import melhorar_voz as mv  # mesma pasta deste arquivo
 import batida as bt  # mesma pasta deste arquivo
+import montagem as mt  # mesma pasta deste arquivo
+import montagens as mg  # mesma pasta deste arquivo
 
 APP_DIR = Path(__file__).resolve().parent.parent / "assets" / "preview"
 EFEITOS_DIR = APP_DIR.parent / "efeitos"
@@ -383,6 +392,38 @@ def conferir_montagem(root: Path, pasta_videos: Path, pedido: object) -> dict:
     return {"lugares": saida}
 
 
+def conferir_usar(root: Path, pedido: object) -> dict:
+    """O Usar do painel Modelos de montagem: {modelo, musica, midias}. O modelo existe (montagens.py),
+    a música é um áudio de midia/ e as mídias são fotos e vídeos de midia/, de 1 a 400, na ordem em que
+    a pessoa tocou. Um projeto que já é um corte de fala não vira montagem por aqui."""
+    if not isinstance(pedido, dict):
+        raise MontagemInvalida("usar: um objeto")
+    modelo = mg.obter(pedido.get("modelo"))
+    if not modelo:
+        raise MontagemInvalida(f"o modelo de montagem {pedido.get('modelo')!r} não existe")
+    musica = _do_midia(root, pedido.get("musica"), cam.AUDIO_EXTS, "a música")
+    midias = pedido.get("midias")
+    if not isinstance(midias, list) or not 1 <= len(midias) <= mt.MAX_VAGAS:
+        raise MontagemInvalida(f"as fotos e clipes: uma lista de 1 a {mt.MAX_VAGAS}")
+    lista = [_do_midia(root, x, cam.IMAGE_EXTS | VIDEO_EXTS, "a foto ou o clipe") for x in midias]
+    try:
+        edl = json.loads((root / "edl.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        edl = None
+    if isinstance(edl, dict) and edl.get("ranges") and not edl.get("montagem"):
+        raise MontagemInvalida("este projeto é um corte de vídeo, não uma montagem: comece uma Nova montagem")
+    return {"modelo": modelo["id"], "musica": musica, "midias": lista}
+
+
+def _do_midia(root: Path, valor: object, exts: set[str], nome: str) -> str:
+    if not isinstance(valor, str) or not valor.startswith(cam.MIDIA_DIR + "/") or len(valor) > 1024:
+        raise MontagemInvalida(f"{nome}: um arquivo de midia/")
+    p = (root / valor).resolve()
+    if p.parent != (root / cam.MIDIA_DIR).resolve() or p.suffix.lower() not in exts or not p.is_file():
+        raise MontagemInvalida(f"{nome}: {valor} não está em midia/")
+    return f"{cam.MIDIA_DIR}/{p.name}"
+
+
 def _midia_da_montagem(root: Path, pasta_videos: Path | None, originais: set[str], valor: object) -> str:
     if not isinstance(valor, str) or not valor or len(valor) > 1024:
         raise MontagemInvalida("mídia inválida")
@@ -494,10 +535,14 @@ def juntar_salvamentos(velho: dict, novo: dict) -> dict:
             cam_novo["mudou"] = sorted(set((ev.get("camera") or {}).get("mudou") or []) | set(cam_novo.get("mudou") or []))
             ed["camera"] = cam_novo
         out["editData"] = ed
-    if velho.get("montagem") or novo.get("montagem"):
+    m_velho, m_novo = velho.get("montagem") or {}, novo.get("montagem") or {}
+    if m_novo.get("usar") or m_velho.get("usar"):
+        # uma montagem nova (Usar um modelo) refaz tudo: os lugares da montagem de antes não valem mais
+        out["montagem"] = {"usar": m_novo.get("usar") or m_velho["usar"]}
+    elif m_velho or m_novo:
         # os lugares da montagem somam pelo número; uma mídia nova sem `de` entra do começo
-        por_vaga = {x["vaga"]: dict(x) for x in (velho.get("montagem") or {}).get("lugares") or []}
-        for x in (novo.get("montagem") or {}).get("lugares") or []:
+        por_vaga = {x["vaga"]: dict(x) for x in m_velho.get("lugares") or []}
+        for x in m_novo.get("lugares") or []:
             base = por_vaga.get(x["vaga"], {})
             if "midia" in x and "de" not in x:
                 base = {k: w for k, w in base.items() if k != "de"}
@@ -887,6 +932,8 @@ class Handler(BaseHTTPRequestHandler):
             self._projeto_capa(query)
         elif path == "/api/modelos":
             self._json({"modelos": md.listar()})
+        elif path == "/api/montagens":
+            self._json({"modelos": [mg.resumo(m) for m in mg.listar()]})
         elif path == "/api/melhorar":
             self._melhorar()
         elif path == "/api/melhorar/andamento":
@@ -925,6 +972,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in ("/api/modelos", "/api/modelos/apagar"):
             self._modelo_post(path)
+            return
+        if path in ("/api/montagens", "/api/montagens/apagar"):
+            self._montagens_post(path)
             return
         if path == "/api/melhorar/preparar":
             self._melhorar_preparar()
@@ -977,7 +1027,11 @@ class Handler(BaseHTTPRequestHandler):
                 if isinstance(body.get("editData"), dict) and "cenas" in body["editData"]:
                     conferir_cenas(self.root, body["editData"]["cenas"])
                 if "montagem" in body:
-                    body["montagem"] = conferir_montagem(self.root, self.upload_dir, body["montagem"])
+                    pedido = body["montagem"]
+                    if isinstance(pedido, dict) and "usar" in pedido:  # Usar um modelo: a montagem inteira
+                        body["montagem"] = {"usar": conferir_usar(self.root, pedido["usar"])}
+                    else:
+                        body["montagem"] = conferir_montagem(self.root, self.upload_dir, pedido)
             except CenasInvalidas as e:
                 self._json({"error": f"efeitos do vídeo final: {e}"}, 400)
                 return
@@ -1522,6 +1576,30 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._json({"ok": True, "modelo": m})
 
+    def _montagens_post(self, path: str) -> None:
+        """Guardar a montagem aberta como modelo de montagem (com um nome), ou apagar um modelo da
+        pessoa (~/.cutmind/montagens). O que vai no modelo sai do projeto gravado, não do pedido."""
+        body = self._corpo_pequeno()
+        if body is None:
+            return
+        if path.endswith("/apagar"):
+            if mg.apagar(body.get("id")):
+                self._json({"ok": True})
+            else:
+                self._json({"error": "modelo não encontrado (os que vêm com o kit não se apagam)"}, 404)
+            return
+        try:
+            m = mt.capturar(self.root, str(body.get("nome") or ""))
+            avisos = m.pop("avisos")
+            m = mg.salvar(m)
+        except (mt.ErroMontagem, mg.MontagemInvalida, cam.CamadasInvalidas, ef.EfeitosInvalidos) as e:
+            self._json({"error": f"modelo de montagem: {e}"}, 400)
+            return
+        except (OSError, ValueError) as e:
+            self._json({"error": f"não consegui guardar o modelo: {e}"}, 500)
+            return
+        self._json({"ok": True, "modelo": mg.resumo(m), "avisos": avisos})
+
     def _projeto_post(self, path: str) -> None:
         body = self._corpo_pequeno()
         if body is None:
@@ -1535,7 +1613,8 @@ class Handler(BaseHTTPRequestHandler):
         else:
             # pasta nova ao lado da pasta de vídeos do projeto aberto (Downloads/<nome>/edit)
             try:
-                edit = pj.criar(self.root.parent.parent, str(body.get("nome") or ""))
+                edit = pj.criar(self.root.parent.parent, str(body.get("nome") or ""),
+                                montagem=body.get("tipo") == "montagem")
             except ValueError as e:
                 self._json({"error": str(e)}, 400)
                 return

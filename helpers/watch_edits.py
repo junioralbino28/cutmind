@@ -204,6 +204,10 @@ def digest(p: Path) -> str:
     if lugares:
         head.append(f"montagem: {_plural(len(lugares), 'lugar mudado', 'lugares mudados')}")
         parts += montagem_linhas(lugares, bool(ops))
+    usar = (d.get("montagem") or {}).get("usar")
+    if isinstance(usar, dict):
+        head.append(f"MONTAGEM NOVA com o modelo {usar.get('modelo')}")
+        parts += usar_linhas(usar)
     if ("camadas" in d or "efeitos" in d) and _eh_montagem(p.parent):
         # numa montagem, o vídeo com texto, imagem ou efeito sai do montagem.py (ele monta o Remotion dela)
         parts.append("  montagem na batida: " + (
@@ -243,6 +247,17 @@ def montagem_linhas(lugares: list[dict], tomadas_mudaram: bool) -> list[str]:
             oque.append(f"trecho a partir de {float(x['de']):g} s")
         linhas.append(f"  · lugar {x.get('vaga')}: " + "; ".join(oque))
     return linhas
+
+
+def usar_linhas(usar: dict) -> list[str]:
+    """O Usar do painel Modelos de montagem: a montagem nova que o editor pediu."""
+    midias = [Path(str(x)).name for x in usar.get("midias") or []]
+    return ["  montagem na batida, NOVA: rode montagem.py montar <edit> (monta com o modelo, a música e as "
+            "mídias abaixo, renderiza e confere; o projeto inteiro é refeito):",
+            f"  · modelo: {usar.get('modelo')} (montagens.py mostrar {usar.get('modelo')})",
+            f"  · música: {Path(str(usar.get('musica'))).name}",
+            f"  · {_plural(len(midias), 'foto ou clipe', 'fotos e clipes')}, na ordem: "
+            + ", ".join(midias[:12]) + (" …" if len(midias) > 12 else "")]
 
 
 def _plural(n: int, um: str, varios: str) -> str:

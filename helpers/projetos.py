@@ -155,8 +155,9 @@ def nome_seguro(nome: str) -> str:
     return s
 
 
-def criar(base: Path, nome: str) -> Path:
-    """Pasta nova `<base>/<nome>/edit/` com um state.json esperando os vídeos.
+def criar(base: Path, nome: str, montagem: bool = False) -> Path:
+    """Pasta nova `<base>/<nome>/edit/` com um state.json esperando os vídeos (com `montagem`, um
+    modelo de montagem, a música e as fotos e clipes: o editor abre o painel Modelos de montagem).
 
     O nome repetido ganha " 2", " 3"…; devolve a pasta `edit/` (já registrada).
     """
@@ -169,6 +170,8 @@ def criar(base: Path, nome: str) -> Path:
     edit.mkdir(parents=True)
     estado = {"project": nome.strip()[:NOME_MAX], "phase": 0, "video": "cut.mp4", "edl": "edl.json",
               "message": "Projeto novo: escolha o vídeo e o agente começa o corte.", "novo": True}
+    if montagem:
+        estado.update(message="Montagem nova: escolha um modelo, a música e as fotos e clipes.", montagem=True)
     _gravar(edit / "state.json", estado)
     registrar(edit)
     return edit

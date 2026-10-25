@@ -359,6 +359,125 @@ def test_usar_poe_os_textos_do_modelo_nas_camadas(tmp_path, monkeypatch):
                                                                             "modelo-texto-2"]
 
 
+def test_modelo_confere_as_transicoes():
+    mod = m.carregar_modelo({"vagas": [{"batidas": 2, "repetir": 4}], "transicoes": [
+        {"vaga": 4, "pacote": "t-zoom-central", "duracao": 0.3}, {"vaga": 2, "pacote": "t-abrir-2"}]})
+    assert mod["transicoes"] == [{"vaga": 2, "pacote": "t-abrir-2", "duracao": 0.5},
+                                 {"vaga": 4, "pacote": "t-zoom-central", "duracao": 0.3}]
+    assert m.carregar_modelo({"vagas": [{"batidas": 1}]})["transicoes"] == []
+    for ruim in ([{"vaga": 1, "pacote": "t-x"}],  # a 1ª troca é a que abre o lugar 2
+                 [{"vaga": 5, "pacote": "t-x"}],
+                 [{"vaga": 2, "pacote": "T X"}],
+                 [{"vaga": 2, "pacote": "t-x", "duracao": 9}],
+                 [{"vaga": 2, "pacote": "t-x"}, {"vaga": 2, "pacote": "t-y"}]):
+        with pytest.raises(m.ErroMontagem):
+            m.carregar_modelo({"vagas": [{"batidas": 2, "repetir": 4}], "transicoes": ruim})
+    with pytest.raises(m.ErroMontagem):  # um lugar só não tem troca
+        m.carregar_modelo({"vagas": [{"batidas": 2}], "transicoes": [{"vaga": 2, "pacote": "t-x"}]})
+
+
+def test_transicoes_cabem_entre_as_trocas():
+    # lugares de 1 s, 0,2 s, 1 s e 1 s: cada transição toma no máximo a distância até a troca vizinha
+    plano = {"quadros": 96, "lugares": [{"quadro": 0}, {"quadro": 30}, {"quadro": 36}, {"quadro": 66}]}
+    tr = m.transicoes_nos_lugares(plano, [{"vaga": 2, "pacote": "t-a", "duracao": 0.8},
+                                         {"vaga": 3, "pacote": "t-b", "duracao": 0.8},
+                                         {"vaga": 4, "pacote": "t-c", "duracao": 2.0},
+                                         {"vaga": 9, "pacote": "t-d", "duracao": 0.5}])
+    assert tr == [{"id": "t2", "tipo": "transicao", "pacote": "t-a", "corte": 1.0, "duracao": 0.2},
+                  {"id": "t3", "tipo": "transicao", "pacote": "t-b", "corte": 1.2, "duracao": 0.2},
+                  {"id": "t4", "tipo": "transicao", "pacote": "t-c", "corte": 2.2, "duracao": 1.0}]
+    m.efeitos.normalize({"versao": 1, "itens": tr})  # e o efeitos.json aceita: encostam, não se sobrepõem
+
+
+def _foto(caminho: Path, cor: str = "red") -> Path:
+    _ffmpeg("-f", "lavfi", "-i", f"color=c={cor}:s=90x160", "-frames:v", "1", caminho)
+    return caminho
+
+
+def test_usar_grava_transicoes_e_batidas_e_mantem_o_nome(tmp_path, monkeypatch):
+    _grade_fixa(monkeypatch, [0.5 * k for k in range(20)])
+    musica = _wav(tmp_path / "musica.wav", 2.0, 440)
+    foto = _foto(tmp_path / "f.png")
+    edit = tmp_path / "edit"
+    edit.mkdir()
+    (edit / "state.json").write_text(json.dumps({"project": "Viagem", "phase": 0, "montagem": True}), encoding="utf-8")
+    (edit / "efeitos.json").write_text(json.dumps({"versao": 1, "itens": [
+        {"id": "f1", "tipo": "filtro", "pacote": "f-x", "inicio": 0, "duracao": 1}]}), encoding="utf-8")
+    modelo = {"comeca": "batida", "vagas": [{"batidas": 2, "repetir": 2}, {"batidas": 1, "repetir": 2}],
+              "transicoes": [{"vaga": 3, "pacote": "t-zoom-central", "duracao": 0.4}]}
+    m.usar(modelo, musica, [str(foto)], edit, so_dados=True, jobs=1)
+    edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    assert [x["batidas"] for x in edl["montagem"]["lugares"]] == [2, 2, 1, 1]
+    assert edl["montagem"]["comeca"] == "batida"
+    # a montagem é nova: o filtro de antes era de outros lugares e sai; a transição do modelo entra
+    assert m.efeitos.load(edit / "efeitos.json")["itens"] == [
+        {"id": "t3", "tipo": "transicao", "pacote": "t-zoom-central", "corte": 2.0, "duracao": 0.4}]
+    assert json.loads((edit / "state.json").read_text(encoding="utf-8"))["project"] == "Viagem"
+
+
+def test_capturar_devolve_o_modelo_da_montagem(tmp_path, monkeypatch):
+    import montagens
+
+    _grade_fixa(monkeypatch, [0.5 * k for k in range(40)])
+    musica = _wav(tmp_path / "musica.wav", 2.0, 440)
+    foto = _foto(tmp_path / "f.png")
+    edit = tmp_path / "edit"
+    modelo = {"nome": "Ida", "drop_na_vaga": 3, "vagas": [{"batidas": 4}, {"batidas": 2, "repetir": 2},
+                                                          {"batidas": 1, "movimento": "parado", "repetir": 4}],
+              "textos": [{"nome": "Título", "texto": "OI", "vaga": 1, "batidas": 6, "y": 700},
+                         {"nome": "Fim", "texto": "TCHAU", "vaga": 7}],
+              "transicoes": [{"vaga": 2, "pacote": "t-abrir-2", "duracao": 0.6}]}
+    m.usar(modelo, musica, [str(foto)], edit, so_dados=True, jobs=1)
+    cap = m.capturar(edit, "Volta")
+    assert cap.pop("avisos") == [] and cap["nome"] == "Volta"
+    ida, volta = montagens.normalize({**modelo, "nome": "X"}), montagens.normalize({**cap, "nome": "X"})
+    for k in ("vagas", "textos", "transicoes", "drop_na_vaga", "comeca", "golpe"):
+        assert ida[k] == volta[k], k
+    # um texto solto no meio de um lugar passa a começar com ele; o filtro não vai para o modelo
+    c = cam.load(edit / "camadas.json")
+    c["faixas"].append({"id": "t-meu", "tipo": "texto", "itens": [
+        {"id": "t-meu-1", "texto": "meu", "inicio": 2.4, "duracao": 0.5}]})
+    cam.save(edit / "camadas.json", c)
+    ef = m.efeitos.load(edit / "efeitos.json")
+    ef["itens"].append({"id": "f1", "tipo": "filtro", "pacote": "f-x", "inicio": 0, "duracao": 1})
+    m.efeitos.save(edit / "efeitos.json", ef)
+    cap = m.capturar(edit, "Volta")
+    solto = [t for t in cap["textos"] if t["texto"] == "meu"][0]
+    assert (solto["nome"], solto["vaga"], solto["batidas"]) == ("Texto 3", 2, 1)
+    assert any("filtro" in a for a in cap["avisos"])
+    (tmp_path / "corte").mkdir()
+    (tmp_path / "corte" / "edl.json").write_text(json.dumps({"ranges": []}), encoding="utf-8")
+    with pytest.raises(m.ErroMontagem):  # um corte de fala não vira modelo de montagem
+        m.capturar(tmp_path / "corte", "Corte")
+
+
+def test_montar_pelo_salvar_do_editor(tmp_path, monkeypatch):
+    import montagens
+
+    _grade_fixa(monkeypatch, [0.5 * k for k in range(20)])
+    edit = tmp_path / "edit"
+    (edit / "midia").mkdir(parents=True)
+    _wav(edit / "midia" / "musica.wav", 2.0, 440)
+    _foto(edit / "midia" / "f0.png")
+    _foto(edit / "midia" / "f1.png", "blue")
+    montagens.salvar({"nome": "Rápido", "vagas": [{"batidas": 1, "repetir": 4}]})
+    pedido = {"modelo": "rapido", "musica": "midia/musica.wav", "midias": ["midia/f1.png", "midia/f0.png"]}
+    (edit / "preview_edits.json").write_text(json.dumps({"montagem": {"usar": pedido}}), encoding="utf-8")
+    r = m.montar(edit, so_dados=True)
+    assert r["lugares"] == 4
+    edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    assert edl["montagem"]["modelo"] == "rapido"
+    assert [Path(x["midia"]).name for x in edl["montagem"]["lugares"]] == ["f1.png", "f0.png", "f1.png", "f0.png"]
+    # nada fora do midia/ do projeto, nem um modelo que sumiu
+    fora = tmp_path / "fora.png"
+    fora.write_bytes((edit / "midia" / "f0.png").read_bytes())
+    for ruim in ({**pedido, "midias": [str(fora)]}, {**pedido, "midias": ["midia/../../fora.png"]},
+                 {**pedido, "musica": "midia/nao.wav"}, {**pedido, "modelo": "nao-existe"}, {**pedido, "midias": []}):
+        (edit / "preview_edits.json").write_text(json.dumps({"montagem": {"usar": ruim}}), encoding="utf-8")
+        with pytest.raises(m.ErroMontagem):
+            m.montar(edit, so_dados=True)
+
+
 def test_so_passa_pelo_remotion_com_algo_por_cima(tmp_path):
     def camadas(*faixas):
         cam.save(tmp_path / "camadas.json", {"faixas": list(faixas)})

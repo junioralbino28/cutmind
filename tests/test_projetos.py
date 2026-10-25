@@ -199,6 +199,15 @@ def test_novo_projeto_cria_pasta_e_abre(srv):
     assert r.status == 400
 
 
+def test_nova_montagem_nasce_marcada(srv):
+    r, _ = pedir(srv.port, "POST", "/api/projetos/novo", {"nome": "Viagem", "tipo": "montagem"})
+    assert r.status == 200
+    st = json.loads(((srv.base / "Viagem" / "edit") / "state.json").read_text(encoding="utf-8"))
+    assert st["montagem"] is True and st["novo"] is True and st["project"] == "Viagem"
+    r, _ = pedir(srv.port, "POST", "/api/projetos/novo", {"nome": "Corte", "tipo": "outro"})
+    assert "montagem" not in json.loads(((srv.base / "Corte" / "edit") / "state.json").read_text(encoding="utf-8"))
+
+
 def test_upload_dir_fixo_nao_acompanha(srv):
     fixo = srv.base / "fixo"
     fixo.mkdir()
