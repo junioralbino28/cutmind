@@ -581,6 +581,56 @@ def test_juntar_troca_o_que_vem_inteiro():
     assert d["editData"] == {"inserts": [{"ref": 0, "start": 2}], "hook": {"endSec": 3}}
 
 
+def test_juntar_soma_os_lugares_da_montagem_pelo_numero():
+    """Dois Salvar antes do agente aplicar: os lugares somam; uma mídia nova sem `de` entra do começo."""
+    velho = {"montagem": {"lugares": [{"vaga": 2, "midia": "midia/a.jpg"}, {"vaga": 5, "midia": "midia/b.mp4", "de": 3.0}]}}
+    novo = {"montagem": {"lugares": [{"vaga": 5, "midia": "midia/c.mp4"}, {"vaga": 7, "de": 1.5}]}}
+    d = ps.juntar_salvamentos(velho, novo)
+    assert d["montagem"]["lugares"] == [{"vaga": 2, "midia": "midia/a.jpg"}, {"vaga": 5, "midia": "midia/c.mp4"},
+                                        {"vaga": 7, "de": 1.5}]
+    so_trecho = ps.juntar_salvamentos({"montagem": {"lugares": [{"vaga": 2, "midia": "midia/a.jpg"}]}},
+                                      {"montagem": {"lugares": [{"vaga": 2, "de": 4.0}]}})
+    assert so_trecho["montagem"]["lugares"] == [{"vaga": 2, "midia": "midia/a.jpg", "de": 4.0}]
+
+
+def _projeto_montagem(tmp_path):
+    edit = tmp_path / "videos" / "edit"
+    (edit / "midia").mkdir(parents=True)
+    (edit / "midia" / "foto.jpg").write_bytes(b"x")
+    (edit / "midia" / "som.mp3").write_bytes(b"x")
+    original = tmp_path / "fora" / "clipe.mp4"
+    original.parent.mkdir()
+    original.write_bytes(b"x")
+    enviado = edit.parent / "enviado.mp4"
+    enviado.write_bytes(b"x")
+    (edit / "edl.json").write_text(json.dumps({"ranges": [{"vaga": 1}, {"vaga": 2}], "montagem": {
+        "lugares": [{"vaga": 1, "midia": str(original), "de": 0}, {"vaga": 2, "midia": str(original), "de": 0}],
+        "midias": [str(original)]}}), encoding="utf-8")
+    return edit, original, enviado
+
+
+def test_conferir_montagem_aceita_so_o_que_e_do_projeto(tmp_path):
+    edit, original, enviado = _projeto_montagem(tmp_path)
+    ok = ps.conferir_montagem(edit, edit.parent, {"lugares": [
+        {"vaga": 1, "midia": "midia/foto.jpg"}, {"vaga": 2, "midia": str(original), "de": 2.5},
+        {"vaga": 1, "midia": str(enviado)}, {"vaga": 2}]})  # o último não muda nada: sai
+    assert ok == {"lugares": [{"vaga": 1, "midia": "midia/foto.jpg"}, {"vaga": 2, "midia": str(original), "de": 2.5},
+                              {"vaga": 1, "midia": str(enviado.resolve())}]}
+    for ruim in ({"lugares": [{"vaga": 9, "de": 1}]},                       # lugar que não existe
+                 {"lugares": [{"vaga": True, "de": 1}]},
+                 {"lugares": [{"vaga": 1, "midia": "midia/som.mp3"}]},       # áudio não vai num lugar
+                 {"lugares": [{"vaga": 1, "midia": "midia/../edl.json"}]},
+                 {"lugares": [{"vaga": 1, "midia": str(tmp_path / "outro.mp4")}]},  # fora do projeto
+                 {"lugares": [{"vaga": 1, "de": -1}]},
+                 {"lugares": [{"vaga": 1, "de": float("nan")}]},
+                 {"lugares": "1"}):
+        with pytest.raises(ps.MontagemInvalida):
+            ps.conferir_montagem(edit, edit.parent, ruim)
+    (edit / "edl.json").write_text(json.dumps({"ranges": []}), encoding="utf-8")
+    with pytest.raises(ps.MontagemInvalida, match="não é uma montagem"):
+        ps.conferir_montagem(edit, edit.parent, {"lugares": [{"vaga": 1, "de": 1}]})
+
+
 def test_juntar_soma_os_destaques_pelo_alvo():
     """O gancho mudado num Salvar e um número no seguinte: os dois chegam ao agente
     (cada Salvar só leva o que mudou desde o anterior)."""

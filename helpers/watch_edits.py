@@ -200,6 +200,10 @@ def digest(p: Path) -> str:
         if edl:
             parts.append("  ⚠ O corte mudou no mesmo Salvar: os trechos são do final ANTIGO. Refaça o final, "
                          "leve os trechos para ele (grave a duração nova) e só então acelere.")
+    lugares = (d.get("montagem") or {}).get("lugares") or []
+    if lugares:
+        head.append(f"montagem: {_plural(len(lugares), 'lugar mudado', 'lugares mudados')}")
+        parts += montagem_linhas(lugares, bool(ops))
     if "melhorar" in d:
         head.append(f"melhorar voz: {melhorar_resumo(d['melhorar'])}")
         parts += melhorar_linhas(d["melhorar"], bool(edl))
@@ -212,6 +216,20 @@ def digest(p: Path) -> str:
     out = [f"AJUSTES DO PREVIEW ({d.get('savedAt', '')}) — {', '.join(head)}. Aplique-os."]
     out += parts
     return "\n".join(out)
+
+
+def montagem_linhas(lugares: list[dict], tomadas_mudaram: bool) -> list[str]:
+    """Os lugares da montagem na batida que o editor mudou (outra mídia, outro trecho do clipe)."""
+    linhas = [("  montagem na batida: " + ("primeiro grave no edl.json o volume das tomadas; depois " if tomadas_mudaram else "")
+               + "rode montagem.py aplicar <edit> (lê este Salvar, refaz só estes lugares, renderiza e confere):")]
+    for x in lugares:
+        oque = []
+        if x.get("midia"):
+            oque.append(f"troca para {Path(str(x['midia'])).name}")
+        if x.get("de") is not None:
+            oque.append(f"trecho a partir de {float(x['de']):g} s")
+        linhas.append(f"  · lugar {x.get('vaga')}: " + "; ".join(oque))
+    return linhas
 
 
 def _plural(n: int, um: str, varios: str) -> str:

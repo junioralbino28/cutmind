@@ -279,10 +279,84 @@ def test_usar_escreve_edl_camadas_e_estado(tmp_path, monkeypatch):
     assert (item["arquivo"], item["corte"], item["duracao"]) == ("midia/musica.wav", 0.0, 3.0)
     st = json.loads((edit / "state.json").read_text(encoding="utf-8"))
     assert (st["video"], st["finalVideo"], st["fps"]) == ("cut.mp4", "final.mp4", 30)
+    # de onde cada lugar saiu, para refazer um sem refazer os outros, e as mídias que o Trocar oferece
+    lug = edl["montagem"]["lugares"]
+    assert [(x["vaga"], Path(x["midia"]).name, x["de"]) for x in lug] == [(1, "f0.png", 0.0), (2, "f1.png", 0.0),
+                                                                         (3, "f0.png", 0.0)]
+    assert [Path(x).name for x in edl["montagem"]["midias"]] == ["f0.png", "f1.png"]
     # uma pasta com outra edição não é atropelada
     (edit / "edl.json").write_text(json.dumps({"ranges": []}), encoding="utf-8")
     with pytest.raises(m.ErroMontagem):
         m.usar({"vagas": [{"batidas": 2}]}, musica, [str(fotos[0])], edit, so_dados=True, jobs=1)
+
+
+def _grade_fixa(monkeypatch, b):
+    def grade_falsa(arquivo, edit=None, modelo=None):
+        destino = Path(edit) / "batidas" / "falsa.json"
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        destino.write_text("{}", encoding="utf-8")
+        return _grade(b), destino
+
+    monkeypatch.setattr(m.batida, "analisar", grade_falsa)
+
+
+def test_aplicar_refaz_so_o_lugar_mudado(tmp_path, monkeypatch):
+    _grade_fixa(monkeypatch, [0.5 * k for k in range(40)])
+    musica = _wav(tmp_path / "musica.wav", 2.0, 440)
+    fotos = []
+    for i, cor in enumerate(("red", "blue", "green")):
+        fotos.append(tmp_path / f"f{i}.png")
+        _ffmpeg("-f", "lavfi", "-i", f"color=c={cor}:s=90x160", "-frames:v", "1", fotos[-1])
+    clipe = tmp_path / "clipe.mp4"
+    _ffmpeg("-f", "lavfi", "-i", "testsrc2=s=160x90:r=30:d=3", clipe)
+    edit = tmp_path / "edit"
+    m.usar({"vagas": [{"batidas": 2, "repetir": 3}]}, musica, [str(fotos[0]), str(fotos[1])], edit, so_dados=True, jobs=1)
+    pasta = edit / "montagem"
+    antes = {p.name: p.stat().st_mtime_ns for p in pasta.glob("v*.mp4")}
+    assert sorted(antes) == ["v01_f0.mp4", "v02_f1.mp4", "v03_f0.mp4"]
+
+    r = m.aplicar(edit, [{"vaga": 2, "midia": str(fotos[2])}], so_dados=True)
+    assert [x["vaga"] for x in r["lugares"]] == [2] and "total_s" in r
+    edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    assert [x["source"] for x in edl["ranges"]] == ["v01_f0", "v02_f2", "v03_f0"]
+    assert [x["end"] for x in edl["ranges"]] == [1.0, 1.0, 1.0] and edl["ranges"][1]["vaga"] == 2
+    assert "v02_f1" not in edl["sources"] and Path(edl["sources"]["v02_f2"]).is_file()
+    assert not (pasta / "v02_f1.mp4").exists()
+    depois = {p.name: p.stat().st_mtime_ns for p in pasta.glob("v*.mp4")}
+    assert depois["v01_f0.mp4"] == antes["v01_f0.mp4"] and depois["v03_f0.mp4"] == antes["v03_f0.mp4"]
+    lug = {x["vaga"]: x for x in edl["montagem"]["lugares"]}
+    assert Path(lug[2]["midia"]).name == "f2.png" and lug[2]["de"] == 0.0
+    st = json.loads((edit / "state.json").read_text(encoding="utf-8"))
+    assert "v02_f2" in st["sourceDurations"] and "v02_f1" not in st["sourceDurations"]
+
+    # um clipe entrando dos 1,5 s, e depois só o trecho muda (a mesma mídia fica)
+    m.aplicar(edit, [{"vaga": 3, "midia": str(clipe), "de": 1.5}], so_dados=True)
+    m.aplicar(edit, [{"vaga": 3, "de": 0.5}], so_dados=True)
+    edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    lug = {x["vaga"]: x for x in edl["montagem"]["lugares"]}
+    assert Path(lug[3]["midia"]).name == "clipe.mp4" and lug[3]["de"] == 0.5
+    assert edl["ranges"][2]["source"] == "v03_clipe" and not (pasta / "v03_clipe.novo.mp4").exists()
+
+    # pelo Salvar do editor: o preview_edits.json, com mídia de midia/
+    (edit / "midia" / "nova.png").write_bytes(fotos[0].read_bytes())
+    (edit / "preview_edits.json").write_text(json.dumps({"montagem": {"lugares": [{"vaga": 1, "midia": "midia/nova.png"}]}}),
+                                             encoding="utf-8")
+    m.aplicar(edit, so_dados=True)
+    edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    assert edl["ranges"][0]["source"] == "v01_nova"
+    with pytest.raises(m.ErroMontagem):
+        m.aplicar(edit, [{"vaga": 9, "de": 1}], so_dados=True)
+    with pytest.raises(m.ErroMontagem):
+        m.aplicar(edit, [{"vaga": 1, "de": 0}, {"vaga": 1, "de": 0}], so_dados=True)
+
+    # um pedido que falha no meio não deixa nada pela metade
+    ruim = tmp_path / "ruim.png"
+    ruim.write_bytes(b"isto nao e uma foto")
+    edl_antes = (edit / "edl.json").read_bytes()
+    with pytest.raises(m.ErroMontagem):
+        m.aplicar(edit, [{"vaga": 2, "midia": str(fotos[0])}, {"vaga": 3, "midia": str(ruim)}], so_dados=True)
+    assert (edit / "edl.json").read_bytes() == edl_antes
+    assert not list(pasta.glob("*.novo*")) and (pasta / "v02_f2.mp4").is_file()
 
 
 # ---------- de ponta a ponta ----------
@@ -316,6 +390,11 @@ def test_montagem_de_ponta_a_ponta_corta_na_batida(tmp_path):
     assert rel["fora_do_quadro"] == 0, rel["trocas"]
     assert rel["ok"], m.relatorio(rel)
     assert abs(rel["som_vs_plano_ms"]) <= 20  # a música não atrasa da imagem
+
+    # trocar a mídia de um lugar (o Salvar do editor) refaz só ele, e a batida continua certa
+    m.aplicar(edit, [{"vaga": 3, "midia": str(midias[0])}])
+    rel = m.conferir(edit, modelo_batida="pequeno", mostrar=False)
+    assert rel["ok"] and rel["fora_do_quadro"] == 0, m.relatorio(rel)
 
     # o detector do deslocamento funciona: a música entrando 100 ms depois reprova
     c = cam.load(edit / "camadas.json")

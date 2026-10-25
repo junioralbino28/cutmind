@@ -425,6 +425,7 @@ const S = {
   vel: { versao: 1, trechos: [] }, // a velocidade do vídeo final (velocidade.json): trechos no relógio do final.mp4
   velBase: '',        // os trechos como estavam ao abrir ou no último Salvar
   faixa: null,        // a seleção em massa na vista Final: {a, b} no relógio do final.mp4 (todas as faixas)
+  montagem: null,     // a montagem na batida do edl.json (lugares, mídias), quando o projeto é uma montagem
   batidas: {},        // arquivo de midia/ → a grade de batida dele ({estado, batidas, fortes, bpm, confianca})
   grade: [],          // as batidas das músicas no tempo da linha do tempo: [{t, forte, it}], em ordem
   ima: lerPref('cutmind.ima') !== '0', // ímã ligado: agulha e pontas grudam na batida (lembrado)
@@ -815,7 +816,10 @@ async function applyState(data) {
   // `vol` e `vel` são o volume e a velocidade da tomada (1 = como está); o cut.mp4 já sai com os do edl.json
   S.rendered = ranges.map((r) => ({ source: r.source, start: +r.start, end: +r.end, beat: r.beat || '',
     vol: r.volume == null ? 1 : +r.volume, vel: r.velocidade == null ? 1 : +r.velocidade,
-    curva: r.curva && Array.isArray(r.curva.pontos) ? { nome: r.curva.nome || 'personalizar', pontos: r.curva.pontos.map((p) => [+p[0], +p[1]]) } : null }));
+    curva: r.curva && Array.isArray(r.curva.pontos) ? { nome: r.curva.nome || 'personalizar', pontos: r.curva.pontos.map((p) => [+p[0], +p[1]]) } : null,
+    ...(r.vaga != null ? { vaga: +r.vaga } : {}) })); // o número do lugar, numa montagem na batida
+  // a montagem na batida (montagem.py): os lugares, de onde cada um saiu e as mídias que ela usou
+  S.montagem = (data.edl && data.edl.montagem && Array.isArray(data.edl.montagem.lugares)) ? data.edl.montagem : null;
   S.draft = S.rendered.map((r, i) => ({ ...r, uid: `o${i}`, from: i, orig: { start: r.start, end: r.end } }));
   S.base = baseOf(S.draft);
   S.melhorar = null;
@@ -3535,6 +3539,7 @@ function edlPayload() {
   return {
     // `volume` só quando não é 100%: sem ele, a tomada sai como está (o agente não herda o do edl.json)
     ranges: S.draft.map((r) => ({ source: r.source, start: +r.start.toFixed(3), end: +r.end.toFixed(3), beat: r.beat, take: r.from,
+      ...(r.vaga != null ? { vaga: r.vaga } : {}), // sem ele, o primeiro Salvar apagaria os lugares da montagem
       ...(r.vol !== 1 ? { volume: r.vol } : {}),
       ...(r.curva ? { curva: copiaCurva(r.curva) } : r.vel !== 1 ? { velocidade: r.vel } : {}) })),
     removed: S.rendered.map((r, i) => ({ r, i })).filter(({ i }) => !tem.has(`o${i}`))

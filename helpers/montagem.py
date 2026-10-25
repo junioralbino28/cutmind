@@ -5,6 +5,7 @@ vídeo em que cada troca de imagem cai numa batida.
     uv run python helpers/montagem.py usar <modelo.json> --musica <arquivo> --midias <a> <b> … --edit <dir>
                                       [--modelo-batida pequeno|completo] [--so-dados] [--substituir]
     uv run python helpers/montagem.py conferir <edit> [--video <arquivo>] [--modelo-batida …]
+    uv run python helpers/montagem.py aplicar <edit> [--lugar N [--midia <arquivo>] [--de <s>]] [--so-dados]
 
 `usar` faz tudo, em ordem:
   1. a grade de batida da música (batida.py; do cache quando essa música já foi analisada). A música
@@ -29,6 +30,10 @@ troca a troca, a distância até a batida da música; e confere, pelas batidas q
 próprio vídeo, que a música não entrou deslocada. Sai 0 quando toda troca caiu no quadro planejado e
 a no máximo 1 quadro da batida.
 
+`aplicar` refaz só os lugares mudados (outra mídia, outro trecho do clipe), sem mexer nos outros, e
+renderiza: os do Salvar do editor (`montagem` do preview_edits.json) ou o de `--lugar`. O `usar` guarda
+de onde cada lugar saiu no bloco `montagem.lugares` do edl.json; é dali que o `aplicar` parte.
+
 O modelo é um JSON:
 
     {"versao": 1, "id": "drop-rapido", "nome": "Drop rápido", "comeca": "forte", "drop_na_vaga": 5,
@@ -50,6 +55,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -463,7 +469,7 @@ def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
     with ThreadPoolExecutor(max_workers=jobs) as ex:
         feitos = list(ex.map(faz, tarefas))
 
-    sources, ranges, duracoes, lentos = {}, [], {}, []
+    sources, ranges, duracoes, lentos, lugares = {}, [], {}, [], []
     for (lugar, arq, de, nome, destino), p in zip(tarefas, feitos):
         sources[nome] = destino.as_posix()
         duracoes[nome] = round(p["quadros_no_arquivo"] / FPS, 3)
@@ -473,6 +479,9 @@ def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
             lentos.append(f"lugar {lugar['n']} ({arq.name}): {p['velocidade']:.2f}×"
                           + (" e para no último quadro" if p["congela"] else ""))
         ranges.append(r)
+        # de onde o lugar saiu: é o que deixa refazer um lugar sem refazer os outros (aplicar)
+        lugares.append({"vaga": lugar["n"], "midia": str(arq.resolve()), "de": de,
+                        **({"movimento": lugar["movimento"]} if lugar.get("movimento") else {})})
         print(f"  lugar {lugar['n']:>3}: {arq.name} → {lugar['quadros']} quadros"
               + (f", {p['velocidade']:.2f}×" if p["velocidade"] != 1.0 else ""), flush=True)
 
@@ -484,7 +493,9 @@ def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
                         "confianca": grade.get("confianca"),
                         "batidas": caminho_grade.relative_to(edit).as_posix(),
                         "drop_na_vaga": modelo["drop_na_vaga"], "golpe": modelo["golpe"],
-                        "avisos": plano["avisos"]}}
+                        "avisos": plano["avisos"], "lugares": lugares,
+                        # todas as mídias dadas (inclusive as que sobraram): as opções do Trocar no editor
+                        "midias": list(dict.fromkeys(str(p.resolve()) for p, _ in lista))}}
     _grava_json(edl_p, edl)
 
     cam_p = edit / "camadas.json"
@@ -521,6 +532,105 @@ def renderizar(edit: Path) -> None:
         r = subprocess.run([sys.executable, "-X", "utf8", *passo])
         if r.returncode != 0:
             raise ErroMontagem(f"{Path(passo[0]).name} falhou (código {r.returncode})")
+
+
+def mudancas_salvas(edit: Path) -> list[dict]:
+    """O que o Salvar do editor pediu para a montagem (`montagem.lugares` do preview_edits.json)."""
+    try:
+        pe = json.loads((Path(edit) / "preview_edits.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    return list(((pe.get("montagem") or {}).get("lugares")) or [])
+
+
+def aplicar(edit: Path, mudancas: list[dict] | None = None, so_dados: bool = False) -> dict:
+    """Refaz só os lugares mudados (outra mídia, outro trecho do clipe) e, sem `so_dados`, o vídeo.
+
+    `mudancas` = [{vaga, midia?, de?}]; sem elas, as do Salvar do editor (preview_edits.json). A mídia é
+    um caminho de arquivo ou `midia/<nome>` do projeto. `de` é de onde o clipe entra, em segundos: sem ele,
+    uma mídia nova entra do começo e a mesma mídia fica no trecho de antes. A duração do lugar, a regra do
+    clipe curto e o movimento da foto são os do lugar. O que já foi pedido de volume da tomada fica."""
+    edit = Path(edit).resolve()
+    edl_p = edit / "edl.json"
+    edl = json.loads(edl_p.read_text(encoding="utf-8"))
+    mont = edl.get("montagem") or {}
+    if not mont.get("lugares"):
+        raise ErroMontagem("este edl.json não é de uma montagem do montagem.py (falta a lista de lugares)")
+    if mudancas is None:
+        mudancas = mudancas_salvas(edit)
+    if not mudancas:
+        raise ErroMontagem("nenhum lugar para refazer")
+    por_vaga = {lg["vaga"]: lg for lg in mont["lugares"]}
+    ranges = edl["ranges"]
+    idx = {r.get("vaga"): i for i, r in enumerate(ranges)}
+    largura = 3 if len(ranges) > 99 else 2
+    pasta = edit / "montagem"
+    t0 = time.perf_counter()
+    pedidos = []  # tudo conferido antes do primeiro clipe: um pedido errado não deixa nada pela metade
+    for m in mudancas:
+        n = m.get("vaga")
+        if isinstance(n, bool) or n not in por_vaga or n not in idx:
+            raise ErroMontagem(f"o lugar {n} não existe nesta montagem")
+        if any(p[0] == n for p in pedidos):
+            raise ErroMontagem(f"o lugar {n} foi pedido duas vezes")
+        lg = por_vaga[n]
+        midia = Path(m.get("midia") or lg["midia"])
+        if not midia.is_absolute():
+            midia = (edit / midia).resolve()
+        if not midia.is_file():
+            raise ErroMontagem(f"lugar {n}: mídia não encontrada: {midia}")
+        de = float(m["de"]) if m.get("de") is not None else (0.0 if m.get("midia") else float(lg.get("de") or 0.0))
+        if not math.isfinite(de) or de < 0:
+            raise ErroMontagem(f"lugar {n}: o trecho começa em {de}?")
+        pedidos.append((n, midia, de))
+    # os clipes novos nascem ao lado (.novo.mp4); se um falhar, os outros somem e o projeto fica como estava
+    prontos = []
+    try:
+        for n, midia, de in pedidos:
+            quadros = int(round(tempo.dur_no_corte(ranges[idx[n]]) * FPS))
+            nome = f"v{n:0{largura}d}_{_slug(midia.stem, 24)}"
+            novo = pasta / f"{nome}.novo.mp4"
+            prontos.append((n, midia, de, quadros, nome, novo, None))
+            p = padronizar(midia, novo, quadros, por_vaga[n].get("movimento"), de)
+            prontos[-1] = (n, midia, de, quadros, nome, novo, p)
+    except BaseException:
+        for *_, novo, _p in prontos:
+            novo.unlink(missing_ok=True)
+        raise
+    feitos = []
+    for n, midia, de, quadros, nome, novo, p in prontos:
+        lg, r = por_vaga[n], ranges[idx[n]]
+        velho = edl["sources"].get(r["source"])
+        if velho and Path(velho).parent == pasta and r["source"] != nome:
+            Path(velho).unlink(missing_ok=True)
+        novo.replace(pasta / f"{nome}.mp4")
+        edl["sources"].pop(r["source"], None)
+        edl["sources"][nome] = (pasta / f"{nome}.mp4").as_posix()
+        r.update({"source": nome, "start": 0.0, "end": p["fim"]})
+        r.pop("velocidade", None)
+        if p["velocidade"] != 1.0:
+            r["velocidade"] = p["velocidade"]
+        lg.update({"midia": str(midia), "de": de})
+        feitos.append({"vaga": n, "midia": midia.name, "de": de, "velocidade": p["velocidade"],
+                       "congela": p["congela"], "quadros_no_arquivo": p["quadros_no_arquivo"]})
+        print(f"  lugar {n:>3}: {midia.name}" + (f" a partir de {de:g} s" if de else "") + f" → {quadros} quadros"
+              + (f", {p['velocidade']:.2f}×" if p["velocidade"] != 1.0 else ""), flush=True)
+    _grava_json(edl_p, edl)
+    st_p = edit / "state.json"
+    try:
+        st = json.loads(st_p.read_text(encoding="utf-8"))
+        st["sourceDurations"] = {k: v for k, v in (st.get("sourceDurations") or {}).items() if k in edl["sources"]}
+        for f in feitos:
+            nome = ranges[idx[f["vaga"]]]["source"]
+            st["sourceDurations"][nome] = round(f["quadros_no_arquivo"] / FPS, 3)
+        _grava_json(st_p, st)
+    except (OSError, json.JSONDecodeError):
+        pass
+    resumo = {"lugares": feitos, "padronizar_s": round(time.perf_counter() - t0, 1)}
+    if not so_dados:
+        renderizar(edit)
+    resumo["total_s"] = round(time.perf_counter() - t0, 1)
+    return resumo
 
 
 # ---------- a conferência ----------
@@ -691,11 +801,29 @@ def main() -> int:
     c.add_argument("edit", type=Path)
     c.add_argument("--video", type=Path, default=None)
     c.add_argument("--modelo-batida", choices=sorted(batida.MODELOS), default=batida.MODELO_PADRAO)
+    p = sub.add_parser("aplicar", help="refaz só os lugares mudados: os do Salvar do editor, ou o de --lugar")
+    p.add_argument("edit", type=Path)
+    p.add_argument("--lugar", type=int, default=None, help="o número do lugar (sem ele: o preview_edits.json)")
+    p.add_argument("--midia", default=None, help="a mídia nova do lugar (arquivo ou midia/<nome>)")
+    p.add_argument("--de", type=float, default=None, help="de onde o clipe entra, em segundos")
+    p.add_argument("--so-dados", action="store_true", help="refaz os lugares sem renderizar")
+    p.add_argument("--modelo-batida", choices=sorted(batida.MODELOS), default=batida.MODELO_PADRAO)
     a = ap.parse_args()
     try:
         if a.cmd == "usar":
             r = usar(a.modelo, a.musica, a.midias, a.edit, a.modelo_batida, a.so_dados, a.substituir)
             print(_resumo_usar(r))
+            if a.so_dados:
+                return 0
+            return 0 if conferir(a.edit, modelo_batida=a.modelo_batida)["ok"] else 1
+        if a.cmd == "aplicar":
+            mudancas = None
+            if a.lugar is not None:
+                mudancas = [{"vaga": a.lugar, **({"midia": a.midia} if a.midia else {}),
+                             **({"de": a.de} if a.de is not None else {})}]
+            r = aplicar(a.edit, mudancas, a.so_dados)
+            print(f"aplicar: {len(r['lugares'])} lugar(es) refeito(s); padronizar {r['padronizar_s']} s"
+                  + (f", com o render {r['total_s']} s" if not a.so_dados else ""))
             if a.so_dados:
                 return 0
             return 0 if conferir(a.edit, modelo_batida=a.modelo_batida)["ok"] else 1

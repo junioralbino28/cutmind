@@ -337,6 +337,62 @@ def conferir_cenas(root: Path, itens: list) -> list:
     return itens
 
 
+class MontagemInvalida(ValueError):
+    pass
+
+
+def conferir_montagem(root: Path, pasta_videos: Path, pedido: object) -> dict:
+    """O que o editor pede para os lugares de uma montagem (montagem.py): [{vaga, midia?, de?}]. Só
+    lugares que existem; a mídia é uma foto ou vídeo de midia/, um original da própria montagem ou um
+    vídeo enviado para a pasta dos vídeos; `de` é um tempo de verdade. O que não muda nada sai."""
+    try:
+        edl = json.loads((root / "edl.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise MontagemInvalida("o projeto não tem edl.json") from None
+    mont = edl.get("montagem") if isinstance(edl, dict) else None
+    lugares = (mont or {}).get("lugares") or []
+    vagas = {lg.get("vaga") for lg in lugares if isinstance(lg, dict)}
+    if not vagas:
+        raise MontagemInvalida("este projeto não é uma montagem")
+    originais = {str(Path(x)) for x in mont.get("midias") or [] if isinstance(x, str)}
+    originais |= {str(Path(lg["midia"])) for lg in lugares if isinstance(lg.get("midia"), str)}
+    if not isinstance(pedido, dict) or not isinstance(pedido.get("lugares"), list) or len(pedido["lugares"]) > 400:
+        raise MontagemInvalida("lugares: uma lista")
+    saida = []
+    for it in pedido["lugares"]:
+        v = it.get("vaga") if isinstance(it, dict) else None
+        if isinstance(v, bool) or v not in vagas:
+            raise MontagemInvalida(f"lugar desconhecido: {v!r}")
+        x = {"vaga": int(v)}
+        if it.get("midia") is not None:
+            x["midia"] = _midia_da_montagem(root, pasta_videos, originais, it["midia"])
+        de = it.get("de")
+        if de is not None:
+            if isinstance(de, bool) or not isinstance(de, (int, float)) or not 0 <= de <= cam.MAX_T:
+                raise MontagemInvalida(f"lugar {v}: o trecho começa em {de!r}?")
+            x["de"] = round(float(de), 3)
+        if len(x) > 1:
+            saida.append(x)
+    return {"lugares": saida}
+
+
+def _midia_da_montagem(root: Path, pasta_videos: Path, originais: set[str], valor: object) -> str:
+    if not isinstance(valor, str) or not valor or len(valor) > 1024:
+        raise MontagemInvalida("mídia inválida")
+    ext = Path(valor).suffix.lower()
+    if valor.startswith(cam.MIDIA_DIR + "/"):
+        p = (root / valor).resolve()
+        if p.parent != (root / cam.MIDIA_DIR).resolve() or ext not in cam.IMAGE_EXTS | VIDEO_EXTS or not p.is_file():
+            raise MontagemInvalida(f"mídia de midia/ inválida: {valor}")
+        return f"{cam.MIDIA_DIR}/{p.name}"
+    p = Path(valor)
+    if str(p) in originais and p.is_file():
+        return str(p)
+    if p.is_absolute() and ext in VIDEO_EXTS and p.is_file() and p.resolve().parent == pasta_videos.resolve():
+        return str(p.resolve())  # um vídeo enviado pelo editor (vai para a pasta dos vídeos)
+    raise MontagemInvalida(f"essa mídia não é do projeto: {p.name}")
+
+
 def juntar_salvamentos(velho: dict, novo: dict) -> dict:
     """Two saves before the agent applies the first: the second ADDS to the first.
 
@@ -370,6 +426,15 @@ def juntar_salvamentos(velho: dict, novo: dict) -> dict:
             cam_novo["mudou"] = sorted(set((ev.get("camera") or {}).get("mudou") or []) | set(cam_novo.get("mudou") or []))
             ed["camera"] = cam_novo
         out["editData"] = ed
+    if velho.get("montagem") or novo.get("montagem"):
+        # os lugares da montagem somam pelo número; uma mídia nova sem `de` entra do começo
+        por_vaga = {x["vaga"]: dict(x) for x in (velho.get("montagem") or {}).get("lugares") or []}
+        for x in (novo.get("montagem") or {}).get("lugares") or []:
+            base = por_vaga.get(x["vaga"], {})
+            if "midia" in x and "de" not in x:
+                base = {k: w for k, w in base.items() if k != "de"}
+            por_vaga[x["vaga"]] = {**base, **x}
+        out["montagem"] = {"lugares": [por_vaga[k] for k in sorted(por_vaga)]}
     return out
 
 
@@ -837,8 +902,13 @@ class Handler(BaseHTTPRequestHandler):
                     body["melhorar"] = mv.normalizar_escolha(body["melhorar"])
                 if isinstance(body.get("editData"), dict) and "cenas" in body["editData"]:
                     conferir_cenas(self.root, body["editData"]["cenas"])
+                if "montagem" in body:
+                    body["montagem"] = conferir_montagem(self.root, self.upload_dir, body["montagem"])
             except CenasInvalidas as e:
                 self._json({"error": f"efeitos do vídeo final: {e}"}, 400)
+                return
+            except MontagemInvalida as e:
+                self._json({"error": f"montagem: {e}"}, 400)
                 return
             except cam.CamadasInvalidas as e:
                 self._json({"error": f"camadas: {e}"}, 400)

@@ -25,6 +25,18 @@ def test_aviso_conta_divisao_copia_e_ordem(tmp_path):
     assert "lista inteira" in aviso  # o agente monta o edl.json pela lista, não por changes/removed
 
 
+def test_aviso_da_montagem_manda_rodar_o_aplicar(tmp_path):
+    p = tmp_path / "preview_edits.json"
+    p.write_text(json.dumps({"type": "timeline-edits", "montagem": {"lugares": [
+        {"vaga": 3, "midia": "midia/foto nova.jpg"}, {"vaga": 5, "de": 12.4}, {"vaga": 7, "midia": "C:/x/clipe.mp4", "de": 2}]}}),
+        encoding="utf-8")
+    aviso = digest(p)
+    assert "montagem: 3 lugares mudados" in aviso and "montagem.py aplicar <edit>" in aviso
+    assert "lugar 3: troca para foto nova.jpg" in aviso and "lugar 5: trecho a partir de 12.4 s" in aviso
+    assert "lugar 7: troca para clipe.mp4; trecho a partir de 2 s" in aviso
+    assert "volume das tomadas" not in aviso  # sem tomada mudada no mesmo Salvar
+
+
 def test_aviso_conta_o_volume_das_tomadas(tmp_path):
     aviso = _salvo(tmp_path, {"ranges": [{"source": "A", "beat": "HOOK", "volume": 0.5},
                                          {"source": "A", "beat": "CTA"},
