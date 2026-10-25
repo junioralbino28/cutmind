@@ -1,4 +1,5 @@
-"""Grade de batida de uma música: batidas, tempos fortes, BPM, energia por compasso e o drop.
+"""Grade de batida de uma música: batidas, tempos fortes, BPM, energia por compasso, o drop e a força do
+golpe em cada batida e em cada contratempo (`acentos`).
 
 É a base para cortar na batida: o Modelo de montagem põe cada troca de clipe numa batida, e a linha
 do tempo do editor mostra as batidas da trilha para o corte grudar nelas. Roda no CPU com o
@@ -32,7 +33,7 @@ from pathlib import Path
 
 import numpy as np
 
-VERSAO = 1
+VERSAO = 2  # 2: a grade ganhou `acentos` (a força do golpe na batida e no contratempo)
 SR = 22050  # a taxa em que o Beat This! trabalha; o áudio já chega nela e ele não reamostra
 
 _URL = "https://cloud.cp.jku.at/public.php/dav/files/7ik4RrBKTS273gp/"
@@ -162,6 +163,56 @@ def compassos(sinal: np.ndarray, sr: int, fortes, duracao: float) -> list[dict]:
     return itens
 
 
+def envelope_de_ataque(sinal: np.ndarray, sr: int = SR, hop: int = 220, nfft: int = 1024) -> tuple[np.ndarray, np.ndarray]:
+    """A força de ataque a cada `hop` amostras (10 ms a 22.050 Hz), pelo fluxo espectral: quanto o espectro
+    sobe de um quadro para o outro. Conta o grave (bumbo, até 150 Hz) e o médio (caixa, palma e voz, até
+    4 kHz), cada um dividido pelo próprio percentil 99 e somados, para um golpe de bumbo e um de caixa pesarem
+    parecido. O agudo (chimbal) fica fora: ele marca todas as colcheias por igual e não é o que se ouve como
+    batida. Devolve (instantes, força)."""
+    if len(sinal) < nfft:
+        return np.zeros(0), np.zeros(0)
+    sinal = np.ascontiguousarray(sinal, dtype=np.float32)
+    n = 1 + (len(sinal) - nfft) // hop
+    quadros = np.lib.stride_tricks.as_strided(sinal, shape=(n, nfft), strides=(sinal.strides[0] * hop, sinal.strides[0]))
+    janela = np.hanning(nfft).astype(np.float32)
+    freqs = np.fft.rfftfreq(nfft, 1 / sr)
+    grave, medio = freqs < 150.0, (freqs >= 150.0) & (freqs < 4000.0)
+    fg, fm = np.zeros(n), np.zeros(n)
+    anterior = None
+    for a in range(0, n, 2048):  # em blocos: uma música longa inteira de uma vez passaria de 1 GB
+        m = np.log1p(10 * np.abs(np.fft.rfft(quadros[a:a + 2048] * janela, axis=1)))
+        d = np.maximum(0.0, np.diff(np.vstack([m[:1] if anterior is None else anterior, m]), axis=0))
+        fg[a:a + len(m)] = d[:, grave].sum(axis=1)
+        fm[a:a + len(m)] = d[:, medio].sum(axis=1)
+        anterior = m[-1:]
+    t = np.arange(n) * hop / sr + nfft / 2 / sr
+    return t, fg / (np.percentile(fg, 99) or 1.0) + fm / (np.percentile(fm, 99) or 1.0)
+
+
+def acentos(t_env: np.ndarray, env: np.ndarray, batidas, raio: float = 0.04) -> list[list[float]]:
+    """A força do golpe em cada batida e no contratempo, o meio entre uma batida e a seguinte, em ordem:
+    [batida 0, meio 0, batida 1, meio 1, …, última batida], cada um [instante, força]. A força é o maior
+    ataque a até 40 ms. No contratempo o instante é o do próprio pico: o golpe fora da grade não cai
+    exatamente no meio (medido numa música real: de 3 a 18 ms dele)."""
+    b = [float(x) for x in batidas]
+    if not len(env) or not b:
+        return []
+
+    def pico(x: float, refinar: bool) -> list[float]:
+        i0, i1 = np.searchsorted(t_env, [x - raio, x + raio])
+        if i1 <= i0:
+            return [round(x, 3), 0.0]
+        j = i0 + int(np.argmax(env[i0:i1]))
+        return [round(float(t_env[j]) if refinar else x, 3), round(float(env[j]), 3)]
+
+    out = []
+    for i, x in enumerate(b):
+        out.append(pico(x, False))
+        if i + 1 < len(b):
+            out.append(pico((x + b[i + 1]) / 2, True))
+    return out
+
+
 def achar_drop(itens: list[dict], janela: int = 4, salto: float = 0.15) -> float | None:
     """O começo do compasso em que a música "explode": a maior subida entre a energia média dos
     `janela` compassos seguintes e a dos anteriores. Sem uma subida clara (`salto`), não há drop."""
@@ -199,6 +250,7 @@ def analisar(arquivo: Path, edit: Path | None = None, modelo: str = MODELO_PADRA
     duracao = len(sinal) / SR
     batidas, fortes = detectar(sinal, SR, modelo)
     itens = compassos(sinal, SR, fortes, duracao)
+    t_env, env = envelope_de_ataque(sinal, SR)
     grade = {
         "versao": VERSAO,
         "arquivo": arquivo.name,
@@ -211,6 +263,7 @@ def analisar(arquivo: Path, edit: Path | None = None, modelo: str = MODELO_PADRA
         "batidas": [round(float(t), 3) for t in batidas],
         "fortes": [round(float(t), 3) for t in fortes],
         "compassos": itens,
+        "acentos": acentos(t_env, env, batidas),
     }
     destino.parent.mkdir(parents=True, exist_ok=True)
     tmp = destino.with_name(destino.name + ".tmp")

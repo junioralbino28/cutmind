@@ -114,6 +114,37 @@ def test_baixar_recusa_arquivo_diferente_e_aceita_o_certo(tmp_path, monkeypatch)
     assert b.baixar("teste").read_bytes() == certo
 
 
+def _golpes(sr: int, golpes: list[tuple[float, float]], segundos: float) -> np.ndarray:
+    """Bumbo (seno de 60 Hz que cai rápido) com caixa (ruído em volta de 1 kHz) em cada (instante, força)."""
+    rng = np.random.default_rng(5)
+    s = np.zeros(int(segundos * sr), np.float32)
+    n = int(0.12 * sr)
+    t = np.arange(n) / sr
+    som = (np.sin(2 * np.pi * 60 * t) + 0.5 * np.sin(2 * np.pi * 1000 * t) * rng.normal(0, 1, n)) * np.exp(-t * 30)
+    for x, forca in golpes:
+        i = int(x * sr)
+        s[i:i + n] += forca * som[: len(s) - i]
+    return s
+
+
+def test_acentos_acham_o_golpe_forte_do_contratempo():
+    """Batidas a cada 0,5 s com golpes iguais, menos a de 1,0 s, quase muda; o golpe mais forte vem a meia
+    batida dela, aos 1,25 s. A grade da força tem que mostrar isso, e o instante do contratempo é o do golpe."""
+    sr = b.SR
+    batidas = [0.5 * k for k in range(8)]
+    golpes = [(x, 0.05 if x == 1.0 else 0.4) for x in batidas] + [(1.27, 1.0)]
+    t_env, env = b.envelope_de_ataque(_golpes(sr, golpes, 4.5), sr)
+    ac = b.acentos(t_env, env, batidas)
+    assert len(ac) == 2 * len(batidas) - 1
+    assert [x for x, _ in ac[0::2]] == batidas  # na batida, o instante é o da batida
+    forca = {round(x, 2): f for x, f in ac}
+    meio = ac[2 * 2 + 1]  # o contratempo depois da batida de 1,0 s
+    assert abs(meio[0] - 1.27) <= 0.02  # o pico do golpe, não o meio exato (1,25)
+    assert meio[1] >= 1.5 * forca[1.0] and meio[1] > forca[0.5]
+    assert ac[1][1] < 0.5 * forca[0.5]  # contratempo sem golpe: fraco
+    assert b.acentos(t_env, env, []) == [] and b.envelope_de_ataque(np.zeros(10, np.float32))[0].size == 0
+
+
 # ---- com o modelo de verdade ----
 
 MODELO_BAIXADO = (b.pasta() / b.MODELOS["pequeno"]["arquivo"]).is_file()

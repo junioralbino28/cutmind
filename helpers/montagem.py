@@ -35,7 +35,10 @@ O modelo é um JSON:
      "vagas": [{"batidas": 4, "repetir": 4}, {"batidas": 1, "repetir": 16}, {"batidas": 2, "repetir": 4}]}
 
 `repetir` abre um lugar em vários iguais (o `drop_na_vaga` conta os lugares já abertos); `comeca` é
-"forte" (a música entra no primeiro tempo forte) ou "batida" (na primeira batida).
+"forte" (a música entra no primeiro tempo forte) ou "batida" (na primeira batida). Com `golpe` (o
+padrão), a troca que cairia numa batida fraca vai para o golpe forte do contratempo vizinho, meia
+batida antes ou depois, quando ele é 1,5× mais forte que a batida: é o bumbo sincopado, que a grade
+sozinha deixa passar. `"golpe": false` corta só na grade.
 """
 from __future__ import annotations
 
@@ -66,6 +69,8 @@ MOVIMENTOS = ("zoom-in", "zoom-out", "parado")
 ZOOM_POR_SEGUNDO = 0.04  # a foto aproxima 4% por segundo, até 10%: a mesma velocidade em lugar curto e longo
 ZOOM_MAX = 0.10
 VEL_MIN = 0.5  # o clipe curto desacelera até 0,5× e depois para no último quadro
+PUXA = 1.5  # o golpe no contratempo leva a troca quando é 1,5× mais forte que a batida
+MEIO_MIN = 0.4  # duas trocas nunca ficam a menos de 0,4 batida uma da outra
 MAX_VAGAS = 400
 JANELA = 3  # quadros para cada lado do planejado em que o conferir procura a troca
 FAIXA_MUSICA = "musica"
@@ -125,9 +130,12 @@ def carregar_modelo(fonte: Path | dict) -> dict:
     drop = m.get("drop_na_vaga")
     if drop is not None:
         drop = _inteiro(drop, "drop_na_vaga", 1, len(vagas))
+    golpe = m.get("golpe", True)
+    if not isinstance(golpe, bool):
+        raise ErroMontagem('"golpe" é true ou false')
     ident = str(m.get("id") or "montagem")
     return {"versao": 1, "id": ident, "nome": str(m.get("nome") or ident), "comeca": comeca,
-            "drop_na_vaga": drop, "vagas": vagas}
+            "drop_na_vaga": drop, "golpe": golpe, "vagas": vagas}
 
 
 # ---------- os lugares no tempo ----------
@@ -135,9 +143,10 @@ def carregar_modelo(fonte: Path | dict) -> dict:
 def planejar(grade: dict, modelo: dict, fps: int = FPS) -> dict:
     """Cada lugar no tempo da música e no quadro do vídeo.
 
-    Devolve {"inicio_musica", "lugares", "quadros", "avisos"}. A música entra no vídeo a partir de
-    `inicio_musica` (segundos do arquivo); cada lugar começa no `quadro` do vídeo, dura `quadros`, e
-    `batida` é o instante exato, no relógio do vídeo, da batida em que ele começa."""
+    Devolve {"inicio_musica", "lugares", "quadros", "avisos", "no_golpe"}. A música entra no vídeo a
+    partir de `inicio_musica` (segundos do arquivo); cada lugar começa no `quadro` do vídeo, dura
+    `quadros`, e `batida` é o instante exato, no relógio do vídeo, em que ele começa: a batida, ou o golpe
+    forte a meia batida dela (`golpe`), se o modelo não desligou isso com "golpe": false."""
     b = np.asarray(grade.get("batidas") or [], dtype=float)
     if len(b) < 2:
         raise ErroMontagem("a música não tem batida que dê para seguir (silêncio ou ritmo solto demais)")
@@ -162,21 +171,61 @@ def planejar(grade: dict, modelo: dict, fps: int = FPS) -> dict:
         fortes = grade.get("fortes") or []
         i0 = int(np.argmin(np.abs(b - float(fortes[0])))) if modelo["comeca"] == "forte" and fortes else 0
     t0 = round(float(b[i0]), 3)
-    lugares = []
-    for k, v in enumerate(vagas):
-        a, z = i0 + int(antes[k]), i0 + int(antes[k + 1])
+    ac = grade.get("acentos") or []
+    if len(ac) != 2 * len(b) - 1:  # grade antiga, sem a força dos golpes
+        ac = []
+    # cada troca: a batida, ou o golpe a meia batida dela; a primeira é o começo da música e não anda
+    bordas: list[tuple[float, bool]] = [(float(b[i0]), False)]
+    for k in range(1, len(vagas) + 1):
+        z = i0 + int(antes[k])
         if z >= len(b):
             break
-        q0, q1 = int(round((b[a] - t0) * fps)), int(round((b[z] - t0) * fps))
+        t, golpe = _no_golpe(b, ac, z) if modelo.get("golpe", True) else (float(b[z]), False)
+        if t - bordas[-1][0] < MEIO_MIN * float(np.median(np.diff(b))):  # perto demais da troca anterior
+            t, golpe = float(b[z]), False
+        bordas.append((t, golpe))
+    lugares = []
+    for k, v in enumerate(vagas[:len(bordas) - 1]):
+        (ta, ga), (tz, _) = bordas[k], bordas[k + 1]
+        q0, q1 = int(round((ta - t0) * fps)), int(round((tz - t0) * fps))
         if q1 <= q0:
             raise ErroMontagem(f"lugar {v['n']}: as batidas dele ficam a menos de um quadro uma da outra")
-        lugares.append({**v, "quadro": q0, "quadros": q1 - q0, "batida": round(float(b[a] - t0), 4)})
+        lugares.append({**v, "quadro": q0, "quadros": q1 - q0, "batida": round(ta - t0, 4), "golpe": ga})
     if not lugares:
         raise ErroMontagem("a música acaba antes de o primeiro lugar terminar")
     if len(lugares) < len(vagas):
         avisos.append(f"a música acaba antes: {len(vagas) - len(lugares)} de {len(vagas)} lugares ficaram de fora")
     fim = lugares[-1]["quadro"] + lugares[-1]["quadros"]
-    return {"inicio_musica": t0, "fps": fps, "lugares": lugares, "quadros": fim, "avisos": avisos}
+    return {"inicio_musica": t0, "fps": fps, "lugares": lugares, "quadros": fim, "avisos": avisos,
+            "no_golpe": sum(lg["golpe"] for lg in lugares)}
+
+
+def _no_golpe(b: np.ndarray, ac: list, z: int) -> tuple[float, bool]:
+    """A troca da batida z: no golpe do contratempo vizinho (meia batida antes ou depois) quando ele é
+    `PUXA` vezes mais forte que a batida. É o bumbo sincopado: numa música real, o golpe mais forte do
+    compasso vinha meia batida depois do 3º tempo, o tempo mais fraco, e a troca na batida o deixava passar."""
+    if not ac:
+        return float(b[z]), False
+    forca = ac[2 * z][1]
+    vizinhos = [ac[j] for j in (2 * z - 1, 2 * z + 1) if 0 <= j < len(ac)]
+    melhor = max(vizinhos, key=lambda c: c[1], default=None)
+    if melhor is not None and melhor[1] > 0 and melhor[1] >= PUXA * forca:
+        return float(melhor[0]), True
+    return float(b[z]), False
+
+
+def referencias(grade: dict) -> np.ndarray:
+    """Onde uma troca pode cair: as batidas e os contratempos que puxariam uma troca (mais fortes que
+    `PUXA` vezes a mais fraca das duas batidas vizinhas)."""
+    b = [float(x) for x in grade.get("batidas") or []]
+    ac = grade.get("acentos") or []
+    refs = list(b)
+    if len(ac) == 2 * len(b) - 1:
+        for i in range(len(b) - 1):
+            meio = ac[2 * i + 1]
+            if meio[1] > 0 and meio[1] >= PUXA * min(ac[2 * i][1], ac[2 * i + 2][1]):
+                refs.append(float(meio[0]))
+    return np.asarray(sorted(refs), dtype=float)
 
 
 # ---------- as mídias ----------
@@ -434,7 +483,8 @@ def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
                         "inicio_musica": plano["inicio_musica"], "bpm": grade.get("bpm"),
                         "confianca": grade.get("confianca"),
                         "batidas": caminho_grade.relative_to(edit).as_posix(),
-                        "drop_na_vaga": modelo["drop_na_vaga"], "avisos": plano["avisos"]}}
+                        "drop_na_vaga": modelo["drop_na_vaga"], "golpe": modelo["golpe"],
+                        "avisos": plano["avisos"]}}
     _grava_json(edl_p, edl)
 
     cam_p = edit / "camadas.json"
@@ -455,7 +505,8 @@ def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
     resumo = {"edit": str(edit), "lugares": len(ranges), "duracao": vd, "bpm": grade.get("bpm"),
               "confianca": grade.get("confianca"), "inicio_musica": plano["inicio_musica"],
               "drop": grade.get("drop"), "drop_na_vaga": modelo["drop_na_vaga"], "lentos": lentos,
-              "avisos": plano["avisos"], "sobraram_midias": max(0, len(lista) - len(ranges))}
+              "no_golpe": plano["no_golpe"], "avisos": plano["avisos"],
+              "sobraram_midias": max(0, len(lista) - len(ranges))}
     if not so_dados:
         renderizar(edit)
     return resumo
@@ -526,8 +577,13 @@ def conferir(edit: Path, video: Path | None = None, modelo_batida: str = batida.
     except (KeyError, OSError, json.JSONDecodeError):
         raise ErroMontagem("a grade de batida da música não está no projeto: rode o `usar` de novo") from None
     inicios, total = quadros_dos_lugares(edl)
-    da_musica = np.asarray(grade["batidas"], dtype=float) - float(mont["inicio_musica"])
-    da_musica = da_musica[(da_musica > -0.5) & (da_musica < total / FPS + 0.5)]
+    t0 = float(mont["inicio_musica"])
+
+    def no_video(x: np.ndarray) -> np.ndarray:
+        return x[(x > -0.5) & (x < total / FPS + 0.5)]
+
+    da_musica = no_video(np.asarray(grade["batidas"], dtype=float) - t0)
+    golpes = no_video(referencias(grade) - t0)  # as batidas e os contratempos fortes
     if not len(da_musica):
         raise ErroMontagem("a grade da música não tem batida dentro do vídeo")
     d = diferencas(video)
@@ -544,10 +600,11 @@ def conferir(edit: Path, video: Path | None = None, modelo_batida: str = batida.
     for k in range(1, len(inicios)):
         visto = achar_troca(d, inicios[k])
         t = visto / FPS
-        bm = perto(da_musica, t)
+        bm = perto(golpes, t)
+        no_golpe = bool(np.min(np.abs(da_musica - bm)) > 1e-6)  # caiu no contratempo, não numa batida
         bs = perto(no_som, t)
         trocas.append({"lugar": edl["ranges"][k].get("vaga", k + 1), "quadro": inicios[k], "visto": visto,
-                       "troca": round(t, 4), "batida_da_musica": round(bm, 3),
+                       "troca": round(t, 4), "batida_da_musica": round(bm, 3), "no_golpe": no_golpe,
                        "erro_ms": round((t - bm) * 1000 - (desvio or 0.0), 1),
                        "batida_no_som": None if bs is None or abs(bs - t) * 1000 > 2 * um_quadro else round(bs, 3)})
     erros = [abs(x["erro_ms"]) for x in trocas]
@@ -557,7 +614,10 @@ def conferir(edit: Path, video: Path | None = None, modelo_batida: str = batida.
     rel = {"video": video.name, "trocas": trocas, "quadros": total, "pior_ms": max(erros) if erros else None,
            "ate_um_quadro": sum(e <= um_quadro + 0.05 for e in erros), "fora_do_quadro": len(fora_do_quadro),
            "som_vs_plano_ms": desvio, "batidas_no_som": len(no_som),
-           "trocas_sem_batida_no_som": sum(x["batida_no_som"] is None for x in trocas), "ok": ok}
+           "trocas_no_golpe": sum(x["no_golpe"] for x in trocas),
+           # o detector de batida não marca contratempo: só a troca numa batida conta aqui
+           "trocas_sem_batida_no_som": sum(x["batida_no_som"] is None and not x["no_golpe"] for x in trocas),
+           "ok": ok}
     pasta = edit / "verify"
     pasta.mkdir(exist_ok=True)
     _grava_json(pasta / "montagem_conferir.json", rel)
@@ -575,11 +635,14 @@ def relatorio(rel: dict) -> str:
     linhas.append("  lugar  quadro planejado  quadro visto  troca (s)  batida da música (s)  erro    no som do vídeo")
     for x in mostrar:
         no_som = "—" if x["batida_no_som"] is None else f"{x['batida_no_som']:.3f}"
+        onde = "golpe" if x.get("no_golpe") else ""
         linhas.append(f"  {x['lugar']:>5}  {x['quadro']:>16}  {x['visto']:>12}  {x['troca']:>9.3f}  "
-                      f"{x['batida_da_musica']:>20.3f}  {x['erro_ms']:+4.0f} ms  {no_som:>15}")
+                      f"{x['batida_da_musica']:>14.3f} {onde:>5}  {x['erro_ms']:+4.0f} ms  {no_som:>15}")
     if rel["pior_ms"] is not None:
         linhas.append(f"  pior erro: {rel['pior_ms']:.0f} ms; {rel['ate_um_quadro']} de {len(trocas)} trocas a no "
                       f"máximo 1 quadro ({1000 / FPS:.0f} ms) da batida")
+    if rel.get("trocas_no_golpe"):
+        linhas.append(f"  {rel['trocas_no_golpe']} troca(s) no golpe forte do contratempo (marcadas \"golpe\")")
     linhas.append(f"  imagem: {len(trocas) - rel['fora_do_quadro']} de {len(trocas)} trocas no quadro planejado")
     if rel["som_vs_plano_ms"] is None:
         linhas.append("  som: o detector não achou batida no som do vídeo")
@@ -596,6 +659,8 @@ def _resumo_usar(r: dict) -> str:
               f"a música entra aos {r['inicio_musica']:.3f} s"]
     if r["drop_na_vaga"] and r["drop"] is not None:
         linhas.append(f"  drop da música aos {r['drop']:.2f} s, no lugar {r['drop_na_vaga']}")
+    if r["no_golpe"]:
+        linhas.append(f"  {r['no_golpe']} troca(s) no golpe forte do contratempo, meia batida antes ou depois da batida")
     for x in r["lentos"]:
         linhas.append(f"  mais lento: {x}")
     if r["sobraram_midias"]:

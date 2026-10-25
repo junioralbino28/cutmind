@@ -56,6 +56,7 @@ def test_modelo_abre_repetir_e_numera_os_lugares():
     {"vagas": [{"batidas": 1}], "comeca": "meio"},
     {"vagas": [{"batidas": 1}], "versao": 2},
     {"vagas": [{"batidas": 1, "repetir": m.MAX_VAGAS + 1}]},
+    {"vagas": [{"batidas": 1}], "golpe": "sim"},
 ])
 def test_modelo_recusa_o_que_nao_entende(ruim):
     with pytest.raises(m.ErroMontagem):
@@ -106,6 +107,62 @@ def test_musica_curta_deixa_de_fora_os_lugares_que_sobram():
     plano = m.planejar(_grade(b), m.carregar_modelo({"vagas": [{"batidas": 4, "repetir": 4}]}))
     assert len(plano["lugares"]) == 2
     assert any("2 de 4 lugares" in a for a in plano["avisos"])
+
+
+def _sincopada(compassos: int = 6) -> dict:
+    """Batidas a cada 0,5 s; em cada compasso o 3º tempo é fraco e o golpe mais forte vem meia batida
+    depois dele (o bumbo sincopado). Os outros contratempos são fracos."""
+    b = [0.5 * k for k in range(4 * compassos + 1)]
+    ac = []
+    for i, x in enumerate(b):
+        ac.append([x, 0.3 if i % 4 == 2 else 1.0])
+        if i + 1 < len(b):
+            ac.append([round(x + 0.27, 3), 1.8 if i % 4 == 2 else 0.2])  # o pico 20 ms depois do meio
+    g = _grade(b)
+    g["acentos"] = ac
+    return g
+
+
+def test_troca_vai_para_o_golpe_forte_do_contratempo():
+    g = _sincopada()
+    plano = m.planejar(g, m.carregar_modelo({"vagas": [{"batidas": 1, "repetir": 8}]}))
+    inicio = [lg["batida"] for lg in plano["lugares"]]
+    # a troca do 3º tempo (1,0 s e 3,0 s) vai para o golpe (1,27 s e 3,27 s); as outras ficam na batida
+    assert inicio == [0.0, 0.5, 1.27, 1.5, 2.0, 2.5, 3.27, 3.5]
+    assert [lg["golpe"] for lg in plano["lugares"]] == [False, False, True, False, False, False, True, False]
+    assert plano["no_golpe"] == 2
+    assert plano["lugares"][2]["quadro"] == round(1.27 * 30)
+    lug = plano["lugares"]
+    assert all(a["quadro"] + a["quadros"] == z["quadro"] for a, z in zip(lug, lug[1:]))
+    # com "golpe": false, só a grade
+    reto = m.planejar(g, m.carregar_modelo({"golpe": False, "vagas": [{"batidas": 1, "repetir": 8}]}))
+    assert [lg["batida"] for lg in reto["lugares"]] == [0.5 * k for k in range(8)] and reto["no_golpe"] == 0
+    # num lugar de 2 batidas, a troca que cai no 3º tempo também vai para o golpe
+    dois = m.planejar(g, m.carregar_modelo({"vagas": [{"batidas": 2, "repetir": 4}]}))
+    assert [lg["batida"] for lg in dois["lugares"]] == [0.0, 1.27, 2.0, 3.27]
+
+
+def test_duas_trocas_nunca_colam_no_mesmo_golpe():
+    """Contratempo forte entre duas batidas fracas: a 1ª troca vai para ele e a 2ª, que iria para o mesmo
+    lugar, fica na batida."""
+    b = [0.5 * k for k in range(9)]
+    ac = []
+    for i, x in enumerate(b):
+        ac.append([x, 0.3 if i in (2, 3) else 1.0])
+        if i + 1 < len(b):
+            ac.append([x + 0.25, 1.8 if i == 2 else 0.2])
+    g = _grade(b)
+    g["acentos"] = ac
+    plano = m.planejar(g, m.carregar_modelo({"vagas": [{"batidas": 1, "repetir": 6}]}))
+    inicio = [lg["batida"] for lg in plano["lugares"]]
+    assert inicio == [0.0, 0.5, 1.25, 1.5, 2.0, 2.5] and min(lg["quadros"] for lg in plano["lugares"]) >= 7
+
+
+def test_referencias_sao_as_batidas_e_os_contratempos_fortes():
+    g = _sincopada(2)
+    refs = m.referencias(g)
+    assert list(refs) == sorted([0.5 * k for k in range(9)] + [1.27, 3.27])
+    assert list(m.referencias(_grade([0.0, 0.5, 1.0]))) == [0.0, 0.5, 1.0]  # grade antiga: só as batidas
 
 
 def test_musica_sem_batida_nao_monta():
