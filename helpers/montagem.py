@@ -6,8 +6,8 @@ vídeo em que cada troca de imagem cai numa batida.
                                       [--formato 9:16|16:9|1:1] [--modelo-batida pequeno|completo]
                                       [--so-dados] [--substituir]
     uv run python helpers/montagem.py conferir <edit> [--video <arquivo>] [--modelo-batida …]
-    uv run python helpers/montagem.py aplicar <edit> [--lugar N [--midia <arquivo>] [--de <s>]]
-                                      [--formato 9:16|16:9|1:1] [--so-dados]
+    uv run python helpers/montagem.py aplicar <edit> [--lugar N [--midia <arquivo>] [--de <s>]
+                                      [--enquadre escala,x,y|auto]] [--formato 9:16|16:9|1:1] [--so-dados]
     uv run python helpers/montagem.py render <edit> [--modelo-batida …]
     uv run python helpers/montagem.py montar <edit> [--so-dados]
     uv run python helpers/montagem.py capturar <edit> --nome "Meu modelo" [--so-mostrar]
@@ -46,7 +46,9 @@ a no máximo 1 quadro da batida.
 renderiza: os do Salvar do editor (`montagem` do preview_edits.json) ou o de `--lugar`. O `usar` guarda
 de onde cada lugar saiu no bloco `montagem.lugares` do edl.json; é dali que o `aplicar` parte. Com
 outro formato (`--formato`, ou `montagem.formato` do Salvar), ele refaz TODOS os lugares no quadro novo
-e leva cada texto das camadas para o mesmo lugar relativo (a 40% da altura continua a 40%).
+e leva cada texto das camadas para o mesmo lugar relativo (a 40% da altura continua a 40%). O
+enquadramento à mão de um lugar (`--enquadre`, ou `enquadre` do lugar no Salvar) põe a mídia no
+tamanho e no lugar escolhidos, sobre o mesmo fundo desfocado; fica em `montagem.lugares[i].enquadre`.
 
 `render` refaz o vídeo como ele está (o que mudou foram as camadas, os textos ou os efeitos, que o
 Salvar já gravou) e confere.
@@ -448,15 +450,80 @@ def _enquadrar(entrada: str, saida: str, w: int, h: int) -> str:
             f"[{saida}_bd][{saida}_fc]overlay=x=(W-w)/2:y=(H-h)/2:format=yuv420,setsar=1[{saida}]")
 
 
+def conferir_enquadre(e) -> dict | None:
+    """O enquadramento à mão de um lugar, conferido: {escala, x, y}, ou None (o automático). `escala` é o
+    tamanho da mídia em relação a caber inteira na tela (1 = inteira, maior = mais perto), de 0,25 a 6;
+    `x` e `y` são onde fica o centro dela, em fração da tela (0 a 1, então ela nunca sai toda dela)."""
+    if e is None:
+        return None
+    if not isinstance(e, dict):
+        raise ErroMontagem("enquadre: {escala, x, y} ou nada (o automático)")
+    out = {}
+    for k, lo, hi in (("escala", 0.25, 6.0), ("x", 0.0, 1.0), ("y", 0.0, 1.0)):
+        v = e.get(k)
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or not lo <= v <= hi:
+            raise ErroMontagem(f"enquadre: {k} é um número de {lo:g} a {hi:g}")
+        out[k] = round(float(v), 4)
+    return out
+
+
+def tamanho_exibido(midia: Path, de: float = 0.0) -> tuple[int, int]:
+    """Largura e altura do quadro como o ffmpeg o entrega aos filtros (já girado pela rotação do vídeo de
+    celular ou da foto): é sobre ele que o enquadramento à mão é medido. Foto sem `-ss` (o demuxer image2
+    descarta o quadro dela com busca)."""
+    midia = Path(midia)
+    busca = [] if midia.suffix.lower() in IMAGENS else ["-ss", f"{max(0.0, de):.3f}"]
+    r = subprocess.run(["ffmpeg", "-v", "info", "-nostdin", *busca, "-i", str(midia), "-frames:v", "1",
+                        "-vf", "showinfo", "-f", "null", "-"], capture_output=True, text=True, encoding="utf-8",
+                       errors="replace")
+    for linha in (r.stderr or "").splitlines():
+        if "Parsed_showinfo" in linha:
+            m = re.search(r" s:(\d+)x(\d+)", linha)
+            if m:
+                return int(m.group(1)), int(m.group(2))
+    raise ErroMontagem(f"não consegui medir o quadro de {midia.name}")
+
+
+def _enquadrar_a_mao(entrada: str, saida: str, w: int, h: int, mw: int, mh: int, enq: dict) -> str:
+    """O trecho do grafo do enquadramento à mão: a mídia (mw×mh) na `escala` de caber inteira, com o centro
+    em (x, y) da tela, sobre o mesmo fundo desfocado do automático. A conta é feita aqui: corta da mídia
+    só o pedaço que fica na tela, escala esse pedaço e o põe no lugar (sem ampliar a mídia inteira, que
+    a 6× passaria de 20 mil px)."""
+    k = min(w / mw, h / mh) * enq["escala"]
+    x0, y0 = enq["x"] * w - mw * k / 2, enq["y"] * h - mh * k / 2
+    vx0, vy0 = max(0.0, x0), max(0.0, y0)
+    vx1, vy1 = min(float(w), x0 + mw * k), min(float(h), y0 + mh * k)
+    sx, sy = max(0, round((vx0 - x0) / k)), max(0, round((vy0 - y0) / k))
+    sw, sh = max(1, min(mw - sx, round((vx1 - vx0) / k))), max(1, min(mh - sy, round((vy1 - vy0) / k)))
+    par = lambda v: max(2, int(round(v / 2)) * 2)  # noqa: E731  (yuv420p: lados pares)
+    ow, oh = min(par(vx1 - vx0), w), min(par(vy1 - vy0), h)
+    ox, oy = min(int(round(vx0)), w - ow), min(int(round(vy0)), h - oh)
+    pw, ph = w // FUNDO_REDUCAO, h // FUNDO_REDUCAO
+    yuv = "out_color_matrix=bt709:out_range=tv,format=yuv420p"
+    return (f"[{entrada}]split[{saida}_f][{saida}_b];"
+            f"[{saida}_b]scale={pw}:{ph}:force_original_aspect_ratio=increase:force_divisible_by=2:{yuv},"
+            f"crop={pw}:{ph},gblur=sigma={FUNDO_DESFOQUE},scale={w}:{h}:flags=bicubic[{saida}_bd];"
+            f"[{saida}_f]crop={sw}:{sh}:{sx}:{sy}:exact=1,scale={ow}:{oh}:flags=lanczos:{yuv}[{saida}_fc];"
+            f"[{saida}_bd][{saida}_fc]overlay=x={ox}:y={oy}:format=yuv420,setsar=1[{saida}]")
+
+
 def padronizar(midia: Path, destino: Path, quadros: int, movimento: str | None = None, de: float = 0.0,
-               tamanho: tuple[int, int] = (LARGURA, ALTURA)) -> dict:
+               tamanho: tuple[int, int] = (LARGURA, ALTURA), enquadre: dict | None = None) -> dict:
     """A mídia como clipe do `tamanho` do formato (1080×1920, o em pé) a 30 qps, com faixa de som, e
-    o trecho dele que enche o lugar.
+    o trecho dele que enche o lugar. Com `enquadre` (conferir_enquadre), no enquadramento à mão.
 
     Devolve {"foto", "quadros_no_arquivo", "velocidade", "fim", "congela"}: o lugar toca o arquivo
     de 0 a `fim` a `velocidade`, e isso dura exatamente `quadros` no vídeo."""
     midia, destino = Path(midia), Path(destino)
     largura, altura = tamanho
+    enquadre = conferir_enquadre(enquadre)
+    mw_mh = tamanho_exibido(midia, de) if enquadre else None
+
+    def enquadrar(entrada: str, saida: str, w: int, h: int) -> str:
+        if enquadre:
+            return _enquadrar_a_mao(entrada, saida, w, h, *mw_mh, enquadre)
+        return _enquadrar(entrada, saida, w, h)
+
     info = sondar(midia)
     if not info["imagem"]:
         raise ErroMontagem(f"{midia.name} não é foto nem vídeo")
@@ -469,7 +536,7 @@ def padronizar(midia: Path, destino: Path, quadros: int, movimento: str | None =
         z = {"zoom-in": f"1+{passo}", "zoom-out": f"{1 + extra:.5f}-{passo}", "parado": "1"}[movimento or "zoom-in"]
         # a foto é escalada ao DOBRO antes do zoompan, que posiciona o recorte em pixel inteiro: no
         # tamanho final o zoom andaria aos trancos
-        grafo = (f"[0:v]{_cor(midia)}null[m];{_enquadrar('m', 'q', 2 * largura, 2 * altura)};"
+        grafo = (f"[0:v]{_cor(midia)}null[m];{enquadrar('m', 'q', 2 * largura, 2 * altura)};"
                  f"[q]zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={quadros}"
                  f":s={largura}x{altura}:fps={FPS}[v]")
         _ffmpeg(["-i", str(midia), *mudo, "-filter_complex", grafo, "-map", "[v]", "-map", "1:a",
@@ -484,7 +551,7 @@ def padronizar(midia: Path, destino: Path, quadros: int, movimento: str | None =
     else:
         entrada += mudo
         mapa_som = ["-map", "1:a"]
-    grafo = f"[0:v]{_cor(midia)}fps={FPS}[m];{_enquadrar('m', 'v', largura, altura)}"
+    grafo = f"[0:v]{_cor(midia)}fps={FPS}[m];{enquadrar('m', 'v', largura, altura)}"
     base = [*entrada, "-filter_complex", grafo, "-map", "[v]", *mapa_som]
     if disponivel >= precisa + 0.5 / FPS:
         _ffmpeg([*base, "-frames:v", str(quadros), "-t", f"{precisa:.6f}", *CODIFICA, str(destino)], midia.name)
@@ -918,12 +985,15 @@ def aplicar(edit: Path, mudancas: list[dict] | None = None, so_dados: bool = Fal
             formato: str | None = None) -> dict:
     """Refaz só os lugares mudados (outra mídia, outro trecho do clipe) e, sem `so_dados`, o vídeo.
 
-    `mudancas` = [{vaga, midia?, de?}]; sem elas e sem `formato`, as do Salvar do editor
+    `mudancas` = [{vaga, midia?, de?, enquadre?}]; sem elas e sem `formato`, as do Salvar do editor
     (preview_edits.json, com o formato dele). A mídia é um caminho de arquivo ou `midia/<nome>` do
     projeto. `de` é de onde o clipe entra, em segundos: sem ele, uma mídia nova entra do começo e a
     mesma mídia fica no trecho de antes. A duração do lugar, a regra do clipe curto e o movimento da
-    foto são os do lugar. O que já foi pedido de volume da tomada fica. Um `formato` diferente do da
-    montagem refaz TODOS os lugares no quadro dele e leva os textos para o mesmo lugar relativo."""
+    foto são os do lugar. O que já foi pedido de volume da tomada fica. `enquadre` (conferir_enquadre) é
+    o enquadramento à mão, e None volta ao automático; sem ele, o lugar fica com o que tinha, a não ser
+    que a mídia ou o formato mudem (aí volta ao automático: a escala e o centro eram daquela mídia naquele
+    quadro). Um `formato` diferente do da montagem refaz TODOS os lugares no quadro dele e leva os
+    textos para o mesmo lugar relativo."""
     edit = Path(edit).resolve()
     edl_p = edit / "edl.json"
     edl = json.loads(edl_p.read_text(encoding="utf-8"))
@@ -947,7 +1017,7 @@ def aplicar(edit: Path, mudancas: list[dict] | None = None, so_dados: bool = Fal
     largura = 3 if len(ranges) > 99 else 2
     pasta = edit / "montagem"
     t0 = time.perf_counter()
-    pedidos = []  # tudo conferido antes do primeiro clipe: um pedido errado não deixa nada pela metade
+    pedidos, enquadres = [], {}  # tudo conferido antes do primeiro clipe: um pedido errado não deixa nada pela metade
     for m in mudancas:
         n = m.get("vaga")
         if isinstance(n, bool) or n not in por_vaga or n not in idx:
@@ -963,6 +1033,10 @@ def aplicar(edit: Path, mudancas: list[dict] | None = None, so_dados: bool = Fal
         de = float(m["de"]) if m.get("de") is not None else (0.0 if m.get("midia") else float(lg.get("de") or 0.0))
         if not math.isfinite(de) or de < 0:
             raise ErroMontagem(f"lugar {n}: o trecho começa em {de}?")
+        if "enquadre" in m:
+            enquadres[n] = conferir_enquadre(m["enquadre"])
+        else:
+            enquadres[n] = None if (m.get("midia") or formato != era) else conferir_enquadre(lg.get("enquadre"))
         pedidos.append((n, midia, de))
     # os clipes novos nascem ao lado (.novo.mp4); se um falhar, os outros somem e o projeto fica como estava
     prontos = []
@@ -972,7 +1046,7 @@ def aplicar(edit: Path, mudancas: list[dict] | None = None, so_dados: bool = Fal
             nome = f"v{n:0{largura}d}_{_slug(midia.stem, 24)}"
             novo = pasta / f"{nome}.novo.mp4"
             prontos.append((n, midia, de, quadros, nome, novo, None))
-            p = padronizar(midia, novo, quadros, por_vaga[n].get("movimento"), de, tamanho)
+            p = padronizar(midia, novo, quadros, por_vaga[n].get("movimento"), de, tamanho, enquadres[n])
             prontos[-1] = (n, midia, de, quadros, nome, novo, p)
     except BaseException:
         for *_, novo, _p in prontos:
@@ -992,10 +1066,16 @@ def aplicar(edit: Path, mudancas: list[dict] | None = None, so_dados: bool = Fal
         if p["velocidade"] != 1.0:
             r["velocidade"] = p["velocidade"]
         lg.update({"midia": _chave_midia(edit, midia), "de": de})
+        if enquadres[n]:
+            lg["enquadre"] = enquadres[n]
+        else:
+            lg.pop("enquadre", None)
         feitos.append({"vaga": n, "midia": midia.name, "de": de, "velocidade": p["velocidade"],
-                       "congela": p["congela"], "quadros_no_arquivo": p["quadros_no_arquivo"]})
+                       "congela": p["congela"], "quadros_no_arquivo": p["quadros_no_arquivo"],
+                       "enquadre": enquadres[n]})
         print(f"  lugar {n:>3}: {midia.name}" + (f" a partir de {de:g} s" if de else "") + f" → {quadros} quadros"
-              + (f", {p['velocidade']:.2f}×" if p["velocidade"] != 1.0 else ""), flush=True)
+              + (f", {p['velocidade']:.2f}×" if p["velocidade"] != 1.0 else "")
+              + (f", enquadrado à mão ({enquadres[n]['escala']:g}×)" if enquadres[n] else ""), flush=True)
     mont["formato"] = formato
     _grava_json(edl_p, edl)
     textos = _levar_textos(edit, era, formato) if formato != era else 0
@@ -1343,6 +1423,9 @@ def main() -> int:
     p.add_argument("--lugar", type=int, default=None, help="o número do lugar (sem ele: o preview_edits.json)")
     p.add_argument("--midia", default=None, help="a mídia nova do lugar (arquivo ou midia/<nome>)")
     p.add_argument("--de", type=float, default=None, help="de onde o clipe entra, em segundos")
+    p.add_argument("--enquadre", default=None,
+                   help='o enquadramento à mão do lugar: "escala,x,y" (escala 1 = a mídia inteira na tela, maior = '
+                        'mais perto; x e y = o centro dela, de 0 a 1) ou "auto" (o automático)')
     p.add_argument("--formato", choices=list(FORMATOS), default=None,
                    help="refaz a montagem inteira neste formato: em pé (9:16), deitado (16:9) ou quadrado (1:1)")
     p.add_argument("--so-dados", action="store_true", help="refaz os lugares sem renderizar")
@@ -1375,6 +1458,17 @@ def main() -> int:
             if a.lugar is not None:
                 mudancas = [{"vaga": a.lugar, **({"midia": a.midia} if a.midia else {}),
                              **({"de": a.de} if a.de is not None else {})}]
+                if a.enquadre is not None:
+                    if a.enquadre.strip().lower() == "auto":
+                        mudancas[0]["enquadre"] = None
+                    else:
+                        try:
+                            esc, x, y = (float(v) for v in a.enquadre.replace(" ", "").split(","))
+                        except ValueError:
+                            raise ErroMontagem('--enquadre: "escala,x,y" ou "auto"') from None
+                        mudancas[0]["enquadre"] = {"escala": esc, "x": x, "y": y}
+            elif a.enquadre is not None:
+                raise ErroMontagem("--enquadre vale para um lugar: use junto com --lugar N")
             elif a.formato is not None:  # só o formato: os lugares ficam como estão
                 mudancas = []
             r = aplicar(a.edit, mudancas, a.so_dados, formato=a.formato)

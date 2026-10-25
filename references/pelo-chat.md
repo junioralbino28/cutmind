@@ -64,6 +64,7 @@ fills a slot:
 | `lugar-trocar` | "põe a foto do bolo no lugar 3", "troca o 5 por aquele vídeo da praia" | `montagem.py aplicar <edit> --lugar 3 --midia <file>`: a file of the montage (`montagem.midias`), of `<edit>/midia/`, or any photo or video the user gives. It redoes only that slot (same length, the short-clip rule, the photo's movement), renders and checks the beat |
 | `lugar-trecho` | "no lugar 2, usa o pedaço dos 30 s do vídeo" | `montagem.py aplicar <edit> --lugar 2 --de 30`: the same clip, entering at 30 s |
 | `lugar-original` | "volta o lugar 3 como estava" | `--lugar 3 --midia <file> --de <s>` with the values `montagem.lugares` had before the change |
+| `lugar-caber`, `lugar-encher`, `lugar-auto`, `lugar-repetir` (and dragging the photo or its corner handle on the player) | "aproxima a foto do lugar 3", "mostra a foto 5 inteira", "puxa a foto do lugar 2 para a esquerda", "volta o enquadramento automático" | `montagem.py aplicar <edit> --lugar 3 --enquadre escala,x,y` (escala 1 = the whole media fits the frame, bigger = closer, up to 6; x and y = where its centre sits, 0 to 1 of the frame) or `--enquadre auto`. The current one is `montagem.lugares[i].enquadre`; without it the slot uses the automatic rule. To fill the frame, escala = max(W/w, H/h) / min(W/w, H/h) of the media w×h in the frame W×H. A new media or a new format resets it. For "igual nas outras", the same `--enquadre` on each slot with that media |
 | `formato` | "deixa o vídeo deitado", "faz uma versão quadrada", "volta para vertical" | `montagem.py aplicar <edit> --formato 16:9` (or `1:1`, `9:16`): every slot is redone in the new frame (1920×1080, 1080×1080 or 1080×1920; the timing stays), a photo or clip whose shape is far from the frame goes in whole over a blurred copy of itself, and each text layer moves to the same relative spot. It renders and checks the beat. `montagem.formato` in `edl.json` says the current one |
 | `volume` (on a slot) | "o som do clipe 4 mais baixo" | only with the clips' sound on (`camadas.json` `video.mudo: false`): `ranges[i].volume` as on any take, keeping `vaga`; then `render.py <edit>/edl.json -o <edit>/cut.mp4 --no-subtitles` and `mixar_final.py <edit> --render <edit>/cut.mp4 --imagem corte` |
 
@@ -74,7 +75,8 @@ as in the layers table below. After changing layers or effects in a montage, run
 the montage's Remotion project (`<edit>/remotion/`, set up on first use) and checks the beat again.
 
 The editor's Salvar sends the same thing as `montagem.lugares` (`[{vaga, midia?, de?}]`, only
-the slots that changed) and, from the Formato tool, `montagem.formato`; the watcher says to run
+the slots that changed, with `enquadre` when the photo was framed by hand: `{escala, x, y}`, or null for
+the automatic one) and, from the Formato tool, `montagem.formato`; the watcher says to run
 `montagem.py aplicar <edit>`, which reads both (and renders the layers saved with it). Proven by `tests/test_montagem.py` (only the asked slots are redone, a failure in the
 middle leaves the project as it was, the beat is checked again) and
 `tests/test_preview_montagem.py` (what the editor may open and send).

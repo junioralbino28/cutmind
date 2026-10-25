@@ -174,9 +174,9 @@ let FRAME_W = 1080;
 let FRAME_H = 1920;
 // os formatos de uma montagem (montagem.FORMATOS): em pé, deitado e quadrado
 const FORMATOS = {
-  '9:16': { nome: 'Em pé', uso: 'Reels, TikTok, Shorts', w: 9, h: 16 },
-  '16:9': { nome: 'Deitado', uso: 'YouTube, TV', w: 16, h: 9 },
-  '1:1': { nome: 'Quadrado', uso: 'Feed', w: 1, h: 1 },
+  '9:16': { nome: 'Em pé', uso: 'Reels, TikTok, Shorts', w: 9, h: 16, px: [1080, 1920] },
+  '16:9': { nome: 'Deitado', uso: 'YouTube, TV', w: 16, h: 9, px: [1920, 1080] },
+  '1:1': { nome: 'Quadrado', uso: 'Feed', w: 1, h: 1, px: [1080, 1080] },
 };
 const SPLIT_GEOM = {
   split: { band: 'top', bandH: 750, zoom: 1.25, focusY: 400, capPB: 1074 },
@@ -627,15 +627,24 @@ const insertsDirty = () => S.insertsDraft.some(insMudou);
 const emLugar = (r) => !!(S.montagem && r && r.vaga != null);
 const lugarDe = (r) => (S.montagem && r ? S.montagem.lugares.find((lg) => lg.vaga === r.vaga) : null) || null;
 const nomeArq = (p) => String(p || '').split(/[\\/]/).pop();
-const trocaKey = (r) => (r.troca ? `${r.troca.midia || ''}|${r.troca.de ?? ''}` : '');
+const trocaKey = (r) => (r.troca ? `${r.troca.midia || ''}|${r.troca.de ?? ''}|${'enq' in r.troca ? JSON.stringify(r.troca.enq) : ''}` : '');
 const opcaoDe = (midia) => (S.montMidias || []).find((m) => m.midia === midia) || null;
 // a mídia e o trecho que o lugar vai ter: o pedido por salvar, ou o que está no vídeo
 function lugarAgora(r) {
   const lg = lugarDe(r) || {};
   const t = r.troca || {};
   const midia = t.midia || lg.midia || '';
-  return { midia, nome: nomeArq(midia), de: t.de != null ? t.de : t.midia ? 0 : +(lg.de || 0) };
+  return { midia, nome: nomeArq(midia), de: t.de != null ? t.de : t.midia ? 0 : +(lg.de || 0), enq: enqDoLugar(r) };
 }
+// o enquadramento à mão do lugar ({escala, x, y}) ou null (o automático): o pedido por salvar vale; mídia
+// nova ou formato novo voltam ao automático (a escala e o centro eram daquela mídia naquele quadro)
+function enqDoLugar(r) {
+  const t = r.troca || {};
+  if ('enq' in t) return t.enq;
+  if (t.midia || formatoPrevia()) return null;
+  return (lugarDe(r) || {}).enquadre || null;
+}
+const mesmoEnq = (a, b) => JSON.stringify(a || null) === JSON.stringify(b || null);
 // o que vai no Salvar para um lugar; o lugar que voltou a ser como está diz isso (por cima de um Salvar anterior)
 function pedidoDoLugar(r) {
   const lg = lugarDe(r) || {};
@@ -643,7 +652,12 @@ function pedidoDoLugar(r) {
   const p = { vaga: r.vaga };
   if (a.midia !== lg.midia) p.midia = a.midia;
   if (p.midia || Math.abs(a.de - +(lg.de || 0)) > 0.0005) p.de = +a.de.toFixed(3);
-  if (p.midia == null && p.de == null) { p.midia = lg.midia; p.de = +(+(lg.de || 0)).toFixed(3); }
+  if (r.troca && 'enq' in r.troca && !mesmoEnq(a.enq, lg.enquadre)) p.enquadre = a.enq;
+  if (p.midia == null && p.de == null && !('enquadre' in p)) {
+    p.midia = lg.midia;
+    p.de = +(+(lg.de || 0)).toFixed(3);
+    if (r.troca && 'enq' in r.troca) p.enquadre = lg.enquadre || null;
+  }
   return p;
 }
 function avisaLugar() {
@@ -781,7 +795,7 @@ function restore(s) {
   S.legSel = !!(S.legenda && s.legSel);
   if (s.vel) S.vel = s.vel;
   if ('melhorar' in s) S.melhorar = s.melhorar;
-  if (s.formato) S.formato = s.formato;
+  if (s.formato && s.formato !== S.formato) { S.formato = s.formato; aplicaQuadro(); }
   S.faixa = s.faixa && S.view === 'final' ? s.faixa : null;
   drawCenaBox();
   applyMute();
@@ -890,6 +904,7 @@ async function applyState(data) {
   S.formatoAtual = (S.montagem && FORMATOS[S.montagem.formato] && S.montagem.formato) || '9:16';
   S.formatoPendente = (S.montagem && FORMATOS[data.formatoPendente] && data.formatoPendente) || null;
   S.formato = S.formatoPendente || S.formatoAtual;
+  aplicaQuadro();
   carregaMontMidias().then(() => { if (S.selected >= 0) renderToolbar(); }); // o Trecho precisa saber quem é clipe
   S.draft = S.rendered.map((r, i) => ({ ...r, uid: `o${i}`, from: i, orig: { start: r.start, end: r.end } }));
   // os lugares já salvos que o agente ainda não refez seguem marcados com a mídia nova (não contam
@@ -901,7 +916,8 @@ async function applyState(data) {
     const t = {};
     if (p.midia && p.midia !== lg.midia) { t.midia = p.midia; t.nome = nomeArq(p.midia); }
     if (p.de != null && (t.midia || Math.abs(p.de - +(lg.de || 0)) > 0.0005)) t.de = +p.de;
-    if (t.midia || t.de != null) r.troca = t;
+    if ('enquadre' in p && !mesmoEnq(p.enquadre, lg.enquadre)) t.enq = p.enquadre;
+    if (t.midia || t.de != null || 'enq' in t) r.troca = t;
   }
   S.base = baseOf(S.draft);
   S.melhorar = null;
@@ -997,20 +1013,31 @@ async function loadThumbsMeta() {
 }
 video.addEventListener('loadedmetadata', () => {
   if (!video.videoWidth || !video.videoHeight) return;
-  player.style.setProperty('--ar', `${video.videoWidth} / ${video.videoHeight}`);
-  player.style.setProperty('--arn', (video.videoWidth / video.videoHeight).toFixed(6));
-  const menor = Math.min(video.videoWidth, video.videoHeight);
-  FRAME_W = Math.round((1080 * video.videoWidth) / menor);
-  FRAME_H = Math.round((1080 * video.videoHeight) / menor);
-  // a coluna da prévia ao lado da linha do tempo tem a largura do vídeo na altura da tela
-  const raiz = document.documentElement, emPe = video.videoWidth < video.videoHeight;
-  raiz.style.setProperty('--arn-v', (video.videoWidth / video.videoHeight).toFixed(6));
+  aplicaQuadro();
+  if (S.draft.length) renderTimeline(); // a largura dos quadros da tira depende da proporção
+});
+// o quadro do player: o do vídeo, ou, na prévia de outro formato da montagem, o do formato escolhido
+function aplicaQuadro() {
+  let w, h;
+  if (formatoPrevia()) [w, h] = FORMATOS[S.formato].px;
+  else if (video.videoWidth && video.videoHeight) {
+    const menor = Math.min(video.videoWidth, video.videoHeight);
+    w = Math.round((1080 * video.videoWidth) / menor);
+    h = Math.round((1080 * video.videoHeight) / menor);
+  } else return;
+  FRAME_W = w;
+  FRAME_H = h;
+  player.style.setProperty('--ar', `${w} / ${h}`);
+  player.style.setProperty('--arn', (w / h).toFixed(6));
+  // a coluna da prévia ao lado da linha do tempo tem a largura do quadro na altura da tela
+  const raiz = document.documentElement, emPe = w < h;
+  raiz.style.setProperty('--arn-v', (w / h).toFixed(6));
   if (raiz.classList.contains('em-pe') !== emPe) {
     raiz.classList.toggle('em-pe', emPe);
     if (S.fitted) fitZoom(); // a linha do tempo mudou de largura
   }
-  if (S.draft.length) renderTimeline(); // a largura dos quadros da tira depende da proporção
-});
+  if (formatoPrevia()) preCarregaQuadros(); // o laço do player (syncLayers) desenha a cada quadro
+}
 
 // ---------- linha do tempo ----------
 const half = () => timeline.clientWidth / 2;
@@ -2213,7 +2240,10 @@ const DICA = { volume: 'Volume', velocidade: 'Velocidade e curva', intensidade: 
   'lugar-trocar': 'Outra foto ou vídeo neste lugar, com a mesma duração', 'lugar-trecho': 'Que parte do clipe entra neste lugar',
   'lugar-original': 'O lugar volta à mídia e ao trecho do vídeo',
   'modelos-montagem': 'Os modelos de montagem: o ritmo, a música e as fotos e clipes; ou guardar esta montagem como modelo',
-  formato: 'O formato do vídeo: em pé, deitado ou quadrado' };
+  formato: 'O formato do vídeo: em pé, deitado ou quadrado',
+  'lugar-caber': 'A foto ou o clipe inteiro na tela (arraste a mídia e a bolinha do canto para ajustar à mão)',
+  'lugar-encher': 'A foto ou o clipe cobrindo a tela inteira', 'lugar-auto': 'O enquadramento automático do lugar',
+  'lugar-repetir': 'O mesmo enquadramento nos outros lugares com esta mídia' };
 function renderToolbar() {
   const tb = $('toolbar');
   const ctx = $('ctxbar');
@@ -2373,6 +2403,11 @@ function renderToolbar() {
     // o volume do clipe só vale com o som dos clipes ligado (o da faixa de vídeo)
     if (!S.camadas.video.mudo) tool(ctx, 'volume', `${Math.round(sel.vol * 100)}%`);
     tool(ctx, 'ouvir', 'Ouvir');
+    tool(ctx, 'lugar-caber', 'Caber', { icon: ICON.formato });
+    tool(ctx, 'lugar-encher', 'Encher', { icon: ICON.formato });
+    tool(ctx, 'lugar-auto', 'Automático', { icon: ICON.formato, disabled: !enqDoLugar(sel) });
+    const outras = outrasVezes(sel).length;
+    tool(ctx, 'lugar-repetir', outras ? `Repetir (${outras})` : 'Repetir', { icon: ICON.formato, disabled: !outras });
     tool(ctx, 'lugar-original', 'Original', { icon: ICON.original, disabled: !sel.troca });
     return;
   }
@@ -2422,6 +2457,10 @@ document.addEventListener('click', (e) => {
     case 'imp-audio': S.importMenu = false; renderToolbar(); $(montagemSemVideo() ? 'fileMontMusica' : 'fileAudio').click(); break;
     case 'modelos-montagem': if (MT.aberto) fechaMontagem(); else abreMontagem(); break;
     case 'formato': openFormato(); break;
+    case 'lugar-caber': enqRapido('caber'); break;
+    case 'lugar-encher': enqRapido('encher'); break;
+    case 'lugar-auto': enqRapido('auto'); break;
+    case 'lugar-repetir': enqNasOutras(); break;
     case 'audio': S.audioMenu = true; S.importMenu = false; S.fxMenu = false; S.textMenu = false; renderToolbar(); break;
     case 'trilhas': S.audioMenu = false; renderToolbar(); openTrilhas(); break;
     case 'do-celular': S.audioMenu = false; renderToolbar(); $('fileAudio').click(); break;
@@ -2993,17 +3032,24 @@ function openFormato() {
   const pend = S.formatoPendente && S.formatoPendente !== S.formatoAtual ? FORMATOS[S.formatoPendente] : null;
   el('p', 'sheet-hint', box).textContent = pend && S.formato === S.formatoPendente
     ? `${pend.nome} já foi salvo: o agente está refazendo o vídeo nesse formato.`
-    : 'Ao salvar, o agente refaz o vídeo no formato escolhido. A foto ou o clipe de outro formato entra '
-      + 'inteiro, sobre um fundo desfocado dele mesmo; os textos vão para o mesmo lugar da tela.';
+    : 'Escolha e veja a prévia no player, sem esperar. Ao salvar, o agente faz o vídeo nesse formato. A foto ou '
+      + 'o clipe de outro formato entra inteiro, sobre um fundo desfocado dele mesmo; os textos vão para o mesmo lugar da tela.';
   gradeDeFormatos(box, S.formato, (k) => {
     showSheet($('formatoSheet'), false);
     if (k === S.formato) return;
     remember();
+    for (const r of S.draft) { // os ajustes à mão por salvar eram do quadro de antes
+      if (!r.troca || !('enq' in r.troca)) continue;
+      const t = { ...r.troca };
+      delete t.enq;
+      r.troca = Object.keys(t).length ? t : null;
+    }
     S.formato = k;
+    aplicaQuadro();
     renderToolbar(); refreshHeader();
     const f = FORMATOS[k];
     toast(k === (S.formatoPendente || S.formatoAtual) ? `${f.nome} (${k}): o vídeo fica como está.`
-      : `${f.nome} (${k}). Salve: o agente refaz o vídeo nesse formato.`, 3200);
+      : `Prévia: ${f.nome} (${k}). Toque o vídeo para ver; salve para o agente fazer nesse formato.`, 3600);
   });
   showSheet($('formatoSheet'), true);
 }
@@ -5740,8 +5786,13 @@ function desenhaTextos() {
       if (f.tipo !== 'texto' || f.oculto) continue;
       for (const it of f.itens) {
         if (!(rt >= it.inicio && rt < it.inicio + it.duracao) || !String(it.texto).trim()) continue;
+        if (formatoPrevia()) { // na prévia do formato, o texto vai ao lugar relativo do quadro novo e só se vê
+          lista.push({ it: { ...it, ...levarPonto(it.x, it.y, S.formatoAtual, S.formato) }, sel: false, fantasma: false,
+            d: [0, 0], trav: true });
+          continue;
+        }
         const sel = it.id === S.layerSel;
-        const noFinal = S.view === 'final' && textoJaNoFinal(it);
+        const noFinal = S.view === 'final' && !S.quadroCobre && textoJaNoFinal(it);
         if (noFinal && !sel) continue; // o vídeo final já mostra este texto
         lista.push({ it, sel, fantasma: noFinal, d: segueDesloc(it, rt), trav: f.travado });
       }
@@ -5838,6 +5889,7 @@ function textoEmpurra(dx, dy) {
 // tocar no que já estava escolhido abre o painel, como no CapCut
 const txDrag = { id: null };
 $('ovTextos').addEventListener('pointerdown', (e) => {
+  if (formatoPrevia()) { toast('Na prévia do formato os textos só aparecem. Salve o formato para mexer neles.', 3200); return; }
   const bola = e.target.closest('[data-tam]');
   if (bola) { comecaTamanho(e, bola.dataset.tam); return; }
   const alvo = e.target.closest('[data-tx]');
@@ -6931,6 +6983,169 @@ function audioEl(it) {
   return a;
 }
 let ovShown = '';
+/* Prévia do formato da montagem: o player toma o quadro do formato escolhido e cada lugar é desenhado
+ * aqui, com um quadro da mídia original, pela mesma regra do montagem.py (_enquadrar): a mídia com
+ * proporção a menos de 16/9 vezes da tela enche; mais longe, entra inteira sobre ela mesma desfocada
+ * (o mesmo desfoque). A foto ganha o zoom do lugar. O clipe aparece parado no quadro em
+ * que entra. É só para ver: o vídeo de verdade sai quando o agente refaz, no Salvar. */
+const formatoPrevia = () => !!(S.montagem && S.formato && FORMATOS[S.formato] && S.formato !== S.formatoAtual);
+// o mesmo levar_ponto do montagem.py: o ponto no mesmo lugar relativo do outro quadro, com duas casas
+function levarPonto(x, y, de, para) {
+  const [w0, h0] = FORMATOS[de].px, [w1, h1] = FORMATOS[para].px;
+  const r2 = (v) => Math.round(v * 100) / 100;
+  return { x: r2(Math.min(2160, Math.max(-1080, (x * w1) / w0))), y: r2(Math.min(3840, Math.max(-1920, (y * h1) / h0))) };
+}
+const ehFoto = (m) => /\.(jpe?g|png|webp|bmp|tiff?)$/i.test(String(m || ''));
+// a mídia e o trecho de um lugar: a troca ainda não feita vale
+function midiaDoLugar(r) {
+  const lg = lugarDe(r);
+  if (!lg) return null;
+  const t = r.troca || {};
+  const midia = t.midia || lg.midia;
+  const de = t.de != null ? +t.de : t.midia ? 0 : +(lg.de || 0);
+  return { midia, de, foto: ehFoto(midia), movimento: lg.movimento || 'zoom-in' };
+}
+const quadroDoLugar = (m) => quadroDaMidia(m.midia, m.foto ? 0 : m.de, 720);
+const OQ = { cache: new Map(), geo: null };
+// o automático do montagem.py (_enquadrar) como escala de caber: enche quando a proporção está a menos de
+// 16/9 vezes da tela, senão cabe inteira
+function enqAuto(mw, mh, W, H) {
+  const r0 = (mw / mh) / (W / H);
+  return r0 < 16 / 9 && 1 / r0 < 16 / 9 ? Math.max(W / mw, H / mh) / Math.min(W / mw, H / mh) : 1;
+}
+function preCarregaQuadros() {
+  for (const r of S.draft) {
+    const m = r.vaga != null && midiaDoLugar(r);
+    if (!m) continue;
+    const src = quadroDoLugar(m);
+    if (OQ.cache.has(src)) continue;
+    const im = new Image();
+    im.src = src;
+    OQ.cache.set(src, im);
+  }
+}
+function syncQuadro() {
+  const box = $('ovQuadro');
+  const dl = draftLayout();
+  const k = itemAt(dl, S.t);
+  const r = k >= 0 ? S.draft[k] : null;
+  const escolhido = !!(r && r.vaga != null && S.view === 'corte' && S.selected === k);
+  const mudou = !!(r && r.troca && 'enq' in r.troca);
+  const m = r && r.vaga != null && (formatoPrevia() || escolhido || mudou) ? midiaDoLugar(r) : null;
+  const im = m && OQ.cache.get(quadroDoLugar(m));
+  const pronto = !!(im && im.complete && im.naturalWidth);
+  box.classList.toggle('hidden', !m);
+  S.quadroCobre = !!m;
+  OQ.geo = null;
+  $('oqCaixa').classList.add('hidden');
+  const selo = m && formatoPrevia() ? `Prévia · ${FORMATOS[S.formato].nome} (${S.formato})` : m && mudou ? 'Prévia do enquadramento' : '';
+  if ($('oqSelo').textContent !== selo) $('oqSelo').textContent = selo;
+  if (!m) return;
+  if (!pronto) { if (im) return; preCarregaQuadros(); return; }
+  const img = $('oqImg'), fundo = $('oqFundo');
+  if (img.dataset.src !== im.src) {
+    img.src = im.src;
+    img.dataset.src = im.src;
+    fundo.style.backgroundImage = `url("${im.src}")`;
+  }
+  const W = FRAME_W, H = FRAME_H, mw = im.naturalWidth, mh = im.naturalHeight;
+  // o enquadre do lugar, ou o automático escrito como um: a escala é em relação a caber inteira
+  const caber = Math.min(W / mw, H / mh);
+  const enq = enqDoLugar(r) || { escala: enqAuto(mw, mh, W, H), x: 0.5, y: 0.5 };
+  const kk = caber * enq.escala;
+  const dw = mw * kk, dh = mh * kk, x0 = enq.x * W - dw / 2, y0 = enq.y * H - dh / 2;
+  Object.assign(img.style, { left: pct(x0 / W), top: pct(y0 / H), width: pct(dw / W), height: pct(dh / H) });
+  OQ.geo = { vaga: r.vaga, W, H, mw, mh, enq, cobrir: Math.max(W / mw, H / mh) / caber };
+  if (escolhido) { // a moldura: a parte da mídia que fica na tela, com a bolinha no canto
+    const vx0 = Math.max(0, x0), vy0 = Math.max(0, y0), vx1 = Math.min(W, x0 + dw), vy1 = Math.min(H, y0 + dh);
+    Object.assign($('oqCaixa').style, { left: pct(vx0 / W), top: pct(vy0 / H), width: pct((vx1 - vx0) / W), height: pct((vy1 - vy0) / H) });
+    $('oqCaixa').classList.remove('hidden');
+  }
+  // o desfoque do montagem.py: 12 px no fundo feito em 1/4; a foto é montada no dobro do quadro (para o
+  // zoom andar liso), então no quadro final o dela é metade do do clipe
+  const P = player.getBoundingClientRect();
+  fundo.style.filter = `blur(${(((m.foto ? 24 : 48) * P.width) / W).toFixed(2)}px)`;
+  // o zoom da foto: o do montagem.py, 4% por segundo até 10%, no lugar inteiro
+  let z = 1;
+  const d = dl[k];
+  if (m.foto && d && d.dur > 0 && !escolhido) { // escolhido, fica parado para o ajuste ser exato
+    const extra = Math.min(0.10, 0.04 * d.dur), p = Math.max(0, Math.min(1, (S.t - d.out) / d.dur));
+    z = m.movimento === 'parado' ? 1 : m.movimento === 'zoom-out' ? 1 + extra - extra * p : 1 + extra * p;
+  }
+  $('oqCena').style.transform = `scale(${z.toFixed(5)})`;
+}
+function poeEnq(r, enq) {
+  const lg = lugarDe(r) || {};
+  const t = { ...(r.troca || {}) };
+  const salvo = t.midia || formatoPrevia() ? null : lg.enquadre || null;
+  if (mesmoEnq(enq, salvo)) delete t.enq; else t.enq = enq;
+  r.troca = Object.keys(t).length ? t : null;
+}
+const oqDrag = { id: null };
+$('oqCaixa').addEventListener('pointerdown', (e) => {
+  const r = S.draft[S.selected], g = OQ.geo;
+  if (!r || !g || g.vaga !== r.vaga) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const P = player.getBoundingClientRect();
+  const cx = P.left + g.enq.x * P.width, cy = P.top + g.enq.y * P.height;
+  Object.assign(oqDrag, { id: e.pointerId, r, P, modo: e.target.closest('[data-oq-tam]') ? 'tam' : 'mover', x0: e.clientX,
+    y0: e.clientY, cx, cy, d0: Math.max(6, Math.hypot(e.clientX - cx, e.clientY - cy)), e0: { ...g.enq }, cobrir: g.cobrir,
+    before: snap(), mudou: false });
+  video.pause();
+  window.addEventListener('pointermove', oqMove);
+  window.addEventListener('pointerup', oqFim);
+  window.addEventListener('pointercancel', oqFim);
+});
+function oqMove(e) {
+  if (e.pointerId !== oqDrag.id) return;
+  const d = oqDrag, r4 = (v) => Math.round(v * 10000) / 10000;
+  let { escala, x, y } = d.e0;
+  if (d.modo === 'tam') { // longe do centro aumenta; gruda em caber inteira e em encher a tela
+    escala = Math.max(0.25, Math.min(6, d.e0.escala * (Math.hypot(e.clientX - d.cx, e.clientY - d.cy) / d.d0)));
+    for (const alvo of [1, d.cobrir]) if (Math.abs(escala / alvo - 1) < 0.04) escala = alvo;
+  } else { // o centro anda com o dedo; perto do meio, encaixa no meio
+    x = Math.max(0, Math.min(1, d.e0.x + (e.clientX - d.x0) / d.P.width));
+    y = Math.max(0, Math.min(1, d.e0.y + (e.clientY - d.y0) / d.P.height));
+    if (Math.abs(x - 0.5) < 0.015) x = 0.5;
+    if (Math.abs(y - 0.5) < 0.015) y = 0.5;
+  }
+  d.mudou = true;
+  poeEnq(d.r, { escala: r4(escala), x: r4(x), y: r4(y) });
+}
+function oqFim(e) {
+  if (e.pointerId !== oqDrag.id) return;
+  window.removeEventListener('pointermove', oqMove);
+  window.removeEventListener('pointerup', oqFim);
+  window.removeEventListener('pointercancel', oqFim);
+  oqDrag.id = null;
+  tapGuard.until = performance.now() + 400; // arrastar a foto não dá play
+  if (!oqDrag.mudou) return;
+  remember(oqDrag.before);
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+// Caber (inteira), Encher (cobre a tela), Automático (a regra do montagem.py) e o mesmo nas outras vezes da mídia
+function enqRapido(qual) {
+  const r = S.draft[S.selected], g = OQ.geo;
+  if (!r || r.vaga == null) return;
+  if (qual !== 'auto' && !(g && g.vaga === r.vaga)) { toast('Ponha a agulha neste lugar para ver o enquadramento.', 2600); return; }
+  remember();
+  if (qual === 'auto') poeEnq(r, null);
+  else poeEnq(r, { escala: qual === 'caber' ? 1 : Math.round(g.cobrir * 10000) / 10000, x: 0.5, y: 0.5 });
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+const outrasVezes = (r) => S.draft.filter((o) => o !== r && o.vaga != null && (lugarAgora(o).midia === lugarAgora(r).midia));
+function enqNasOutras() {
+  const r = S.draft[S.selected];
+  if (!r || r.vaga == null) return;
+  const outras = outrasVezes(r);
+  if (!outras.length) return;
+  remember();
+  const enq = enqDoLugar(r);
+  for (const o of outras) poeEnq(o, enq ? { ...enq } : null);
+  toast(`O mesmo enquadramento em mais ${outras.length} ${outras.length === 1 ? 'lugar' : 'lugares'} com esta mídia.`, 2600);
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
 function syncLayers() {
   const corte = S.view === 'corte';
   const playing = !video.paused && !video.ended && !G.mode;
@@ -6964,6 +7179,7 @@ function syncLayers() {
     ov.classList.toggle('hidden', !img);
   }
   $('ovImg').classList.toggle('atras', imgAtras); // o cartão grande de trás, no lugar dele no vídeo final
+  syncQuadro();
   desenhaTextos();
   desenhaLegendaPrevia(false);
 }

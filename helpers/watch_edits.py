@@ -258,6 +258,11 @@ def montagem_linhas(lugares: list[dict], tomadas_mudaram: bool, formato: str | N
             oque.append(f"troca para {Path(str(x['midia'])).name}")
         if x.get("de") is not None:
             oque.append(f"trecho a partir de {float(x['de']):g} s")
+        if "enquadre" in x:
+            e = x["enquadre"]
+            oque.append("enquadramento automático" if not e else
+                        f"enquadrado à mão: {float(e['escala']):g}× de caber inteira, centro em "
+                        f"{float(e['x']) * 100:.0f}% × {float(e['y']) * 100:.0f}% da tela")
         linhas.append(f"  · lugar {x.get('vaga')}: " + "; ".join(oque))
     return linhas
 

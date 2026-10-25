@@ -361,7 +361,7 @@ class MontagemInvalida(ValueError):
 
 
 def conferir_montagem(root: Path, pasta_videos: Path, pedido: object) -> dict:
-    """O que o editor pede para uma montagem (montagem.py): os lugares, [{vaga, midia?, de?}], e o
+    """O que o editor pede para uma montagem (montagem.py): os lugares, [{vaga, midia?, de?, enquadre?}], e o
     `formato` do vídeo (um de montagem.FORMATOS). Só lugares que existem; a mídia é uma foto ou vídeo
     de midia/, um original da própria montagem ou um vídeo enviado para a pasta dos vídeos; `de` é um
     tempo de verdade. O lugar que não muda nada sai; o formato vai como veio (um Salvar de volta ao
@@ -391,6 +391,11 @@ def conferir_montagem(root: Path, pasta_videos: Path, pedido: object) -> dict:
             if isinstance(de, bool) or not isinstance(de, (int, float)) or not 0 <= de <= cam.MAX_T:
                 raise MontagemInvalida(f"lugar {v}: o trecho começa em {de!r}?")
             x["de"] = round(float(de), 3)
+        if "enquadre" in it:  # o enquadramento à mão; null volta ao automático
+            try:
+                x["enquadre"] = mt.conferir_enquadre(it["enquadre"])
+            except mt.ErroMontagem as e:
+                raise MontagemInvalida(f"lugar {v}: {e}") from None
         if len(x) > 1:
             saida.append(x)
     out = {"lugares": saida}
@@ -581,12 +586,17 @@ def juntar_salvamentos(velho: dict, novo: dict) -> dict:
         # uma montagem nova (Usar um modelo) refaz tudo: os lugares da montagem de antes não valem mais
         out["montagem"] = {"usar": m_novo.get("usar") or m_velho["usar"]}
     elif m_velho or m_novo:
-        # os lugares da montagem somam pelo número; uma mídia nova sem `de` entra do começo
+        # os lugares da montagem somam pelo número; uma mídia nova sem `de` entra do começo, e sem
+        # `enquadre`, no automático
         por_vaga = {x["vaga"]: dict(x) for x in m_velho.get("lugares") or []}
+        if m_novo.get("formato") and m_novo.get("formato") != m_velho.get("formato"):
+            # o enquadre salvo antes era do quadro de antes: com outro formato, volta ao automático
+            for x in por_vaga.values():
+                x.pop("enquadre", None)
         for x in m_novo.get("lugares") or []:
             base = por_vaga.get(x["vaga"], {})
-            if "midia" in x and "de" not in x:
-                base = {k: w for k, w in base.items() if k != "de"}
+            if "midia" in x:
+                base = {k: w for k, w in base.items() if k not in ("de", "enquadre") or k in x}
             por_vaga[x["vaga"]] = {**base, **x}
         out["montagem"] = {"lugares": [por_vaga[k] for k in sorted(por_vaga)]}
         if m_novo.get("formato") or m_velho.get("formato"):  # o formato do Salvar mais novo vale

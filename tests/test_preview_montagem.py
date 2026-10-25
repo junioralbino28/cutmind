@@ -258,3 +258,35 @@ def test_miniatura_da_foto_sem_o_marcador_de_fim(srv):
     foto.write_bytes(foto.read_bytes()[:-2])  # sem o FF D9 do fim
     r, dados = pedir(srv.port, f"/gen/montagem-quadro?midia={q('midia/cortada.jpg')}&t=0.00&h=240")
     assert r.status == 200 and r.getheader("Content-Type") == "image/jpeg" and dados[:2] == b"\xff\xd8"
+
+
+def test_salvar_o_enquadre_de_um_lugar(srv):
+    ler = lambda: json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))["montagem"]  # noqa: E731
+    e = {"escala": 1.5, "x": 0.4, "y": 0.6}
+    r, dados = _post(srv.port, "/api/save", {"montagem": {"lugares": [{"vaga": 1, "enquadre": e}]}})
+    assert r.status == 200, dados
+    assert ler() == {"lugares": [{"vaga": 1, "enquadre": e}]}
+    # outra mídia depois, no mesmo lugar e antes de o agente refazer: o enquadre era da mídia de antes
+    assert _post(srv.port, "/api/save", {"montagem": {"lugares": [{"vaga": 1, "midia": "midia/nova.png"}]}})[0].status == 200
+    assert ler() == {"lugares": [{"vaga": 1, "midia": "midia/nova.png"}]}
+    # de volta ao automático vai como null
+    assert _post(srv.port, "/api/save", {"montagem": {"lugares": [{"vaga": 2, "enquadre": None}]}})[0].status == 200
+    assert {x["vaga"]: x for x in ler()["lugares"]}[2] == {"vaga": 2, "enquadre": None}
+    # formato novo: o enquadre salvo antes era do quadro de antes
+    assert _post(srv.port, "/api/save", {"montagem": {"lugares": [{"vaga": 2, "enquadre": e}]}})[0].status == 200
+    assert _post(srv.port, "/api/save", {"montagem": {"lugares": [], "formato": "16:9"}})[0].status == 200
+    assert all("enquadre" not in x for x in ler()["lugares"]) and ler()["formato"] == "16:9"
+    for ruim in ({"escala": 9, "x": 0.5, "y": 0.5}, {"escala": 1, "x": -1, "y": 0.5}, "perto", {"escala": 1}):
+        assert _post(srv.port, "/api/save", {"montagem": {"lugares": [{"vaga": 1, "enquadre": ruim}]}})[0].status == 400, ruim
+
+
+def test_o_aviso_ao_agente_diz_o_enquadre(tmp_path):
+    import watch_edits as we
+
+    (tmp_path / "edl.json").write_text(json.dumps({"montagem": {"lugares": []}}), encoding="utf-8")
+    p = tmp_path / "preview_edits.json"
+    p.write_text(json.dumps({"montagem": {"lugares": [{"vaga": 3, "enquadre": {"escala": 1.25, "x": 0.4, "y": 0.5}},
+                                                      {"vaga": 4, "enquadre": None}]}}), encoding="utf-8")
+    txt = we.digest(p)
+    assert "lugar 3: enquadrado à mão: 1.25× de caber inteira, centro em 40% × 50% da tela" in txt
+    assert "lugar 4: enquadramento automático" in txt

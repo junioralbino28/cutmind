@@ -54,6 +54,10 @@
       <div class="win"><video class="media" id="video" playsinline webkit-playsinline preload="auto"></video>
         <!-- filtro e transição debaixo da agulha, pelo mesmo motor do vídeo final (assets/efeitos/motor.js) -->
         <canvas class="media fx-canvas hidden" id="fxCanvas"></canvas></div>
+      <!-- prévia de outro formato da montagem: o lugar da agulha no quadro novo, sem render -->
+      <div class="ov-quadro hidden" id="ovQuadro"><div class="oq-cena" id="oqCena"><div class="oq-fundo" id="oqFundo"></div>
+        <img class="oq-img" id="oqImg" alt=""></div><span class="oq-selo" id="oqSelo"></span>
+        <div class="oq-caixa hidden" id="oqCaixa"><span class="ov-tx-tam" data-oq-tam></span></div></div>
       <div class="band" id="ovBand"></div>
       <div class="hl" id="ovHl"></div>
       <div class="cap" id="ovCap"></div>

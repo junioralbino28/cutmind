@@ -319,6 +319,39 @@ def test_cada_formato_enquadra_pela_proporcao_da_midia(tmp_path, formato, midia,
     assert {p: _cor(q[p]) for p in pontos} == pontos
 
 
+def test_enquadre_a_mao_poe_a_midia_no_tamanho_e_no_lugar_escolhidos(tmp_path):
+    """Faixas vermelha, verde e azul (640×360) na tela deitada: no automático a foto enche, e a ponta
+    esquerda é vermelha. A 2× de caber, com o centro a 1/4 da largura, a borda esquerda da tela mostra o
+    verde do meio e a direita, o azul."""
+    foto = _faixas(tmp_path / "foto.png", 640, 360, False)
+    clipe = tmp_path / "clipe.mp4"
+    _ffmpeg("-loop", "1", "-i", foto, "-t", "0.5", "-r", "30", "-pix_fmt", "yuv420p", clipe)
+    for src in (foto, clipe):
+        auto, mao = tmp_path / f"{src.stem}.auto.mp4", tmp_path / f"{src.stem}.mao.mp4"
+        m.padronizar(src, auto, 3, "parado", tamanho=(1920, 1080))
+        m.padronizar(src, mao, 3, "parado", tamanho=(1920, 1080), enquadre={"escala": 2, "x": 0.25, "y": 0.5})
+        assert _cor(_quadro_de(auto, 1920, 1080)[540, 30]) == "vermelho", src.name
+        q = _quadro_de(mao, 1920, 1080)
+        assert (_cor(q[540, 30]), _cor(q[540, 1890])) == ("verde", "azul"), src.name
+
+
+def test_tamanho_exibido_e_o_da_tela_girada(tmp_path):
+    foto, clipe, girado = tmp_path / "f.png", tmp_path / "c.mp4", tmp_path / "g.mp4"
+    _ffmpeg("-f", "lavfi", "-i", "color=c=red:s=90x160", "-frames:v", "1", foto)
+    _ffmpeg("-f", "lavfi", "-i", "testsrc2=s=160x90:r=30:d=1", "-pix_fmt", "yuv420p", clipe)
+    _ffmpeg("-display_rotation:v", "90", "-i", clipe, "-c", "copy", girado)  # o vídeo de celular em pé
+    assert m.tamanho_exibido(foto) == (90, 160)
+    assert m.tamanho_exibido(clipe, 0.3) == (160, 90)
+    assert m.tamanho_exibido(girado, 0.3) == (90, 160)
+
+
+@pytest.mark.parametrize("ruim", [{"escala": 0.1, "x": 0.5, "y": 0.5}, {"escala": 1, "x": 1.2, "y": 0.5},
+                                  {"escala": 1, "x": 0.5}, {"escala": True, "x": 0.5, "y": 0.5}, [1, 0.5, 0.5]])
+def test_enquadre_recusa_o_que_nao_entende(ruim):
+    with pytest.raises(m.ErroMontagem):
+        m.conferir_enquadre(ruim)
+
+
 def test_levar_ponto_guarda_o_lugar_relativo_e_o_limite_das_camadas():
     assert m.levar_ponto(540, 760, "9:16", "16:9") == (960, 427.5)
     assert m.levar_ponto(960, 427.5, "16:9", "1:1") == (540, 427.5)
@@ -886,6 +919,34 @@ def test_trocar_o_formato_refaz_todos_os_lugares_e_leva_os_textos(tmp_path, monk
     assert _tamanhos(edit) == {(1080, 1920)}
     with pytest.raises(m.ErroMontagem):
         m.aplicar(edit, [], so_dados=True, formato="9:16")
+
+
+def test_enquadre_do_lugar_fica_ate_a_midia_ou_o_formato_mudar(tmp_path, monkeypatch):
+    _grade_fixa(monkeypatch, [0.5 * k for k in range(40)])
+    musica = _wav(tmp_path / "musica.wav", 2.0, 440)
+    deitada, outra = _faixas(tmp_path / "deitada.png", 640, 360, False), _foto(tmp_path / "f1.png", "blue")
+    edit = tmp_path / "edit"
+    m.usar({"vagas": [{"batidas": 2, "repetir": 2}]}, musica, [str(deitada)], edit, so_dados=True, jobs=1)
+    lugares = lambda: {lg["vaga"]: lg for lg in json.loads((edit / "edl.json").read_text(encoding="utf-8"))["montagem"]["lugares"]}  # noqa: E731
+    clipe1 = lambda: Path(json.loads((edit / "edl.json").read_text(encoding="utf-8"))["sources"]["v01_deitada"])  # noqa: E731
+    assert _cor(_quadro_de(clipe1(), 1080, 1920)[960, 30]) == "vermelho"  # automático: a foto deitada inteira
+    perto = {"escala": 3.16, "x": 0.5, "y": 0.5}  # enche a tela em pé: só o meio da foto aparece
+    r = m.aplicar(edit, [{"vaga": 1, "enquadre": perto}], so_dados=True)
+    assert r["lugares"][0]["enquadre"] == perto and lugares()[1]["enquadre"] == perto and "enquadre" not in lugares()[2]
+    assert _cor(_quadro_de(clipe1(), 1080, 1920)[960, 30]) == "verde"
+    m.aplicar(edit, [{"vaga": 1, "de": 0}], so_dados=True)  # outro pedido no lugar: o enquadre fica
+    assert lugares()[1]["enquadre"] == perto
+    m.aplicar(edit, [{"vaga": 1, "enquadre": None}], so_dados=True)  # de volta ao automático
+    assert "enquadre" not in lugares()[1] and _cor(_quadro_de(clipe1(), 1080, 1920)[960, 30]) == "vermelho"
+    m.aplicar(edit, [{"vaga": 1, "enquadre": perto}], so_dados=True)
+    m.aplicar(edit, [{"vaga": 1, "midia": str(outra)}], so_dados=True)  # mídia nova: volta ao automático
+    assert "enquadre" not in lugares()[1]
+    m.aplicar(edit, [{"vaga": 2, "enquadre": perto}], so_dados=True)
+    m.aplicar(edit, [], so_dados=True, formato="16:9")  # formato novo: a escala era daquele quadro
+    assert all("enquadre" not in lg for lg in lugares().values())
+    # formato novo com um enquadre pedido no mesmo Salvar (o ajuste feito na prévia do formato novo): vale
+    m.aplicar(edit, [{"vaga": 2, "enquadre": {"escala": 1, "x": 0.5, "y": 0.5}}], so_dados=True, formato="1:1")
+    assert lugares()[2]["enquadre"] == {"escala": 1, "x": 0.5, "y": 0.5} and "enquadre" not in lugares()[1]
 
 
 def test_conferir_aceita_a_troca_gradual_da_transicao(tmp_path, monkeypatch):
