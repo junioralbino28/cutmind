@@ -29,6 +29,10 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 16px 48px; }
 .fmt { position: absolute; right: 8px; bottom: 6px; font-size: 11px; font-weight: 700; color: var(--dim); }
 .post-tocar { background: var(--surface2); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 9px; font: inherit; font-weight: 700; cursor: pointer; }
 .post-tocar:hover { border-color: var(--brand); }
+.post-tocar.grande { padding: 22px 12px; font-size: 15px; }
+.denunciar .anti-robo { width: 100%; }
+.textos-previa { margin: 0; padding-left: 18px; color: var(--dim); font-size: 13px; }
+.textos-previa li { white-space: pre-line; overflow-wrap: anywhere; }
 .post iframe { display: block; width: 100%; border: 0; border-radius: 10px; background: #000; }
 .post.instagram iframe { height: 640px; }
 .post.tiktok iframe { height: 740px; }

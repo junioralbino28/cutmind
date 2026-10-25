@@ -23,7 +23,10 @@ const svg = (tag, attrs, pai) => {
 
 // a mesma capa do mural (src/html.js capaRitmo), desenhada aqui
 function capa(modelo, pai) {
-  const ritmo = (modelo.vagas || []).flatMap((v) => Array(v.repetir || 1).fill(v.batidas));
+  // o link pode ter sido montado por qualquer pessoa: no máximo 400 lugares, como o kit
+  const ritmo = (Array.isArray(modelo.vagas) ? modelo.vagas : [])
+    .flatMap((v) => Array(Math.min(400, Math.max(1, Number(v && v.repetir) || 1))).fill(Number(v && v.batidas) || 1))
+    .slice(0, 400);
   const total = Math.max(1, ritmo.reduce((a, b) => a + b, 0));
   const drop = modelo.drop_na_vaga;
   const s = svg('svg', { class: 'ritmo', viewBox: `0 0 ${total} 88`, preserveAspectRatio: 'none' });
@@ -52,6 +55,18 @@ function capa(modelo, pai) {
   meta.textContent = `${n} ${n === 1 ? 'lugar' : 'lugares'} · ${total} batidas · ${modelo.formato || '9:16'}`
     + ((modelo.textos || []).length ? ` · ${modelo.textos.length} ${modelo.textos.length === 1 ? 'texto' : 'textos'}` : '');
   pai.appendChild(meta);
+  // os textos vão junto e ficam públicos: quem publica vê o que vai sair
+  const textos = (Array.isArray(modelo.textos) ? modelo.textos : []).slice(0, 20).filter((t) => t && typeof t.texto === 'string');
+  if (textos.length) {
+    const lista = document.createElement('ul');
+    lista.className = 'textos-previa';
+    for (const t of textos) {
+      const li = document.createElement('li');
+      li.textContent = t.texto.slice(0, 400);
+      lista.appendChild(li);
+    }
+    pai.appendChild(lista);
+  }
 }
 
 const modelo = lerFragmento();

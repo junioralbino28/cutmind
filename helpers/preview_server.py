@@ -110,7 +110,7 @@ import time
 from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, unquote
+from urllib.parse import parse_qs, unquote, urlsplit
 
 import camadas as cam  # mesma pasta deste arquivo
 import cenas as cn  # mesma pasta deste arquivo
@@ -815,6 +815,19 @@ class Handler(BaseHTTPRequestHandler):
                 return True
         return False
 
+    def _origem_ok(self) -> bool:
+        """Contra CSRF: um site aberto no navegador da pessoa consegue mandar POST para
+        127.0.0.1, e o Host chega como IP (o _host_ok deixa). O navegador põe Origin em todo
+        POST e Sec-Fetch-Site em todo pedido: passa o que vem do próprio editor, ou de fora do
+        navegador (sem esses cabeçalhos: o agente, os testes, o curl)."""
+        if (self.headers.get("Sec-Fetch-Site") or "").strip().lower() == "cross-site":
+            return False
+        origem = self.headers.get("Origin")
+        if origem is None:
+            return True
+        u = urlsplit(origem.strip().lower())
+        return u.scheme in ("http", "https") and u.netloc == (self.headers.get("Host") or "").strip().lower()
+
     def _cookie_token(self) -> str | None:
         raw = self.headers.get("Cookie")
         if not raw:
@@ -1022,6 +1035,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         path, _, query = self.path.partition("?")
         if not self._gate(path):
+            return
+        if not self._origem_ok():
+            self._deny(403, "Pedido de outro site recusado.", path)
             return
         if path == "/api/upload":
             self._upload(query)

@@ -32,6 +32,7 @@ import montagens as mg  # mesma pasta deste arquivo
 TEMPO = 8  # segundos por pedido ao mural
 MAX_RESPOSTA = 512_000
 POR_PAGINA = 24
+LIMITE_DE_NOMES = 50  # "Nome (2)" até "Nome (51)"
 CODIGO = re.compile(r"[A-Za-z0-9_-]{12}")
 CURSOR = re.compile(r"\d{1,12}\.[A-Za-z0-9_-]{12}")
 HANDLE = re.compile(r"[A-Za-z0-9._]{1,30}")
@@ -51,12 +52,27 @@ class MuralRecusou(ValueError):
     """O pedido não vale: código torto, modelo que não existe, modelo do kit."""
 
 
+LOCAIS = ("127.0.0.1", "localhost", "::1")
+
+
 def endereco() -> str | None:
+    """O mural, em https; http só para um mural de teste neste computador."""
     v = (os.environ.get("CUTMIND_MURAL") or "").strip().rstrip("/")
     u = urllib.parse.urlsplit(v)
-    if u.scheme not in ("http", "https") or not u.netloc or u.query or u.fragment:
+    if not u.netloc or u.query or u.fragment:
         return None
-    return v
+    if u.scheme == "https" or (u.scheme == "http" and u.hostname in LOCAIS):
+        return v
+    return None
+
+
+class _SemRedirecionar(urllib.request.HTTPRedirectHandler):
+    # o mural responde direto; um redirecionamento levaria este computador a pedir outro endereço
+    def redirect_request(self, *a, **k):
+        return None
+
+
+_ABRIR = urllib.request.build_opener(_SemRedirecionar)
 
 
 def _pedir(caminho: str) -> dict:
@@ -65,7 +81,7 @@ def _pedir(caminho: str) -> dict:
         raise MuralIndisponivel("o mural não está ligado neste kit (falta CUTMIND_MURAL)")
     pedido = urllib.request.Request(base + caminho, headers={"Accept": "application/json", "User-Agent": "CutMind"})
     try:
-        with urllib.request.urlopen(pedido, timeout=TEMPO) as r:
+        with _ABRIR.open(pedido, timeout=TEMPO) as r:
             dados = r.read(MAX_RESPOSTA + 1)
     except urllib.error.HTTPError as e:
         if e.code == 404:
@@ -155,13 +171,25 @@ def pegar(codigo: object) -> dict:
     except mg.MontagemInvalida:
         # o nome sem letra nem número (só emoji, outro alfabeto) não vira id: o modelo leva o código
         base = mg.normalize({**m, "nome": f"Modelo {codigo}"})
-    nome, n = base["nome"], 2
-    while (outro := mg.obter(modelos.id_do_nome(nome))) is not None:
+    # o id sai dos 40 primeiros caracteres do nome: o número vai depois de um nome cortado em 30,
+    # senão um nome longo daria sempre o mesmo id e o laço não acabaria
+    for n in range(1, LIMITE_DE_NOMES + 2):
+        nome = base["nome"] if n == 1 else f"{base['nome'][:30].rstrip()} ({n})"
+        if not _id(nome):  # os 30 primeiros sem letra nem número que virem id
+            nome = f"Modelo {codigo} ({n})"
+        outro = mg.obter(_id(nome))
+        if outro is None:
+            return mg.salvar({**base, "nome": nome, "criado": time.time()})
         if _mesmo(outro, base):
             return outro
-        sufixo = f" ({n})"
-        nome, n = base["nome"][: modelos.NOME_MAX - len(sufixo)] + sufixo, n + 1
-    return mg.salvar({**base, "nome": nome, "criado": time.time()})
+    raise MuralRecusou(f"já existem {LIMITE_DE_NOMES} modelos com esse nome: apague um antes")
+
+
+def _id(nome: str) -> str | None:
+    try:
+        return modelos.id_do_nome(nome)
+    except modelos.ModeloInvalido:
+        return None
 
 
 def link_publicar(mid: object) -> str:

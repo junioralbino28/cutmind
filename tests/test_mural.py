@@ -39,7 +39,7 @@ def _item(ident="AAAAAAAAAAA1", **mais):
 @pytest.fixture
 def falso(monkeypatch):
     """O mural falso: `lista` e `modelos` dizem o que ele responde; `pedidos` guarda o que pediram."""
-    estado = SimpleNamespace(lista={"modelos": [], "seguinte": None}, modelos={}, pedidos=[], bruto=None)
+    estado = SimpleNamespace(lista={"modelos": [], "seguinte": None}, modelos={}, pedidos=[], bruto=None, redirecionar=None)
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a):
@@ -48,6 +48,12 @@ def falso(monkeypatch):
         def do_GET(self):  # noqa: N802
             estado.pedidos.append(self.path)
             caminho = urlsplit(self.path).path
+            if estado.redirecionar and not caminho.startswith("/destino"):
+                self.send_response(302)
+                self.send_header("Location", estado.redirecionar)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             if estado.bruto is not None:
                 corpo, codigo = estado.bruto, 200
             elif caminho == "/api/modelos":
@@ -77,7 +83,9 @@ def _no_mural(estado, codigo, modelo, nome="Viagem"):
 # ---- o endereço ----
 @pytest.mark.parametrize("valor, esperado", [
     ("", None), ("ftp://mural.example", None), ("mural.example", None), ("https://mural.example/?x=1", None),
+    ("http://mural.example", None),  # http só para um mural de teste neste computador
     ("https://mural.example/", "https://mural.example"), ("http://127.0.0.1:4851", "http://127.0.0.1:4851"),
+    ("http://localhost:4851", "http://localhost:4851"),
 ])
 def test_endereco(monkeypatch, valor, esperado):
     monkeypatch.setenv("CUTMIND_MURAL", valor)
@@ -129,6 +137,15 @@ def test_lista_passa_so_o_cursor_que_confere(falso):
     assert falso.pedidos == ["/api/modelos?n=24", "/api/modelos?n=24&antes=100.AAAAAAAAAAA1", "/api/modelos?n=24"]
 
 
+def test_a_ponte_nao_segue_redirecionamento(falso):
+    """Um mural que manda para outro endereço levaria o computador da pessoa a pedir esse
+    endereço (outro serviço da rede dela, por exemplo): a ponte para no 302."""
+    falso.redirecionar = f"{mu.endereco()}/destino"
+    with pytest.raises(mu.MuralIndisponivel, match="302"):
+        mu.lista()
+    assert not any(p.startswith("/destino") for p in falso.pedidos)
+
+
 def test_mural_estranho_e_indisponivel(falso, monkeypatch):
     falso.bruto = b"<html>nao sou o mural</html>"
     with pytest.raises(mu.MuralIndisponivel):
@@ -159,6 +176,27 @@ def test_pegar_nunca_troca_um_modelo_que_ja_existe(falso):
     assert mu.pegar("AAAAAAAAAAA2")["nome"] == "Viagem (2)"
     assert mu.pegar("AAAAAAAAAAA3")["nome"] == "Drop cedo (2)"
     assert mg.obter("drop-cedo")["doKit"] and mg.obter("viagem")["formato"] == "1:1"
+
+
+def test_pegar_nome_longo_repetido_termina(falso):
+    """O id sai dos 40 primeiros caracteres do nome: com o número depois dos 60, o id não
+    mudava e o laço não acabava (o servidor do editor ficava preso)."""
+    longo = "Montagem de viagem pela praia com amigos no verão de 2026!"
+    for k, formato in enumerate(("9:16", "1:1", "16:9"), 1):
+        _no_mural(falso, f"AAAAAAAAAAA{k}", {**MODELO, "formato": formato}, nome=longo)
+    nomes = [mu.pegar(f"AAAAAAAAAAA{k}")["nome"] for k in (1, 2, 3)]
+    assert nomes == [longo, "Montagem de viagem pela praia (2)", "Montagem de viagem pela praia (3)"]
+    assert len(list(mg.pasta().glob("*.json"))) == 3
+
+
+def test_pegar_para_num_teto_de_nomes(falso, monkeypatch):
+    monkeypatch.setattr(mu, "LIMITE_DE_NOMES", 2)
+    for k, formato in enumerate(("9:16", "1:1", "16:9", "9:16"), 1):
+        _no_mural(falso, f"AAAAAAAAAAA{k}", {**MODELO, "formato": formato, "golpe": k != 4})
+    for k in (1, 2, 3):
+        mu.pegar(f"AAAAAAAAAAA{k}")
+    with pytest.raises(mu.MuralRecusou, match="apague um"):
+        mu.pegar("AAAAAAAAAAA4")
 
 
 def test_pegar_nome_sem_letra_leva_o_codigo(falso):
@@ -242,11 +280,11 @@ def srv(tmp_path):
     server.server_close()
 
 
-def pedir(port, caminho, metodo="GET", corpo=None):
+def pedir(port, caminho, metodo="GET", corpo=None, cabecalhos=None):
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
     dados = None if corpo is None else json.dumps(corpo).encode()
-    conn.request(metodo, caminho, body=dados, headers={} if dados is None else
-                 {"Content-Type": "application/json", "Content-Length": str(len(dados))})
+    conn.request(metodo, caminho, body=dados, headers={**({} if dados is None else
+                 {"Content-Type": "application/json", "Content-Length": str(len(dados))}), **(cabecalhos or {})})
     r = conn.getresponse()
     out = r.read()
     conn.close()
@@ -268,6 +306,20 @@ def test_rotas_do_editor(falso, srv):
     r, _ = pedir(srv, "/api/mural/compartilhar?id=viagem")
     assert r.status == 303 and r.getheader("Location").startswith(f"{mu.endereco()}/publicar#m=")
     assert pedir(srv, "/api/mural/compartilhar?id=drop-cedo")[0].status == 404
+
+
+def test_post_de_outro_site_e_recusado(falso, srv):
+    """Uma página qualquer aberta no navegador consegue mandar POST para 127.0.0.1 (o Host
+    chega como IP). O navegador põe Origin e Sec-Fetch-Site: só passa o do próprio editor."""
+    _no_mural(falso, "AAAAAAAAAAA1", MODELO)
+    corpo = {"codigo": "AAAAAAAAAAA1"}
+    proprio = f"http://127.0.0.1:{srv}"
+    for cab in ({"Origin": "https://site-qualquer.example"}, {"Origin": "null"},
+                {"Origin": f"http://127.0.0.1:{srv + 1}"}, {"Sec-Fetch-Site": "cross-site"}):
+        assert pedir(srv, "/api/mural/pegar", "POST", corpo, cab)[0].status == 403, cab
+    assert not mg.pasta().is_dir() or not list(mg.pasta().glob("*.json"))
+    assert pedir(srv, "/api/mural/pegar", "POST", corpo, {"Origin": proprio, "Sec-Fetch-Site": "same-origin"})[0].status == 200
+    assert pedir(srv, "/api/mural/pegar", "POST", corpo)[0].status == 200  # fora do navegador (agente, curl)
 
 
 def test_rotas_sem_mural(monkeypatch, srv):

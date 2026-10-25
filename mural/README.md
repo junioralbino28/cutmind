@@ -22,12 +22,20 @@ até o perfil dela.
 ## Proteções
 
 - **Publicação direta, com denúncia.** Qualquer modelo publicado aparece na hora; cada pessoa denuncia
-  um modelo uma vez, e o painel mostra os denunciados primeiro.
-- **Anti-robô:** Cloudflare Turnstile na publicação, conferido no servidor.
-- **Limites:** rajada por minuto (binding de rate limiting) e teto por dia contado no banco.
-- **Sem IP guardado:** o banco guarda só o SHA-256 do IP com um sal secreto.
+  um modelo uma vez, e o painel mostra os denunciados primeiro. A denúncia não esconde nada sozinha:
+  quem tira é o dono, pelo painel.
+- **Anti-robô:** Cloudflare Turnstile na publicação e na denúncia (esta só carrega quando a pessoa
+  abre "Denunciar"), conferido no servidor, inclusive o domínio em que o desafio foi resolvido.
+- **Limites:** rajada por minuto (binding de rate limiting) e teto por dia contado no banco. No IPv6
+  conta o bloco /64, não o endereço.
+- **Sem IP guardado:** o banco guarda só o SHA-256 do IP com um sal secreto, e uma limpeza diária
+  apaga os de mais de 2 dias. O log automático de cada pedido fica desligado (`invocation_logs`);
+  os logs que o código escreve não levam IP.
 - **Só links conhecidos:** o mural aceita post do Instagram, do TikTok e do YouTube em formato
-  conhecido e remonta os endereços; nunca devolve o texto colado.
+  conhecido e remonta os endereços; nunca devolve o texto colado. O @ e o post são informados por
+  quem publica (a página diz isso), e "Usa o meu @ ou o meu post" é um motivo de denúncia.
+- **O post só carrega no toque**, num iframe com `sandbox`: até a pessoa tocar, a plataforma do post
+  não recebe nada de quem só está olhando o mural.
 - **Painel do dono** atrás do Cloudflare Access, e o Worker confere o token do Access de novo antes de
   qualquer ação (assinatura, emissor, público e e-mail na lista).
 
@@ -73,4 +81,5 @@ Nada de conta, domínio ou segredo entra neste repositório. Para publicar:
    política liberando só o seu e-mail. O `POLICY_AUD` é o "Application Audience (AUD) Tag" dele.
 6. `npx wrangler deploy --config ../mural-producao.jsonc`.
 
-`ADMIN_LOCAL` não vai para a produção.
+`ADMIN_LOCAL` não vai para a produção. Com domínio próprio, ponha `"workers_dev": false` na cópia,
+para o mural responder num endereço só.

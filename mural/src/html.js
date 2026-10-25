@@ -83,7 +83,8 @@ export function linhaResumo(r) {
 
 const NOME_PLATAFORMA = { instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube' };
 
-// `grande`: a página do modelo (o post já embutido); na grade, o post entra quando a pessoa toca
+// `grande`: a página do modelo. Nos dois, o post só entra quando a pessoa toca: até lá a plataforma
+// do post não recebe nada de quem só está olhando o mural (nem cookie, nem rastreio)
 export function cartao(m, { grande = false } = {}) {
   const r = m.resumo;
   const embed = embedDo(m.post);
@@ -96,15 +97,15 @@ export function cartao(m, { grande = false } = {}) {
     : '';
   const quem = [autor, verPost].filter(Boolean).join(' · ');
   const player = embed
-    ? (grande
-      ? `<div class="post ${esc(m.plataforma)}"><iframe src="${esc(embed)}" loading="lazy" allowfullscreen title="O post de ${esc(m.autor || 'quem publicou')}"></iframe></div>`
-      : `<button class="post-tocar" type="button" data-embed="${esc(embed)}" data-plataforma="${esc(m.plataforma)}">Ver o post aqui</button>`)
+    ? `<button class="post-tocar${grande ? ' grande' : ''}" type="button" data-embed="${esc(embed)}" data-plataforma="${esc(m.plataforma)}">${
+      grande ? `Ver o post no ${esc(NOME_PLATAFORMA[m.plataforma] || 'post')}` : 'Ver o post aqui'}</button>`
     : '';
+  const informado = grande && quem ? '<p class="nota">O @ e o post são informados por quem publicou.</p>' : '';
   return `<article class="cartao${grande ? ' grande' : ''}">
   <a class="capa" href="/m/${esc(m.id)}">${capaRitmo(r)}<span class="fmt">${esc(r.formato)}</span></a>
   ${player}
   <h2><a href="/m/${esc(m.id)}">${esc(m.nome)}</a></h2>
   <p class="meta">${esc(linhaResumo(r))}</p>
-  ${quem ? `<p class="quem">${quem}</p>` : ''}
+  ${quem ? `<p class="quem">${quem}</p>` : ''}${informado}
 </article>`;
 }

@@ -32,6 +32,7 @@ describe('painel no teste local', () => {
     const { d } = await publicar();
     expect((await acao({ id: d.id, acao: 'editar', nome: '', autor: '' })).status).toBe(400);
     expect((await acao({ id: d.id, acao: 'editar', nome: 'Novo', autor: 'com espaço' })).status).toBe(400);
+    expect((await acao({ id: d.id, acao: 'editar', nome: 'a\u0000b\u0007c', autor: '' })).status).toBe(400);
     expect((await acao({ id: d.id, acao: 'editar', nome: 'Novo nome', autor: '@outra' })).status).toBe(200);
     const l = await env.DB.prepare('SELECT nome, autor FROM modelos WHERE id = ?1').bind(d.id).first();
     expect(l).toEqual({ nome: 'Novo nome', autor: 'outra' });

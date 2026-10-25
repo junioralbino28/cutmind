@@ -1,6 +1,8 @@
 // Publicar, ver e denunciar, de ponta a ponta no Worker com o banco local.
+import { createExecutionContext } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import worker, { apagarHashesVelhos, chaveDoIp } from '../src/index.js';
 import { envio, novoIp, ORIGEM, pedido, publicar, redeFalsa } from './ajuda.js';
 
 let rede;
@@ -70,6 +72,19 @@ describe('publicar', () => {
     expect(torto.status).toBe(400);
   });
 
+  it('com o segredo de verdade, o token tem que ter sido resolvido neste site', async () => {
+    // as ligações (banco, limites) vêm do env de teste; só o segredo muda
+    const env2 = Object.create(env, { TURNSTILE_SECRET: { value: 'segredo-de-verdade-do-teste' } });
+    const enviar = () => worker.fetch(new Request(`${ORIGEM}/api/modelos`, {
+      method: 'POST', body: JSON.stringify(envio()),
+      headers: { 'Content-Type': 'application/json', Origin: ORIGEM, 'CF-Connecting-IP': novoIp() },
+    }), env2, createExecutionContext());
+    rede.turnstile = { success: true, hostname: 'outro-site.example' };
+    expect((await enviar()).status).toBe(403);
+    rede.turnstile = { success: true, hostname: new URL(ORIGEM).hostname };
+    expect((await enviar()).status).toBe(201);
+  });
+
   it('para no teto de modelos por dia da mesma pessoa', async () => {
     const ip = novoIp();
     expect((await publicar({}, { ip })).r.status).toBe(201);
@@ -96,6 +111,35 @@ describe('publicar', () => {
   });
 });
 
+describe('o IP', () => {
+  it.each([
+    ['203.0.113.7', '203.0.113.7'],
+    ['::ffff:203.0.113.7', '203.0.113.7'],
+    ['2001:db8:1:2::5', '2001:db8:1:2::/64'],
+    ['2001:0db8:0001:0002:aaaa:bbbb:cccc:dddd', '2001:db8:1:2::/64'],
+    ['2001:db8::1', '2001:db8:0:0::/64'],
+    ['::1', '0:0:0:0::/64'],
+  ])('%s conta como %s', (ip, chave) => {
+    expect(chaveDoIp(ip)).toBe(chave);
+  });
+
+  it('o hash some depois de 2 dias, e a denúncia continua uma por linha', async () => {
+    const { d } = await publicar();
+    const ip = novoIp();
+    await pedido(`/api/modelos/${d.id}/denunciar`, { metodo: 'POST', corpo: { motivo: 'spam', turnstile: 'x' }, ip });
+    const daqui3dias = Math.floor(Date.now() / 1000) + 3 * 86400;
+    await apagarHashesVelhos(env, daqui3dias);
+    expect((await env.DB.prepare('SELECT ip_hash FROM modelos WHERE id = ?1').bind(d.id).first()).ip_hash).toBe('');
+    const dn = await env.DB.prepare('SELECT id, ip_hash FROM denuncias WHERE modelo_id = ?1').bind(d.id).all();
+    expect(dn.results.map((x) => x.ip_hash)).toEqual(dn.results.map((x) => `apagado-${x.id}`));
+    await apagarHashesVelhos(env, daqui3dias); // de novo: nada muda
+    // o recente fica
+    const novo = await publicar();
+    await apagarHashesVelhos(env);
+    expect((await env.DB.prepare('SELECT ip_hash FROM modelos WHERE id = ?1').bind(novo.d.id).first()).ip_hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
 describe('ver', () => {
   it('a página do modelo sai com a política de segurança e o post embutido', async () => {
     const { d } = await publicar();
@@ -104,8 +148,11 @@ describe('ver', () => {
     expect(r.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
     expect(r.headers.get('X-Content-Type-Options')).toBe('nosniff');
     const html = await r.text();
-    expect(html).toContain('src="https://www.instagram.com/reel/ABCdef12345/embed/"');
+    // o player só entra no toque: até lá, nenhum iframe de terceiro na página
+    expect(html).toContain('data-embed="https://www.instagram.com/reel/ABCdef12345/embed/"');
+    expect(html).not.toContain('<iframe');
     expect(html).toContain('href="https://www.instagram.com/exemplo.teste/"');
+    expect(html).toContain('informados por quem publicou');
     expect(html).not.toMatch(/<script>|style="/);
   });
 
@@ -133,7 +180,8 @@ describe('ver', () => {
 });
 
 describe('denunciar', () => {
-  const denunciar = (id, motivo, opcoes) => pedido(`/api/modelos/${id}/denunciar`, { metodo: 'POST', corpo: { motivo }, ...opcoes });
+  const denunciar = (id, motivo, { corpo, ...opcoes } = {}) => pedido(`/api/modelos/${id}/denunciar`,
+    { metodo: 'POST', corpo: { motivo, turnstile: 'XXXX.DUMMY.TOKEN.XXXX', ...corpo }, ...opcoes });
   const denuncias = async (id) => (await env.DB.prepare('SELECT denuncias FROM modelos WHERE id = ?1').bind(id).first()).denuncias;
 
   it('conta uma denúncia por pessoa em cada modelo', async () => {
@@ -144,6 +192,28 @@ describe('denunciar', () => {
     expect(await denuncias(d.id)).toBe(1);
     await denunciar(d.id, 'direitos', { ip: novoIp() });
     expect(await denuncias(d.id)).toBe(2);
+  });
+
+  it('o mesmo bloco IPv6 conta como uma pessoa só', async () => {
+    const { d } = await publicar();
+    for (let i = 1; i <= 5; i++) await denunciar(d.id, 'spam', { ip: `2001:db8:1:2::${i}` });
+    await denunciar(d.id, 'spam', { ip: '2001:db8:1:2:ffff:ffff:ffff:ffff' });
+    expect(await denuncias(d.id)).toBe(1);
+    await denunciar(d.id, 'spam', { ip: '2001:db8:1:3::1' });
+    expect(await denuncias(d.id)).toBe(2);
+  });
+
+  it('pede o anti-robô, e nem pergunta a ele quando o motivo já não vale', async () => {
+    const { d } = await publicar();
+    const antes = rede.verificados.length;
+    expect((await denunciar(d.id, 'spam', { corpo: { turnstile: '' } })).status).toBe(403);
+    rede.turnstile = { success: false };
+    expect((await denunciar(d.id, 'spam')).status).toBe(403);
+    expect((await denunciar(d.id, ['spam'])).status).toBe(400); // lista não é motivo (antes dava 500)
+    expect(rede.verificados.length).toBe(antes + 1);
+    expect(await denuncias(d.id)).toBe(0);
+    rede.turnstile = { success: true };
+    expect((await denunciar(d.id, 'perfil')).status).toBe(200);
   });
 
   it('recusa motivo desconhecido, outra origem e modelo tirado', async () => {

@@ -45,7 +45,7 @@ function linha(m, linhaResumo) {
 </tr>`;
 }
 
-export async function painel(request, env, quem, { doBanco, linhaResumo, mesmaOrigem, lerJson }) {
+export async function painel(request, env, quem, { doBanco, linhaResumo, mesmaOrigem, lerJson, nomeDoModelo }) {
   const p = new URL(request.url).pathname;
   if (p === '/admin' && request.method === 'GET') {
     const { results } = await env.DB.prepare(
@@ -75,8 +75,7 @@ export async function painel(request, env, quem, { doBanco, linhaResumo, mesmaOr
       return Response.json({ ok: true, status });
     }
     if (c.acao === 'editar') {
-      const nome = typeof c.nome === 'string' ? c.nome.replace(/\s+/g, ' ').trim() : '';
-      if (!nome || [...nome].length > 60) return Response.json({ erro: 'nome: de 1 a 60 letras' }, { status: 400 });
+      const nome = nomeDoModelo(c.nome); // a mesma conferência de quem publica (erro vira 400)
       let autor;
       try {
         autor = lerAutor(c.autor);

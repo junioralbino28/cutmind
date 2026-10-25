@@ -16,7 +16,9 @@ import { lerAutor, lerPost, PostInvalido } from './post.js';
 
 const MAX_CORPO = 64 * 1024;
 const NOME_MAX = 60;
-const MOTIVOS = { ofensivo: 'Conteúdo ofensivo', direitos: 'Usa conteúdo de outra pessoa', spam: 'Spam ou propaganda', outro: 'Outro motivo' };
+const MOTIVOS = { ofensivo: 'Conteúdo ofensivo', perfil: 'Usa o meu @ ou o meu post', direitos: 'Usa conteúdo de outra pessoa',
+  spam: 'Spam ou propaganda', outro: 'Outro motivo' };
+const GUARDA_DO_HASH = 2 * 86400; // o hash do IP só serve para o limite do dia; some depois de 2 dias
 
 const json = (dados, status = 200, extra = {}) => new Response(JSON.stringify(dados), {
   status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store', ...extra },
@@ -55,13 +57,28 @@ async function lerJson(request, max = MAX_CORPO) {
 
 const mesmaOrigem = (request) => request.headers.get('Origin') === new URL(request.url).origin;
 
+// quem conta nos limites: o IPv4 inteiro, ou o bloco /64 do IPv6 (cada pessoa costuma ter um /64
+// inteiro, e contar endereço a endereço deixaria ela trocar de IP à vontade)
+export function chaveDoIp(ip) {
+  if (!ip.includes(':')) return ip;
+  if (ip.includes('.')) return ip.slice(ip.lastIndexOf(':') + 1); // ::ffff:1.2.3.4
+  const [cabeca, cauda = ''] = ip.split('::');
+  const a = cabeca ? cabeca.split(':') : [];
+  const b = cauda ? cauda.split(':') : [];
+  const grupos = [...a, ...Array(Math.max(0, 8 - a.length - b.length)).fill('0'), ...b];
+  return `${grupos.slice(0, 4).map((g) => (parseInt(g, 16) || 0).toString(16)).join(':')}::/64`;
+}
+
 // o IP só como sha-256 com sal: conta o limite por dia sem guardar o IP de ninguém
 async function hashDoIp(request, env) {
   if (!env.SAL_IP) throw new Error('SAL_IP não configurado');
-  const ip = request.headers.get('CF-Connecting-IP') || 'local';
+  const ip = chaveDoIp(request.headers.get('CF-Connecting-IP') || 'local');
   const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${env.SAL_IP}|${ip}`));
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
+
+// o segredo de teste do Turnstile (1x, 2x, 3x seguidos de zeros) responde com outro domínio
+const SEGREDO_DE_TESTE = /^[123]x0+AA$/;
 
 async function turnstileOk(token, request, env) {
   if (!env.TURNSTILE_SECRET || typeof token !== 'string' || !token || token.length > 4096) return false;
@@ -72,7 +89,9 @@ async function turnstileOk(token, request, env) {
   });
   if (!r.ok) return false;
   const d = await r.json();
-  return d.success === true;
+  if (d.success !== true) return false;
+  // o token tem que ter sido resolvido NESTE site: um token de outra página com a mesma chave não vale
+  return SEGREDO_DE_TESTE.test(env.TURNSTILE_SECRET) || d.hostname === new URL(request.url).hostname;
 }
 
 function novoId() {
@@ -156,8 +175,8 @@ async function denunciar(request, env, id) {
     const { success } = await env.LIMITE_DENUNCIAR.limit({ key: `denunciar:${ipHash}` });
     if (!success) return erro('muitas denúncias seguidas: espere um minuto', 429);
   }
-  const corpo = await lerJson(request, 2048);
-  const motivo = corpo && Object.hasOwn(MOTIVOS, corpo.motivo) ? corpo.motivo : null;
+  const corpo = await lerJson(request, 6144);
+  const motivo = corpo && typeof corpo.motivo === 'string' && Object.hasOwn(MOTIVOS, corpo.motivo) ? corpo.motivo : null;
   if (!motivo) throw new PedidoInvalido('o motivo da denúncia');
   const m = await um(env, id);
   if (!m || m.status !== 'publicado') return erro('modelo não encontrado', 404);
@@ -165,6 +184,7 @@ async function denunciar(request, env, id) {
   const { n } = await env.DB.prepare('SELECT COUNT(*) AS n FROM denuncias WHERE ip_hash = ?1 AND criado > ?2')
     .bind(ipHash, agora() - 86400).first();
   if (n >= porDia) return erro('limite de denúncias por dia', 429);
+  if (!(await turnstileOk(corpo.turnstile, request, env))) return erro('confirme que você não é um robô', 403);
   await env.DB.batch([
     env.DB.prepare('INSERT OR IGNORE INTO denuncias (modelo_id, motivo, criado, ip_hash) VALUES (?1, ?2, ?3, ?4)').bind(m.id, motivo, agora(), ipHash),
     env.DB.prepare('UPDATE modelos SET denuncias = (SELECT COUNT(*) FROM denuncias WHERE modelo_id = ?1) WHERE id = ?1').bind(m.id),
@@ -182,7 +202,7 @@ ${modelos.length ? `<section class="grade">${modelos.map((m) => cartao(m)).join(
   return pagina({ titulo: 'Modelos de montagem', corpo, scripts: ['/static/mural.js'] });
 }
 
-function paginaModelo(m) {
+function paginaModelo(m, env) {
   const motivos = Object.entries(MOTIVOS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
   const corpo = `<div class="pagina-modelo">${cartao(m, { grande: true })}
 <div class="lado">
@@ -190,7 +210,7 @@ function paginaModelo(m) {
   <h2>Usar no CutMind</h2>
   <ol>
     <li>No editor do CutMind, abra <b>Montagem</b> e vá em <b>Da comunidade</b>.</li>
-    <li>Procure <b>${esc(m.nome)}</b> e toque em <b>Usar</b>.</li>
+    <li>Toque em <b>${esc(m.nome)}</b>: ele vem para os seus modelos.</li>
     <li>Escolha a música e as suas fotos e vídeos.</li>
   </ol>
   <p class="codigo">Código do modelo: <code>${esc(m.id)}</code> · <a href="/api/modelos/${esc(m.id)}?baixar=1">baixar o arquivo</a></p>
@@ -199,12 +219,24 @@ function paginaModelo(m) {
   <summary>Denunciar este modelo</summary>
   <form data-denunciar="${esc(m.id)}">
     <select name="motivo" required>${motivos}</select>
+    <div class="anti-robo" data-sitekey="${esc(env.TURNSTILE_SITEKEY)}"></div>
     <button type="submit">Enviar denúncia</button>
     <p class="aviso" role="status"></p>
   </form>
 </details>
 </div></div>`;
   return pagina({ titulo: m.nome, corpo, scripts: ['/static/mural.js'] });
+}
+
+// limpeza diária: o hash do IP some depois de 2 dias (a denúncia ganha um valor único no lugar,
+// para continuar valendo a regra de uma por linha)
+export async function apagarHashesVelhos(env, agoraEm = agora()) {
+  const limite = agoraEm - GUARDA_DO_HASH;
+  const [a, b] = await env.DB.batch([
+    env.DB.prepare("UPDATE modelos SET ip_hash = '' WHERE criado < ?1 AND ip_hash != ''").bind(limite),
+    env.DB.prepare("UPDATE denuncias SET ip_hash = 'apagado-' || id WHERE criado < ?1 AND ip_hash NOT LIKE 'apagado-%'").bind(limite),
+  ]);
+  console.log(JSON.stringify({ evento: 'hashes-apagados', modelos: a.meta.changes, denuncias: b.meta.changes }));
 }
 
 function paginaPublicar(env) {
@@ -241,7 +273,7 @@ async function rotear(request, env) {
   let r;
   if ((r = p.match(/^\/m\/([A-Za-z0-9_-]{12})$/)) && metodo === 'GET') {
     const m = await um(env, r[1]);
-    return m && m.status === 'publicado' ? paginaModelo(m) : naoAchei();
+    return m && m.status === 'publicado' ? paginaModelo(m, env) : naoAchei();
   }
   if (p === '/publicar' && metodo === 'GET') return paginaPublicar(env);
   if (p === '/api/modelos' && metodo === 'GET') {
@@ -262,7 +294,7 @@ async function rotear(request, env) {
   if (p === '/admin' || p.startsWith('/admin/')) {
     const quem = await adminDe(request, env);
     if (!quem) return new Response('Acesso negado', { status: 403, headers: CABECALHOS });
-    return painel(request, env, quem, { doBanco, linhaResumo, mesmaOrigem, lerJson });
+    return painel(request, env, quem, { doBanco, linhaResumo, mesmaOrigem, lerJson, nomeDoModelo });
   }
   return metodo === 'GET' ? naoAchei() : erro('não encontrado', 404);
 }
@@ -276,5 +308,8 @@ export default {
       console.error(JSON.stringify({ evento: 'erro', mensagem: String(e && e.message), rota: new URL(request.url).pathname }));
       return erro('algo deu errado do nosso lado', 500);
     }
+  },
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(apagarHashesVelhos(env));
   },
 };

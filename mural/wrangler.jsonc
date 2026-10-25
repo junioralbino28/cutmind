@@ -33,9 +33,13 @@
     "POLICY_AUD": "",
     "ADMIN_EMAILS": ""
   },
+  // só os logs que o código escreve (sem IP); o log automático de cada pedido e os traces levam os
+  // dados do pedido, e o mural promete não guardar IP
   "observability": {
     "enabled": true,
-    "logs": { "head_sampling_rate": 1 },
-    "traces": { "enabled": true, "head_sampling_rate": 0.01 }
-  }
+    "logs": { "head_sampling_rate": 1, "invocation_logs": false },
+    "traces": { "enabled": false }
+  },
+  // todo dia, os hashes de IP com mais de 2 dias somem (só servem para o limite do dia)
+  "triggers": { "crons": ["17 4 * * *"] }
 }
