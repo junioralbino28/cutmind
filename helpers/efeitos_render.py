@@ -63,7 +63,7 @@ def quadros(ini: float, fim: float, fps: float, total: int) -> list[int]:
 
 def receitas(efeitos: dict, fps: float, total: int) -> list[dict]:
     """Uma receita por quadro tocado:
-    {n, tr?: {pacote, tempo_ms, a, b}, fi?: {pacote, intensidade}, aj?: {ajustes}}."""
+    {n, tr?: {pacote, tempo_ms, duracao_ms, a, b}, fi?: {pacote, intensidade}, aj?: {ajustes}}."""
     por_n: dict[int, dict] = {}
     for it in efeitos["itens"]:
         ini, fim = ef.janela(it)
@@ -73,7 +73,7 @@ def receitas(efeitos: dict, fps: float, total: int) -> list[dict]:
                 k = math.floor(it["corte"] * fps + 0.5)
                 a, b = (n, k) if n < k else (k - 1, n)
                 r["tr"] = {"pacote": it["pacote"], "tempo_ms": (n / fps - ini) * 1000,
-                           "a": max(0, a), "b": min(total - 1, b)}
+                           "duracao_ms": it["duracao"] * 1000, "a": max(0, a), "b": min(total - 1, b)}
             elif it["tipo"] == "ajuste":
                 r["aj"] = {"ajustes": it["ajustes"]}
             else:
@@ -199,6 +199,11 @@ def aplicar(edit: Path, remotion: Path, pac: pk.Pacotes | None = None, bloco: in
     info = sondar(corte)
     fps = _fps_da_previa(edit, info["fps"])
     rs = receitas(efeitos, fps, info["total"])
+    base = remotion / "src" / "EfeitosBase.tsx"
+    if any("tr" in r for r in rs) and base.is_file() and "duracao_ms" not in base.read_text(encoding="utf-8"):
+        raise RuntimeError("o template deste projeto é de um kit anterior e desenha a transição no tempo do pacote, "
+                           f"não no dela (o vídeo sairia diferente da prévia): rode `atualizar_template.py {edit}` "
+                           "(troca só o código do template) e depois este de novo")
     pac = pac or pk.Pacotes.do_ambiente()
     ids = {r[k]["pacote"] for r in rs for k in ("tr", "fi") if k in r}
     w, h = info["largura"], info["altura"]

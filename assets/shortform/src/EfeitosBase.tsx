@@ -6,14 +6,14 @@ import {AbsoluteFill, cancelRender, continueRender, delayRender, staticFile, use
 // public/efeitos/ o motor, os pacotes abertos e os quadros do cut.mp4, e cola o resultado
 // num cut.mp4 novo. Cada quadro desta composição é uma "receita":
 //   n   o quadro do cut.mp4 que sai daqui
-//   tr  transição: pacote, tempo_ms e os quadros dos lados a e b
+//   tr  transição: pacote, tempo_ms, a duração dela (duracao_ms) e os quadros dos lados a e b
 //   fi  filtro: pacote e intensidade (sem ela, a do pacote)
 //   aj  ajuste (Ajustar da tomada): os valores, num shader do próprio motor
 // Primeiro a transição, depois o filtro por cima e o ajuste por último: a mesma ordem da prévia.
 
 export type Receita = {
   n: number;
-  tr?: {pacote: string; tempo_ms: number; a: number; b: number};
+  tr?: {pacote: string; tempo_ms: number; duracao_ms?: number; a: number; b: number};
   fi?: {pacote: string; intensidade?: number | null};
   aj?: {ajustes: Record<string, number>};
 };
@@ -66,7 +66,7 @@ export const EfeitosBase: React.FC<EfeitosProps> = ({largura, altura, receitas})
       let saida: CanvasImageSource = fonte;
       if (r.tr) {
         const [m, a, b] = await Promise.all([motor(r.tr.pacote, largura, altura), imagem(r.tr.a), imagem(r.tr.b)]);
-        m.desenhar({a, b, tempo_ms: r.tr.tempo_ms});
+        m.desenhar({a, b, tempo_ms: r.tr.tempo_ms, duracao_ms: r.tr.duracao_ms});
         fonte = saida = m.canvas;
       }
       if (r.fi) {

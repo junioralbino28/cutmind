@@ -1,6 +1,8 @@
 """As contas do vídeo final com efeitos: as mesmas da prévia (celular.js), quadro a quadro."""
 from __future__ import annotations
 
+import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -35,7 +37,26 @@ def test_receita_da_transicao_troca_de_lado_no_corte():
     assert (antes["a"], antes["b"]) == (59, k)        # A anda, B parado no 1º quadro depois do corte
     assert (depois["a"], depois["b"]) == (k - 1, 60)  # A parado no último quadro antes, B anda
     assert antes["tempo_ms"] == pytest.approx((59 / 30 - 1.9) * 1000)
+    assert antes["duracao_ms"] == depois["duracao_ms"] == pytest.approx(200)  # o motor encaixa a animação nela
     assert "fi" not in rs[59]
+
+
+def test_template_antigo_com_transicao_para_antes_de_desenhar(tmp_path):
+    """O EfeitosBase.tsx de um kit anterior não leva a duração da transição ao motor: o vídeo sairia
+    diferente da prévia. Para antes de qualquer desenho e manda atualizar o template."""
+    edit = tmp_path / "edit"
+    rem = edit / "remotion"
+    (rem / "src").mkdir(parents=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=64x64:rate=30:duration=3",
+                    "-pix_fmt", "yuv420p", str(edit / "cut.mp4")], check=True)
+    (edit / "efeitos.json").write_text(json.dumps(EF), encoding="utf-8")
+    kit = Path(er.__file__).resolve().parents[1] / "assets"
+    for trilha in ("shortform", "longform"):  # o detector: o template do kit passa
+        assert "duracao_ms: r.tr.duracao_ms" in (kit / trilha / "src" / "EfeitosBase.tsx").read_text(encoding="utf-8")
+    (rem / "src" / "EfeitosBase.tsx").write_text("m.desenhar({a, b, tempo_ms: r.tr.tempo_ms});", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="atualizar_template"):
+        er.aplicar(edit, rem)
+    assert not (rem / "public" / "cut.mp4").exists()
 
 
 def test_receita_do_filtro_e_ordem():

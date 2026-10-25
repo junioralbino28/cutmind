@@ -6823,7 +6823,7 @@ function fxDesenhar(tempo, exato) {
     if (m && cong) {
       const antes = n < cong.k;
       m.desenhar({ a: antes ? video : cong.a, b: antes ? cong.b : video,
-        tempo_ms: (t - (tr.corte - tr.duracao / 2)) * 1000 });
+        tempo_ms: (t - (tr.corte - tr.duracao / 2)) * 1000, duracao_ms: tr.duracao * 1000 });
       fonte = saida = m.canvas;
       feitos++;
     }

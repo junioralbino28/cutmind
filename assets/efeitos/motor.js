@@ -3,7 +3,7 @@
 //
 //   const ef = await carregarEfeito('/gen/pacote/filme-pb/', { largura: 1080, altura: 1920 });
 //   ef.desenhar({ quadro: video, intensidade: 0.8 });           // filtro
-//   ef.desenhar({ a: videoA, b: quadroB, tempo_ms: 300 });       // transição
+//   ef.desenhar({ a: videoA, b: quadroB, tempo_ms: 300, duracao_ms: 600 }); // transição
 //   ef.canvas  → o resultado; ef.destruir() libera o WebGL.
 //   const aj = criarAjuste({ largura: 1080, altura: 1920 });   // Ajustar da tomada, sem pacote
 //   aj.desenhar({ quadro: video, ajustes: { brilho: 20, vinheta: -35 } });
@@ -193,11 +193,15 @@ async function motorCena(base, manifesto, largura, altura) {
     tipo: manifesto.tipo,
     duracao_ms: duracao,
     canvas: saida,
-    desenhar({ a: fonteA, b: fonteB, tempo_ms }) {
+    desenhar({ a: fonteA, b: fonteB, tempo_ms, duracao_ms }) {
       trocar(a, fonteA);
       trocar(b, fonteB);
       desenhou = false;
-      cena.seekToTime(Math.max(0, Math.min(duracao, tempo_ms)));
+      // a animação inteira do pacote cabe na duração da transição, mais rápida ou mais lenta, como
+      // no CapCut; sem `duracao_ms`, no tempo do pacote (uma transição de 0,4 s mostrava só o
+      // começo de uma animação de 2 s e trocava de imagem num corte seco no fim da janela)
+      const t = duracao_ms > 0 ? (tempo_ms * duracao) / duracao_ms : tempo_ms;
+      cena.seekToTime(Math.max(0, Math.min(duracao, t)));
       if (!desenhou) cena.update();
       // o WebGL do script não preserva o buffer: copia já, no mesmo passo, para a captura ser estável
       ctx.drawImage(cena.renderer.domElement, 0, 0, largura, altura);

@@ -720,7 +720,12 @@ Frame rules, shared with the preview: frame n is in an effect when
 `start − 1 ms ≤ n/fps < end − 1 ms`. In a transition, `k = ⌊corte·fps + 0.5⌋`. Before
 `k`, side A is frame n and side B is frozen on frame `k`. From `k` on, A is frozen on
 `k−1` and B is frame n. A frame with several gets the transition first, then the
-filter, then the ajuste.
+filter, then the ajuste. The package's whole animation fits the transition's
+`duracao`, faster or slower, as in CapCut: the engine plays the package at
+`tempo_ms × package length ÷ duracao`. Before this, a 0.4 s transition of a 2 s
+package showed only the start of the animation and switched pictures with a hard cut
+at the end of its window. A project whose template is older stops `efeitos_render.py`
+with the order to run `atualizar_template.py` (a montage updates its own).
 
 Measured on the test cut, frame by frame, the phone preview against the final frame
 is 0.5–1.0 level apart on average, while the effect itself is 25–100 levels against
