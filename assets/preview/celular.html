@@ -227,6 +227,34 @@
   </footer>
 </section>
 
+<!-- Trocar a mídia de um lugar da montagem: as da montagem, as fotos e vídeos de midia/ ou uma do aparelho -->
+<section class="sheet" id="lugarSheet" aria-hidden="true">
+  <div class="sheet-head">
+    <button class="sh-close" id="lugarClose" type="button" aria-label="Fechar"></button>
+    <b class="sh-title" id="lugarTitulo">Trocar</b>
+  </div>
+  <div class="sheet-body" id="lugarLista"></div>
+</section>
+
+<!-- Trecho: que parte do clipe entra no lugar (a janela tem a duração do lugar) -->
+<section class="sheet small" id="trechoSheet" aria-hidden="true">
+  <div class="sheet-grip"></div>
+  <div class="note-head"><b id="trechoTitulo">Trecho</b><span id="trechoVal"></span></div>
+  <video class="trecho-video" id="trechoVideo" muted playsinline preload="metadata"></video>
+  <!-- o clipe inteiro, fino: tocar ou arrastar leva a janela longe; embaixo, a tira corre sob a janela parada -->
+  <div class="trecho-geral" id="trechoGeral"><div class="trecho-marca" id="trechoMarca"></div></div>
+  <div class="trecho-tira" id="trechoTira">
+    <div class="trecho-quadros" id="trechoQuadros"></div>
+    <div class="trecho-janela" id="trechoJanela"></div>
+  </div>
+  <p class="vol-nota" id="trechoNota"></p>
+  <footer class="sheet-foot">
+    <div class="t-spacer"></div>
+    <button class="tb-btn ghost" id="trechoCancel" type="button">Cancelar</button>
+    <button class="tb-btn primary" id="trechoOk" type="button">Pronto</button>
+  </footer>
+</section>
+
 <!-- modelos de texto: dois ou três textos de uma vez, em fontes misturadas, sobre o quadro da agulha -->
 <section class="sheet" id="modeloSheet" aria-hidden="true">
   <div class="sheet-head">
@@ -318,6 +346,7 @@
 <input type="file" id="fileAudio" accept="audio/*" hidden>
 <input type="file" id="fileImagem" accept="image/*" hidden>
 <input type="file" id="fileFundo" accept="image/*" hidden>
+<input type="file" id="fileLugar" accept="image/*,video/*" hidden>
 <!-- envio de vídeo: vai em pedaços para a pasta dos vídeos no computador -->
 <section class="upload hidden" id="upload" role="status" aria-live="polite">
   <div class="up-row">

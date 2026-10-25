@@ -52,6 +52,26 @@ truth for where each take landed. Proven from a hand-written EDL by
 
 Above ~2.5× there is no speech left to caption; say so when a curve peaks there.
 
+### A montage on the beat (`montagem.py`: an `edl.json` with a `montagem` block)
+
+Each take is a slot (`ranges[i].vaga`) as long as its beats, so the editor refuses trim,
+split, duplicate, delete and move on it. From the chat those are a different template
+(`montagem.py usar` again), never a hand edit of the ranges. What a request changes is what
+fills a slot:
+
+| Editor tool | Chat request | What to do |
+|---|---|---|
+| `lugar-trocar` | "põe a foto do bolo no lugar 3", "troca o 5 por aquele vídeo da praia" | `montagem.py aplicar <edit> --lugar 3 --midia <file>`: a file of the montage (`montagem.midias`), of `<edit>/midia/`, or any photo or video the user gives. It redoes only that slot (same length, the short-clip rule, the photo's movement), renders and checks the beat |
+| `lugar-trecho` | "no lugar 2, usa o pedaço dos 30 s do vídeo" | `montagem.py aplicar <edit> --lugar 2 --de 30`: the same clip, entering at 30 s |
+| `lugar-original` | "volta o lugar 3 como estava" | `--lugar 3 --midia <file> --de <s>` with the values `montagem.lugares` had before the change |
+| `volume` (on a slot) | "o som do clipe 4 mais baixo" | only with the clips' sound on (`camadas.json` `video.mudo: false`): `ranges[i].volume` as on any take, keeping `vaga`; then `render.py <edit>/edl.json -o <edit>/cut.mp4 --no-subtitles` and `mixar_final.py <edit> --render <edit>/cut.mp4 --imagem corte` |
+
+The editor's Salvar sends the same thing as `montagem.lugares` (`[{vaga, midia?, de?}]`, only
+the slots that changed) and the watcher says to run `montagem.py aplicar <edit>`, which reads
+it. Proven by `tests/test_montagem.py` (only the asked slots are redone, a failure in the
+middle leaves the project as it was, the beat is checked again) and
+`tests/test_preview_montagem.py` (what the editor may open and send).
+
 ## Colour, filters and transitions (`efeitos.json`)
 
 Schema in `helpers/efeitos.py` (validate with `efeitos.normalize`); times in cut seconds.

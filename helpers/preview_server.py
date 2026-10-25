@@ -43,7 +43,8 @@ Routes:
                         o Fundo (conferir_cenas)
   /api/upload   POST    ?name=<arquivo>, corpo = o arquivo. Vídeo → pasta dos
                         vídeos (pai do <edit>) + aviso em <edit>/preview_upload.json;
-                        imagem e áudio → <edit>/midia/ (camadas do projeto)
+                        imagem e áudio → <edit>/midia/ (camadas do projeto);
+                        com &para=montagem, a foto ou o vídeo de um lugar → midia/, sem aviso
   /api/pacotes  GET     ?tipo=trilha: a biblioteca do kit (pacotes.py), com o que já
                         está baixado neste computador e os favoritos
   /gen/pacote-previa?id=  a prévia de um pacote (baixa na primeira vez)
@@ -60,6 +61,10 @@ Routes:
   /api/batida?arquivo=midia/x.mp3  GET  a grade de batida de uma música do projeto (batida.py),
                          para as marcas e o ímã da linha do tempo: `pronta` com as batidas, ou
                          `calculando` (a análise roda num processo à parte; na 1ª vez baixa o modelo)
+  /api/montagem/midias   GET  numa montagem na batida (montagem.py): o que o Trocar oferece para um
+                         lugar (as mídias da montagem e as fotos e vídeos de midia/), com tipo e duração
+  /gen/montagem-quadro?midia=&t=&h=  um quadro de uma dessas mídias (Trocar e a tira do Trecho)
+  /gen/montagem-video?midia=          o clipe original de um lugar, para o Trecho tocar a janela
 
 Quem entra: por padrão o servidor ouve só em 127.0.0.1 e atende só este
 computador (e o celular ligado por `adb reverse`, que chega como 127.0.0.1).
@@ -153,6 +158,9 @@ _thumb_lock = threading.Lock()
 _thumb_state: dict[str, float] = {}  # video path -> mtime generated
 _upload_lock = threading.Lock()
 _frame_slots = threading.BoundedSemaphore(2)  # ffmpeg de quadro avulso ao mesmo tempo
+_quadros_guardados: dict[tuple, bytes] = {}  # miniaturas da montagem já tiradas (o mais velho sai primeiro)
+_quadros_lock = threading.Lock()
+QUADROS_GUARDADOS = 400  # ~15 KB cada
 _troca_lock = threading.Lock()  # abrir outro projeto troca a pasta do servidor inteiro
 _recorte_lock = threading.Lock()  # um recorte da pessoa por vez: o modelo usa todos os núcleos
 RECORTE_CACHE = 30  # recortes guardados em .preview_cache/recorte (um por quadro pedido)
@@ -354,8 +362,7 @@ def conferir_montagem(root: Path, pasta_videos: Path, pedido: object) -> dict:
     vagas = {lg.get("vaga") for lg in lugares if isinstance(lg, dict)}
     if not vagas:
         raise MontagemInvalida("este projeto não é uma montagem")
-    originais = {str(Path(x)) for x in mont.get("midias") or [] if isinstance(x, str)}
-    originais |= {str(Path(lg["midia"])) for lg in lugares if isinstance(lg.get("midia"), str)}
+    originais = {str(Path(x)) for x in originais_da_montagem(mont)}
     if not isinstance(pedido, dict) or not isinstance(pedido.get("lugares"), list) or len(pedido["lugares"]) > 400:
         raise MontagemInvalida("lugares: uma lista")
     saida = []
@@ -376,7 +383,7 @@ def conferir_montagem(root: Path, pasta_videos: Path, pedido: object) -> dict:
     return {"lugares": saida}
 
 
-def _midia_da_montagem(root: Path, pasta_videos: Path, originais: set[str], valor: object) -> str:
+def _midia_da_montagem(root: Path, pasta_videos: Path | None, originais: set[str], valor: object) -> str:
     if not isinstance(valor, str) or not valor or len(valor) > 1024:
         raise MontagemInvalida("mídia inválida")
     ext = Path(valor).suffix.lower()
@@ -388,9 +395,70 @@ def _midia_da_montagem(root: Path, pasta_videos: Path, originais: set[str], valo
     p = Path(valor)
     if str(p) in originais and p.is_file():
         return str(p)
-    if p.is_absolute() and ext in VIDEO_EXTS and p.is_file() and p.resolve().parent == pasta_videos.resolve():
+    if (pasta_videos is not None and p.is_absolute() and ext in VIDEO_EXTS and p.is_file()
+            and p.resolve().parent == pasta_videos.resolve()):
         return str(p.resolve())  # um vídeo enviado pelo editor (vai para a pasta dos vídeos)
     raise MontagemInvalida(f"essa mídia não é do projeto: {p.name}")
+
+
+def montagem_do_projeto(root: Path) -> dict | None:
+    """O bloco `montagem` do edl.json, quando o projeto é uma montagem na batida (montagem.py)."""
+    try:
+        edl = json.loads((root / "edl.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    mont = edl.get("montagem") if isinstance(edl, dict) else None
+    return mont if isinstance(mont, dict) and mont.get("lugares") else None
+
+
+def originais_da_montagem(mont: dict) -> list[str]:
+    """As mídias que a montagem recebeu (`midias`) e a de cada lugar, sem repetir, na ordem."""
+    lugares = [lg for lg in mont.get("lugares") or [] if isinstance(lg, dict)]
+    return list(dict.fromkeys([*(x for x in mont.get("midias") or [] if isinstance(x, str)),
+                               *(lg["midia"] for lg in lugares if isinstance(lg.get("midia"), str))]))
+
+
+_duracoes: dict[tuple[str, int, int], float] = {}  # (arquivo, tamanho, data) → duração: o ffprobe roda uma vez
+
+
+def _duracao(p: Path) -> float:
+    st = p.stat()
+    chave = (str(p), st.st_size, st.st_mtime_ns)
+    if chave not in _duracoes:
+        _duracoes[chave] = round(probe_duration(p), 3)
+    return _duracoes[chave]
+
+
+def opcoes_da_montagem(root: Path) -> list[dict]:
+    """O que o Trocar oferece para um lugar: as mídias da montagem e as fotos e vídeos de midia/ (o
+    que o editor envia para um lugar cai ali), cada uma com o tipo e a duração."""
+    mont = montagem_do_projeto(root)
+    if mont is None:
+        raise MontagemInvalida("este projeto não é uma montagem")
+    chaves = originais_da_montagem(mont)
+    pasta = root / cam.MIDIA_DIR
+    if pasta.is_dir():
+        chaves += [f"{cam.MIDIA_DIR}/{f.name}" for f in sorted(pasta.iterdir(), key=lambda x: x.stat().st_mtime)
+                   if f.is_file() and not f.name.startswith(".")]
+    itens = []
+    for chave in dict.fromkeys(chaves):
+        p = root / chave if chave.startswith(cam.MIDIA_DIR + "/") else Path(chave)
+        ext = p.suffix.lower()
+        tipo = "video" if ext in VIDEO_EXTS else "foto" if ext in cam.IMAGE_EXTS else None
+        if tipo and p.is_file():  # a música e o que sumiu do disco ficam de fora
+            itens.append({"midia": chave, "nome": p.name, "tipo": tipo,
+                          "duracao": _duracao(p) if tipo == "video" else 0.0})
+    return itens
+
+
+def arquivo_da_montagem(root: Path, valor: object) -> Path:
+    """Um arquivo da montagem que o editor pode ver (quadro, o vídeo do Trecho): um original dela ou
+    uma foto ou vídeo de midia/. Nunca um caminho qualquer vindo do pedido."""
+    mont = montagem_do_projeto(root)
+    if mont is None:
+        raise MontagemInvalida("este projeto não é uma montagem")
+    chave = _midia_da_montagem(root, None, {str(Path(x)) for x in originais_da_montagem(mont)}, valor)
+    return root / chave if chave.startswith(cam.MIDIA_DIR + "/") else Path(chave)
 
 
 def juntar_salvamentos(velho: dict, novo: dict) -> dict:
@@ -827,6 +895,12 @@ class Handler(BaseHTTPRequestHandler):
             self._midia()
         elif path == "/api/batida":
             self._batida(query)
+        elif path == "/api/montagem/midias":
+            self._montagem_midias()
+        elif path == "/gen/montagem-quadro":
+            self._montagem_quadro(query)
+        elif path == "/gen/montagem-video":
+            self._montagem_video(query)
         elif path == "/api/pacotes":
             self._pacotes_lista(query)
         elif path == "/gen/pacote-previa":
@@ -1005,20 +1079,35 @@ class Handler(BaseHTTPRequestHandler):
         if not path:
             self._json({"error": f"fonte desconhecida: {src}"}, 404)
             return
-        if not _frame_slots.acquire(timeout=5):
-            self._json({"error": "ocupado, tente de novo"}, 503)
-            return
-        try:
-            jpg = subprocess.run(
-                ["ffmpeg", "-v", "error", "-ss", f"{t:.3f}", "-i", str(path),
-                 "-frames:v", "1", "-vf", f"scale=-2:{h}", "-q:v", "5",
-                 "-f", "image2pipe", "-vcodec", "mjpeg", "-"],
-                capture_output=True, timeout=15,
-            ).stdout
-        except subprocess.TimeoutExpired:
-            jpg = b""
-        finally:
-            _frame_slots.release()
+        self._quadro_jpg(path, t, h)
+
+    def _quadro_jpg(self, path: Path, t: float, h: int, guardar: bool = False) -> None:
+        """Um quadro em JPEG. `guardar`: as miniaturas do Trocar e da tira do Trecho voltam a cada
+        abertura do painel, e o mesmo quadro do mesmo arquivo não precisa de outro ffmpeg."""
+        st = path.stat()
+        chave = (str(path), st.st_size, st.st_mtime_ns, round(t, 2), h)
+        with _quadros_lock:
+            jpg = _quadros_guardados.get(chave) if guardar else None
+        if jpg is None:
+            if not _frame_slots.acquire(timeout=5):
+                self._json({"error": "ocupado, tente de novo"}, 503)
+                return
+            try:
+                jpg = subprocess.run(
+                    ["ffmpeg", "-v", "error", "-ss", f"{t:.3f}", "-i", str(path),
+                     "-frames:v", "1", "-vf", f"scale=-2:{h}", "-q:v", "5",
+                     "-f", "image2pipe", "-vcodec", "mjpeg", "-"],
+                    capture_output=True, timeout=15,
+                ).stdout
+            except subprocess.TimeoutExpired:
+                jpg = b""
+            finally:
+                _frame_slots.release()
+            if jpg and guardar:
+                with _quadros_lock:
+                    _quadros_guardados[chave] = jpg
+                    while len(_quadros_guardados) > QUADROS_GUARDADOS:
+                        _quadros_guardados.pop(next(iter(_quadros_guardados)))
         if not jpg:
             self._json({"error": "sem quadro nesse tempo"}, 404)
             return
@@ -1119,7 +1208,13 @@ class Handler(BaseHTTPRequestHandler):
         if kind is None:
             self._fail(415, "Só vídeo, imagem ou áudio: mp4, mov, webm, jpg, png, webp, mp3, m4a, wav, ogg.")
             return
-        folder = self.upload_dir if kind == "video" else self.root / cam.MIDIA_DIR
+        # a foto ou o vídeo de um lugar da montagem (Trocar → Do aparelho) é mídia do projeto: vai
+        # para midia/, e o agente não é avisado de material novo para cortar
+        para_lugar = (parse_qs(query).get("para") or [""])[0] == "montagem"
+        if para_lugar and kind == "audio":
+            self._fail(415, "Para um lugar da montagem: foto ou vídeo.")
+            return
+        folder = self.upload_dir if kind == "video" and not para_lugar else self.root / cam.MIDIA_DIR
         folder.mkdir(exist_ok=True)
         try:
             if length > shutil.disk_usage(folder).free - DISK_MARGIN:
@@ -1150,7 +1245,7 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 pass
             return
-        if kind != "video":
+        if kind != "video" or para_lugar:
             self._json({"ok": True, "file": final.name, "size": length, "tipo": kind,
                         "arquivo": f"{cam.MIDIA_DIR}/{final.name}"})
             return
@@ -1184,6 +1279,40 @@ class Handler(BaseHTTPRequestHandler):
                     itens.append({"arquivo": f"{cam.MIDIA_DIR}/{f.name}", "nome": f.name,
                                   "tipo": tipo, "bytes": f.stat().st_size})
         self._json({"midia": itens})
+
+    def _montagem_midias(self) -> None:
+        try:
+            self._json({"opcoes": opcoes_da_montagem(self.root)})
+        except MontagemInvalida as e:
+            self._json({"error": str(e)}, 404)
+
+    def _montagem_quadro(self, query: str) -> None:
+        """Um quadro de uma mídia da montagem: as miniaturas do Trocar e a tira do Trecho."""
+        q = parse_qs(query)
+        try:
+            t = max(0.0, float((q.get("t") or ["0"])[0]))
+            h = min(1080, max(60, int(float((q.get("h") or ["240"])[0]))))
+        except ValueError:
+            self._json({"error": "t ou h inválido"}, 400)
+            return
+        try:
+            p = arquivo_da_montagem(self.root, (q.get("midia") or [""])[0])
+        except MontagemInvalida as e:
+            self._json({"error": str(e)}, 404)
+            return
+        self._quadro_jpg(p, 0.0 if p.suffix.lower() in cam.IMAGE_EXTS else t, h, guardar=True)
+
+    def _montagem_video(self, query: str) -> None:
+        """O clipe original de um lugar, para o Trecho tocar a janela escolhida (com Range)."""
+        try:
+            p = arquivo_da_montagem(self.root, (parse_qs(query).get("midia") or [""])[0])
+        except MontagemInvalida as e:
+            self._json({"error": str(e)}, 404)
+            return
+        if p.suffix.lower() not in VIDEO_EXTS:
+            self._json({"error": "só o clipe de vídeo tem trecho"}, 400)
+            return
+        self._send_file(p)
 
     def _batida(self, query: str) -> None:
         """A grade de batida de uma música de <edit>/midia/ (o editor pergunta de novo enquanto calcula)."""
@@ -1466,6 +1595,13 @@ class Handler(BaseHTTPRequestHandler):
             except json.JSONDecodeError:
                 pass
         edits_p = self.root / "preview_edits.json"
+        # os lugares da montagem salvos e ainda não refeitos: o editor os mostra trocados até o agente refazer
+        pendente = None
+        if edits_p.exists():
+            try:
+                pendente = (json.loads(edits_p.read_text(encoding="utf-8")).get("montagem") or {}).get("lugares") or None
+            except (OSError, ValueError, AttributeError):
+                pass
         video = self._current_video()
         self._json({
             "state": state,
@@ -1475,6 +1611,7 @@ class Handler(BaseHTTPRequestHandler):
             "mtimes": mtimes,
             "videoDuration": probe_duration(video) if video else 0,
             "hasPendingEdits": edits_p.exists(),
+            "montagemPendente": pendente,
             "now": time.time(),
         })
 

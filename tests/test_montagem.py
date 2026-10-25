@@ -344,6 +344,7 @@ def test_aplicar_refaz_so_o_lugar_mudado(tmp_path, monkeypatch):
     m.aplicar(edit, so_dados=True)
     edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
     assert edl["ranges"][0]["source"] == "v01_nova"
+    assert edl["montagem"]["lugares"][0]["midia"] == "midia/nova.png"  # a do projeto, como o Trocar a lista
     with pytest.raises(m.ErroMontagem):
         m.aplicar(edit, [{"vaga": 9, "de": 1}], so_dados=True)
     with pytest.raises(m.ErroMontagem):

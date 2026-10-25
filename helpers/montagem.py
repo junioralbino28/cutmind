@@ -421,6 +421,13 @@ def copiar_musica(musica: Path, edit: Path) -> Path:
 
 # ---------- o projeto ----------
 
+def _chave_midia(edit: Path, arq: Path) -> str:
+    """Como o lugar guarda a mídia: `midia/<nome>` quando ela é do projeto (o editor a acha assim na
+    lista do Trocar), senão o caminho inteiro."""
+    p = Path(arq).resolve()
+    return f"{cam.MIDIA_DIR}/{p.name}" if p.parent == (edit / cam.MIDIA_DIR).resolve() else str(p)
+
+
 def _grava_json(caminho: Path, dados: dict) -> None:
     tmp = caminho.with_name(caminho.name + ".tmp")
     tmp.write_bytes((json.dumps(dados, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
@@ -480,7 +487,7 @@ def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
                           + (" e para no último quadro" if p["congela"] else ""))
         ranges.append(r)
         # de onde o lugar saiu: é o que deixa refazer um lugar sem refazer os outros (aplicar)
-        lugares.append({"vaga": lugar["n"], "midia": str(arq.resolve()), "de": de,
+        lugares.append({"vaga": lugar["n"], "midia": _chave_midia(edit, arq), "de": de,
                         **({"movimento": lugar["movimento"]} if lugar.get("movimento") else {})})
         print(f"  lugar {lugar['n']:>3}: {arq.name} → {lugar['quadros']} quadros"
               + (f", {p['velocidade']:.2f}×" if p["velocidade"] != 1.0 else ""), flush=True)
@@ -495,7 +502,7 @@ def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
                         "drop_na_vaga": modelo["drop_na_vaga"], "golpe": modelo["golpe"],
                         "avisos": plano["avisos"], "lugares": lugares,
                         # todas as mídias dadas (inclusive as que sobraram): as opções do Trocar no editor
-                        "midias": list(dict.fromkeys(str(p.resolve()) for p, _ in lista))}}
+                        "midias": list(dict.fromkeys(_chave_midia(edit, p) for p, _ in lista))}}
     _grava_json(edl_p, edl)
 
     cam_p = edit / "camadas.json"
@@ -610,7 +617,7 @@ def aplicar(edit: Path, mudancas: list[dict] | None = None, so_dados: bool = Fal
         r.pop("velocidade", None)
         if p["velocidade"] != 1.0:
             r["velocidade"] = p["velocidade"]
-        lg.update({"midia": str(midia), "de": de})
+        lg.update({"midia": _chave_midia(edit, midia), "de": de})
         feitos.append({"vaga": n, "midia": midia.name, "de": de, "velocidade": p["velocidade"],
                        "congela": p["congela"], "quadros_no_arquivo": p["quadros_no_arquivo"]})
         print(f"  lugar {n:>3}: {midia.name}" + (f" a partir de {de:g} s" if de else "") + f" → {quadros} quadros"

@@ -134,6 +134,9 @@ const ICON = {
   tudo: sv('<path d="M3.5 12h17M7 8.5 3.5 12 7 15.5M17 8.5l3.5 3.5-3.5 3.5"/>'),
   // o ímã da linha do tempo: a agulha e as pontas grudam na batida da música
   ima: sv('<path d="M5 4v8a7 7 0 0 0 14 0V4h-4v8a3 3 0 0 1-6 0V4z"/><path d="M5 7.6h4M15 7.6h4"/>'),
+  // um lugar da montagem: Trocar a mídia (as duas setas) e o Trecho do clipe (a janela na tira)
+  trocar: sv('<path d="M4.5 8.5h14l-3.5-3.5M19.5 15.5h-14l3.5 3.5"/>'),
+  trecho: sv('<rect x="2.5" y="7" width="19" height="10" rx="1.6"/><rect x="8" y="4.5" width="7" height="15" rx="1.4" stroke-width="2.3"/>'),
 };
 
 /* ---------- catálogo de estilos e amostras: estilos.js ----------
@@ -426,6 +429,7 @@ const S = {
   velBase: '',        // os trechos como estavam ao abrir ou no último Salvar
   faixa: null,        // a seleção em massa na vista Final: {a, b} no relógio do final.mp4 (todas as faixas)
   montagem: null,     // a montagem na batida do edl.json (lugares, mídias), quando o projeto é uma montagem
+  montMidias: null,   // o que o Trocar oferece (/api/montagem/midias): [{midia, nome, tipo, duracao}]
   batidas: {},        // arquivo de midia/ → a grade de batida dele ({estado, batidas, fortes, bpm, confianca})
   grade: [],          // as batidas das músicas no tempo da linha do tempo: [{t, forte, it}], em ordem
   ima: lerPref('cutmind.ima') !== '0', // ímã ligado: agulha e pontas grudam na batida (lembrado)
@@ -605,9 +609,49 @@ const isText = (c) => c.kind === 'hook' || c.kind === 'word' || c.kind === 'nume
 const insMudou = (c) => c.start !== c.orig.start || c.end !== c.orig.end;
 const insertsDirty = () => S.insertsDraft.some(insMudou);
 
+// ---------- montagem na batida: cada tomada é um lugar ----------
+/* O agente monta (montagem.py) e cada tomada é um lugar com a duração das batidas dele: aparar,
+ * dividir, mover e excluir sairiam da batida, então o editor avisa em vez de agir. O que muda é a
+ * mídia (Trocar) e, num clipe, que parte dele entra (Trecho): `r.troca = {midia, nome, de}`, por
+ * salvar até o agente refazer o lugar (`montagem.py aplicar`). */
+const emLugar = (r) => !!(S.montagem && r && r.vaga != null);
+const lugarDe = (r) => (S.montagem && r ? S.montagem.lugares.find((lg) => lg.vaga === r.vaga) : null) || null;
+const nomeArq = (p) => String(p || '').split(/[\\/]/).pop();
+const trocaKey = (r) => (r.troca ? `${r.troca.midia || ''}|${r.troca.de ?? ''}` : '');
+const opcaoDe = (midia) => (S.montMidias || []).find((m) => m.midia === midia) || null;
+// a mídia e o trecho que o lugar vai ter: o pedido por salvar, ou o que está no vídeo
+function lugarAgora(r) {
+  const lg = lugarDe(r) || {};
+  const t = r.troca || {};
+  const midia = t.midia || lg.midia || '';
+  return { midia, nome: nomeArq(midia), de: t.de != null ? t.de : t.midia ? 0 : +(lg.de || 0) };
+}
+// o que vai no Salvar para um lugar; o lugar que voltou a ser como está diz isso (por cima de um Salvar anterior)
+function pedidoDoLugar(r) {
+  const lg = lugarDe(r) || {};
+  const a = lugarAgora(r);
+  const p = { vaga: r.vaga };
+  if (a.midia !== lg.midia) p.midia = a.midia;
+  if (p.midia || Math.abs(a.de - +(lg.de || 0)) > 0.0005) p.de = +a.de.toFixed(3);
+  if (p.midia == null && p.de == null) { p.midia = lg.midia; p.de = +(+(lg.de || 0)).toFixed(3); }
+  return p;
+}
+function avisaLugar() {
+  toast('Numa montagem, a duração de cada lugar segue a batida da música. Troque a mídia ou o trecho.', 3200);
+}
+async function carregaMontMidias() {
+  if (!S.montagem) { S.montMidias = null; return; }
+  try {
+    const r = await fetch('/api/montagem/midias');
+    if (r.ok) S.montMidias = (await r.json()).opcoes || [];
+  } catch (e) { /* sem a lista: o Trocar diz que está carregando */ }
+}
+const quadroDaMidia = (midia, t, h) => `/gen/montagem-quadro?midia=${encodeURIComponent(midia)}&t=${(+t || 0).toFixed(2)}&h=${h}`;
+
 // ---------- o que mudou e ainda não foi salvo ----------
 // comparado com o último corte recebido (ou o último Salvar): aparada, nova, excluída, ordem, volume
-const baseOf = (draft) => draft.map((r) => ({ uid: r.uid, start: r.start, end: r.end, vol: r.vol, vel: r.vel, ck: curvaKey(r) }));
+// (`tk`, a troca de um lugar da montagem, conta à parte: não muda o corte)
+const baseOf = (draft) => draft.map((r) => ({ uid: r.uid, start: r.start, end: r.end, vol: r.vol, vel: r.vel, ck: curvaKey(r), tk: trocaKey(r) }));
 function diffBase() {
   const base = new Map(S.base.map((b) => [b.uid, b]));
   const now = new Set(S.draft.map((r) => r.uid));
@@ -623,14 +667,21 @@ function diffBase() {
   return mudou;
 }
 const edlDirty = () => diffBase() > 0;
+// os lugares da montagem trocados depois do último Salvar
+const lugaresMudados = () => {
+  if (!S.montagem) return [];
+  const base = new Map(S.base.map((b) => [b.uid, b]));
+  return S.draft.filter((r) => r.vaga != null && trocaKey(r) !== ((base.get(r.uid) || {}).tk || ''));
+};
 function dirtyCount() {
   return diffBase() + S.notes.length + S.insertsDraft.filter(insMudou).length + (camadasDirty() ? 1 : 0) + (efeitosDirty() ? 1 : 0)
     + S.cenasDraft.filter(cenaMudou).length + zoomMudados() + destaquesMudados().length + (legendaMudou() ? 1 : 0)
-    + (velDirty() ? 1 : 0) + (melhorarDirty() ? 1 : 0);
+    + (velDirty() ? 1 : 0) + (melhorarDirty() ? 1 : 0) + lugaresMudados().length;
 }
 const isChanged = (r) => {
   const b = S.base.find((x) => x.uid === r.uid);
-  return !b || b.start !== r.start || b.end !== r.end || b.vol !== r.vol || b.vel !== r.vel || b.ck !== curvaKey(r);
+  return !b || b.start !== r.start || b.end !== r.end || b.vol !== r.vol || b.vel !== r.vel || b.ck !== curvaKey(r)
+    || (b.tk || '') !== trocaKey(r);
 };
 function refreshHeader() {
   const n = dirtyCount();
@@ -820,7 +871,19 @@ async function applyState(data) {
     ...(r.vaga != null ? { vaga: +r.vaga } : {}) })); // o número do lugar, numa montagem na batida
   // a montagem na batida (montagem.py): os lugares, de onde cada um saiu e as mídias que ela usou
   S.montagem = (data.edl && data.edl.montagem && Array.isArray(data.edl.montagem.lugares)) ? data.edl.montagem : null;
+  carregaMontMidias().then(() => { if (S.selected >= 0) renderToolbar(); }); // o Trecho precisa saber quem é clipe
   S.draft = S.rendered.map((r, i) => ({ ...r, uid: `o${i}`, from: i, orig: { start: r.start, end: r.end } }));
+  // os lugares já salvos que o agente ainda não refez seguem marcados com a mídia nova (não contam
+  // como por salvar); quando o edl.json passa a ter a mídia e o trecho pedidos, a marca sai sozinha
+  for (const p of (S.montagem && data.montagemPendente) || []) {
+    const r = S.draft.find((x) => x.vaga === p.vaga);
+    const lg = r && lugarDe(r);
+    if (!lg) continue;
+    const t = {};
+    if (p.midia && p.midia !== lg.midia) { t.midia = p.midia; t.nome = nomeArq(p.midia); }
+    if (p.de != null && (t.midia || Math.abs(p.de - +(lg.de || 0)) > 0.0005)) t.de = +p.de;
+    if (t.midia || t.de != null) r.troca = t;
+  }
   S.base = baseOf(S.draft);
   S.melhorar = null;
   vozCarregaInfo().then(() => { renderTimeline(); refreshHeader(); });
@@ -1127,14 +1190,23 @@ function renderTakes(lane) {
         img.draggable = false;
       }
     }
-    el('div', 't-label', c).textContent = r.beat || r.source || `tomada ${i + 1}`;
+    // um lugar da montagem: o número dele e a mídia que ele tem (a trocada, por salvar, com a miniatura)
+    const lugar = emLugar(r) ? lugarAgora(r) : null;
+    if (lugar && r.troca && r.troca.midia && !movendo) {
+      const im = el('img', 't-troca', c);
+      im.src = quadroDaMidia(r.troca.midia, (r.troca.de || 0) + 0.1, 120); // o começo do trecho que entra
+      im.alt = ''; im.draggable = false;
+    }
+    if (lugar) { c.classList.add('lugar'); el('span', 't-vaga', c).textContent = r.vaga; }
+    el('div', 't-label', c).textContent = lugar ? lugar.nome : r.beat || r.source || `tomada ${i + 1}`;
+    if (r.troca) c.classList.add('trocado');
     if ((r.vol !== 1 || r.vel !== 1 || r.curva) && !movendo) {
       const tags = el('div', 't-tags', c);
       if (r.vol !== 1) el('span', 't-vol', tags).innerHTML = `${ICON.vol}${Math.round(r.vol * 100)}%`;
       if (r.curva) el('span', 't-vel', tags).textContent = nomeCurva(r.curva.nome);
       else if (r.vel !== 1) el('span', 't-vel', tags).textContent = fmtVel(r.vel);
     }
-    if (editable && i === S.selected) {
+    if (editable && i === S.selected && !lugar) { // o lugar não apara: a duração é a da batida
       const l = el('div', 'handle l', c);
       l.dataset.i = i; l.dataset.side = 'l';
       const rr = el('div', 'handle r', c);
@@ -1643,6 +1715,7 @@ timeline.addEventListener('pointercancel', endPointer);
 // ---------- mover: segurar a tomada e arrastar para outro lugar ----------
 function startMove(i, x) {
   if (G.mode !== 'pan' || G.moved || !S.draft[i]) return;
+  if (emLugar(S.draft[i])) { G.pega = null; avisaLugar(); return; } // a ordem dos lugares é a do modelo
   G.mode = 'move';
   const box = timeline.getBoundingClientRect();
   // os quadrados começam com o da tomada segurada debaixo do dedo
@@ -1839,7 +1912,7 @@ function passo(seg) {
 // os de régua no Pronto (a régua já mudou ao vivo)
 const FECHA_PAINEL = { sheet: 'sheetClose', noteSheet: 'noteCancel', volSheet: 'volOk', velSheet: 'velOk', ajSheet: 'ajOk',
   fxIntSheet: 'fxIntOk', trilhaSheet: 'trilhaClose', fxSheet: 'fxClose', tomZoomSheet: 'tomZoomOk', cenaSheet: 'cenaCancel',
-  modeloSheet: 'modeloClose', fundoSheet: 'fundoClose' };
+  modeloSheet: 'modeloClose', fundoSheet: 'fundoClose', lugarSheet: 'lugarClose', trechoSheet: 'trechoCancel' };
 function fechaPainel() {
   const aberto = document.querySelector('.sheet.open');
   if (!aberto || !FECHA_PAINEL[aberto.id]) return false;
@@ -2098,7 +2171,9 @@ const DICA = { volume: 'Volume', velocidade: 'Velocidade e curva', intensidade: 
   'vel-trecho': 'Velocidade de tudo no trecho: nada sai do lugar', 'vel-normal': 'O trecho volta à velocidade normal',
   tudo: 'O vídeo inteiro',
   'melhorar-voz': 'A voz do vídeo mais limpa ou com som de estúdio, e quanto do ambiente fica',
-  fundo: 'Um fundo novo atrás de você, na tomada debaixo da agulha' };
+  fundo: 'Um fundo novo atrás de você, na tomada debaixo da agulha',
+  'lugar-trocar': 'Outra foto ou vídeo neste lugar, com a mesma duração', 'lugar-trecho': 'Que parte do clipe entra neste lugar',
+  'lugar-original': 'O lugar volta à mídia e ao trecho do vídeo' };
 function renderToolbar() {
   const tb = $('toolbar');
   const ctx = $('ctxbar');
@@ -2247,6 +2322,17 @@ function renderToolbar() {
     tool(ctx, 'excluir', 'Excluir', { icon: ICON.remover });
     return;
   }
+  if (sel && emLugar(sel)) { // um lugar da montagem: a mídia e o trecho mudam, a duração não
+    const op = opcaoDe(lugarAgora(sel).midia);
+    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
+    tool(ctx, 'lugar-trocar', 'Trocar', { icon: ICON.trocar });
+    tool(ctx, 'lugar-trecho', 'Trecho', { icon: ICON.trecho, disabled: !(op && op.tipo === 'video') });
+    // o volume do clipe só vale com o som dos clipes ligado (o da faixa de vídeo)
+    if (!S.camadas.video.mudo) tool(ctx, 'volume', `${Math.round(sel.vol * 100)}%`);
+    tool(ctx, 'ouvir', 'Ouvir');
+    tool(ctx, 'lugar-original', 'Original', { icon: ICON.original, disabled: !sel.troca });
+    return;
+  }
   if (sel) {
     tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
     tool(ctx, 'dividir', 'Dividir');
@@ -2321,6 +2407,9 @@ document.addEventListener('click', (e) => {
       break;
     }
     case 'original': remember(); r.start = r.orig.start; r.end = r.orig.end; renderTimeline(); renderToolbar(); refreshHeader(); break;
+    case 'lugar-trocar': openTroca(); break;
+    case 'lugar-trecho': openTrecho(); break;
+    case 'lugar-original': if (r && r.troca) { remember(); r.troca = null; renderTimeline(); renderToolbar(); refreshHeader(); } break;
     case 'f2-original': {
       const c = S.insertsDraft[S.insSel];
       if (c) {
@@ -2372,6 +2461,7 @@ function selectUnderNeedle() {
 // Dividir: a tomada escolhida vira duas no ponto da agulha
 function splitSelected() {
   const i = S.selected;
+  if (emLugar(S.draft[i])) { avisaLugar(); return; }
   const d = draftLayout()[i];
   if (!d || S.t <= d.out + MIN_SEG || S.t >= d.out + d.dur - MIN_SEG) {
     toast('Ponha a agulha dentro da tomada para dividir', 2400);
@@ -2394,6 +2484,7 @@ function splitSelected() {
 function duplicateSelected() {
   const i = S.selected;
   const r = S.draft[i];
+  if (emLugar(r)) { avisaLugar(); return; }
   remember();
   S.draft.splice(i + 1, 0, { uid: `n${++S.seq}`, from: r.from, kind: 'dup', source: r.source, start: r.start, end: r.end, beat: r.beat, vol: r.vol, vel: r.vel, curva: copiaCurva(r.curva), orig: null });
   S.selected = i + 1;
@@ -2402,12 +2493,227 @@ function duplicateSelected() {
 // Excluir: sai da faixa (o ↶ traz de volta); a última tomada fica
 function deleteSelected() {
   if (S.draft.length < 2) return;
+  if (emLugar(S.draft[S.selected])) { avisaLugar(); return; }
   remember();
   S.draft.splice(S.selected, 1);
   S.selected = -1;
   S.t = clampT(S.t);
   renderTimeline(); renderToolbar(); refreshHeader();
 }
+
+// ---------- Trocar: outra foto ou vídeo num lugar da montagem ----------
+/* As mídias da montagem e as fotos e vídeos de midia/ (o que vem "Do aparelho" cai ali). A escolha
+ * fica na tomada (`troca`) até o Salvar; o agente refaz só os lugares trocados. */
+const LT = { aberto: false, uid: null };
+const tomadaPorUid = (uid) => S.draft.find((x) => x.uid === uid) || null;
+async function openTroca() {
+  const r = S.draft[S.selected];
+  if (!emLugar(r)) return;
+  video.pause();
+  LT.aberto = true;
+  LT.uid = r.uid;
+  $('lugarTitulo').textContent = `Trocar o lugar ${r.vaga}`;
+  showSheet($('lugarSheet'), true);
+  renderTroca();
+  await carregaMontMidias(); // de novo: pode ter chegado mídia nova
+  if (LT.aberto) renderTroca();
+}
+function closeTroca() {
+  LT.aberto = false;
+  showSheet($('lugarSheet'), false);
+}
+function renderTroca() {
+  const box = $('lugarLista');
+  box.innerHTML = '';
+  const r = tomadaPorUid(LT.uid);
+  if (!r) return;
+  const agora = lugarAgora(r);
+  el('p', 'sheet-hint', box).textContent = S.montMidias
+    ? `Toque numa foto ou vídeo: entra no lugar ${r.vaga} com a mesma duração, na batida.` : 'Carregando as mídias…';
+  const grade = el('div', 'mod-grade troca-grade', box);
+  for (const m of S.montMidias || []) {
+    const b = el('button', 'mod-card troca-card', grade);
+    b.type = 'button';
+    b.dataset.midia = m.midia;
+    b.classList.toggle('on', m.midia === agora.midia);
+    const im = el('img', 'troca-img', b);
+    im.loading = 'lazy'; im.alt = ''; im.draggable = false;
+    im.src = quadroDaMidia(m.midia, m.tipo === 'video' ? Math.min(1, m.duracao / 2) : 0, 240);
+    if (m.tipo === 'video') el('span', 'troca-dur', b).textContent = fmtShort(m.duracao);
+    el('span', 'mod-nome', b).textContent = m.nome.replace(/\.[^.]+$/, '');
+  }
+  const mais = el('button', 'mod-card troca-mais', grade);
+  mais.type = 'button';
+  mais.dataset.trocaMais = '1';
+  mais.innerHTML = ICON.mais;
+  el('span', 'mod-nome', mais).textContent = 'Do aparelho';
+}
+function escolheTroca(midia) {
+  const r = tomadaPorUid(LT.uid);
+  closeTroca();
+  if (!r) return;
+  const lg = lugarDe(r) || {};
+  const antes = snap(), k = trocaKey(r);
+  r.troca = midia === lg.midia ? null : { midia, nome: nomeArq(midia) }; // a de agora: o lugar fica como está
+  if (trocaKey(r) === k) return;
+  remember(antes);
+  renderTimeline(); renderToolbar(); refreshHeader();
+  if (r.troca) toast(`Lugar ${r.vaga}: ${r.troca.nome}. Salve: o agente refaz só este lugar.`, 3000);
+}
+$('lugarClose').innerHTML = ICON.fechar;
+$('lugarClose').addEventListener('click', closeTroca);
+$('lugarLista').addEventListener('click', (e) => {
+  const b = e.target.closest('.mod-card');
+  if (!b) return;
+  if (b.dataset.trocaMais) { $('fileLugar').click(); return; }
+  escolheTroca(b.dataset.midia);
+});
+$('fileLugar').addEventListener('change', (e) => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = '';
+  // vai para midia/ do projeto (não é material para o agente cortar) e entra no lugar
+  if (f) sendVideo(f, async (res) => { await carregaMontMidias(); if (LT.uid) escolheTroca(res.arquivo); }, 'montagem');
+});
+
+// ---------- Trecho: que parte do clipe entra no lugar ----------
+/* Como o Recortar de um modelo do CapCut: a janela (a duração do lugar) fica parada no meio e a
+ * tira de quadros do clipe corre por baixo, numa escala em que a janela tem tamanho de dedo; a
+ * barra fina de cima é o clipe inteiro, para saltar longe num clipe comprido. O vídeo de cima toca
+ * a janela em volta. Os quadros saem do servidor um a um, só os que aparecem. */
+const TC = { aberto: false, uid: null, midia: '', dur: 0, lugar: 0, de: 0, arr: null, pps: 0, jan: 0, tile: 32, feitos: new Set() };
+const trechoCurto = () => TC.dur <= TC.lugar + 0.02; // nem cabe: entra inteiro, mais lento (como no vídeo)
+const trechoMax = () => Math.max(0, TC.dur - TC.lugar);
+const segs = (s) => `${s.toFixed(1).replace('.', ',')} s`;
+function openTrecho() {
+  const r = S.draft[S.selected];
+  if (!emLugar(r)) return;
+  const a = lugarAgora(r);
+  const op = opcaoDe(a.midia);
+  if (!op || op.tipo !== 'video') return;
+  video.pause();
+  const d = draftLayout()[S.selected];
+  Object.assign(TC, { aberto: true, uid: r.uid, midia: a.midia, dur: op.duracao, lugar: d.dur, arr: null, feitos: new Set() });
+  TC.de = Math.min(a.de, trechoMax());
+  $('trechoTitulo').textContent = `Trecho do lugar ${r.vaga}`;
+  $('trechoQuadros').innerHTML = '';
+  $('trechoTira').classList.toggle('curto', trechoCurto());
+  const v = $('trechoVideo');
+  v.src = `/gen/montagem-video?midia=${encodeURIComponent(a.midia)}`;
+  v.addEventListener('loadedmetadata', () => { if (TC.aberto) { v.currentTime = TC.de; v.play().catch(() => {}); } }, { once: true });
+  showSheet($('trechoSheet'), true);
+  requestAnimationFrame(() => { trechoMede(); trechoDesenha(); }); // as larguras só existem com o painel aberto
+}
+// a escala da tira: a janela com ~1/3 dela (entre 64 e 220 px); o clipe curto cabe inteiro
+function trechoMede() {
+  const w = $('trechoTira').clientWidth;
+  TC.jan = Math.round(Math.min(Math.max(w * 0.36, 64), 220));
+  TC.pps = trechoCurto() ? w / Math.max(TC.dur, 0.01) : TC.jan / TC.lugar;
+}
+function trechoDesenha() {
+  const curto = trechoCurto();
+  const w = $('trechoTira').clientWidth;
+  const jan = $('trechoJanela');
+  const q = $('trechoQuadros');
+  const esq = curto ? 0 : (w - TC.jan) / 2;
+  const x0 = esq - (curto ? 0 : TC.de) * TC.pps; // onde o começo do clipe está, na tira
+  jan.style.left = `${esq}px`;
+  jan.style.width = `${curto ? TC.dur * TC.pps : TC.jan}px`;
+  q.style.width = `${TC.dur * TC.pps}px`;
+  q.style.transform = `translateX(${x0.toFixed(1)}px)`;
+  // os quadros que aparecem (com um de folga de cada lado), cada um pedido uma vez; arrastando na
+  // barra do clipe inteiro, só quando o dedo solta (senão cada ponto do caminho pediria os seus)
+  const passo = TC.tile / TC.pps;
+  const ultimo = Math.max(0, Math.ceil(TC.dur / passo) - 1);
+  const k0 = Math.max(0, Math.floor(-x0 / TC.tile) - 1);
+  const k1 = TC.arr && TC.arr.tipo === 'geral' ? -1 : Math.min(ultimo, Math.ceil((w - x0) / TC.tile) + 1);
+  for (let k = k0; k <= k1; k++) {
+    if (TC.feitos.has(k)) continue;
+    TC.feitos.add(k);
+    const im = el('img', '', q);
+    im.alt = ''; im.draggable = false;
+    im.style.left = `${k * TC.tile}px`;
+    im.src = quadroDaMidia(TC.midia, Math.min(Math.max(0, TC.dur - 0.05), (k + 0.5) * passo), 112);
+  }
+  const m = $('trechoMarca');
+  m.style.left = `${curto ? 0 : (TC.de / TC.dur) * 100}%`;
+  m.style.width = `${curto ? 100 : (TC.lugar / TC.dur) * 100}%`;
+  $('trechoVal').textContent = curto ? 'o clipe inteiro' : `${segs(TC.de)} → ${segs(TC.de + TC.lugar)}`;
+  $('trechoNota').textContent = curto
+    ? 'O clipe é mais curto que o lugar: entra inteiro, mais lento, e para no último quadro.'
+    : 'Arraste a tira: o que fica dentro da moldura entra neste lugar, com a duração da batida.';
+}
+function trechoVai(de, tocar) {
+  TC.de = Math.min(trechoMax(), Math.max(0, de));
+  trechoDesenha();
+  const v = $('trechoVideo');
+  if (tocar) { v.currentTime = TC.de; v.play().catch(() => {}); } else if (!v.seeking) v.currentTime = TC.de;
+}
+function closeTrecho() {
+  TC.aberto = false;
+  TC.arr = null;
+  const v = $('trechoVideo');
+  v.pause();
+  v.removeAttribute('src');
+  v.load(); // solta o arquivo
+  showSheet($('trechoSheet'), false);
+}
+function trechoPronto() {
+  const r = tomadaPorUid(TC.uid);
+  const de = +TC.de.toFixed(2);
+  closeTrecho();
+  if (!r) return;
+  const lg = lugarDe(r) || {};
+  const antes = snap(), k = trocaKey(r);
+  const nova = r.troca && r.troca.midia;
+  if (!nova && Math.abs(de - +(lg.de || 0)) < 0.005) r.troca = null; // o trecho de agora: como está
+  else r.troca = { ...(r.troca || {}), de };
+  if (trocaKey(r) === k) return;
+  remember(antes);
+  renderTimeline(); renderToolbar(); refreshHeader();
+  toast(`Lugar ${r.vaga}: entra aos ${segs(de)} do clipe. Salve: o agente refaz só este lugar.`, 3000);
+}
+// a tira: arrastar corre o clipe por baixo da janela (para a esquerda, mais adiante no clipe)
+$('trechoTira').addEventListener('pointerdown', (e) => {
+  if (!TC.aberto || trechoCurto()) return;
+  TC.arr = { tipo: 'tira', x0: e.clientX, de0: TC.de };
+  try { $('trechoTira').setPointerCapture(e.pointerId); } catch (err) { /* toque sintético */ }
+  $('trechoVideo').pause();
+});
+// a barra do clipe inteiro: tocar ou arrastar põe a janela ali
+$('trechoGeral').addEventListener('pointerdown', (e) => {
+  if (!TC.aberto || trechoCurto()) return;
+  TC.arr = { tipo: 'geral' };
+  try { $('trechoGeral').setPointerCapture(e.pointerId); } catch (err) { /* toque sintético */ }
+  $('trechoVideo').pause();
+  trechoGeralEm(e.clientX);
+});
+function trechoGeralEm(x) {
+  const g = $('trechoGeral').getBoundingClientRect();
+  trechoVai(((x - g.left) / g.width) * TC.dur - TC.lugar / 2, false);
+}
+const trechoArrasta = (e) => {
+  if (!TC.arr) return;
+  if (TC.arr.tipo === 'geral') trechoGeralEm(e.clientX);
+  else trechoVai(TC.arr.de0 - (e.clientX - TC.arr.x0) / TC.pps, false);
+};
+const trechoSolta = () => {
+  if (!TC.arr) return;
+  TC.arr = null;
+  trechoVai(TC.de, true);
+};
+for (const id of ['trechoTira', 'trechoGeral']) {
+  $(id).addEventListener('pointermove', trechoArrasta);
+  $(id).addEventListener('pointerup', trechoSolta);
+  $(id).addEventListener('pointercancel', trechoSolta);
+}
+// o vídeo de cima toca só a janela, em volta
+$('trechoVideo').addEventListener('timeupdate', () => {
+  const v = $('trechoVideo');
+  if (TC.aberto && !TC.arr && !trechoCurto() && v.currentTime >= TC.de + TC.lugar) v.currentTime = TC.de;
+});
+window.addEventListener('resize', () => { if (TC.aberto) { trechoMede(); TC.feitos.clear(); $('trechoQuadros').innerHTML = ''; trechoDesenha(); } });
+$('trechoCancel').addEventListener('click', closeTrecho);
+$('trechoOk').addEventListener('click', trechoPronto);
 
 // Descartar (computador, como a desktop antiga): tudo volta ao último vídeo do agente, e se
 // chegou uma versão nova ela já entra. Não tem desfazer, por isso pergunta antes.
@@ -2473,7 +2779,8 @@ function download() {
 let upXhr = null;
 const mb = (b) => `${Math.round(b / 1e6)} MB`;
 // `aoChegar`: a imagem enviada vai para quem pediu (o painel Fundo) em vez de virar camada
-function sendVideo(file, aoChegar) {
+// `para` 'montagem': a foto ou o vídeo de um lugar (fica em midia/ e entra no lugar, sem avisar o agente)
+function sendVideo(file, aoChegar, para) {
   if (upXhr) { toast('Já tem um envio indo — espere terminar', 2400); return; }
   const card = $('upload');
   card.className = 'upload';
@@ -2483,7 +2790,7 @@ function sendVideo(file, aoChegar) {
   $('upCancel').textContent = 'Cancelar';
   const xhr = new XMLHttpRequest();
   upXhr = xhr;
-  xhr.open('POST', `/api/upload?name=${encodeURIComponent(file.name)}${S.projetoId ? `&projeto=${S.projetoId}` : ''}`);
+  xhr.open('POST', `/api/upload?name=${encodeURIComponent(file.name)}${S.projetoId ? `&projeto=${S.projetoId}` : ''}${para ? `&para=${para}` : ''}`);
   xhr.upload.onprogress = (e) => {
     if (!e.lengthComputable) return;
     const f = e.loaded / e.total;
@@ -2501,6 +2808,12 @@ function sendVideo(file, aoChegar) {
     try { res = JSON.parse(xhr.responseText); } catch (err) { /* resposta sem JSON */ }
     if (xhr.status === 200 && res.ok) {
       $('upBar').style.width = '100%';
+      if (para === 'montagem') {
+        end('done', 'Chegou. Entra no lugar quando você salvar.');
+        setTimeout(() => { if (!upXhr) card.classList.add('hidden'); }, 5000);
+        if (aoChegar) aoChegar(res);
+        return;
+      }
       const camada = res.tipo === 'imagem' || res.tipo === 'audio';
       const fundo = aoChegar && res.tipo === 'imagem';
       end('done', fundo ? 'Chegou. Está entre os fundos.' : camada ? 'Chegou. Está na linha do tempo, na agulha.' : 'Chegou no computador. O agente já foi avisado.');
@@ -3611,6 +3924,9 @@ async function salvar(aviso) {
   // Melhorar voz: a Voz e o Fundo escolhidos, ou {desligar}; o agente aplica no cut.mp4
   const comVoz = melhorarDirty();
   if (comVoz) payload.melhorar = S.melhorar;
+  // os lugares da montagem trocados: o agente refaz só eles (montagem.py aplicar)
+  const lugares = lugaresMudados();
+  if (lugares.length) payload.montagem = { lugares: lugares.map(pedidoDoLugar) };
   if (S.notes.length) {
     payload.notes = S.notes.map((n) => ({
       start: +n.start.toFixed(3),
@@ -3659,7 +3975,9 @@ async function salvar(aviso) {
     renderTimeline(); renderToolbar(); refreshHeader();
     const oque = comEfeitos ? (comCamadas ? 'Camadas e efeitos salvos' : 'Efeitos salvos') : 'Camadas salvas';
     const soVoz = comVoz && soCamadas && !comF2 && !comVel && !comCamadas && !comEfeitos;
+    const soLugares = lugares.length > 0 && soCamadas && !comF2 && !comVel && !comCamadas && !comEfeitos && !comVoz;
     toast(aviso || (soVoz ? 'Melhorar voz enviado. O agente aplica a voz no vídeo.'
+      : soLugares ? `${lugares.length > 1 ? `${lugares.length} lugares enviados` : 'Lugar enviado'}. O agente refaz só ${lugares.length > 1 ? 'eles' : 'ele'}, na batida.`
       : !soCamadas ? 'Ajustes enviados. O agente refaz o corte.'
       : comF2 ? 'Ajustes enviados. O agente refaz só os trechos do vídeo final que mudaram.'
         : comVel && !comCamadas && !comEfeitos ? 'Velocidade salva. O agente faz o vídeo de entrega com ela.'
