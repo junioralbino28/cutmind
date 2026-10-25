@@ -3978,6 +3978,7 @@ async function salvar(aviso) {
     const soLugares = lugares.length > 0 && soCamadas && !comF2 && !comVel && !comCamadas && !comEfeitos && !comVoz;
     toast(aviso || (soVoz ? 'Melhorar voz enviado. O agente aplica a voz no vídeo.'
       : soLugares ? `${lugares.length > 1 ? `${lugares.length} lugares enviados` : 'Lugar enviado'}. O agente refaz só ${lugares.length > 1 ? 'eles' : 'ele'}, na batida.`
+      : lugares.length && soCamadas && !comF2 && !comVel ? 'Lugares e camadas enviados. O agente refaz a montagem na batida.'
       : !soCamadas ? 'Ajustes enviados. O agente refaz o corte.'
       : comF2 ? 'Ajustes enviados. O agente refaz só os trechos do vídeo final que mudaram.'
         : comVel && !comCamadas && !comEfeitos ? 'Velocidade salva. O agente faz o vídeo de entrega com ela.'
@@ -4212,7 +4213,8 @@ function renderLayerTrack(track, lane, f) {
     chip.style.width = `${Math.max((b - a) * S.pps, 8)}px`;
     if (f.tipo === 'texto') { // a 1ª linha do texto, e as marcas de atrás e acompanhar
       el('span', 'l-ico', chip).innerHTML = ICON.texto;
-      el('span', 'l-name', chip).textContent = String(it.texto).split('\n')[0].slice(0, 60) || 'Texto';
+      const linha = String(it.texto).split('\n')[0].slice(0, 60) || 'Texto';
+      el('span', 'l-name', chip).textContent = it.nome ? `${it.nome}: ${linha}` : linha; // o do modelo diz qual é
       if (it.atras) el('span', 'l-tag', chip).innerHTML = ICON.pessoa;
       if (it.acompanhar) el('span', 'l-tag', chip).innerHTML = ICON.alvo;
       if (it.id === S.layerSel) {
@@ -5414,7 +5416,7 @@ function openTextoCamada(novo) {
   painel.antes = snap();
   painel.valor = JSON.parse(JSON.stringify(it));
   CutMindFontes.carregarTodas();
-  $('cenaSheetNome').textContent = 'Texto';
+  $('cenaSheetNome').textContent = it.nome || 'Texto'; // o texto de um modelo de montagem diz qual é ("Título")
   const box = $('cenaCampos');
   box.innerHTML = '';
   const lab = el('label', 'cena-campo', box);

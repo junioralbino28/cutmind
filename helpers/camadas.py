@@ -24,7 +24,8 @@ Um texto tem o centro em `x`/`y` (px do quadro 1080x1920, podendo sair um pouco 
 de linha com "\n" e o `estilo` do painel de Texto: `fonte` (uma família do catálogo de
 fontes), `peso`, `cor` e `corContorno` (#rrggbb), `tamanho` (× 96 px) e `contorno` (px). Com
 `atras` ele fica atrás da pessoa (o agente faz o recorte da janela), com `acompanhar` ele anda
-junto com ela (o rastreio do rosto), e `curva` (−100 a 100) o dobra num arco.
+junto com ela (o rastreio do rosto), e `curva` (−100 a 100) o dobra num arco. O texto que veio de
+um modelo de montagem leva o `nome` do lugar dele no modelo ("Título"), que o painel de Texto mostra.
 `corte` é de onde o arquivo de áudio começa a tocar; `volume` vai de 0 a 2. Um áudio que
 veio da biblioteca de trilhas leva `"trilha": "<id do catálogo>"` (pacotes.py): o som
 final dá a ele a entrada e a saída lentas de música.
@@ -43,6 +44,7 @@ MAX_FAIXAS = 40
 MAX_ITENS = 200
 MAX_T = 6 * 3600.0
 MAX_TEXTO = 400
+MAX_NOME = 40
 
 _ID = re.compile(r"[A-Za-z0-9_-]{1,40}")
 _COR = re.compile(r"#[0-9a-fA-F]{6}")
@@ -123,15 +125,21 @@ def _item_texto(it: dict, iid: str) -> dict:
     t = t.replace("\r\n", "\n").replace("\r", "\n")
     if not t.strip() or len(t) > MAX_TEXTO or any(ord(ch) < 32 and ch != "\n" for ch in t):
         raise CamadasInvalidas(f"texto: de 1 a {MAX_TEXTO} letras, sem caractere de controle")
-    return {"id": iid, "texto": t,
-            "inicio": _num(it.get("inicio", 0), "inicio"),
-            "duracao": _num(it.get("duracao", 0), "duracao", 0.05),
-            "x": _num(it.get("x", 540), "x", -1080, 2160),
-            "y": _num(it.get("y", 960), "y", -1920, 3840),
-            "estilo": _estilo_texto(it.get("estilo")),
-            "atras": bool(it.get("atras", False)),
-            "acompanhar": bool(it.get("acompanhar", False)),
-            "curva": _num(it.get("curva", 0), "curva", -100, 100)}
+    out = {"id": iid, "texto": t,
+           "inicio": _num(it.get("inicio", 0), "inicio"),
+           "duracao": _num(it.get("duracao", 0), "duracao", 0.05),
+           "x": _num(it.get("x", 540), "x", -1080, 2160),
+           "y": _num(it.get("y", 960), "y", -1920, 3840),
+           "estilo": _estilo_texto(it.get("estilo")),
+           "atras": bool(it.get("atras", False)),
+           "acompanhar": bool(it.get("acompanhar", False)),
+           "curva": _num(it.get("curva", 0), "curva", -100, 100)}
+    nome = it.get("nome")
+    if nome is not None:  # o texto de um modelo de montagem ("Título"): o painel mostra
+        if not isinstance(nome, str) or not nome.strip() or len(nome) > MAX_NOME or any(ord(ch) < 32 for ch in nome):
+            raise CamadasInvalidas(f"nome: de 1 a {MAX_NOME} letras, sem caractere de controle")
+        out["nome"] = nome.strip()
+    return out
 
 
 def normalize(obj: object) -> dict:

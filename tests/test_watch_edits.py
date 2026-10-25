@@ -37,6 +37,20 @@ def test_aviso_da_montagem_manda_rodar_o_aplicar(tmp_path):
     assert "volume das tomadas" not in aviso  # sem tomada mudada no mesmo Salvar
 
 
+def test_camadas_de_uma_montagem_mandam_rodar_o_render_dela(tmp_path):
+    p = tmp_path / "preview_edits.json"
+    camadas = {"versao": 1, "video": {"mudo": True}, "faixas": [{"id": "modelo-texto-1", "tipo": "texto", "itens": [
+        {"id": "modelo-texto-1-1", "nome": "Título", "texto": "NOVO", "inicio": 0, "duracao": 2}]}]}
+    p.write_text(json.dumps({"type": "timeline-edits", "camadas": camadas}), encoding="utf-8")
+    assert "montagem.py render" not in digest(p)  # projeto comum: o caminho de sempre
+    (tmp_path / "edl.json").write_text(json.dumps({"ranges": [], "montagem": {"lugares": [{"vaga": 1}]}}), encoding="utf-8")
+    assert "rode montagem.py render <edit>" in digest(p)
+    p.write_text(json.dumps({"type": "timeline-edits", "camadas": camadas,
+                             "montagem": {"lugares": [{"vaga": 1, "de": 2}]}}), encoding="utf-8")
+    aviso = digest(p)
+    assert "montagem.py aplicar <edit>" in aviso and "já leva estas camadas" in aviso and "montagem.py render" not in aviso
+
+
 def test_aviso_conta_o_volume_das_tomadas(tmp_path):
     aviso = _salvo(tmp_path, {"ranges": [{"source": "A", "beat": "HOOK", "volume": 0.5},
                                          {"source": "A", "beat": "CTA"},

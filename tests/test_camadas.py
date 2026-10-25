@@ -87,6 +87,15 @@ def test_texto_completa_os_padroes_e_guarda_o_estilo():
     assert (item["x"], item["y"], item["estilo"], item["curva"]) == (540.0, 960.0, {}, 0.0)
 
 
+def test_texto_de_modelo_guarda_o_nome():
+    item = cam.normalize({"faixas": [_texto(nome="  Título ")]})["faixas"][0]["itens"][0]
+    assert item["nome"] == "Título"
+    assert "nome" not in cam.normalize({"faixas": [_texto()]})["faixas"][0]["itens"][0]  # o texto comum não ganha
+    for ruim in ("", "   ", "x" * 41, "linha\nquebrada", 3):
+        with pytest.raises(cam.CamadasInvalidas):
+            cam.normalize({"faixas": [_texto(nome=ruim)]})
+
+
 def test_textos_na_ordem_das_faixas_sem_as_escondidas():
     c = cam.normalize({"faixas": [
         {"id": "t1", "tipo": "texto", "itens": [{"id": "x1", "texto": "embaixo", "duracao": 1}]},

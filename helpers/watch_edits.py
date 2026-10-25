@@ -204,6 +204,12 @@ def digest(p: Path) -> str:
     if lugares:
         head.append(f"montagem: {_plural(len(lugares), 'lugar mudado', 'lugares mudados')}")
         parts += montagem_linhas(lugares, bool(ops))
+    if ("camadas" in d or "efeitos" in d) and _eh_montagem(p.parent):
+        # numa montagem, o vídeo com texto, imagem ou efeito sai do montagem.py (ele monta o Remotion dela)
+        parts.append("  montagem na batida: " + (
+            "o montagem.py aplicar acima já leva estas camadas e efeitos (o servidor gravou os dois)." if lugares else
+            "as camadas e os efeitos já estão gravados; em vez dos passos acima, rode montagem.py render <edit> "
+            "(refaz o vídeo, pelo Remotion quando há texto, imagem ou efeito, e confere a batida)."))
     if "melhorar" in d:
         head.append(f"melhorar voz: {melhorar_resumo(d['melhorar'])}")
         parts += melhorar_linhas(d["melhorar"], bool(edl))
@@ -216,6 +222,13 @@ def digest(p: Path) -> str:
     out = [f"AJUSTES DO PREVIEW ({d.get('savedAt', '')}) — {', '.join(head)}. Aplique-os."]
     out += parts
     return "\n".join(out)
+
+
+def _eh_montagem(edit: Path) -> bool:
+    try:
+        return "montagem" in json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return False
 
 
 def montagem_linhas(lugares: list[dict], tomadas_mudaram: bool) -> list[str]:

@@ -66,9 +66,15 @@ fills a slot:
 | `lugar-original` | "volta o lugar 3 como estava" | `--lugar 3 --midia <file> --de <s>` with the values `montagem.lugares` had before the change |
 | `volume` (on a slot) | "o som do clipe 4 mais baixo" | only with the clips' sound on (`camadas.json` `video.mudo: false`): `ranges[i].volume` as on any take, keeping `vaga`; then `render.py <edit>/edl.json -o <edit>/cut.mp4 --no-subtitles` and `mixar_final.py <edit> --render <edit>/cut.mp4 --imagem corte` |
 
+The template's texts are ordinary text layers in `camadas.json` (tracks `modelo-texto-N`, each
+item with the template's `nome`, "Título"): "troca o título por PROMOÇÃO" is that item's `texto`,
+as in the layers table below. After changing layers or effects in a montage, run
+`montagem.py render <edit>`: with any text, image, filter or transition it builds the video through
+the montage's Remotion project (`<edit>/remotion/`, set up on first use) and checks the beat again.
+
 The editor's Salvar sends the same thing as `montagem.lugares` (`[{vaga, midia?, de?}]`, only
 the slots that changed) and the watcher says to run `montagem.py aplicar <edit>`, which reads
-it. Proven by `tests/test_montagem.py` (only the asked slots are redone, a failure in the
+it (and renders the layers saved with it). Proven by `tests/test_montagem.py` (only the asked slots are redone, a failure in the
 middle leaves the project as it was, the beat is checked again) and
 `tests/test_preview_montagem.py` (what the editor may open and send).
 

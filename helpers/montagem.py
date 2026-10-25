@@ -6,6 +6,7 @@ vídeo em que cada troca de imagem cai numa batida.
                                       [--modelo-batida pequeno|completo] [--so-dados] [--substituir]
     uv run python helpers/montagem.py conferir <edit> [--video <arquivo>] [--modelo-batida …]
     uv run python helpers/montagem.py aplicar <edit> [--lugar N [--midia <arquivo>] [--de <s>]] [--so-dados]
+    uv run python helpers/montagem.py render <edit> [--modelo-batida …]
 
 `usar` faz tudo, em ordem:
   1. a grade de batida da música (batida.py; do cache quando essa música já foi analisada). A música
@@ -21,9 +22,12 @@ vídeo em que cada troca de imagem cai numa batida.
      fica mais lento, até 0,5×, e depois para no último quadro. Com mais lugares que mídias, as mídias
      se repetem em ordem;
   4. escreve edl.json (sem J-cut, que comeria quadros em cada emenda; um range por lugar, com
-     `vaga`), camadas.json (a música numa faixa de áudio e o som dos clipes desligado) e state.json;
-  5. renderiza, a menos que --so-dados: render.py → cut.mp4, mixar_final.py --imagem corte →
-     final.mp4 com a música, e o `conferir` no final.mp4.
+     `vaga`), camadas.json (a música numa faixa de áudio, o som dos clipes desligado e cada texto
+     do modelo numa faixa de texto, com o `nome` dele) e state.json;
+  5. renderiza, a menos que --so-dados: render.py → cut.mp4; sem nada por cima, mixar_final.py
+     --imagem corte põe a música direto no corte; com texto, imagem, filtro ou transição, a imagem
+     sai do Remotion (o modelo de Reels da Fase 2, montado em <edit>/remotion/ na primeira vez) e o
+     mixar_final.py põe a música sobre ela. Por fim, o `conferir` no final.mp4.
 
 `conferir` acha no vídeo onde cada troca de imagem caiu (pela diferença entre quadros) e mostra,
 troca a troca, a distância até a batida da música; e confere, pelas batidas que acha no som do
@@ -34,13 +38,19 @@ a no máximo 1 quadro da batida.
 renderiza: os do Salvar do editor (`montagem` do preview_edits.json) ou o de `--lugar`. O `usar` guarda
 de onde cada lugar saiu no bloco `montagem.lugares` do edl.json; é dali que o `aplicar` parte.
 
+`render` refaz o vídeo como ele está (o que mudou foram as camadas, os textos ou os efeitos, que o
+Salvar já gravou) e confere.
+
 O modelo é um JSON:
 
     {"versao": 1, "id": "drop-rapido", "nome": "Drop rápido", "comeca": "forte", "drop_na_vaga": 5,
      "vagas": [{"batidas": 4, "repetir": 4}, {"batidas": 1, "repetir": 16}, {"batidas": 2, "repetir": 4}]}
 
 `repetir` abre um lugar em vários iguais (o `drop_na_vaga` conta os lugares já abertos); `comeca` é
-"forte" (a música entra no primeiro tempo forte) ou "batida" (na primeira batida). Com `golpe` (o
+"forte" (a música entra no primeiro tempo forte) ou "batida" (na primeira batida). `textos`, opcional,
+põe textos trocáveis: [{"nome": "Título", "texto": "SEU TÍTULO", "vaga": 1, "batidas": 4, "x": 540,
+"y": 700, "estilo": {"fonte": "Anton", "cor": "#ffffff"}}] (sem `batidas`, o texto dura o lugar; o
+estilo é o do painel de Texto, camadas.py). Com `golpe` (o
 padrão), a troca que cairia numa batida fraca vai para o golpe forte do contratempo vizinho, meia
 batida antes ou depois, quando ele é 1,5× mais forte que a batida: é o bumbo sincopado, que a grade
 sozinha deixa passar. `"golpe": false` corta só na grade.
@@ -62,11 +72,15 @@ from pathlib import Path
 
 import numpy as np
 
+import atualizar_template
 import batida  # mesma pasta deste arquivo
 import camadas as cam
+import efeitos
 import render
 import tempo
 
+AQUI = Path(__file__).resolve().parent
+TEMPLATE = AQUI.parent / "assets" / "shortform"  # o modelo de Reels da Fase 2 (o Remotion)
 FPS = 30
 LARGURA, ALTURA = 1080, 1920
 IMAGENS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
@@ -78,6 +92,8 @@ VEL_MIN = 0.5  # o clipe curto desacelera até 0,5× e depois para no último qu
 PUXA = 1.5  # o golpe no contratempo leva a troca quando é 1,5× mais forte que a batida
 MEIO_MIN = 0.4  # duas trocas nunca ficam a menos de 0,4 batida uma da outra
 MAX_VAGAS = 400
+MAX_TEXTOS = 20
+FAIXA_TEXTO = "modelo-texto"  # as faixas dos textos do modelo: modelo-texto-1, -2… (o usar as refaz)
 JANELA = 3  # quadros para cada lado do planejado em que o conferir procura a troca
 FAIXA_MUSICA = "musica"
 CODIFICA = ["-c:v", "libx264", "-preset", "fast", "-crf", "16", "-pix_fmt", "yuv420p", "-r", str(FPS),
@@ -139,9 +155,26 @@ def carregar_modelo(fonte: Path | dict) -> dict:
     golpe = m.get("golpe", True)
     if not isinstance(golpe, bool):
         raise ErroMontagem('"golpe" é true ou false')
+    textos_in = m.get("textos") or []
+    if not isinstance(textos_in, list) or len(textos_in) > MAX_TEXTOS:
+        raise ErroMontagem(f'"textos": uma lista de até {MAX_TEXTOS}')
+    textos = []
+    for k, t in enumerate(textos_in, 1):
+        if not isinstance(t, dict):
+            raise ErroMontagem(f"texto {k}: precisa ser um objeto")
+        vaga = _inteiro(t.get("vaga", 1), f"texto {k}, vaga", 1, len(vagas))
+        nb = None if t.get("batidas") is None else _inteiro(t["batidas"], f"texto {k}, batidas", 1, 64 * MAX_VAGAS)
+        item = {"id": "x", "nome": t.get("nome") or f"Texto {k}", "texto": t.get("texto"), "duracao": 1,
+                "x": t.get("x", 540), "y": t.get("y", 960), "estilo": t.get("estilo")}
+        try:  # as mesmas regras de um texto do editor (camadas.py)
+            it = cam.normalize({"faixas": [{"id": "t", "tipo": "texto", "itens": [item]}]})["faixas"][0]["itens"][0]
+        except cam.CamadasInvalidas as e:
+            raise ErroMontagem(f"texto {k}: {e}") from None
+        textos.append({"nome": it["nome"], "texto": it["texto"], "vaga": vaga, "batidas": nb,
+                       "x": it["x"], "y": it["y"], "estilo": it["estilo"]})
     ident = str(m.get("id") or "montagem")
     return {"versao": 1, "id": ident, "nome": str(m.get("nome") or ident), "comeca": comeca,
-            "drop_na_vaga": drop, "golpe": golpe, "vagas": vagas}
+            "drop_na_vaga": drop, "golpe": golpe, "vagas": vagas, "textos": textos}
 
 
 # ---------- os lugares no tempo ----------
@@ -204,6 +237,31 @@ def planejar(grade: dict, modelo: dict, fps: int = FPS) -> dict:
     fim = lugares[-1]["quadro"] + lugares[-1]["quadros"]
     return {"inicio_musica": t0, "fps": fps, "lugares": lugares, "quadros": fim, "avisos": avisos,
             "no_golpe": sum(lg["golpe"] for lg in lugares)}
+
+
+def janela_do_texto(plano: dict, grade: dict, vaga: int, batidas: int | None) -> tuple[int, int] | None:
+    """(quadro inicial, quadros) de um texto do modelo: começa com o lugar `vaga` e dura `batidas`
+    batidas (sem elas, o lugar). Quando as batidas fecham na troca de um lugar, termina nela, mesmo
+    que a troca tenha ido para o golpe do contratempo; senão, na batida da grade. None quando a
+    música acabou antes do lugar."""
+    lug = plano["lugares"]
+    if vaga > len(lug):
+        return None
+    q0 = lug[vaga - 1]["quadro"]
+    if batidas is None:
+        return q0, lug[vaga - 1]["quadros"]
+    soma = 0
+    for lg in lug[vaga - 1:]:
+        soma += lg["batidas"]
+        if soma == batidas:
+            return q0, lg["quadro"] + lg["quadros"] - q0
+        if soma > batidas:
+            break
+    b = np.asarray(grade.get("batidas") or [], dtype=float)
+    t0 = plano["inicio_musica"]
+    z = int(np.argmin(np.abs(b - t0))) + sum(lg["batidas"] for lg in lug[:vaga - 1]) + batidas
+    fim = plano["quadros"] if z >= len(b) else min(plano["quadros"], int(round((b[z] - t0) * plano.get("fps", FPS))))
+    return q0, max(1, fim - q0)
 
 
 def _no_golpe(b: np.ndarray, ac: list, z: int) -> tuple[float, bool]:
@@ -454,6 +512,17 @@ def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
     arq_musica = copiar_musica(musica, edit)
     grade, caminho_grade = batida.analisar(arq_musica, edit, modelo_batida)
     plano = planejar(grade, modelo)
+    # os textos do modelo, cada um numa faixa de texto própria, no tempo do lugar dele
+    faixas_texto = []
+    for k, t in enumerate(modelo["textos"], 1):
+        jan = janela_do_texto(plano, grade, t["vaga"], t["batidas"])
+        if jan is None:
+            plano["avisos"].append(f'o texto "{t["nome"]}" ficou de fora: a música acaba antes do lugar {t["vaga"]}')
+            continue
+        fid = f"{FAIXA_TEXTO}-{k}"
+        faixas_texto.append({"id": fid, "tipo": "texto", "oculto": False, "travado": False, "itens": [
+            {"id": f"{fid}-1", "nome": t["nome"], "texto": t["texto"], "inicio": round(jan[0] / FPS, 4),
+             "duracao": round(jan[1] / FPS, 4), "x": t["x"], "y": t["y"], "estilo": t["estilo"]}]})
 
     pasta = edit / "montagem"
     if pasta.is_dir():  # clipes de uma montagem anterior: os nomes mudam com as mídias
@@ -507,11 +576,13 @@ def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
 
     cam_p = edit / "camadas.json"
     camadas = cam.load(cam_p)
-    camadas["faixas"] = [f for f in camadas["faixas"] if f["id"] != FAIXA_MUSICA]
+    camadas["faixas"] = [f for f in camadas["faixas"]
+                         if f["id"] != FAIXA_MUSICA and not f["id"].startswith(FAIXA_TEXTO)]
     camadas["faixas"].insert(0, {"id": FAIXA_MUSICA, "tipo": "audio", "mudo": False, "travado": False,
                                  "itens": [{"id": f"{FAIXA_MUSICA}-1", "arquivo": rel_musica, "inicio": 0.0,
                                             "corte": plano["inicio_musica"], "duracao": vd, "volume": 1.0,
                                             "melhorar": False}]})
+    camadas["faixas"] += faixas_texto  # por cima de tudo, como os textos que a pessoa põe no editor
     camadas["video"]["mudo"] = True  # só a música toca; o som dos clipes se religa no editor
     cam.save(cam_p, camadas)
 
@@ -524,21 +595,139 @@ def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
               "confianca": grade.get("confianca"), "inicio_musica": plano["inicio_musica"],
               "drop": grade.get("drop"), "drop_na_vaga": modelo["drop_na_vaga"], "lentos": lentos,
               "no_golpe": plano["no_golpe"], "avisos": plano["avisos"],
+              "textos": [f["itens"][0]["nome"] for f in faixas_texto],
               "sobraram_midias": max(0, len(lista) - len(ranges))}
     if not so_dados:
         renderizar(edit)
     return resumo
 
 
+def _passo(args: list[str]) -> None:
+    """Um helper do kit com o mesmo Python; a saída dele passa direto."""
+    r = subprocess.run([sys.executable, "-X", "utf8", *args])
+    if r.returncode != 0:
+        raise ErroMontagem(f"{Path(args[0]).name} falhou (código {r.returncode})")
+
+
+def tem_visual(edit: Path) -> bool:
+    """A montagem leva alguma coisa por cima da imagem: texto ou imagem nas camadas (de faixa que não
+    está escondida), filtro, transição ou ajuste. Aí o vídeo passa pelo Remotion."""
+    c = cam.load(Path(edit) / "camadas.json")
+    return bool(cam.textos(c) or cam.aparecem(c) or efeitos.load(Path(edit) / "efeitos.json")["itens"])
+
+
+def imagem_do_zero(video: Path) -> None:
+    """Deixa no arquivo só a imagem, começando no zero. O cut.mp4 da montagem (emenda sem J-cut) tem
+    o vídeo começando 0,021 s depois, empurrado pelo atraso do AAC; o Remotion desenha o quadro que
+    está em ou antes de cada instante, e cada quadro do render mostrava o quadro ANTERIOR do corte
+    (medido em 25/10: as 33 trocas 1 quadro atrasadas, o som certo). Sem recodificar: os dois relógios
+    (PTS e DTS) andam o mesmo tanto. Num ffmpeg sem o filtro `setts` (antes do 4.4), regravado."""
+    video = Path(video)
+    tmp = video.with_name(video.stem + ".zero.mp4")
+    try:
+        _ffmpeg(["-i", str(video), "-map", "0:v:0", "-an", "-c", "copy",
+                 "-bsf:v", "setts=pts=PTS-STARTPTS:dts=DTS-STARTPTS", str(tmp)], "a imagem para o Remotion")
+    except ErroMontagem:
+        _ffmpeg(["-i", str(video), "-map", "0:v:0", "-an", "-vf", "setpts=PTS-STARTPTS", "-c:v", "libx264",
+                 "-preset", "fast", "-crf", "12", "-pix_fmt", "yuv420p", "-colorspace", "bt709",
+                 "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv", str(tmp)],
+                "a imagem para o Remotion")
+    tmp.replace(video)
+
+
+def atraso_da_imagem(video: Path) -> int:
+    """Quadros que a imagem do Remotion fica atrás do vídeo: o começo do vídeo arredondado PARA CIMA
+    (references/shortform.md, segments.json). 0 depois do imagem_do_zero."""
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=start_time",
+                        "-of", "csv=p=0", str(video)], capture_output=True, text=True)
+    try:
+        inicio = float(r.stdout.strip() or 0)
+    except ValueError:
+        inicio = 0.0
+    return max(0, math.ceil(inicio * FPS - 1e-3))
+
+
+def _template_do_kit(edit: Path) -> None:
+    """O código do Remotion da montagem acompanha o kit (atualizar_template.py): o projeto é do
+    montagem.py, e o que o kit ganha depois só aparece no render com o código novo."""
+    try:
+        pl = atualizar_template.aplicar(edit)
+    except atualizar_template.ErroTemplate as e:
+        raise ErroMontagem(f"o código do Remotion da montagem: {e}") from None
+    n = len(pl["novos"]) + len(pl["trocados"])
+    if n:
+        print(f"o código do Remotion da montagem veio do kit de agora ({n} arquivo(s))", flush=True)
+
+
+def preparar_remotion(edit: Path) -> Path:
+    """O projeto do Remotion da montagem (o modelo de Reels da Fase 2) pronto para o cut.mp4 de agora:
+    os arquivos de public/ que o modelo pede, um edit-data.json sem legenda, sem gancho e sem zoom (o
+    `editData` do state.json passa a apontar para ele) e as camadas por cima (camadas_edit_data.py).
+    Na primeira vez, copia o modelo e roda o npm install. Devolve a pasta do projeto."""
+    edit = Path(edit).resolve()
+    rem = edit / "remotion"
+    pub = rem / "public"
+    if not (rem / "package.json").is_file():
+        print(f"montando o projeto do Remotion em {rem}", flush=True)
+        shutil.copytree(TEMPLATE, rem, dirs_exist_ok=True)
+    else:
+        _template_do_kit(edit)
+    if not (rem / "node_modules" / "@remotion" / "cli").is_dir():
+        npm = shutil.which("npm")
+        if not npm:
+            raise ErroMontagem("o que vai por cima da montagem (texto, imagem, filtro) é desenhado pelo Remotion, "
+                               "que precisa do Node.js: instale o Node 18 ou mais novo")
+        print("instalando as dependências do Remotion (só na primeira vez; leva alguns minutos)", flush=True)
+        if subprocess.run([npm, "install", "--no-audit", "--no-fund"], cwd=rem).returncode != 0:
+            raise ErroMontagem("o npm install do projeto do Remotion falhou (a saída dele está acima)")
+    shutil.copyfile(edit / "cut.mp4", pub / "cut.mp4")
+    if efeitos.load(edit / "efeitos.json")["itens"]:  # filtro, transição, ajuste: um public/cut.mp4 com eles
+        _passo([str(AQUI / "efeitos_render.py"), str(edit), "--remotion", str(rem)])
+    imagem_do_zero(pub / "cut.mp4")
+    lag = atraso_da_imagem(pub / "cut.mp4")
+    edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    inicios, total = quadros_dos_lugares(edl)
+    _grava_json(pub / "segments.json", {"segments": [  # cada lugar é um trecho
+        {"start": round(q / FPS, 4), "dur": round(((inicios + [total])[k + 1] - q) / FPS, 4)}
+        for k, q in enumerate(inicios)], "videoLag": lag})
+    _grava_json(pub / "track.json", {"fps": FPS, "width": LARGURA, "height": ALTURA, "count": total,
+                                     "points": [[0.5, 0.4]] * total, "neutral": True})
+    _grava_json(pub / "captions.json", [])
+    ed_p = pub / "edit-data.json"
+    try:
+        ed = json.loads(ed_p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        ed = json.loads((TEMPLATE / "public" / "edit-data.json").read_text(encoding="utf-8"))
+    ed.pop("_readme", None)
+    ed.update({"fps": FPS, "width": LARGURA, "height": ALTURA, "durationSec": round(total / FPS, 4),
+               "videoLag": lag, "inserts": [i for i in ed.get("inserts") or [] if "camada" in i],
+               "behind": [b for b in ed.get("behind") or [] if "camada" in b]})
+    for chave in ("hook", "captions", "camera", "soundtrack"):  # a montagem não tem fala, gancho nem zoom
+        ed[chave] = {**(ed.get(chave) or {}), "enabled": False}
+    _grava_json(ed_p, ed)
+    st_p = edit / "state.json"
+    st = json.loads(st_p.read_text(encoding="utf-8"))
+    if st.get("editData") != "remotion/public/edit-data.json":
+        st["editData"] = "remotion/public/edit-data.json"
+        _grava_json(st_p, st)
+    _passo([str(AQUI / "camadas_edit_data.py"), str(edit), "--edit-data", str(ed_p)])
+    return rem
+
+
 def renderizar(edit: Path) -> None:
-    """O caminho de sempre: render.py faz o cut.mp4 (a imagem) e o mixar_final.py põe a música."""
-    aqui = Path(__file__).resolve().parent
-    passos = [[str(aqui / "render.py"), str(edit / "edl.json"), "-o", str(edit / "cut.mp4"), "--no-subtitles"],
-              [str(aqui / "mixar_final.py"), str(edit), "--render", str(edit / "cut.mp4"), "--imagem", "corte"]]
-    for passo in passos:
-        r = subprocess.run([sys.executable, "-X", "utf8", *passo])
-        if r.returncode != 0:
-            raise ErroMontagem(f"{Path(passo[0]).name} falhou (código {r.returncode})")
+    """O caminho de sempre: render.py faz o cut.mp4 (a imagem). Sem nada por cima, o mixar_final.py põe
+    a música direto nele; com texto, imagem, filtro ou transição, a imagem sai do Remotion (o modelo
+    de Reels da Fase 2, preparar_remotion) e o mixar_final.py põe a música sobre ela."""
+    edit = Path(edit).resolve()
+    _passo([str(AQUI / "render.py"), str(edit / "edl.json"), "-o", str(edit / "cut.mp4"), "--no-subtitles"])
+    if not tem_visual(edit):
+        _passo([str(AQUI / "mixar_final.py"), str(edit), "--render", str(edit / "cut.mp4"), "--imagem", "corte"])
+        return
+    rem = preparar_remotion(edit)
+    cli = rem / "node_modules" / "@remotion" / "cli" / "remotion-cli.js"
+    if subprocess.run(["node", str(cli), "render", "Reels", "out/render.mp4"], cwd=rem).returncode != 0:
+        raise ErroMontagem("o render do Remotion falhou (a saída dele está acima)")
+    _passo([str(AQUI / "mixar_final.py"), str(edit), "--render", str(rem / "out" / "render.mp4")])
 
 
 def mudancas_salvas(edit: Path) -> list[dict]:
@@ -680,7 +869,10 @@ def conferir(edit: Path, video: Path | None = None, modelo_batida: str = batida.
     - a troca × a batida mais perto da grade da música (a da música inteira, com o contexto que o
       detector precisa: rodando só no trecho do vídeo, ele perde uma batida aqui e ali);
     - o som: as batidas que o detector acha no som do PRÓPRIO vídeo × a grade. A mediana diz se a
-      música entrou deslocada; o erro de cada troca já desconta esse deslocamento."""
+      música entrou deslocada; o erro de cada troca já desconta esse deslocamento.
+
+    A troca com transição (efeitos.json) é gradual e não tem um quadro de troca para achar: nela vale
+    o corte, que é o centro da transição."""
     edit = Path(edit).resolve()
     edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
     mont = edl.get("montagem")
@@ -706,6 +898,9 @@ def conferir(edit: Path, video: Path | None = None, modelo_batida: str = batida.
     d = diferencas(video)
     no_som, _ = batida.detectar(batida.ler_audio(video), batida.SR, modelo_batida)
     um_quadro = 1000.0 / FPS
+    # o corte de cada transição, gravado com 3 casas, cai a menos de meio quadro da junção
+    com_transicao = {int(round(it["corte"] * FPS)): it["pacote"]
+                     for it in efeitos.load(edit / "efeitos.json")["itens"] if it["tipo"] == "transicao"}
 
     def perto(lista: np.ndarray, t: float) -> float | None:
         return float(lista[int(np.argmin(np.abs(lista - t)))]) if len(lista) else None
@@ -715,13 +910,15 @@ def conferir(edit: Path, video: Path | None = None, modelo_batida: str = batida.
     desvio = round(float(np.median(desvios)), 1) if desvios else None
     trocas = []
     for k in range(1, len(inicios)):
-        visto = achar_troca(d, inicios[k])
+        transicao = com_transicao.get(inicios[k])
+        visto = inicios[k] if transicao else achar_troca(d, inicios[k])
         t = visto / FPS
         bm = perto(golpes, t)
         no_golpe = bool(np.min(np.abs(da_musica - bm)) > 1e-6)  # caiu no contratempo, não numa batida
         bs = perto(no_som, t)
         trocas.append({"lugar": edl["ranges"][k].get("vaga", k + 1), "quadro": inicios[k], "visto": visto,
                        "troca": round(t, 4), "batida_da_musica": round(bm, 3), "no_golpe": no_golpe,
+                       "transicao": transicao,
                        "erro_ms": round((t - bm) * 1000 - (desvio or 0.0), 1),
                        "batida_no_som": None if bs is None or abs(bs - t) * 1000 > 2 * um_quadro else round(bs, 3)})
     erros = [abs(x["erro_ms"]) for x in trocas]
@@ -732,6 +929,7 @@ def conferir(edit: Path, video: Path | None = None, modelo_batida: str = batida.
            "ate_um_quadro": sum(e <= um_quadro + 0.05 for e in erros), "fora_do_quadro": len(fora_do_quadro),
            "som_vs_plano_ms": desvio, "batidas_no_som": len(no_som),
            "trocas_no_golpe": sum(x["no_golpe"] for x in trocas),
+           "com_transicao": sum(bool(x["transicao"]) for x in trocas),
            # o detector de batida não marca contratempo: só a troca numa batida conta aqui
            "trocas_sem_batida_no_som": sum(x["batida_no_som"] is None and not x["no_golpe"] for x in trocas),
            "ok": ok}
@@ -753,14 +951,19 @@ def relatorio(rel: dict) -> str:
     for x in mostrar:
         no_som = "—" if x["batida_no_som"] is None else f"{x['batida_no_som']:.3f}"
         onde = "golpe" if x.get("no_golpe") else ""
-        linhas.append(f"  {x['lugar']:>5}  {x['quadro']:>16}  {x['visto']:>12}  {x['troca']:>9.3f}  "
+        visto = "transição" if x.get("transicao") else x["visto"]
+        linhas.append(f"  {x['lugar']:>5}  {x['quadro']:>16}  {visto:>12}  {x['troca']:>9.3f}  "
                       f"{x['batida_da_musica']:>14.3f} {onde:>5}  {x['erro_ms']:+4.0f} ms  {no_som:>15}")
     if rel["pior_ms"] is not None:
         linhas.append(f"  pior erro: {rel['pior_ms']:.0f} ms; {rel['ate_um_quadro']} de {len(trocas)} trocas a no "
                       f"máximo 1 quadro ({1000 / FPS:.0f} ms) da batida")
     if rel.get("trocas_no_golpe"):
         linhas.append(f"  {rel['trocas_no_golpe']} troca(s) no golpe forte do contratempo (marcadas \"golpe\")")
-    linhas.append(f"  imagem: {len(trocas) - rel['fora_do_quadro']} de {len(trocas)} trocas no quadro planejado")
+    secas = len(trocas) - rel.get("com_transicao", 0)
+    imagem = f"  imagem: {secas - rel['fora_do_quadro']} de {secas} trocas no quadro planejado"
+    if rel.get("com_transicao"):
+        imagem += f"; {rel['com_transicao']} com transição (gradual: vale o corte, no centro dela)"
+    linhas.append(imagem)
     if rel["som_vs_plano_ms"] is None:
         linhas.append("  som: o detector não achou batida no som do vídeo")
     else:
@@ -815,6 +1018,9 @@ def main() -> int:
     p.add_argument("--de", type=float, default=None, help="de onde o clipe entra, em segundos")
     p.add_argument("--so-dados", action="store_true", help="refaz os lugares sem renderizar")
     p.add_argument("--modelo-batida", choices=sorted(batida.MODELOS), default=batida.MODELO_PADRAO)
+    rd = sub.add_parser("render", help="refaz o vídeo como está (camadas, textos ou efeitos mudaram) e confere")
+    rd.add_argument("edit", type=Path)
+    rd.add_argument("--modelo-batida", choices=sorted(batida.MODELOS), default=batida.MODELO_PADRAO)
     a = ap.parse_args()
     try:
         if a.cmd == "usar":
@@ -834,8 +1040,13 @@ def main() -> int:
             if a.so_dados:
                 return 0
             return 0 if conferir(a.edit, modelo_batida=a.modelo_batida)["ok"] else 1
+        if a.cmd == "render":
+            if "montagem" not in json.loads((Path(a.edit) / "edl.json").read_text(encoding="utf-8")):
+                raise ErroMontagem("este edl.json não é de uma montagem do montagem.py")
+            renderizar(a.edit)
+            return 0 if conferir(a.edit, modelo_batida=a.modelo_batida)["ok"] else 1
         return 0 if conferir(a.edit, a.video, a.modelo_batida)["ok"] else 1
-    except (ErroMontagem, batida.ErroBatida, cam.CamadasInvalidas) as e:
+    except (ErroMontagem, batida.ErroBatida, cam.CamadasInvalidas, efeitos.EfeitosInvalidos) as e:
         print(f"montagem: {e}", file=sys.stderr)
         return 2
 

@@ -4,6 +4,7 @@ conferida troca a troca."""
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 import wave
@@ -36,6 +37,38 @@ def _grade(batidas, fortes=None, drop=None, confianca="alta"):
 
 
 # ---------- o modelo ----------
+
+def test_modelo_confere_os_textos():
+    mod = m.carregar_modelo({"vagas": [{"batidas": 2, "repetir": 3}], "textos": [
+        {"texto": "OI", "vaga": 2},
+        {"nome": "Título", "texto": "A\nB", "vaga": 1, "batidas": 4, "x": 300, "y": 700,
+         "estilo": {"fonte": "Anton", "cor": "#FFE500"}}]})
+    assert mod["textos"][0] == {"nome": "Texto 1", "texto": "OI", "vaga": 2, "batidas": None, "x": 540.0,
+                                "y": 960.0, "estilo": {}}
+    assert mod["textos"][1]["nome"] == "Título" and mod["textos"][1]["estilo"] == {"fonte": "Anton", "cor": "#ffe500"}
+    assert m.carregar_modelo({"vagas": [{"batidas": 1}]})["textos"] == []
+    for ruim in ([{"texto": "OI", "vaga": 4}], [{"vaga": 1}], [{"texto": "OI", "estilo": {"cor": "vermelho"}}],
+                 [{"texto": "OI", "batidas": 0}], [{"texto": "OI"}] * 21, "OI"):
+        with pytest.raises(m.ErroMontagem):
+            m.carregar_modelo({"vagas": [{"batidas": 2, "repetir": 3}], "textos": ruim})
+
+
+def test_texto_do_modelo_fecha_na_troca_do_lugar():
+    b = [0.5 * k for k in range(40)]
+    plano = m.planejar(_grade(b, fortes=[0.0]), m.carregar_modelo({"vagas": [{"batidas": 4, "repetir": 2},
+                                                                              {"batidas": 1, "repetir": 4}]}))
+    assert m.janela_do_texto(plano, _grade(b), 1, None) == (0, 60)  # sem batidas: o lugar
+    assert m.janela_do_texto(plano, _grade(b), 1, 8) == (0, 120)    # 4 + 4: fecha na troca do lugar 3
+    assert m.janela_do_texto(plano, _grade(b), 3, 2) == (120, 30)
+    assert m.janela_do_texto(plano, _grade(b), 1, 6) == (0, 90)     # no meio do lugar 2: a batida da grade
+    assert m.janela_do_texto(plano, _grade(b), 3, 50) == (120, plano["quadros"] - 120)  # passa do fim: o fim
+    plano["lugares"][3]["quadro"] += 4  # uma troca que foi para o golpe: o texto acompanha a troca
+    plano["lugares"][2]["quadros"] += 4
+    assert m.janela_do_texto(plano, _grade(b), 1, 9) == (0, 139)
+    curto = m.planejar(_grade([0.5 * k for k in range(4)], fortes=[0.0]),
+                       m.carregar_modelo({"vagas": [{"batidas": 1, "repetir": 6}]}))
+    assert m.janela_do_texto(curto, _grade(b), 5, None) is None  # a música acabou antes do lugar
+
 
 def test_modelo_abre_repetir_e_numera_os_lugares():
     mod = m.carregar_modelo({"id": "t", "vagas": [{"batidas": 4, "repetir": 2},
@@ -300,6 +333,141 @@ def _grade_fixa(monkeypatch, b):
     monkeypatch.setattr(m.batida, "analisar", grade_falsa)
 
 
+def test_usar_poe_os_textos_do_modelo_nas_camadas(tmp_path, monkeypatch):
+    _grade_fixa(monkeypatch, [0.5 * k for k in range(12)])  # 12 batidas: dos 7 lugares de 2, cabem 5
+    musica = _wav(tmp_path / "musica.wav", 2.0, 440)
+    foto = tmp_path / "f.png"
+    _ffmpeg("-f", "lavfi", "-i", "color=c=red:s=90x160", "-frames:v", "1", foto)
+    modelo = {"vagas": [{"batidas": 2, "repetir": 7}], "textos": [
+        {"nome": "Título", "texto": "OLÁ", "vaga": 1, "batidas": 4, "y": 700, "estilo": {"fonte": "Anton"}},
+        {"nome": "Fim", "texto": "TCHAU", "vaga": 4},
+        {"nome": "Longe", "texto": "NÃO CABE", "vaga": 6}]}
+    edit = tmp_path / "edit"
+    r = m.usar(modelo, musica, [str(foto)], edit, so_dados=True, jobs=1)
+    assert r["textos"] == ["Título", "Fim"] and any('"Longe" ficou de fora' in a for a in r["avisos"])
+    c = cam.load(edit / "camadas.json")
+    assert [f["id"] for f in c["faixas"]] == ["musica", "modelo-texto-1", "modelo-texto-2"]
+    t1, t2 = (f["itens"][0] for f in c["faixas"][1:])
+    assert (t1["nome"], t1["texto"], t1["inicio"], t1["duracao"], t1["y"], t1["estilo"]) == (
+        "Título", "OLÁ", 0.0, 2.0, 700.0, {"fonte": "Anton"})
+    assert (t2["nome"], t2["inicio"], t2["duracao"]) == ("Fim", 3.0, 1.0)  # o lugar 4: da batida 6 à 8
+    # montar de novo refaz os textos do modelo e deixa os da pessoa
+    c["faixas"].append({"id": "t-meu", "tipo": "texto", "itens": [{"id": "t-meu-1", "texto": "meu", "duracao": 1}]})
+    cam.save(edit / "camadas.json", c)
+    m.usar(modelo, musica, [str(foto)], edit, so_dados=True, jobs=1)
+    assert [f["id"] for f in cam.load(edit / "camadas.json")["faixas"]] == ["musica", "t-meu", "modelo-texto-1",
+                                                                            "modelo-texto-2"]
+
+
+def test_so_passa_pelo_remotion_com_algo_por_cima(tmp_path):
+    def camadas(*faixas):
+        cam.save(tmp_path / "camadas.json", {"faixas": list(faixas)})
+
+    assert not m.tem_visual(tmp_path)
+    camadas({"id": "a", "tipo": "audio", "itens": [{"id": "a1", "arquivo": "midia/m.mp3", "duracao": 2}]})
+    assert not m.tem_visual(tmp_path)  # só a música
+    camadas({"id": "t", "tipo": "texto", "oculto": True, "itens": [{"id": "t1", "texto": "oi", "duracao": 1}]})
+    assert not m.tem_visual(tmp_path)  # o texto escondido não entra
+    camadas({"id": "t", "tipo": "texto", "itens": [{"id": "t1", "texto": "oi", "duracao": 1}]})
+    assert m.tem_visual(tmp_path)
+    camadas({"id": "i", "tipo": "imagem", "itens": [{"id": "i1", "arquivo": "midia/a.png", "duracao": 1}]})
+    assert m.tem_visual(tmp_path)
+    camadas()
+    (tmp_path / "efeitos.json").write_text(json.dumps({"versao": 1, "itens": [
+        {"id": "f1", "tipo": "filtro", "pacote": "filme-pb", "inicio": 0, "duracao": 1}]}), encoding="utf-8")
+    assert m.tem_visual(tmp_path)
+
+
+def test_preparar_remotion_escreve_o_public_da_montagem(tmp_path, monkeypatch):
+    edit = tmp_path / "edit"
+    rem = edit / "remotion"
+    (rem / "node_modules" / "@remotion" / "cli").mkdir(parents=True)
+    (rem / "public").mkdir()
+    (rem / "package.json").write_text("{}", encoding="utf-8")
+    (edit / "cut.mp4").write_bytes(b"corte")
+    (edit / "edl.json").write_text(json.dumps({"jcut": False, "montagem": {"lugares": [{"vaga": 1}]}, "ranges": [
+        {"source": "a", "start": 0.0, "end": 1.0, "vaga": 1}, {"source": "b", "start": 2.0, "end": 2.5, "vaga": 2}]}),
+        encoding="utf-8")
+    (edit / "state.json").write_text(json.dumps({"video": "cut.mp4", "fps": 30}), encoding="utf-8")
+    (rem / "public" / "edit-data.json").write_text(json.dumps({
+        "inserts": [{"src": "agente.png", "start": 0, "end": 1}, {"src": "c.png", "start": 0, "end": 1, "camada": "i1"}],
+        "captions": {"enabled": True, "fontSize": 61}}), encoding="utf-8")
+    chamados, zerados = [], []
+    monkeypatch.setattr(m, "_template_do_kit", lambda e: chamados.append("atualizar_template"))
+    monkeypatch.setattr(m, "_passo", lambda args: chamados.append(Path(args[0]).name))
+    monkeypatch.setattr(m, "imagem_do_zero", lambda v: zerados.append(Path(v).relative_to(edit).as_posix()))
+    monkeypatch.setattr(m, "atraso_da_imagem", lambda v: 0)
+    assert m.preparar_remotion(edit) == rem.resolve()
+    assert zerados == ["remotion/public/cut.mp4"]
+    pub = rem / "public"
+    assert json.loads((pub / "segments.json").read_text(encoding="utf-8")) == {
+        "segments": [{"start": 0.0, "dur": 1.0}, {"start": 1.0, "dur": 0.5}], "videoLag": 0}
+    tr = json.loads((pub / "track.json").read_text(encoding="utf-8"))
+    assert (tr["count"], len(tr["points"]), tr["neutral"]) == (45, 45, True)
+    assert json.loads((pub / "captions.json").read_text(encoding="utf-8")) == []
+    ed = json.loads((pub / "edit-data.json").read_text(encoding="utf-8"))
+    assert (ed["fps"], ed["durationSec"], ed["videoLag"], ed["width"], ed["height"]) == (30, 1.5, 0, 1080, 1920)
+    assert ed["captions"] == {"enabled": False, "fontSize": 61}
+    assert not ed["hook"]["enabled"] and not ed["camera"]["enabled"] and not ed["soundtrack"]["enabled"]
+    assert ed["inserts"] == [{"src": "c.png", "start": 0, "end": 1, "camada": "i1"}]  # o resto é das camadas
+    assert json.loads((edit / "state.json").read_text(encoding="utf-8"))["editData"] == "remotion/public/edit-data.json"
+    # o projeto já montado acompanha o código do kit antes de cada render
+    assert (pub / "cut.mp4").read_bytes() == b"corte"
+    assert chamados == ["atualizar_template", "camadas_edit_data.py"]
+    # com filtro, transição ou ajuste, o efeitos_render.py grava o public/cut.mp4 antes das camadas
+    (edit / "efeitos.json").write_text(json.dumps({"versao": 1, "itens": [
+        {"id": "f1", "tipo": "filtro", "pacote": "filme-pb", "inicio": 0, "duracao": 1}]}), encoding="utf-8")
+    chamados.clear()
+    m.preparar_remotion(edit)
+    assert chamados == ["atualizar_template", "efeitos_render.py", "camadas_edit_data.py"]
+
+
+def test_template_do_kit_troca_o_codigo_velho_da_montagem(tmp_path):
+    """Uma montagem feita com um kit anterior recebe o EfeitosBase.tsx novo (o que leva a duração da
+    transição ao motor) antes do render, sem npm install quando o package.json é o mesmo."""
+    edit = tmp_path / "edit"
+    shutil.copytree(m.TEMPLATE, edit / "remotion")
+    base = edit / "remotion" / "src" / "EfeitosBase.tsx"
+    base.write_text(base.read_text(encoding="utf-8").replace(", duracao_ms: r.tr.duracao_ms", ""), encoding="utf-8")
+    assert "duracao_ms: r.tr" not in base.read_text(encoding="utf-8")
+    pl = m.atualizar_template.planejar(edit)
+    assert pl["trocados"] == ["src/EfeitosBase.tsx"] and not pl["novos"] and not pl["npm"]  # sem npm install
+    m._template_do_kit(edit)
+    assert base.read_bytes() == (m.TEMPLATE / "src" / "EfeitosBase.tsx").read_bytes()
+    assert list((edit / ".template-anterior").glob("*/src/EfeitosBase.tsx"))  # o anterior fica guardado
+
+
+def _hashes(video: Path) -> list[str]:
+    r = subprocess.run(["ffmpeg", "-v", "error", "-i", str(video), "-map", "0:v:0", "-f", "framemd5", "-"],
+                       capture_output=True, text=True, check=True)
+    return [ln.split(",")[-1].strip() for ln in r.stdout.splitlines() if ln and not ln.startswith("#")]
+
+
+def test_imagem_do_zero_tira_o_atraso_sem_recodificar(tmp_path):
+    """O cut.mp4 da montagem começa 0,021 s depois do zero e o Remotion mostrava em cada quadro o quadro
+    anterior do corte. Aqui, com quadros B, som e o vídeo começando em 0,05 s (2 quadros, arredondado
+    para cima)."""
+    video = tmp_path / "cut.mp4"
+    _ffmpeg("-f", "lavfi", "-i", "testsrc2=s=160x90:r=30:d=1", "-f", "lavfi", "-i", "sine=f=440:d=1",
+            "-c:v", "libx264", "-bf", "2", "-c:a", "aac", "-output_ts_offset", "0.05", video)
+    antes = _hashes(video)
+    assert m.atraso_da_imagem(video) == 2 and len(antes) == 30
+    m.imagem_do_zero(video)
+    assert m.atraso_da_imagem(video) == 0
+    assert set(_sondar(video)) == {"video"}  # só a imagem: o som do vídeo final vem do mixar_final
+    assert _hashes(video) == antes  # os mesmos quadros, na mesma ordem
+    assert not list(tmp_path.glob("*.zero.mp4"))
+
+
+def test_preparar_remotion_sem_node_diz_o_que_falta(tmp_path, monkeypatch):
+    edit = tmp_path / "edit"
+    edit.mkdir()
+    monkeypatch.setattr(m.shutil, "which", lambda nome: None)
+    with pytest.raises(m.ErroMontagem, match="Node"):
+        m.preparar_remotion(edit)
+    assert (edit / "remotion" / "package.json").is_file()  # o modelo de Reels já foi copiado
+
+
 def test_aplicar_refaz_so_o_lugar_mudado(tmp_path, monkeypatch):
     _grade_fixa(monkeypatch, [0.5 * k for k in range(40)])
     musica = _wav(tmp_path / "musica.wav", 2.0, 440)
@@ -358,6 +526,32 @@ def test_aplicar_refaz_so_o_lugar_mudado(tmp_path, monkeypatch):
         m.aplicar(edit, [{"vaga": 2, "midia": str(fotos[0])}, {"vaga": 3, "midia": str(ruim)}], so_dados=True)
     assert (edit / "edl.json").read_bytes() == edl_antes
     assert not list(pasta.glob("*.novo*")) and (pasta / "v02_f2.mp4").is_file()
+
+
+def test_conferir_aceita_a_troca_gradual_da_transicao(tmp_path, monkeypatch):
+    """Com transição, a imagem muda aos poucos e o maior salto pode cair fora do corte; ali vale o
+    corte, o centro da transição. Sem transição, o mesmo salto fora do quadro reprova."""
+    edit = tmp_path / "edit"
+    edit.mkdir()
+    ranges = [{"source": f"v0{i}", "start": 0.0, "end": 0.5, "vaga": i} for i in range(1, 5)]
+    (edit / "edl.json").write_text(json.dumps({"ranges": ranges, "montagem": {
+        "batidas": "grade.json", "inicio_musica": 0.0}}), encoding="utf-8")
+    (edit / "grade.json").write_text(json.dumps(_grade([0.0, 0.5, 1.0, 1.5, 2.0])), encoding="utf-8")
+    (edit / "final.mp4").write_bytes(b"")
+    d = np.zeros(59)
+    d[[14, 27, 44]] = 50.0  # as trocas nos quadros 15, 28 (2 antes do corte do lugar 3) e 45
+    monkeypatch.setattr(m, "diferencas", lambda video: d)
+    monkeypatch.setattr(m.batida, "ler_audio", lambda video: np.zeros(1))
+    monkeypatch.setattr(m.batida, "detectar", lambda *a: (np.array([0.5, 1.0, 1.5]), None))
+    rel = m.conferir(edit, mostrar=False)
+    assert not rel["ok"] and rel["fora_do_quadro"] == 1 and rel["com_transicao"] == 0
+
+    m.efeitos.save(edit / "efeitos.json", {"versao": 1, "itens": [
+        {"id": "t1", "tipo": "transicao", "pacote": "t-zoom-central", "corte": 1.0, "duracao": 0.4}]})
+    rel = m.conferir(edit, mostrar=False)
+    assert rel["ok"] and rel["fora_do_quadro"] == 0 and rel["com_transicao"] == 1, m.relatorio(rel)
+    assert [x["transicao"] for x in rel["trocas"]] == [None, "t-zoom-central", None]
+    assert "2 de 2 trocas no quadro planejado; 1 com transição" in m.relatorio(rel)
 
 
 # ---------- de ponta a ponta ----------
