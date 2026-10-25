@@ -1236,6 +1236,18 @@ html:not(.desk) .tl-zoom .tl-ima { height: 24px; padding: 0 10px; } /* no celula
 .card .c-del { position: absolute; top: 5px; right: 5px; z-index: 3; width: 24px; height: 24px; display: grid; place-items: center;
   border-radius: 50%; background: rgba(8, 9, 12, 0.6); color: #fff; }
 .card .c-del svg { width: 14px; height: 14px; }
+.card .c-share { position: absolute; top: 5px; left: 5px; z-index: 3; width: 24px; height: 24px; display: grid; place-items: center;
+  border-radius: 50%; background: rgba(8, 9, 12, 0.6); color: #fff; cursor: pointer; }
+.card .c-share svg { width: 14px; height: 14px; }
+/* Da comunidade: o cartão traz o modelo; embaixo, o @ e o post de quem publicou */
+.mt-pegar { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font: inherit;
+  text-align: center; cursor: pointer; }
+.mt-pegar:disabled { cursor: default; }
+.mt-com.pegando { opacity: 0.6; }
+.mt-fmt { position: absolute; right: 6px; bottom: 4px; font-size: 10px; font-weight: 700; color: var(--dim); }
+.mt-quem { margin-top: 3px; overflow-wrap: anywhere; }
+.mt-quem a { color: var(--dim); }
+.mt-mais { display: block; margin: 6px auto 0; }
 .mod-salvar { display: flex; gap: 8px; padding: 0 14px 12px; }
 .mod-salvar input { flex: 1; min-width: 0; height: 34px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line2);
   background: var(--surface); color: var(--text); font: inherit; font-size: 13px; user-select: text; }

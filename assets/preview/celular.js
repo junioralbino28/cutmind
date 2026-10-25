@@ -81,6 +81,7 @@ const ICON = {
   marcar: sv('<path d="M5.5 20.5V4M5.5 4.5h10.2a.6.6 0 0 1 .48.96L14 8.6l2.18 3.14a.6.6 0 0 1-.48.96H5.5"/>'),
   enviar: sv('<path d="M12 15.5V4.5M7.5 9 12 4.5 16.5 9"/><path d="M4.5 14.5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/>'),
   baixar: sv('<path d="M12 4.5v11M7.5 11l4.5 4.5 4.5-4.5"/><path d="M4.5 14.5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/>'),
+  compartilhar: sv('<circle cx="17.5" cy="5.5" r="2.5"/><circle cx="6.5" cy="12" r="2.5"/><circle cx="17.5" cy="18.5" r="2.5"/><path d="M8.7 10.7l6.6-3.9M8.7 13.3l6.6 3.9"/>'),
   voltar: sv('<path d="M14.5 6 8.5 12l6 6"/>'),
   avancar: sv('<path d="M9.5 6l6 6-6 6"/>'),
   ouvir: sv('<path d="M4.5 15v-2.5a7.5 7.5 0 0 1 15 0V15"/><rect x="3.5" y="14" width="4" height="6" rx="1.6"/><rect x="16.5" y="14" width="4" height="6" rx="1.6"/>'),
@@ -2669,7 +2670,9 @@ $('fileLugar').addEventListener('change', (e) => {
  * guarda ela como modelo: o servidor lê a montagem salva, não o que o editor mostra. */
 const MT = { aberto: false, passo: 'modelos', desenhado: null, modelos: null, sel: null, musica: null, midias: [],
   audios: null, ouvindo: null, trSel: null, baixando: null, guardando: false, enviando: false, fila: [], autoAberto: false,
-  formato: null }; // o formato escolhido no painel; sem ele, o da montagem aberta ou o do modelo
+  formato: null, // o formato escolhido no painel; sem ele, o da montagem aberta ou o do modelo
+  // o mural da comunidade (mural.py): `mural` diz se ele está ligado neste kit; `com` é a lista de lá
+  mural: false, aba: 'meus', com: null, pegando: null };
 const MT_PREV = new Audio();
 const ehMontagem = () => !!(S.montagem || (S.state && S.state.montagem));
 const montagemSemVideo = () => ehMontagem() && !(S.videoDuration > 0);
@@ -2680,8 +2683,48 @@ const ehAudio = (f) => /\.(mp3|m4a|aac|wav|ogg|opus|flac|weba)$/i.test(f.name); 
 async function carregaMontagens() {
   try {
     const r = await fetch('/api/montagens');
-    if (r.ok) MT.modelos = (await r.json()).modelos || [];
+    if (r.ok) {
+      const d = await r.json();
+      MT.modelos = d.modelos || [];
+      MT.mural = !!d.mural;
+    }
   } catch (e) { /* sem a lista: o painel diz que está carregando */ }
+}
+// Da comunidade: uma página do mural de cada vez (o servidor local fala com ele)
+async function carregaComunidade(mais) {
+  const c = MT.com || (MT.com = { modelos: [], seguinte: null, carregando: false, erro: null });
+  if (c.carregando) return;
+  c.carregando = true;
+  c.erro = null;
+  if (MT.aberto) renderMontagem();
+  try {
+    const r = await fetch(`/api/mural${mais && c.seguinte ? `?antes=${encodeURIComponent(c.seguinte)}` : ''}`);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || `erro ${r.status}`);
+    c.modelos = mais ? [...c.modelos, ...d.modelos.filter((x) => !c.modelos.some((y) => y.id === x.id))] : d.modelos;
+    c.seguinte = d.seguinte;
+  } catch (e) { c.erro = e.message; }
+  c.carregando = false;
+  if (MT.aberto) renderMontagem();
+}
+// tocar num modelo da comunidade traz ele para os seus e já deixa escolhido
+async function pegaDoMural(codigo) {
+  if (MT.pegando) return;
+  const m = ((MT.com && MT.com.modelos) || []).find((x) => x.id === codigo);
+  MT.pegando = codigo;
+  renderMontagem();
+  try {
+    const r = await fetch('/api/mural/pegar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ codigo }) });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || `erro ${r.status}`);
+    await carregaMontagens();
+    MT.sel = d.modelo.id;
+    MT.aba = 'meus';
+    toast(`"${d.modelo.nome}"${m && m.autor ? `, de @${m.autor},` : ''} está nos seus modelos. Toque em Próximo para escolher a música.`, 4500);
+  } catch (e) { toast(`Não trouxe o modelo: ${e.message}`, 4500); }
+  MT.pegando = null;
+  if (MT.aberto) renderMontagem();
 }
 async function carregaMusicas() {
   try {
@@ -2747,7 +2790,11 @@ function renderMontagem() {
   $('montRodape').classList.remove('hidden');
   $('montVoltar').classList.toggle('invisivel', passo === 'modelos');
   const seguir = $('montSeguir');
-  if (passo === 'modelos') {
+  if (passo === 'modelos' && MT.mural && MT.aba === 'comunidade') {
+    $('montConta').textContent = 'Toque num modelo';
+    seguir.textContent = 'Próximo';
+    seguir.disabled = true;
+  } else if (passo === 'modelos') {
     $('montConta').textContent = m ? m.nome : 'Escolha um modelo';
     seguir.textContent = 'Próximo';
     seguir.disabled = !m;
@@ -2762,6 +2809,16 @@ function renderMontagem() {
   }
 }
 function renderMontModelos(body) {
+  if (MT.mural) { // com o mural ligado: os seus e os do kit, ou os da comunidade
+    const abas = el('div', 'subtabs mt-abas', body);
+    for (const [k, nome] of [['meus', 'Seus e do kit'], ['comunidade', 'Da comunidade']]) {
+      const b = el('button', `subtab${MT.aba === k ? ' on' : ''}`, abas);
+      b.type = 'button';
+      b.dataset.mtAba = k;
+      b.textContent = nome;
+    }
+    if (MT.aba === 'comunidade') { renderComunidade(body); return; }
+  }
   if (S.montagem) { // numa montagem pronta: guardar ela como modelo
     const linha = el('div', 'mt-guardar', body);
     if (MT.guardando) {
@@ -2796,9 +2853,58 @@ function renderMontModelos(body) {
       del.dataset.mtApagar = m.id;
       del.innerHTML = ICON.remover;
       del.title = 'Apagar o modelo';
+      if (MT.mural) {
+        const sh = el('span', 'c-share', face);
+        sh.dataset.mtCompartilhar = m.id;
+        sh.innerHTML = ICON.compartilhar;
+        sh.title = 'Compartilhar no mural';
+      }
     }
     el('div', 'c-name', card).textContent = m.nome;
     el('div', 'c-sub', card).textContent = resumoMontagem(m);
+  }
+}
+function linkExterno(host, href, texto) {
+  const a = el('a', null, host);
+  a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer';
+  a.textContent = texto;
+}
+function renderComunidade(body) {
+  const c = MT.com;
+  el('p', 'sheet-hint', body).textContent = 'Modelos que outras pessoas publicaram no mural. Toque num para trazer '
+    + 'para os seus; depois é só escolher a música e as fotos e clipes.';
+  if (!c || (c.carregando && !c.modelos.length)) { el('p', 'sheet-hint', body).textContent = 'Carregando o mural…'; return; }
+  if (c.erro && !c.modelos.length) {
+    el('p', 'sheet-hint', body).textContent = `O mural não abriu: ${c.erro}.`;
+    const de = el('button', 'tb-btn ghost mt-mais', body);
+    de.type = 'button'; de.dataset.mtComRecarregar = '1'; de.textContent = 'Tentar de novo';
+    return;
+  }
+  if (!c.modelos.length) { el('p', 'sheet-hint', body).textContent = 'Ninguém publicou um modelo ainda.'; return; }
+  const grid = el('div', 'cards wide mt-grade', body);
+  for (const m of c.modelos) {
+    const card = el('div', `card mt-card mt-com${MT.pegando === m.id ? ' pegando' : ''}`, grid);
+    const b = el('button', 'mt-pegar', card);
+    b.type = 'button';
+    b.dataset.mtPegar = m.id;
+    b.disabled = !!MT.pegando;
+    const face = el('div', 'face mt-face', b);
+    capaRitmo(face, m);
+    el('span', 'mt-fmt', face).textContent = m.formato;
+    el('div', 'c-name', b).textContent = MT.pegando === m.id ? 'Trazendo…' : m.nome;
+    el('div', 'c-sub', b).textContent = resumoMontagem(m);
+    if (m.autor || m.post) { // quem fez e o post em que ela usou: abrem no Instagram, TikTok ou YouTube
+      const quem = el('div', 'c-sub mt-quem', card);
+      if (m.autor) linkExterno(quem, m.perfil, `@${m.autor}`);
+      if (m.autor && m.post) quem.append(' · ');
+      if (m.post) linkExterno(quem, m.post, 'ver o post');
+    }
+  }
+  if (c.seguinte) {
+    const mais = el('button', 'tb-btn ghost mt-mais', body);
+    mais.type = 'button'; mais.dataset.mtComMais = '1';
+    mais.textContent = c.carregando ? 'Carregando…' : 'Ver mais';
+    mais.disabled = c.carregando;
   }
 }
 function linhaMusica(host, o) {
@@ -3086,6 +3192,20 @@ $('montCorpo').addEventListener('click', (e) => {
   const t = e.target;
   const apagar = t.closest('[data-mt-apagar]');
   if (apagar) { apagaMontagem(apagar.dataset.mtApagar); return; }
+  // o Compartilhar abre o mural em outra aba já no gesto (sem fetch antes: nada de bloqueio de janela)
+  const share = t.closest('[data-mt-compartilhar]');
+  if (share) { window.open(`/api/mural/compartilhar?id=${encodeURIComponent(share.dataset.mtCompartilhar)}`, '_blank', 'noopener'); return; }
+  const aba = t.closest('[data-mt-aba]');
+  if (aba) {
+    MT.aba = aba.dataset.mtAba;
+    if (MT.aba === 'comunidade' && (!MT.com || (MT.com.erro && !MT.com.modelos.length))) carregaComunidade();
+    renderMontagem();
+    return;
+  }
+  const pegar = t.closest('[data-mt-pegar]');
+  if (pegar) { pegaDoMural(pegar.dataset.mtPegar); return; }
+  if (t.closest('[data-mt-com-mais]')) { carregaComunidade(true); return; }
+  if (t.closest('[data-mt-com-recarregar]')) { carregaComunidade(); return; }
   const card = t.closest('[data-mt-modelo]');
   if (card) { MT.sel = card.dataset.mtModelo; renderMontagem(); return; }
   if (t.closest('[data-mt-guardar]')) { guardarComo(); return; }

@@ -95,6 +95,13 @@ texts' `x`/`y` are in).
 `musica` is an audio file in `midia/`; `midias` are photos and clips in `midia/` or the open
 montage's own media (the same list the Trocar offers), in the order the person tapped.
 
+The community mural (`mural/` in this repo; `helpers/mural.py`) is on only when `CUTMIND_MURAL`
+holds its address. "Mostra os modelos da comunidade" is `mural.py lista`; "pega o modelo
+<código>" is `mural.py pegar <código>` (saved among the user's templates, never over one that
+exists: a taken name gets " (2)"); "compartilha o meu modelo X" is `mural.py link <id>`, a link the
+user opens to publish. Publishing always happens on the mural's page, never from the agent. The
+editor has the same three: the Da comunidade tab and the share button on the user's own cards.
+
 ## Colour, filters and transitions (`efeitos.json`)
 
 Schema in `helpers/efeitos.py` (validate with `efeitos.normalize`); times in cut seconds.

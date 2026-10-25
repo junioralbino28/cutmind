@@ -70,6 +70,10 @@ Routes:
                          resumo do cartão (o ritmo em batidas, os textos, o drop)
   /api/montagens         POST {nome}: guarda a montagem aberta como modelo (montagem.py capturar)
   /api/montagens/apagar  POST {id}: apaga um modelo da pessoa
+  /api/mural             GET  (?antes=) uma página dos modelos do mural da comunidade (mural.py, no
+                         endereço de CUTMIND_MURAL); `mural` no /api/montagens diz se ele está ligado
+  /api/mural/pegar       POST {codigo}: traz um modelo do mural para os da pessoa
+  /api/mural/compartilhar?id=  GET  redireciona para a página de publicar do mural com o modelo
   /api/save com `montagem.usar` = {modelo, musica, midias}: o Usar do painel (a montagem inteira);
                          conferido em conferir_usar, e o agente roda montagem.py montar. Até ele
                          montar, /api/state traz o pedido em `montagemNova`
@@ -119,6 +123,7 @@ import melhorar_voz as mv  # mesma pasta deste arquivo
 import batida as bt  # mesma pasta deste arquivo
 import montagem as mt  # mesma pasta deste arquivo
 import montagens as mg  # mesma pasta deste arquivo
+import mural as mu  # mesma pasta deste arquivo
 
 APP_DIR = Path(__file__).resolve().parent.parent / "assets" / "preview"
 EFEITOS_DIR = APP_DIR.parent / "efeitos"
@@ -986,7 +991,11 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/modelos":
             self._json({"modelos": md.listar()})
         elif path == "/api/montagens":
-            self._json({"modelos": [mg.resumo(m) for m in mg.listar()]})
+            self._json({"modelos": [mg.resumo(m) for m in mg.listar()], "mural": bool(mu.endereco())})
+        elif path == "/api/mural":
+            self._mural_lista(query)
+        elif path == "/api/mural/compartilhar":
+            self._mural_compartilhar(query)
         elif path == "/api/melhorar":
             self._melhorar()
         elif path == "/api/melhorar/andamento":
@@ -1028,6 +1037,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in ("/api/montagens", "/api/montagens/apagar"):
             self._montagens_post(path)
+            return
+        if path == "/api/mural/pegar":
+            self._mural_pegar()
             return
         if path == "/api/melhorar/preparar":
             self._melhorar_preparar()
@@ -1657,6 +1669,44 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": f"não consegui guardar o modelo: {e}"}, 500)
             return
         self._json({"ok": True, "modelo": mg.resumo(m), "avisos": avisos})
+
+    def _mural_lista(self, query: str) -> None:
+        """A aba Da comunidade do painel: uma página da grade do mural (mural.py)."""
+        try:
+            self._json(mu.lista((parse_qs(query).get("antes") or [None])[0]))
+        except mu.MuralIndisponivel as e:
+            self._json({"error": str(e)}, 502)
+
+    def _mural_compartilhar(self, query: str) -> None:
+        """O Compartilhar de um modelo da pessoa: redireciona para a página de publicar do mural com
+        o modelo no fragmento. É um link (não um pedido do editor) para abrir em outra aba sem
+        esbarrar no bloqueio de janela que vem depois de um fetch."""
+        try:
+            destino = mu.link_publicar((parse_qs(query).get("id") or [""])[0])
+        except (mu.MuralIndisponivel, mu.MuralRecusou) as e:
+            corpo = f"Não deu para compartilhar: {e}.".encode()
+            self._hdr(404 if isinstance(e, mu.MuralRecusou) else 502, "text/plain; charset=utf-8", len(corpo))
+            self.wfile.write(corpo)
+            return
+        self._hdr(303, "text/plain; charset=utf-8", 0, {"Location": destino, "Referrer-Policy": "no-referrer"})
+
+    def _mural_pegar(self) -> None:
+        """Da comunidade: traz o modelo do mural para os da pessoa (~/.cutmind/montagens)."""
+        body = self._corpo_pequeno()
+        if body is None:
+            return
+        try:
+            m = mu.pegar(body.get("codigo"))
+        except (mu.MuralRecusou, mg.MontagemInvalida) as e:
+            self._json({"error": str(e)}, 400 if isinstance(e, mg.MontagemInvalida) else 404)
+            return
+        except mu.MuralIndisponivel as e:
+            self._json({"error": str(e)}, 502)
+            return
+        except OSError as e:
+            self._json({"error": f"não consegui guardar o modelo: {e}"}, 500)
+            return
+        self._json({"ok": True, "modelo": mg.resumo(m)})
 
     def _projeto_post(self, path: str) -> None:
         body = self._corpo_pequeno()
