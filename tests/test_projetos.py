@@ -108,6 +108,21 @@ def test_aberto(tmp_path):
     assert ab["id"] == pj.id_de(a) and ab["edit"] == str(a.resolve()) and ab["nome"] == "A"
 
 
+def test_gravar_espera_quem_esta_lendo(tmp_path):
+    """No Windows, trocar o arquivo enquanto outro processo o lê dá PermissionError (o vigia lê o
+    aberto.json a cada meio segundo, e a troca de projeto se perdia); a gravação espera a leitura."""
+    p = tmp_path / "aberto.json"
+    pj._gravar(p, {"v": 1})
+    leitura = open(p, "rb")
+    threading.Timer(0.2, leitura.close).start()
+    try:
+        pj._gravar(p, {"v": 2})
+    finally:
+        leitura.close()
+    assert pj._ler(p) == {"v": 2}
+    assert not p.with_name(p.name + ".tmp").exists()
+
+
 # ---- o servidor ----
 @pytest.fixture
 def srv(tmp_path):

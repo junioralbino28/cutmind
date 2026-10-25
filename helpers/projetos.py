@@ -72,7 +72,15 @@ def _gravar(p: Path, d: dict) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_name(p.name + ".tmp")
     tmp.write_bytes(json.dumps(d, ensure_ascii=False, indent=2).encode("utf-8"))
-    tmp.replace(p)
+    for vez in range(40):  # até 2 s: no Windows a troca falha enquanto outro processo lê o arquivo
+        try:                # (o vigia lê o aberto.json a cada meio segundo)
+            tmp.replace(p)
+            return
+        except PermissionError:
+            if vez == 39:
+                tmp.unlink(missing_ok=True)
+                raise
+            time.sleep(0.05)
 
 
 def lista() -> list[dict]:
