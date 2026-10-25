@@ -1,0 +1,644 @@
+#!/usr/bin/env python3
+"""Montagem na batida: um modelo de lugares contados em batidas, uma música e fotos ou clipes viram um
+vídeo em que cada troca de imagem cai numa batida.
+
+    uv run python helpers/montagem.py usar <modelo.json> --musica <arquivo> --midias <a> <b> … --edit <dir>
+                                      [--modelo-batida pequeno|completo] [--so-dados] [--substituir]
+    uv run python helpers/montagem.py conferir <edit> [--video <arquivo>] [--modelo-batida …]
+
+`usar` faz tudo, em ordem:
+  1. a grade de batida da música (batida.py; do cache quando essa música já foi analisada). A música
+     é copiada para <edit>/midia/ (de um vídeo de clipe, só o som) e a grade sai dessa cópia, a mesma
+     que toca no vídeo final;
+  2. cada lugar do modelo vira um trecho da música, da batida B0 + as batidas dos lugares anteriores
+     até a seguinte. B0 é o primeiro tempo forte, ou a batida que põe o lugar `drop_na_vaga` no drop.
+     Cada borda vai para o quadro mais perto da SUA batida (a 30 qps, no máximo 16,7 ms dela): o erro
+     não se acumula de um lugar para o outro. Se a música acaba antes, os lugares que sobram saem;
+  3. cada mídia vira um clipe padronizado em <edit>/montagem/ (1080×1920, 30 qps, com faixa de som,
+     muda quando a mídia não tem som): a foto ganha um zoom leve (`movimento`: zoom-in, zoom-out ou
+     parado); o clipe entra do começo, ou de `arquivo@segundos`, e o que é mais curto que o lugar
+     fica mais lento, até 0,5×, e depois para no último quadro. Com mais lugares que mídias, as mídias
+     se repetem em ordem;
+  4. escreve edl.json (sem J-cut, que comeria quadros em cada emenda; um range por lugar, com
+     `vaga`), camadas.json (a música numa faixa de áudio e o som dos clipes desligado) e state.json;
+  5. renderiza, a menos que --so-dados: render.py → cut.mp4, mixar_final.py --imagem corte →
+     final.mp4 com a música, e o `conferir` no final.mp4.
+
+`conferir` acha no vídeo onde cada troca de imagem caiu (pela diferença entre quadros) e mostra,
+troca a troca, a distância até a batida da música; e confere, pelas batidas que acha no som do
+próprio vídeo, que a música não entrou deslocada. Sai 0 quando toda troca caiu no quadro planejado e
+a no máximo 1 quadro da batida.
+
+O modelo é um JSON:
+
+    {"versao": 1, "id": "drop-rapido", "nome": "Drop rápido", "comeca": "forte", "drop_na_vaga": 5,
+     "vagas": [{"batidas": 4, "repetir": 4}, {"batidas": 1, "repetir": 16}, {"batidas": 2, "repetir": 4}]}
+
+`repetir` abre um lugar em vários iguais (o `drop_na_vaga` conta os lugares já abertos); `comeca` é
+"forte" (a música entra no primeiro tempo forte) ou "batida" (na primeira batida).
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import re
+import shutil
+import subprocess
+import sys
+import unicodedata
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+import numpy as np
+
+import batida  # mesma pasta deste arquivo
+import camadas as cam
+import render
+import tempo
+
+FPS = 30
+LARGURA, ALTURA = 1080, 1920
+IMAGENS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
+VIDEOS = {".mp4", ".mov", ".m4v", ".mkv", ".webm", ".avi", ".mts"}
+MOVIMENTOS = ("zoom-in", "zoom-out", "parado")
+ZOOM_POR_SEGUNDO = 0.04  # a foto aproxima 4% por segundo, até 10%: a mesma velocidade em lugar curto e longo
+ZOOM_MAX = 0.10
+VEL_MIN = 0.5  # o clipe curto desacelera até 0,5× e depois para no último quadro
+MAX_VAGAS = 400
+JANELA = 3  # quadros para cada lado do planejado em que o conferir procura a troca
+FAIXA_MUSICA = "musica"
+CODIFICA = ["-c:v", "libx264", "-preset", "fast", "-crf", "16", "-pix_fmt", "yuv420p", "-r", str(FPS),
+            "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv",
+            "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2", "-movflags", "+faststart"]
+
+
+class ErroMontagem(Exception):
+    """Falha que a pessoa entende e consegue resolver (modelo, música, mídia)."""
+
+
+# ---------- o modelo ----------
+
+def _inteiro(v, nome: str, lo: int, hi: int) -> int:
+    ok = (not isinstance(v, bool) and isinstance(v, (int, float)) and math.isfinite(v)
+          and float(v).is_integer() and lo <= v <= hi)
+    if not ok:
+        raise ErroMontagem(f"{nome}: um número inteiro de {lo} a {hi}")
+    return int(v)
+
+
+def carregar_modelo(fonte: Path | dict) -> dict:
+    """O modelo conferido, com os lugares abertos (`repetir`) e numerados a partir de 1."""
+    if isinstance(fonte, dict):
+        m = fonte
+    else:
+        try:
+            m = json.loads(Path(fonte).read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            raise ErroMontagem(f"modelo não encontrado: {fonte}") from None
+        except json.JSONDecodeError as e:
+            raise ErroMontagem(f"o modelo não é um JSON válido: {e}") from None
+    if not isinstance(m, dict):
+        raise ErroMontagem("o modelo precisa ser um objeto JSON")
+    if m.get("versao", 1) != 1:
+        raise ErroMontagem(f"versão de modelo desconhecida: {m.get('versao')!r}")
+    comeca = m.get("comeca", "forte")
+    if comeca not in ("forte", "batida"):
+        raise ErroMontagem('"comeca" é "forte" ou "batida"')
+    vagas_in = m.get("vagas")
+    if not isinstance(vagas_in, list) or not vagas_in:
+        raise ErroMontagem('o modelo precisa de "vagas": uma lista de lugares')
+    vagas: list[dict] = []
+    for i, v in enumerate(vagas_in, 1):
+        if not isinstance(v, dict):
+            raise ErroMontagem(f"lugar {i}: precisa ser um objeto")
+        nb = _inteiro(v.get("batidas"), f"lugar {i}, batidas", 1, 64)
+        rep = _inteiro(v.get("repetir", 1), f"lugar {i}, repetir", 1, MAX_VAGAS)
+        mov = v.get("movimento")
+        if mov is not None and mov not in MOVIMENTOS:
+            raise ErroMontagem(f"lugar {i}: o movimento é {', '.join(MOVIMENTOS)}")
+        if len(vagas) + rep > MAX_VAGAS:
+            raise ErroMontagem(f"mais de {MAX_VAGAS} lugares")
+        for _ in range(rep):
+            vagas.append({"n": len(vagas) + 1, "batidas": nb, **({"movimento": mov} if mov else {})})
+    drop = m.get("drop_na_vaga")
+    if drop is not None:
+        drop = _inteiro(drop, "drop_na_vaga", 1, len(vagas))
+    ident = str(m.get("id") or "montagem")
+    return {"versao": 1, "id": ident, "nome": str(m.get("nome") or ident), "comeca": comeca,
+            "drop_na_vaga": drop, "vagas": vagas}
+
+
+# ---------- os lugares no tempo ----------
+
+def planejar(grade: dict, modelo: dict, fps: int = FPS) -> dict:
+    """Cada lugar no tempo da música e no quadro do vídeo.
+
+    Devolve {"inicio_musica", "lugares", "quadros", "avisos"}. A música entra no vídeo a partir de
+    `inicio_musica` (segundos do arquivo); cada lugar começa no `quadro` do vídeo, dura `quadros`, e
+    `batida` é o instante exato, no relógio do vídeo, da batida em que ele começa."""
+    b = np.asarray(grade.get("batidas") or [], dtype=float)
+    if len(b) < 2:
+        raise ErroMontagem("a música não tem batida que dê para seguir (silêncio ou ritmo solto demais)")
+    vagas = modelo["vagas"]
+    antes = np.concatenate([[0], np.cumsum([v["batidas"] for v in vagas])]).astype(int)
+    avisos: list[str] = []
+    if grade.get("confianca") == "baixa":
+        avisos.append("a batida desta música é irregular (confiança baixa): confira os cortes de ouvido")
+    i0 = None
+    d = modelo.get("drop_na_vaga")
+    if d is not None:
+        if grade.get("drop") is None:
+            avisos.append(f"a música não tem um drop claro: o lugar {d} não tem onde cair")
+        else:
+            no_drop = int(np.argmin(np.abs(b - float(grade["drop"]))))
+            if no_drop >= antes[d - 1]:
+                i0 = no_drop - int(antes[d - 1])
+            else:
+                avisos.append(f"antes do drop a música tem {no_drop} batidas e os lugares antes do {d} "
+                              f"pedem {int(antes[d - 1])}: o lugar {d} não cai no drop")
+    if i0 is None:
+        fortes = grade.get("fortes") or []
+        i0 = int(np.argmin(np.abs(b - float(fortes[0])))) if modelo["comeca"] == "forte" and fortes else 0
+    t0 = round(float(b[i0]), 3)
+    lugares = []
+    for k, v in enumerate(vagas):
+        a, z = i0 + int(antes[k]), i0 + int(antes[k + 1])
+        if z >= len(b):
+            break
+        q0, q1 = int(round((b[a] - t0) * fps)), int(round((b[z] - t0) * fps))
+        if q1 <= q0:
+            raise ErroMontagem(f"lugar {v['n']}: as batidas dele ficam a menos de um quadro uma da outra")
+        lugares.append({**v, "quadro": q0, "quadros": q1 - q0, "batida": round(float(b[a] - t0), 4)})
+    if not lugares:
+        raise ErroMontagem("a música acaba antes de o primeiro lugar terminar")
+    if len(lugares) < len(vagas):
+        avisos.append(f"a música acaba antes: {len(vagas) - len(lugares)} de {len(vagas)} lugares ficaram de fora")
+    fim = lugares[-1]["quadro"] + lugares[-1]["quadros"]
+    return {"inicio_musica": t0, "fps": fps, "lugares": lugares, "quadros": fim, "avisos": avisos}
+
+
+# ---------- as mídias ----------
+
+def _ffmpeg(args: list[str], o_que: str) -> None:
+    r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-y", *args], capture_output=True)
+    if r.returncode != 0:
+        msg = (r.stderr or b"").decode("utf-8", "replace").strip()[-400:]
+        raise ErroMontagem(f"o ffmpeg falhou em {o_que}: {msg}")
+
+
+def sondar(arquivo: Path) -> dict:
+    """Foto ou vídeo, se tem som, e a duração."""
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,codec_name:format=duration",
+                        "-of", "json", str(arquivo)], capture_output=True, text=True, encoding="utf-8",
+                       errors="replace")
+    if r.returncode != 0:
+        raise ErroMontagem(f"não consegui abrir {Path(arquivo).name}")
+    d = json.loads(r.stdout or "{}")
+    streams = d.get("streams") or []
+    tipos = {s.get("codec_type") for s in streams}
+    try:
+        dur = float((d.get("format") or {}).get("duration") or 0)
+    except ValueError:
+        dur = 0.0
+    som = next((s.get("codec_name") for s in streams if s.get("codec_type") == "audio"), None)
+    return {"foto": Path(arquivo).suffix.lower() in IMAGENS, "imagem": "video" in tipos,
+            "som": som is not None, "codec_som": som, "duracao": dur}
+
+
+def _quadros(arquivo: Path) -> int:
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=nb_frames",
+                        "-of", "csv=p=0", str(arquivo)], capture_output=True, text=True)
+    try:
+        return int(r.stdout.strip())
+    except ValueError:
+        return 0
+
+
+def _cor(arquivo: Path) -> str:
+    """O mesmo cuidado de cor do render.py: HDR e gama larga viram Rec.709 antes de escalar."""
+    if render.is_hdr_source(arquivo):
+        return render.TONEMAP_CHAIN + ","
+    largo = render.wide_gamut_chain(arquivo)
+    return largo + "," if largo else ""
+
+
+def _encher(w: int, h: int) -> str:
+    """Escala para cobrir w×h e corta o meio: a mídia em pé ou deitada enche a tela em pé. A conversão
+    para YUV Rec.709 é feita pela própria escala (o `format` logo depois a obriga a isso)."""
+    return (f"scale={w}:{h}:force_original_aspect_ratio=increase:force_divisible_by=2:flags=lanczos"
+            f":out_color_matrix=bt709:out_range=tv,format=yuv420p,crop={w}:{h},setsar=1")
+
+
+def padronizar(midia: Path, destino: Path, quadros: int, movimento: str | None = None, de: float = 0.0) -> dict:
+    """A mídia como clipe de 1080×1920 a 30 qps, com faixa de som, e o trecho dele que enche o lugar.
+
+    Devolve {"foto", "quadros_no_arquivo", "velocidade", "fim", "congela"}: o lugar toca o arquivo
+    de 0 a `fim` a `velocidade`, e isso dura exatamente `quadros` no vídeo."""
+    midia, destino = Path(midia), Path(destino)
+    info = sondar(midia)
+    if not info["imagem"]:
+        raise ErroMontagem(f"{midia.name} não é foto nem vídeo")
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    precisa = quadros / FPS
+    mudo = ["-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"]
+    if info["foto"]:
+        extra = min(ZOOM_MAX, ZOOM_POR_SEGUNDO * precisa)
+        passo = f"{extra:.5f}*on/{max(1, quadros - 1)}"
+        z = {"zoom-in": f"1+{passo}", "zoom-out": f"{1 + extra:.5f}-{passo}", "parado": "1"}[movimento or "zoom-in"]
+        # a foto é escalada ao DOBRO antes do zoompan, que posiciona o recorte em pixel inteiro: no
+        # tamanho final o zoom andaria aos trancos
+        vf = (f"{_cor(midia)}{_encher(2 * LARGURA, 2 * ALTURA)},"
+              f"zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={quadros}"
+              f":s={LARGURA}x{ALTURA}:fps={FPS}")
+        _ffmpeg(["-i", str(midia), *mudo, "-filter_complex", f"[0:v]{vf}[v]", "-map", "[v]", "-map", "1:a",
+                 "-frames:v", str(quadros), "-t", f"{precisa:.6f}", *CODIFICA, str(destino)], midia.name)
+        return {"foto": True, "quadros_no_arquivo": _quadros(destino), "velocidade": 1.0,
+                "fim": round(precisa, 6), "congela": False}
+
+    disponivel = max(0.0, info["duracao"] - de)
+    entrada = ["-ss", f"{de:.6f}", "-i", str(midia)]
+    if info["som"]:
+        mapa_som = ["-map", "0:a:0"]
+    else:
+        entrada += mudo
+        mapa_som = ["-map", "1:a"]
+    vf = f"{_cor(midia)}fps={FPS},{_encher(LARGURA, ALTURA)}"
+    base = [*entrada, "-filter_complex", f"[0:v]{vf}[v]", "-map", "[v]", *mapa_som]
+    if disponivel >= precisa + 0.5 / FPS:
+        _ffmpeg([*base, "-frames:v", str(quadros), "-t", f"{precisa:.6f}", *CODIFICA, str(destino)], midia.name)
+    else:
+        _ffmpeg([*base, "-t", f"{disponivel:.6f}", *CODIFICA, str(destino)], midia.name)
+    f = _quadros(destino)
+    if f >= quadros:
+        return {"foto": False, "quadros_no_arquivo": f, "velocidade": 1.0, "fim": round(precisa, 6), "congela": False}
+    if f == 0:
+        raise ErroMontagem(f"{midia.name} não tem imagem a partir de {de:g} s")
+    if 2 * f >= quadros:  # dá para esticar sem passar de 0,5×
+        v = round(f / quadros, 6)
+        return {"foto": False, "quadros_no_arquivo": f, "velocidade": v,
+                "fim": round(quadros * v / FPS, 6), "congela": False}
+    # nem a 0,5× ele enche o lugar: o último quadro se repete até cobrir a metade do lugar, e a 0,5×
+    # o clipe toca inteiro e fica parado no fim
+    alvo = math.ceil(quadros * VEL_MIN)
+    tmp = destino.with_name(destino.stem + "_curto.mp4")
+    destino.replace(tmp)
+    try:
+        _ffmpeg(["-i", str(tmp), "-filter_complex", f"[0:v]tpad=stop_mode=clone:stop={alvo - f}[v];[0:a]apad[a]",
+                 "-map", "[v]", "-map", "[a]", "-frames:v", str(alvo), "-t", f"{alvo / FPS:.6f}", *CODIFICA,
+                 str(destino)], midia.name)
+    finally:
+        tmp.unlink(missing_ok=True)
+    return {"foto": False, "quadros_no_arquivo": _quadros(destino), "velocidade": VEL_MIN,
+            "fim": round(quadros * VEL_MIN / FPS, 6), "congela": True}
+
+
+def _slug(texto: str, limite: int = 32) -> str:
+    s = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii")
+    s = re.sub(r"[^A-Za-z0-9]+", "-", s).strip("-").lower()
+    return s[:limite].strip("-") or "midia"
+
+
+def listar_midias(entradas: list[str]) -> list[tuple[Path, float]]:
+    """Os arquivos e de onde cada um entra. Uma pasta vale as fotos e os vídeos dela, em ordem de nome;
+    `arquivo@12.5` faz o clipe entrar dos 12,5 s."""
+    saida: list[tuple[Path, float]] = []
+    for e in entradas:
+        caminho, de = str(e), 0.0
+        m = re.fullmatch(r"(.+)@(\d+(?:[.,]\d+)?)", caminho)
+        if m and not Path(caminho).exists():
+            caminho, de = m.group(1), float(m.group(2).replace(",", "."))
+        p = Path(caminho)
+        if p.is_dir():
+            achados = sorted((x for x in p.iterdir() if x.is_file() and x.suffix.lower() in IMAGENS | VIDEOS),
+                             key=lambda x: x.name.lower())
+            if not achados:
+                raise ErroMontagem(f"a pasta {p} não tem foto nem vídeo")
+            saida += [(x, 0.0) for x in achados]
+        elif p.is_file():
+            saida.append((p, de))
+        else:
+            raise ErroMontagem(f"mídia não encontrada: {caminho}")
+    if not saida:
+        raise ErroMontagem("nenhuma mídia para a montagem")
+    return saida
+
+
+def copiar_musica(musica: Path, edit: Path) -> Path:
+    """A música em <edit>/midia/, onde as camadas a acham. De um vídeo (o clipe da música) vai só o som.
+    Um arquivo de mesmo nome e conteúdo diferente não é sobrescrito: a cópia ganha um número."""
+    musica = Path(musica)
+    if not musica.is_file():
+        raise ErroMontagem(f"música não encontrada: {musica}")
+    pasta = edit / cam.MIDIA_DIR
+    pasta.mkdir(parents=True, exist_ok=True)
+    ext = musica.suffix.lower()
+    so_som = ext not in cam.AUDIO_EXTS
+    ext_final = ".m4a" if so_som else ext
+    nome = _slug(musica.stem)
+    candidato = musica
+    if so_som:
+        info = sondar(musica)
+        if not info["som"]:
+            raise ErroMontagem(f"{musica.name} não tem som")
+        candidato = pasta / f".{nome}.extraindo.m4a"
+        som = ["-c:a", "copy"] if info["codec_som"] == "aac" else ["-c:a", "aac", "-b:a", "256k"]
+        _ffmpeg(["-i", str(musica), "-map", "0:a:0", "-vn", *som, "-movflags", "+faststart", str(candidato)],
+                musica.name)
+    sha = batida.sha256_arquivo(candidato)
+    for i in range(1, 100):
+        destino = pasta / f"{nome}{'' if i == 1 else f'-{i}'}{ext_final}"
+        if not destino.exists():
+            break
+        if batida.sha256_arquivo(destino) == sha:  # a mesma música de antes: usa a cópia que já está lá
+            if so_som:
+                candidato.unlink()
+            return destino
+    else:
+        raise ErroMontagem(f"cópias demais de {musica.name} em {pasta}")
+    if so_som:
+        candidato.replace(destino)
+    else:
+        shutil.copy2(musica, destino)
+    return destino
+
+
+# ---------- o projeto ----------
+
+def _grava_json(caminho: Path, dados: dict) -> None:
+    tmp = caminho.with_name(caminho.name + ".tmp")
+    tmp.write_bytes((json.dumps(dados, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+    tmp.replace(caminho)
+
+
+def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
+         modelo_batida: str = batida.MODELO_PADRAO, so_dados: bool = False, substituir: bool = False,
+         jobs: int = 0) -> dict:
+    """Monta o projeto (e, sem `so_dados`, o vídeo). Devolve o resumo."""
+    edit = Path(edit).resolve()
+    modelo = carregar_modelo(modelo_arq)
+    lista = listar_midias(midias)
+    edl_p = edit / "edl.json"
+    if edl_p.exists() and not substituir:
+        try:
+            atual = json.loads(edl_p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            atual = {}
+        if "montagem" not in atual:
+            raise ErroMontagem(f"{edl_p} é de outra edição, não de uma montagem: use outra pasta, ou "
+                               "--substituir para trocar a edição dela por esta montagem")
+    edit.mkdir(parents=True, exist_ok=True)
+    arq_musica = copiar_musica(musica, edit)
+    grade, caminho_grade = batida.analisar(arq_musica, edit, modelo_batida)
+    plano = planejar(grade, modelo)
+
+    pasta = edit / "montagem"
+    if pasta.is_dir():  # clipes de uma montagem anterior: os nomes mudam com as mídias
+        for velho in pasta.glob("v*.mp4"):
+            velho.unlink()
+    largura = 3 if len(plano["lugares"]) > 99 else 2
+    tarefas = []
+    for k, lugar in enumerate(plano["lugares"]):
+        arq, de = lista[k % len(lista)]
+        nome = f"v{lugar['n']:0{largura}d}_{_slug(arq.stem, 24)}"
+        tarefas.append((lugar, arq, de, nome, pasta / f"{nome}.mp4"))
+
+    def faz(t):
+        lugar, arq, de, nome, destino = t
+        return padronizar(arq, destino, lugar["quadros"], lugar.get("movimento"), de)
+
+    if jobs <= 0:
+        jobs = max(1, min(4, (os.cpu_count() or 4) // 3))
+    print(f"padronizando {len(tarefas)} lugar(es) em {pasta}  ({jobs} em paralelo)", flush=True)
+    with ThreadPoolExecutor(max_workers=jobs) as ex:
+        feitos = list(ex.map(faz, tarefas))
+
+    sources, ranges, duracoes, lentos = {}, [], {}, []
+    for (lugar, arq, de, nome, destino), p in zip(tarefas, feitos):
+        sources[nome] = destino.as_posix()
+        duracoes[nome] = round(p["quadros_no_arquivo"] / FPS, 3)
+        r = {"source": nome, "start": 0.0, "end": p["fim"], "beat": f"lugar {lugar['n']}", "vaga": lugar["n"]}
+        if p["velocidade"] != 1.0:
+            r["velocidade"] = p["velocidade"]
+            lentos.append(f"lugar {lugar['n']} ({arq.name}): {p['velocidade']:.2f}×"
+                          + (" e para no último quadro" if p["congela"] else ""))
+        ranges.append(r)
+        print(f"  lugar {lugar['n']:>3}: {arq.name} → {lugar['quadros']} quadros"
+              + (f", {p['velocidade']:.2f}×" if p["velocidade"] != 1.0 else ""), flush=True)
+
+    vd = round(plano["quadros"] / FPS, 3)
+    rel_musica = arq_musica.relative_to(edit).as_posix()
+    edl = {"version": 1, "sources": sources, "grade": "", "jcut": False, "ranges": ranges,
+           "montagem": {"modelo": modelo["id"], "nome": modelo["nome"], "musica": rel_musica,
+                        "inicio_musica": plano["inicio_musica"], "bpm": grade.get("bpm"),
+                        "confianca": grade.get("confianca"),
+                        "batidas": caminho_grade.relative_to(edit).as_posix(),
+                        "drop_na_vaga": modelo["drop_na_vaga"], "avisos": plano["avisos"]}}
+    _grava_json(edl_p, edl)
+
+    cam_p = edit / "camadas.json"
+    camadas = cam.load(cam_p)
+    camadas["faixas"] = [f for f in camadas["faixas"] if f["id"] != FAIXA_MUSICA]
+    camadas["faixas"].insert(0, {"id": FAIXA_MUSICA, "tipo": "audio", "mudo": False, "travado": False,
+                                 "itens": [{"id": f"{FAIXA_MUSICA}-1", "arquivo": rel_musica, "inicio": 0.0,
+                                            "corte": plano["inicio_musica"], "duracao": vd, "volume": 1.0,
+                                            "melhorar": False}]})
+    camadas["video"]["mudo"] = True  # só a música toca; o som dos clipes se religa no editor
+    cam.save(cam_p, camadas)
+
+    _grava_json(edit / "state.json", {
+        "project": f"{modelo['nome']} (montagem)", "phase": 1, "video": "cut.mp4", "edl": "edl.json",
+        "finalVideo": "final.mp4", "fps": FPS, "sourceDurations": duracoes,
+        "message": f"Montagem na batida: {len(ranges)} lugares, {vd:.1f} s, {grade.get('bpm')} BPM"})
+
+    resumo = {"edit": str(edit), "lugares": len(ranges), "duracao": vd, "bpm": grade.get("bpm"),
+              "confianca": grade.get("confianca"), "inicio_musica": plano["inicio_musica"],
+              "drop": grade.get("drop"), "drop_na_vaga": modelo["drop_na_vaga"], "lentos": lentos,
+              "avisos": plano["avisos"], "sobraram_midias": max(0, len(lista) - len(ranges))}
+    if not so_dados:
+        renderizar(edit)
+    return resumo
+
+
+def renderizar(edit: Path) -> None:
+    """O caminho de sempre: render.py faz o cut.mp4 (a imagem) e o mixar_final.py põe a música."""
+    aqui = Path(__file__).resolve().parent
+    passos = [[str(aqui / "render.py"), str(edit / "edl.json"), "-o", str(edit / "cut.mp4"), "--no-subtitles"],
+              [str(aqui / "mixar_final.py"), str(edit), "--render", str(edit / "cut.mp4"), "--imagem", "corte"]]
+    for passo in passos:
+        r = subprocess.run([sys.executable, "-X", "utf8", *passo])
+        if r.returncode != 0:
+            raise ErroMontagem(f"{Path(passo[0]).name} falhou (código {r.returncode})")
+
+
+# ---------- a conferência ----------
+
+def quadros_dos_lugares(edl: dict, fps: int = FPS) -> tuple[list[int], int]:
+    """O quadro do vídeo em que cada lugar começa, e o total."""
+    inicios, pos = [], 0
+    for r in edl["ranges"]:
+        inicios.append(pos)
+        pos += int(round(tempo.dur_no_corte(r) * fps))
+    return inicios, pos
+
+
+def diferencas(video: Path) -> np.ndarray:
+    """A diferença média entre cada quadro e o seguinte (cinza, 72×128): `d[i]` é a troca do quadro i
+    para o i + 1. `passthrough` entrega os quadros como estão, sem repetir nem descartar nenhum."""
+    w, h = 72, 128
+    r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-i", str(video), "-map", "0:v:0",
+                        "-fps_mode", "passthrough", "-vf", f"scale={w}:{h},format=gray", "-f", "rawvideo", "-"],
+                       capture_output=True)
+    if r.returncode != 0:
+        msg = (r.stderr or b"").decode("utf-8", "replace").strip()[-300:]
+        raise ErroMontagem(f"não consegui ler os quadros de {Path(video).name}: {msg}")
+    q = np.frombuffer(r.stdout, np.uint8)
+    q = q[: len(q) // (w * h) * (w * h)].reshape(-1, h, w).astype(np.int16)
+    return np.abs(np.diff(q, axis=0)).mean(axis=(1, 2))
+
+
+def achar_troca(d: np.ndarray, quadro: int, janela: int = JANELA) -> int:
+    """O quadro em que a imagem nova aparece, perto do `quadro` planejado: o maior salto na janela."""
+    lo, hi = max(0, quadro - 1 - janela), min(len(d), quadro + janela)
+    return lo + int(np.argmax(d[lo:hi])) + 1
+
+
+def conferir(edit: Path, video: Path | None = None, modelo_batida: str = batida.MODELO_PADRAO,
+             mostrar: bool = True) -> dict:
+    """Três medidas, que juntas dizem se a troca cai na batida que se ouve no vídeo:
+
+    - a imagem: o quadro em que cada troca aparece no vídeo × o planejado pelo edl.json;
+    - a troca × a batida mais perto da grade da música (a da música inteira, com o contexto que o
+      detector precisa: rodando só no trecho do vídeo, ele perde uma batida aqui e ali);
+    - o som: as batidas que o detector acha no som do PRÓPRIO vídeo × a grade. A mediana diz se a
+      música entrou deslocada; o erro de cada troca já desconta esse deslocamento."""
+    edit = Path(edit).resolve()
+    edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    mont = edl.get("montagem")
+    if not mont:
+        raise ErroMontagem("este edl.json não é de uma montagem")
+    video = Path(video) if video else edit / "final.mp4"
+    if not video.is_file():
+        raise ErroMontagem(f"vídeo não encontrado: {video}")
+    try:
+        grade = json.loads((edit / mont["batidas"]).read_text(encoding="utf-8"))
+    except (KeyError, OSError, json.JSONDecodeError):
+        raise ErroMontagem("a grade de batida da música não está no projeto: rode o `usar` de novo") from None
+    inicios, total = quadros_dos_lugares(edl)
+    da_musica = np.asarray(grade["batidas"], dtype=float) - float(mont["inicio_musica"])
+    da_musica = da_musica[(da_musica > -0.5) & (da_musica < total / FPS + 0.5)]
+    if not len(da_musica):
+        raise ErroMontagem("a grade da música não tem batida dentro do vídeo")
+    d = diferencas(video)
+    no_som, _ = batida.detectar(batida.ler_audio(video), batida.SR, modelo_batida)
+    um_quadro = 1000.0 / FPS
+
+    def perto(lista: np.ndarray, t: float) -> float | None:
+        return float(lista[int(np.argmin(np.abs(lista - t)))]) if len(lista) else None
+
+    # o som deslocado: cada batida achada no som do vídeo × a da grade mais perto dela
+    desvios = [(t - perto(da_musica, t)) * 1000 for t in no_som]
+    desvio = round(float(np.median(desvios)), 1) if desvios else None
+    trocas = []
+    for k in range(1, len(inicios)):
+        visto = achar_troca(d, inicios[k])
+        t = visto / FPS
+        bm = perto(da_musica, t)
+        bs = perto(no_som, t)
+        trocas.append({"lugar": edl["ranges"][k].get("vaga", k + 1), "quadro": inicios[k], "visto": visto,
+                       "troca": round(t, 4), "batida_da_musica": round(bm, 3),
+                       "erro_ms": round((t - bm) * 1000 - (desvio or 0.0), 1),
+                       "batida_no_som": None if bs is None or abs(bs - t) * 1000 > 2 * um_quadro else round(bs, 3)})
+    erros = [abs(x["erro_ms"]) for x in trocas]
+    fora_do_quadro = [x for x in trocas if x["visto"] != x["quadro"]]
+    ok = (bool(trocas) and not fora_do_quadro and max(erros) <= um_quadro + 0.05
+          and desvio is not None and abs(desvio) <= um_quadro)
+    rel = {"video": video.name, "trocas": trocas, "quadros": total, "pior_ms": max(erros) if erros else None,
+           "ate_um_quadro": sum(e <= um_quadro + 0.05 for e in erros), "fora_do_quadro": len(fora_do_quadro),
+           "som_vs_plano_ms": desvio, "batidas_no_som": len(no_som),
+           "trocas_sem_batida_no_som": sum(x["batida_no_som"] is None for x in trocas), "ok": ok}
+    pasta = edit / "verify"
+    pasta.mkdir(exist_ok=True)
+    _grava_json(pasta / "montagem_conferir.json", rel)
+    if mostrar:
+        print(relatorio(rel))
+    return rel
+
+
+def relatorio(rel: dict) -> str:
+    trocas = rel["trocas"]
+    linhas = [f"conferir {rel['video']}: {len(trocas)} trocas de imagem"]
+    mostrar = trocas if len(trocas) <= 30 else sorted(trocas, key=lambda x: -abs(x["erro_ms"] or 0))[:10]
+    if len(trocas) > 30:
+        linhas.append("  (as 10 piores)")
+    linhas.append("  lugar  quadro planejado  quadro visto  troca (s)  batida da música (s)  erro    no som do vídeo")
+    for x in mostrar:
+        no_som = "—" if x["batida_no_som"] is None else f"{x['batida_no_som']:.3f}"
+        linhas.append(f"  {x['lugar']:>5}  {x['quadro']:>16}  {x['visto']:>12}  {x['troca']:>9.3f}  "
+                      f"{x['batida_da_musica']:>20.3f}  {x['erro_ms']:+4.0f} ms  {no_som:>15}")
+    if rel["pior_ms"] is not None:
+        linhas.append(f"  pior erro: {rel['pior_ms']:.0f} ms; {rel['ate_um_quadro']} de {len(trocas)} trocas a no "
+                      f"máximo 1 quadro ({1000 / FPS:.0f} ms) da batida")
+    linhas.append(f"  imagem: {len(trocas) - rel['fora_do_quadro']} de {len(trocas)} trocas no quadro planejado")
+    if rel["som_vs_plano_ms"] is None:
+        linhas.append("  som: o detector não achou batida no som do vídeo")
+    else:
+        linhas.append(f"  som: {rel['batidas_no_som']} batidas achadas no som do vídeo, a {rel['som_vs_plano_ms']:+.0f} ms "
+                      f"da grade da música (mediana); {rel['trocas_sem_batida_no_som']} troca(s) sem batida achada "
+                      "perto, no trecho")
+    linhas.append("  OK" if rel["ok"] else "  REPROVADO: veja as trocas acima")
+    return "\n".join(linhas)
+
+
+def _resumo_usar(r: dict) -> str:
+    linhas = [f"montagem: {r['lugares']} lugares, {r['duracao']:.2f} s, {r['bpm']} BPM (confiança {r['confianca']}), "
+              f"a música entra aos {r['inicio_musica']:.3f} s"]
+    if r["drop_na_vaga"] and r["drop"] is not None:
+        linhas.append(f"  drop da música aos {r['drop']:.2f} s, no lugar {r['drop_na_vaga']}")
+    for x in r["lentos"]:
+        linhas.append(f"  mais lento: {x}")
+    if r["sobraram_midias"]:
+        linhas.append(f"  {r['sobraram_midias']} mídia(s) ficaram de fora (mais mídias que lugares)")
+    for a in r["avisos"]:
+        linhas.append(f"  aviso: {a}")
+    linhas.append(f"  projeto: {r['edit']}")
+    return "\n".join(linhas)
+
+
+def main() -> int:
+    for fluxo in (sys.stdout, sys.stderr):
+        try:
+            fluxo.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+    ap = argparse.ArgumentParser(prog="montagem", description=__doc__.split("\n\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    u = sub.add_parser("usar", help="monta o projeto e o vídeo")
+    u.add_argument("modelo", type=Path)
+    u.add_argument("--musica", type=Path, required=True)
+    u.add_argument("--midias", nargs="+", required=True, help="arquivos ou pastas; arquivo@segundos para o ponto de entrada")
+    u.add_argument("--edit", type=Path, required=True)
+    u.add_argument("--modelo-batida", choices=sorted(batida.MODELOS), default=batida.MODELO_PADRAO)
+    u.add_argument("--so-dados", action="store_true", help="escreve o projeto sem renderizar")
+    u.add_argument("--substituir", action="store_true", help="troca uma edição que não é montagem")
+    c = sub.add_parser("conferir", help="mede onde cada troca caiu e a batida mais perto")
+    c.add_argument("edit", type=Path)
+    c.add_argument("--video", type=Path, default=None)
+    c.add_argument("--modelo-batida", choices=sorted(batida.MODELOS), default=batida.MODELO_PADRAO)
+    a = ap.parse_args()
+    try:
+        if a.cmd == "usar":
+            r = usar(a.modelo, a.musica, a.midias, a.edit, a.modelo_batida, a.so_dados, a.substituir)
+            print(_resumo_usar(r))
+            if a.so_dados:
+                return 0
+            return 0 if conferir(a.edit, modelo_batida=a.modelo_batida)["ok"] else 1
+        return 0 if conferir(a.edit, a.video, a.modelo_batida)["ok"] else 1
+    except (ErroMontagem, batida.ErroBatida, cam.CamadasInvalidas) as e:
+        print(f"montagem: {e}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

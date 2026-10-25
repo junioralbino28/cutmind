@@ -1097,6 +1097,14 @@ def apply_loudnorm_two_pass(
         print("  loudnorm measurement failed — falling back to 1-pass")
         return apply_loudnorm_two_pass(input_path, output_path, preview=True)
 
+    if measurement["input_i"] == "-inf":
+        # Corte sem som nenhum (a montagem na batida tira o som dos clipes): não há o que
+        # normalizar, e o 2º passo recusa measured_I=-inf como fora da faixa (medido em 24/10/2026).
+        print("  loudnorm: o corte não tem som, copiado sem normalizar")
+        run(["ffmpeg", "-v", "error", "-y", "-i", str(input_path), "-c", "copy", "-movflags", "+faststart",
+             str(output_path)], quiet=True)
+        return True
+
     print(f"    measured: I={measurement['input_i']} LUFS  "
           f"TP={measurement['input_tp']}  LRA={measurement['input_lra']}")
 

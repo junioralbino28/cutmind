@@ -57,6 +57,23 @@ def test_sem_camadas_e_a_receita_da_fase_3(tmp_path):
     assert resumo["voz"] == "corte" and resumo["camadas"] == 0
 
 
+def test_imagem_do_corte_copia_a_imagem_e_tira_o_atraso(tmp_path):
+    """A montagem na batida (montagem.py) não passa pelo Remotion: a imagem é o próprio cut.mp4,
+    copiada (sem converter a cor de novo), e a música entra sem o quadro de atraso."""
+    edit, _ = _projeto(tmp_path, {"video": {"mudo": True},
+                                  "faixas": [_aud("m", "midia/musica.mp3", 0.0, 8.0, corte=12.4)]})
+    cmd, resumo = montar(edit, edit / "cut.mp4", edit / "final.mp4", vd=8.0, imagem="corte")
+    f = _filtro(cmd)
+    assert "scale=in_range" not in f and "[vid]" not in f
+    i = cmd.index("-map")
+    assert cmd[i:i + 4] == ["-map", "0:v", "-map", "[out]"] and cmd[cmd.index("-c:v") + 1] == "copy"
+    assert "atrim=start=12.400:duration=8.000" in f and "adelay=0:all=1" in f
+    assert _entradas(cmd) == [str(edit / "cut.mp4"), str(edit / "midia" / "musica.mp3")]
+    assert resumo["voz"] == "fora" and resumo["camadas"] == 1
+    medir, _ = montar(edit, edit / "cut.mp4", edit / "final.mp4", vd=8.0, imagem="corte", medir=True)
+    assert _filtro(medir).startswith("anullsrc")
+
+
 def test_atraso_da_voz_segue_o_inicio_do_video_do_corte(tmp_path):
     # segments.json mede o atraso (vídeo do cut.mp4 começando em zero = 0); o edit-data manda
     edit, public = _projeto(tmp_path, {"video": {"mudo": False}, "faixas": [_aud("a1", "midia/a.wav", 3.0, 2.0)]})
@@ -140,6 +157,14 @@ def test_volume_de_tomada_troca_o_loudnorm_pela_normalizacao_linear(tmp_path):
     assert "print_format=json" in f and "[vid]" not in f and medir[-3:] == ["-f", "null", "-"]
     cmd, _ = montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0, norma="volume=+1.00dB,alimiter=limit=0.891")
     assert _filtro(cmd).endswith("normalize=0,volume=+1.00dB,alimiter=limit=0.891[out]") and "loudnorm" not in _filtro(cmd)
+
+
+def test_montagem_na_batida_tambem_vai_pela_normalizacao_linear(tmp_path):
+    """O som da montagem é a música inteira: o loudnorm dinâmico subiria a parte calma e desceria o drop."""
+    edit, _ = _projeto(tmp_path, {"video": {"mudo": True}, "faixas": []})
+    (edit / "edl.json").write_text(json.dumps({"ranges": [{}], "montagem": {"modelo": "x"}}), encoding="utf-8")
+    _, resumo = montar(edit, edit / "cut.mp4", edit / "final.mp4", vd=8.0, imagem="corte")
+    assert resumo["linear"] is True and "montagem" in resumo["linear_porque"]
 
 
 # ---- o vídeo de verdade: quem toca, quando ----

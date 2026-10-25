@@ -16,7 +16,14 @@
   - tudo somado (sem normalizar a soma) e o loudnorm obrigatório (-14 LUFS, pico -1).
 
     python mixar_final.py <edit> --render <out/render.mp4> [-o <edit>/final.mp4]
-                          [--base cut|render] [--sfx arquivo@segundos[:volume]] ... [--mostrar]
+                          [--base cut|render] [--imagem remotion|corte]
+                          [--sfx arquivo@segundos[:volume]] ... [--mostrar]
+
+--imagem corte é para quando a imagem final é o próprio cut.mp4 (a montagem na batida sem
+texto nem efeito, montagem.py): ela é copiada sem reconverter a cor (o cut.mp4 já é da faixa
+limitada) e o som entra sem o quadro de atraso do Remotion, que ali não existe. Numa montagem
+(edl.json com "montagem") a normalização é a linear, como com volume de tomada: o loudnorm
+dinâmico achataria o drop da música.
 
 --base render usa o áudio do próprio Remotion no lugar da voz do corte (quando os
 efeitos da legenda estão embutidos nele: references/shortform.md). Ele já traz a trilha
@@ -52,15 +59,24 @@ def _n(x: float) -> str:
     return f"{x:.3f}"
 
 
+def _edl(edit: Path, state: dict) -> dict:
+    try:
+        return json.loads((edit / (state.get("edl") or "edl.json")).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
 def tem_volume_de_tomada(edit: Path, state: dict) -> bool:
     """Alguma tomada do edl.json com volume próprio (régua de Volume do editor do celular)?
     Então o loudnorm de uma passada não serve: ele é dinâmico e levanta de volta a tomada
     que a pessoa baixou (medido em 21/10: a tomada a 50% voltou a 0,0 dB no final)."""
-    try:
-        edl = json.loads((edit / (state.get("edl") or "edl.json")).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
-    return any(r.get("volume") is not None and float(r["volume"]) != 1.0 for r in edl.get("ranges") or [])
+    return any(r.get("volume") is not None and float(r["volume"]) != 1.0 for r in _edl(edit, state).get("ranges") or [])
+
+
+def eh_montagem(edit: Path, state: dict) -> bool:
+    """Montagem na batida (montagem.py)? O som é a música inteira, e o loudnorm dinâmico achataria o
+    drop: a parte calma subiria e a explosão desceria. Vai a normalização linear também."""
+    return "montagem" in _edl(edit, state)
 
 
 def atraso_da_imagem(ed: dict, public: Path) -> int:
@@ -80,11 +96,12 @@ def atraso_da_imagem(ed: dict, public: Path) -> int:
 
 def montar(edit: Path, render: Path, saida: Path, vd: float, base: str = "cut",
            sfx: list[tuple[Path, float, float]] = (), norma: str | None = None,
-           medir: bool = False) -> tuple[list[str], dict]:
+           medir: bool = False, imagem: str = "remotion") -> tuple[list[str], dict]:
     """O comando ffmpeg e um resumo do que entrou. vd = duração do vídeo do render.
 
     `norma` troca o loudnorm do fim (a normalização linear, quando há volume de tomada);
-    `medir` devolve só a medição da soma (sem imagem, saída nula, loudnorm em JSON)."""
+    `medir` devolve só a medição da soma (sem imagem, saída nula, loudnorm em JSON);
+    `imagem="corte"`: a imagem é o próprio cut.mp4, copiada, e o som vai sem atraso."""
     edit = Path(edit)
     state = json.loads((edit / "state.json").read_text(encoding="utf-8"))
     fps = float(state.get("fps") or 30)
@@ -93,13 +110,18 @@ def montar(edit: Path, render: Path, saida: Path, vd: float, base: str = "cut",
     if state.get("editData") and (edit / state["editData"]).is_file():
         ed = json.loads((edit / state["editData"]).read_text(encoding="utf-8"))
     public = (edit / state["editData"]).parent if state.get("editData") else edit
-    lag = round(atraso_da_imagem(ed, public) * 1000 / fps)  # em ms (1 quadro = 33 a 30 qps)
+    corte = imagem == "corte"
+    # em ms (1 quadro = 33 a 30 qps); sem Remotion a imagem é o próprio corte e não vem atrás
+    lag = 0 if corte else round(atraso_da_imagem(ed, public) * 1000 / fps)
 
     entradas: list[Path] = [Path(render)]
-    partes = [f"[0:v]{COR}[vid]", f"anullsrc=r=48000:cl=stereo,atrim=duration={_n(vd)}[base]"]
+    video = [] if corte else [f"[0:v]{COR}[vid]"]
+    partes = [*video, f"anullsrc=r=48000:cl=stereo,atrim=duration={_n(vd)}[base]"]
     soma = ["[base]"]  # silêncio do tamanho do vídeo: a soma nunca fica vazia nem mais curta
+    porque = ("há tomada com volume próprio" if tem_volume_de_tomada(edit, state)
+              else "montagem na batida, a música fica com o drop" if eh_montagem(edit, state) else "")
     resumo = {"voz": "fora", "trilha": False, "camadas": 0, "biblioteca": 0, "efeitos": 0,
-              "linear": tem_volume_de_tomada(edit, state)}
+              "linear": bool(porque), "linear_porque": porque}
 
     def entrada(p: Path) -> int:
         entradas.append(Path(p))
@@ -153,14 +175,18 @@ def montar(edit: Path, render: Path, saida: Path, vd: float, base: str = "cut",
         cmd = ["ffmpeg", "-hide_banner", "-nostats", "-y"]
         for e in entradas:
             cmd += ["-i", str(e)]
-        return cmd + ["-filter_complex", ";".join(partes[1:]), "-map", "[out]", "-t", _n(vd),
+        return cmd + ["-filter_complex", ";".join(partes[len(video):]), "-map", "[out]", "-t", _n(vd),
                       "-f", "null", "-"], resumo
     cmd = ["ffmpeg", "-v", "error", "-y"]
     for e in entradas:
         cmd += ["-i", str(e)]
-    cmd += ["-filter_complex", ";".join(partes), "-map", "[vid]", "-map", "[out]",
-            "-c:v", "libx264", "-preset", "slow", "-crf", "17", "-pix_fmt", "yuv420p",
-            "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv",
+    if corte:
+        v = ["-map", "0:v", "-map", "[out]", "-c:v", "copy"]
+    else:
+        v = ["-map", "[vid]", "-map", "[out]",
+             "-c:v", "libx264", "-preset", "slow", "-crf", "17", "-pix_fmt", "yuv420p",
+             "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv"]
+    cmd += ["-filter_complex", ";".join(partes), *v,
             "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-t", _n(vd), "-movflags", "+faststart", str(saida)]
     return cmd, resumo
 
@@ -207,13 +233,15 @@ def main() -> int:
     ap.add_argument("--render", type=Path, required=True, help="o render.mp4 do Remotion")
     ap.add_argument("-o", "--saida", type=Path, help="padrão: <edit>/final.mp4")
     ap.add_argument("--base", choices=("cut", "render"), default="cut")
+    ap.add_argument("--imagem", choices=("remotion", "corte"), default="remotion",
+                    help="corte: a imagem é o próprio cut.mp4 (montagem sem texto nem efeito)")
     ap.add_argument("--sfx", type=_sfx, action="append", default=[], help="arquivo@segundos[:volume], repetível")
     ap.add_argument("--mostrar", action="store_true", help="só mostra o comando, não roda")
     a = ap.parse_args()
     edit = a.edit.resolve()
     saida = a.saida or edit / "final.mp4"
     try:
-        cmd, resumo = montar(edit, a.render, saida, _duracao_video(a.render), a.base, a.sfx)
+        cmd, resumo = montar(edit, a.render, saida, _duracao_video(a.render), a.base, a.sfx, imagem=a.imagem)
     except CamadasNoMix as e:
         print(f"não montei: {e}", file=sys.stderr)
         return 2
@@ -225,15 +253,17 @@ def main() -> int:
     if resumo["linear"]:
         # volume de tomada: mede a soma e aplica um ganho fixo + limitador (normalização
         # linear), para a tomada que a pessoa baixou continuar mais baixa no vídeo final
-        medir, _ = montar(edit, a.render, saida, _duracao_video(a.render), a.base, a.sfx, medir=True)
+        medir, _ = montar(edit, a.render, saida, _duracao_video(a.render), a.base, a.sfx, medir=True,
+                          imagem=a.imagem)
         if a.mostrar:
             print(subprocess.list2cmdline(medir))
             print("(o ganho do volume=…dB sai dessa medição)")
             return 0
         ganho = ALVO_LUFS - _lufs(medir)
         cmd, resumo = montar(edit, a.render, saida, _duracao_video(a.render), a.base, a.sfx,
-                             norma=f"volume={ganho:+.2f}dB,alimiter=limit={LIMITE_LINEAR}:level=false:latency=true")
-        print(f"normalização linear (há tomada com volume próprio): ganho {ganho:+.2f} dB")
+                             norma=f"volume={ganho:+.2f}dB,alimiter=limit={LIMITE_LINEAR}:level=false:latency=true",
+                             imagem=a.imagem)
+        print(f"normalização linear ({resumo['linear_porque']}): ganho {ganho:+.2f} dB")
     if a.mostrar:
         print(subprocess.list2cmdline(cmd))
         return 0
