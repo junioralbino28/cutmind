@@ -220,6 +220,44 @@ button { font-family: inherit; cursor: pointer; }
 }
 .troca-mais { display: grid; place-items: center; color: var(--dim); background: var(--surface3); }
 .troca-mais svg { width: 26px; height: 26px; }
+/* Modelos de montagem: a capa é o ritmo (uma barra por lugar, na largura das batidas; do drop em
+   diante, mais alta e na cor da marca), com a janela dos textos em cima; embaixo, Voltar e o passo */
+#montCorpo { padding-bottom: 16px; }
+.mt-face { aspect-ratio: 1.6; }
+.mt-barras { position: absolute; left: 8%; right: 8%; top: 32%; bottom: 14%; display: flex; align-items: flex-end; }
+.mt-barra { flex: 1 1 0; min-width: 0; height: 42%; box-sizing: border-box; border-right: 1px solid #0b0b0b;
+  border-radius: 1px; background: rgba(255, 255, 255, 0.34); }
+.mt-barra.drop { height: 100%; background: var(--brand); }
+.sem-drop .mt-barra { height: 70%; background: rgba(255, 255, 255, 0.5); }
+.mt-textos { position: absolute; left: 8%; right: 8%; top: 14%; height: 6px; }
+.mt-texto { position: absolute; top: 0; height: 100%; border-radius: 3px; border-right: 1px solid #0b0b0b; background: #fff; }
+.mt-ordem {
+  position: absolute; left: 5px; top: 5px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
+  display: grid; place-items: center; background: var(--brand); color: #fff;
+  font-size: 11.5px; font-weight: 800; font-variant-numeric: tabular-nums;
+}
+.mt-check { flex: none; width: 22px; height: 22px; color: var(--brand); }
+.mt-check svg { width: 100%; height: 100%; display: block; }
+.mt-enviar { display: inline-flex; align-items: center; gap: 8px; margin: 8px 14px 2px; }
+.mt-enviar svg { width: 16px; height: 16px; }
+.mt-sec { display: block; padding: 16px 16px 4px; font-size: 12px; font-weight: 700; color: var(--dim); }
+.mt-guardar { padding: 0 14px 12px; }
+.mt-guardar .mod-salvar { padding: 0; }
+.mt-guardar-btn { width: 100%; }
+.mt-acoes { padding-top: 0; }
+/* fotos e clipes: muitas de uma vez, então cartões menores que os do Trocar (3 por linha no celular) */
+.mod-grade.mt-midias { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+.desk.lado.em-pe .mod-grade.mt-midias { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+.mt-rodape {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px calc(10px + var(--safe-b)); border-top: 1px solid var(--line);
+}
+.mt-conta { flex: 1; min-width: 0; text-align: center; font-size: 12.5px; color: var(--dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.mt-rodape .invisivel { visibility: hidden; }
+.mt-rodape .tb-btn:disabled { opacity: 0.4; cursor: default; filter: none; }
+.mt-atalho { padding-top: 14px; }
+.mt-link { border: 0; padding: 0; background: none; color: var(--brand); font: inherit; font-weight: 700; cursor: pointer; }
 /* Trecho: o clipe tocando a janela e, embaixo, a tira de quadros com a janela do tamanho do lugar */
 .trecho-video {
   display: block; height: min(32vh, 280px); max-width: calc(100% - 32px); margin: 6px auto 10px;
@@ -931,11 +969,11 @@ html:not(.desk) .tl-zoom .tl-ima { height: 24px; padding: 0 10px; } /* no celula
 }
 .desk .sheet.open { visibility: visible; }
 .desk .sheet .sheet-grip { display: none; }
-.desk #sheet, .desk #trilhaSheet, .desk #fxSheet, .desk #modeloSheet, .desk #fundoSheet { left: 0; right: auto; width: var(--col-l); transform: translateX(-102%); border-right: 1px solid var(--line); }
+.desk #sheet, .desk #trilhaSheet, .desk #fxSheet, .desk #modeloSheet, .desk #fundoSheet, .desk #montSheet { left: 0; right: auto; width: var(--col-l); transform: translateX(-102%); border-right: 1px solid var(--line); }
 .desk #noteSheet, .desk #volSheet, .desk #velSheet, .desk #ajSheet, .desk #fxIntSheet,
 .desk #tomZoomSheet, .desk #cenaSheet, .desk #vozSheet { left: auto; right: 0; width: var(--col-r); transform: translateX(102%); border-left: 1px solid var(--line); overflow-y: auto; }
 /* aberto: a id acima (que esconde de lado) pesa mais que .open, então a regra repete as ids */
-.desk #sheet.open, .desk #trilhaSheet.open, .desk #fxSheet.open, .desk #modeloSheet.open, .desk #fundoSheet.open,
+.desk #sheet.open, .desk #trilhaSheet.open, .desk #fxSheet.open, .desk #modeloSheet.open, .desk #fundoSheet.open, .desk #montSheet.open,
 .desk #noteSheet.open, .desk #volSheet.open, .desk #velSheet.open, .desk #ajSheet.open, .desk #fxIntSheet.open,
 .desk #tomZoomSheet.open, .desk #cenaSheet.open, .desk #vozSheet.open { transform: none; }
 /* na coluna, o painel de Texto usa a altura toda: os campos rolam, os botões ficam embaixo */
@@ -975,7 +1013,8 @@ html:not(.desk) .tl-zoom .tl-ima { height: 24px; padding: 0 10px; } /* no celula
 .desk.lado.em-pe .desk-col.lib { border-right: 0; }
 /* os menus da biblioteca abrem em cima, colados na coluna da prévia e na largura toda até as
    propriedades: as opções viram grade, mais delas à vista de uma vez */
-.desk.lado.em-pe #sheet, .desk.lado.em-pe #trilhaSheet, .desk.lado.em-pe #fxSheet, .desk.lado.em-pe #modeloSheet, .desk.lado.em-pe #fundoSheet {
+.desk.lado.em-pe #sheet, .desk.lado.em-pe #trilhaSheet, .desk.lado.em-pe #fxSheet, .desk.lado.em-pe #modeloSheet, .desk.lado.em-pe #fundoSheet,
+.desk.lado.em-pe #montSheet {
   left: var(--col-v); width: calc(100vw - var(--col-v) - var(--col-r));
 }
 .desk.lado.em-pe .tr-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); align-content: start; column-gap: 6px; }

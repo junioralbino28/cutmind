@@ -130,6 +130,7 @@ const ICON = {
   // seleção em massa: a caixa tracejada; "tudo": as duas pontas do vídeo
   selecionar: sv('<rect x="3.5" y="5" width="17" height="14" rx="2.2" stroke-dasharray="3.2 2.6"/><path d="M8 12h8"/>'),
   // a tela Projetos: a casa
+  montagem: sv('<rect x="3" y="4.5" width="18" height="15" rx="3"/><path d="M7.5 15.5v-3M10.5 15.5v-7M13.5 15.5v-5M16.5 15.5v-2"/>'),
   casa: sv('<path d="M4 10.8 12 4.5l8 6.3"/><path d="M6 9.5v9a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 18 18.5v-9"/><path d="M10 20v-5h4v5"/>'),
   tudo: sv('<path d="M3.5 12h17M7 8.5 3.5 12 7 15.5M17 8.5l3.5 3.5-3.5 3.5"/>'),
   // o ímã da linha do tempo: a agulha e as pontas grudam na batida da música
@@ -640,7 +641,7 @@ function avisaLugar() {
   toast('Numa montagem, a duração de cada lugar segue a batida da música. Troque a mídia ou o trecho.', 3200);
 }
 async function carregaMontMidias() {
-  if (!S.montagem) { S.montMidias = null; return; }
+  if (!ehMontagem()) { S.montMidias = null; return; } // a Nova montagem também: o painel mostra o que chegou
   try {
     const r = await fetch('/api/montagem/midias');
     if (r.ok) S.montMidias = (await r.json()).opcoes || [];
@@ -794,6 +795,8 @@ function renderHistory() {
 
 // ---------- dados ----------
 // Pela rede, o servidor só entrega os dados a quem abriu pelo link/QR do computador.
+// no computador o vídeo vem do computador; no celular, da galeria (o texto do HTML)
+if (isDesk()) $('emptyText').textContent = 'Escolha um vídeo do computador. O corte começa assim que ele chegar.';
 const EMPTY_TEXTS = { title: $('emptyTitle').textContent, text: $('emptyText').textContent };
 function setLocked(on) {
   if (!!S.locked === on) return;
@@ -907,6 +910,8 @@ async function applyState(data) {
     if (!agente) { $('emptyTitle').textContent = EMPTY_TEXTS.title; $('emptyText').textContent = EMPTY_TEXTS.text; }
   }
   if (agente) { $('emptyTitle').textContent = 'O agente está editando'; $('emptyText').textContent = S.state.message; }
+  S.montagemNova = data.montagemNova || null; // o Montar do painel, salvo e ainda não feito pelo agente
+  vazioDaMontagem();
   if (!hasFinal() && S.view === 'final') S.view = 'corte';
 
   S.captions = [];
@@ -943,6 +948,11 @@ async function applyState(data) {
   renderTimeline();
   renderToolbar();
   refreshHeader();
+  // a Nova montagem abre já no painel (uma vez por carga da página)
+  if (S.state.montagem && !hasVideo && !S.montagemNova && !S.locked && !MT.autoAberto) {
+    MT.autoAberto = true;
+    abreMontagem();
+  }
 }
 const hasFinal = () => (S.state.phase || 1) >= 2 && !!S.state.finalVideo;
 const canStyle = () => !!(S.state.awaitingStyle || S.state.style);
@@ -1912,7 +1922,7 @@ function passo(seg) {
 // os de régua no Pronto (a régua já mudou ao vivo)
 const FECHA_PAINEL = { sheet: 'sheetClose', noteSheet: 'noteCancel', volSheet: 'volOk', velSheet: 'velOk', ajSheet: 'ajOk',
   fxIntSheet: 'fxIntOk', trilhaSheet: 'trilhaClose', fxSheet: 'fxClose', tomZoomSheet: 'tomZoomOk', cenaSheet: 'cenaCancel',
-  modeloSheet: 'modeloClose', fundoSheet: 'fundoClose', lugarSheet: 'lugarClose', trechoSheet: 'trechoCancel' };
+  modeloSheet: 'modeloClose', fundoSheet: 'fundoClose', lugarSheet: 'lugarClose', trechoSheet: 'trechoCancel', montSheet: 'montClose' };
 function fechaPainel() {
   const aberto = document.querySelector('.sheet.open');
   if (!aberto || !FECHA_PAINEL[aberto.id]) return false;
@@ -2010,7 +2020,7 @@ function quandoFoi(ts) {
   return d === 1 ? 'ontem' : `há ${d} dias`;
 }
 function faseDoProjeto(p) {
-  if (p.novo) return 'Novo';
+  if (p.novo) return p.montagem ? 'Montagem nova' : 'Novo';
   if (p.aguardandoEstilo) return 'Estilo';
   if (p.fase >= 2) return 'Final';
   return p.fase === 1 ? 'Corte' : 'Começando';
@@ -2030,8 +2040,10 @@ async function abreProjetos() {
 }
 function desenhaProjetos(lista) {
   const g = $('projGrade');
-  g.innerHTML = `<button class="pj novo" type="button" data-novo="1"><div class="pj-capa">${ICON.mais}</div>
-    <div class="pj-nome">Novo projeto</div><div class="pj-meta">envie os vídeos e o agente corta</div></button>`;
+  g.innerHTML = `<button class="pj novo" type="button" data-novo="corte"><div class="pj-capa">${ICON.mais}</div>
+    <div class="pj-nome">Novo projeto</div><div class="pj-meta">envie os vídeos e o agente corta</div></button>
+    <button class="pj novo" type="button" data-novo="montagem"><div class="pj-capa">${ICON.montagem}</div>
+    <div class="pj-nome">Nova montagem</div><div class="pj-meta">fotos e clipes na batida de uma música</div></button>`;
   for (const p of lista) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -2065,21 +2077,28 @@ $('projModal').addEventListener('click', (e) => {
   if (e.target === $('projModal')) { fechaProjetos(); return; }
   const card = e.target.closest('.pj');
   if (!card) return;
-  if (card.dataset.novo) {
-    if (dirtyCount()) { toast('Salve ou descarte seus ajustes antes de começar outro projeto.', 4000); return; }
-    $('projNovo').classList.remove('hidden');
-    $('projNome').focus();
-  } else abreProjeto(card.dataset.id);
+  if (card.dataset.novo) novoProjeto(card.dataset.novo);
+  else abreProjeto(card.dataset.id);
 });
+// o nome do projeto novo; a Nova montagem nasce marcada e abre no painel Modelos de montagem
+function novoProjeto(tipo) {
+  if (dirtyCount()) { toast('Salve ou descarte seus ajustes antes de começar outro projeto.', 4000); return; }
+  $('projNovo').dataset.tipo = tipo;
+  $('projGrade').querySelectorAll('.pj.novo').forEach((b) => b.classList.toggle('on', b.dataset.novo === tipo));
+  $('projNome').placeholder = tipo === 'montagem' ? 'Nome da montagem (ex.: Viagem de julho)' : 'Nome do projeto (ex.: Reels da semana)';
+  $('projNovo').classList.remove('hidden');
+  $('projNome').focus();
+}
 $('projNovo').addEventListener('submit', async (e) => {
   e.preventDefault();
   const nome = $('projNome').value.trim();
   if (!nome) { $('projNome').focus(); return; }
+  const tipo = $('projNovo').dataset.tipo === 'montagem' ? 'montagem' : undefined;
   try {
     const out = await (await fetch('/api/projetos/novo', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nome }) })).json();
+      body: JSON.stringify({ nome, tipo }) })).json();
     if (!out.ok) throw new Error(out.error || 'falhou');
-    location.reload(); // o projeto novo abre vazio, pedindo os vídeos (Enviar)
+    location.reload(); // o projeto novo abre vazio, pedindo os vídeos (Enviar) ou, na montagem, no painel
   } catch (err) { toast(`Não criei o projeto: ${err.message}`, 4200); }
 });
 // outro aparelho trocou o projeto e este tinha ajustes: voltar (o servidor reabre este) ou descartar
@@ -2173,7 +2192,8 @@ const DICA = { volume: 'Volume', velocidade: 'Velocidade e curva', intensidade: 
   'melhorar-voz': 'A voz do vídeo mais limpa ou com som de estúdio, e quanto do ambiente fica',
   fundo: 'Um fundo novo atrás de você, na tomada debaixo da agulha',
   'lugar-trocar': 'Outra foto ou vídeo neste lugar, com a mesma duração', 'lugar-trecho': 'Que parte do clipe entra neste lugar',
-  'lugar-original': 'O lugar volta à mídia e ao trecho do vídeo' };
+  'lugar-original': 'O lugar volta à mídia e ao trecho do vídeo',
+  'modelos-montagem': 'Os modelos de montagem: o ritmo, a música e as fotos e clipes; ou guardar esta montagem como modelo' };
 function renderToolbar() {
   const tb = $('toolbar');
   const ctx = $('ctxbar');
@@ -2213,6 +2233,7 @@ function renderToolbar() {
   // Corte/Final virou o seletor do topo. Importar traz qualquer arquivo do celular e
   // pergunta o tipo (o + no fim da faixa abre a mesma escolha)
   tool(tb, 'importar', 'Importar', { icon: ICON.mais });
+  if (ehMontagem()) tool(tb, 'modelos-montagem', 'Montagem', { icon: ICON.montagem, on: MT.aberto });
   tool(tb, 'cortar', 'Cortar', { icon: ICON.corte, disabled: !hasVideo });
   // no Final: escolhe tudo (imagem, som, legenda, efeitos) para mexer junto, como o Ctrl+A
   if (S.view === 'final') tool(tb, 'selecionar', 'Selecionar', { disabled: !hasVideo });
@@ -2228,14 +2249,14 @@ function renderToolbar() {
     // imagem e áudio entram como camadas novas, na agulha (o servidor guarda em midia/)
     tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
     tool(ctx, 'imp-video', 'Vídeo', { icon: ICON.final });
-    tool(ctx, 'imp-imagem', 'Imagem', { icon: ICON.imagem, disabled: !hasVideo });
-    tool(ctx, 'imp-audio', 'Áudio', { icon: ICON.audio, disabled: !hasVideo });
+    tool(ctx, 'imp-imagem', 'Imagem', { icon: ICON.imagem, disabled: !hasVideo && !ehMontagem() });
+    tool(ctx, 'imp-audio', 'Áudio', { icon: ICON.audio, disabled: !hasVideo && !ehMontagem() });
     return;
   }
   if (amenu) { // Áudio: uma trilha da biblioteca do kit ou um arquivo do celular
     tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
     tool(ctx, 'trilhas', 'Trilhas', { icon: ICON.audio });
-    tool(ctx, 'do-celular', 'Do celular', { icon: ICON.enviar });
+    tool(ctx, 'do-celular', doAparelho(), { icon: ICON.enviar }); // no computador, "Do computador"
     tool(ctx, 'melhorar-voz', 'Melhorar voz', { icon: ICON.voz });
     return;
   }
@@ -2372,9 +2393,12 @@ document.addEventListener('click', (e) => {
     }
     case 'intensidade': openIntensidade(); break;
     case 'ajustar': openAjuste(); break;
-    case 'imp-video': S.importMenu = false; renderToolbar(); $('fileInput').click(); break;
-    case 'imp-imagem': S.importMenu = false; renderToolbar(); $('fileImagem').click(); break;
-    case 'imp-audio': S.importMenu = false; renderToolbar(); $('fileAudio').click(); break;
+    // numa montagem, o vídeo é um clipe para ela (midia/), não material novo para cortar; sem vídeo
+    // ainda, a foto e a música também vão para o painel Modelos de montagem
+    case 'imp-video': S.importMenu = false; renderToolbar(); $(ehMontagem() ? 'fileMontMidia' : 'fileInput').click(); break;
+    case 'imp-imagem': S.importMenu = false; renderToolbar(); $(montagemSemVideo() ? 'fileMontMidia' : 'fileImagem').click(); break;
+    case 'imp-audio': S.importMenu = false; renderToolbar(); $(montagemSemVideo() ? 'fileMontMusica' : 'fileAudio').click(); break;
+    case 'modelos-montagem': if (MT.aberto) fechaMontagem(); else abreMontagem(); break;
     case 'audio': S.audioMenu = true; S.importMenu = false; S.fxMenu = false; S.textMenu = false; renderToolbar(); break;
     case 'trilhas': S.audioMenu = false; renderToolbar(); openTrilhas(); break;
     case 'do-celular': S.audioMenu = false; renderToolbar(); $('fileAudio').click(); break;
@@ -2573,6 +2597,416 @@ $('fileLugar').addEventListener('change', (e) => {
   e.target.value = '';
   // vai para midia/ do projeto (não é material para o agente cortar) e entra no lugar
   if (f) sendVideo(f, async (res) => { await carregaMontMidias(); if (LT.uid) escolheTroca(res.arquivo); }, 'montagem');
+});
+
+// ---------- Modelos de montagem: o modelo, a música e as fotos e clipes ----------
+/* Um modelo de montagem é um ritmo (montagens.py): quantos lugares, as batidas de cada um, onde cai
+ * o drop e os textos. O painel escolhe o modelo, a música (as de midia/, as trilhas da biblioteca ou
+ * uma enviada daqui) e as fotos e clipes na ordem do toque. O Montar vai pelo Salvar
+ * (`montagem.usar`) e o agente monta (montagem.py montar). Numa montagem pronta, o painel também
+ * guarda ela como modelo: o servidor lê a montagem salva, não o que o editor mostra. */
+const MT = { aberto: false, passo: 'modelos', desenhado: null, modelos: null, sel: null, musica: null, midias: [],
+  audios: null, ouvindo: null, trSel: null, baixando: null, guardando: false, enviando: false, fila: [], autoAberto: false };
+const MT_PREV = new Audio();
+const ehMontagem = () => !!(S.montagem || (S.state && S.state.montagem));
+const montagemSemVideo = () => ehMontagem() && !(S.videoDuration > 0);
+const modeloEscolhido = () => (MT.modelos || []).find((m) => m.id === MT.sel) || null;
+const doAparelho = () => (isDesk() ? 'Do computador' : 'Do celular');
+const semExt = (nome) => String(nome || '').replace(/\.[^.]+$/, '');
+const ehAudio = (f) => /\.(mp3|m4a|aac|wav|ogg|opus|flac|weba)$/i.test(f.name); // os de camadas.AUDIO_EXTS
+async function carregaMontagens() {
+  try {
+    const r = await fetch('/api/montagens');
+    if (r.ok) MT.modelos = (await r.json()).modelos || [];
+  } catch (e) { /* sem a lista: o painel diz que está carregando */ }
+}
+async function carregaMusicas() {
+  try {
+    const r = await fetch('/api/midia');
+    if (r.ok) MT.audios = ((await r.json()).midia || []).filter((x) => x.tipo === 'audio');
+  } catch (e) { MT.audios = MT.audios || []; }
+}
+async function abreMontagem() {
+  video.pause();
+  S.importMenu = false; S.audioMenu = false; S.fxMenu = false; S.textMenu = false;
+  MT.aberto = true;
+  MT.guardando = false;
+  showSheet($('montSheet'), true);
+  renderToolbar();
+  renderMontagem();
+  await Promise.all([carregaMontagens(), carregaMontMidias(), carregaMusicas(), S.trilhas ? null : loadTrilhas()]);
+  if (MT.aberto) renderMontagem();
+}
+function fechaMontagem() {
+  MT.aberto = false;
+  MT_PREV.pause();
+  showSheet($('montSheet'), false);
+  renderToolbar();
+}
+function resumoMontagem(m) {
+  const b = [`${m.lugares} ${m.lugares === 1 ? 'lugar' : 'lugares'}`, `${m.batidas} batidas`];
+  if (m.textos.length) b.push(m.textos.length === 1 ? '1 texto' : `${m.textos.length} textos`);
+  if (m.transicoes) b.push(m.transicoes === 1 ? '1 transição' : `${m.transicoes} transições`);
+  if (m.doKit) b.push('do kit');
+  return b.join(' · ');
+}
+// a capa é o ritmo: uma barra por lugar, na largura das batidas dele, mais alta do drop em diante;
+// em cima, a janela de cada texto do modelo
+function capaRitmo(face, m) {
+  const total = Math.max(1, m.batidas);
+  const barras = el('div', `mt-barras${m.drop_na_vaga ? '' : ' sem-drop'}`, face);
+  m.ritmo.forEach((nb, i) => {
+    el('span', `mt-barra${m.drop_na_vaga && i + 1 >= m.drop_na_vaga ? ' drop' : ''}`, barras).style.flexGrow = nb;
+  });
+  const faixa = el('div', 'mt-textos', face);
+  for (const t of m.textos) {
+    const ini = m.ritmo.slice(0, t.vaga - 1).reduce((a, b) => a + b, 0);
+    if (ini >= total) continue;
+    const x = el('span', 'mt-texto', faixa);
+    x.style.left = `${(ini / total) * 100}%`;
+    x.style.width = `${(Math.min(t.batidas || m.ritmo[t.vaga - 1] || 1, total - ini) / total) * 100}%`;
+  }
+}
+function renderMontagem() {
+  const body = $('montCorpo');
+  const topo = MT.desenhado === MT.passo ? body.scrollTop : 0; // tocar uma música não pula a lista
+  if (MT.passo !== 'modelos' && !modeloEscolhido()) MT.passo = 'modelos';
+  body.innerHTML = '';
+  const passo = MT.passo;
+  $('montTitulo').textContent = passo === 'musica' ? 'A música' : passo === 'midias' ? 'As fotos e clipes' : 'Modelos de montagem';
+  if (passo === 'musica') renderMontMusica(body);
+  else if (passo === 'midias') renderMontMidias(body);
+  else renderMontModelos(body);
+  body.scrollTop = topo;
+  MT.desenhado = passo;
+  // o rodapé: Voltar, o que já foi escolhido e o passo seguinte
+  const m = modeloEscolhido();
+  $('montRodape').classList.remove('hidden');
+  $('montVoltar').classList.toggle('invisivel', passo === 'modelos');
+  const seguir = $('montSeguir');
+  if (passo === 'modelos') {
+    $('montConta').textContent = m ? m.nome : 'Escolha um modelo';
+    seguir.textContent = 'Próximo';
+    seguir.disabled = !m;
+  } else if (passo === 'musica') {
+    $('montConta').textContent = MT.musica ? semExt(nomeArq(MT.musica)) : 'Escolha a música';
+    seguir.textContent = 'Próximo';
+    seguir.disabled = !MT.musica;
+  } else {
+    $('montConta').textContent = `${MT.midias.length} de ${m.lugares}`;
+    seguir.textContent = MT.enviando ? 'Enviando…' : 'Montar';
+    seguir.disabled = !MT.midias.length || MT.enviando;
+  }
+}
+function renderMontModelos(body) {
+  if (S.montagem) { // numa montagem pronta: guardar ela como modelo
+    const linha = el('div', 'mt-guardar', body);
+    if (MT.guardando) {
+      const form = el('form', 'mod-salvar', linha);
+      const inp = el('input', '', form);
+      inp.type = 'text'; inp.maxLength = 60; inp.placeholder = 'Nome do modelo (ex.: Viagem rápida)';
+      inp.setAttribute('aria-label', 'Nome do modelo de montagem');
+      const ok = el('button', 'tb-btn primary', form);
+      ok.type = 'submit'; ok.textContent = 'Guardar';
+      form.addEventListener('submit', (e) => { e.preventDefault(); guardaMontagem(inp.value); });
+      setTimeout(() => inp.focus(), 50);
+    } else {
+      const b = el('button', 'tb-btn ghost mt-guardar-btn', linha);
+      b.type = 'button';
+      b.dataset.mtGuardar = '1';
+      b.textContent = 'Guardar esta montagem como modelo';
+    }
+  }
+  if (!MT.modelos) { el('p', 'sheet-hint', body).textContent = 'Carregando os modelos…'; return; }
+  el('p', 'sheet-hint', body).textContent = S.montagem
+    ? 'Outro modelo refaz a montagem inteira. Escolha um, a música e as fotos e clipes.'
+    : 'Cada modelo é um ritmo: uma barra por lugar, na largura das batidas, mais alta do drop em diante. Escolha um.';
+  const grid = el('div', 'cards wide mt-grade', body);
+  for (const m of MT.modelos) {
+    const card = el('button', `card mt-card${MT.sel === m.id ? ' on' : ''}`, grid);
+    card.type = 'button';
+    card.dataset.mtModelo = m.id;
+    const face = el('div', 'face mt-face', card);
+    capaRitmo(face, m);
+    if (!m.doKit) {
+      const del = el('span', 'c-del', face);
+      del.dataset.mtApagar = m.id;
+      del.innerHTML = ICON.remover;
+      del.title = 'Apagar o modelo';
+    }
+    el('div', 'c-name', card).textContent = m.nome;
+    el('div', 'c-sub', card).textContent = resumoMontagem(m);
+  }
+}
+function linhaMusica(host, o) {
+  const row = el('div', `tr-row mt-musica${o.on ? ' on' : ''}`, host);
+  row.dataset.mtMusica = o.id;
+  if (o.trilha) row.dataset.mtTrilha = o.trilha;
+  if (o.previa) row.dataset.previa = o.previa;
+  const tocando = MT.ouvindo === o.id && !MT_PREV.paused;
+  const play = el('button', 'tr-play', row);
+  play.type = 'button';
+  play.dataset.act = 'ouvir';
+  play.disabled = !o.previa;
+  play.innerHTML = tocando ? ICON.pause : ICON.play;
+  play.setAttribute('aria-label', `${tocando ? 'Parar' : 'Ouvir'} ${o.nome}`);
+  const txt = el('div', 'tr-txt', row);
+  el('b', null, txt).textContent = o.nome;
+  el('span', null, txt).textContent = o.info;
+  if (o.trilha && o.on) { // a da biblioteca vem para o projeto antes de virar a música
+    const usar = el('button', 'tb-btn primary tr-usar', row);
+    usar.type = 'button';
+    usar.dataset.act = 'usar';
+    usar.textContent = MT.baixando === o.trilha ? 'Baixando…' : 'Usar';
+    usar.disabled = !!MT.baixando;
+  } else if (o.on) el('span', 'mt-check', row).innerHTML = ICON.check;
+}
+function renderMontMusica(body) {
+  el('p', 'sheet-hint', body).textContent = 'A montagem segue a batida da música. Toque numa para ouvir e escolher.';
+  const lista = el('div', 'tr-lista mt-musicas', body);
+  if (!MT.audios) el('p', 'sheet-hint', lista).textContent = 'Carregando…';
+  else if (!MT.audios.length) el('p', 'sheet-hint', lista).textContent = 'Nenhuma música no projeto ainda.';
+  for (const a of MT.audios || []) {
+    linhaMusica(lista, { id: a.arquivo, nome: semExt(a.nome), info: 'no projeto', on: MT.musica === a.arquivo,
+      previa: `/media/${a.arquivo.split('/').map(encodeURIComponent).join('/')}` });
+  }
+  const enviar = el('button', 'tb-btn ghost mt-enviar', body);
+  enviar.type = 'button';
+  enviar.dataset.mtEnviar = 'musica';
+  enviar.innerHTML = `${ICON.enviar}<span>${doAparelho()}</span>`;
+  if (!(S.trilhas || []).length) return;
+  el('b', 'mt-sec', body).textContent = 'Da biblioteca';
+  const bib = el('div', 'tr-lista mt-musicas', body);
+  for (const p of S.trilhas) {
+    linhaMusica(bib, { id: `trilha:${p.id}`, trilha: p.id, nome: p.nome, on: MT.trSel === p.id,
+      info: [p.clima, fmtDur(p.duracao), p.baixado ? 'no computador' : ''].filter(Boolean).join(' · '),
+      previa: p.previa ? `/gen/pacote-previa?id=${encodeURIComponent(p.id)}` : '' });
+  }
+}
+function renderMontMidias(body) {
+  const m = modeloEscolhido();
+  const ops = S.montMidias || [];
+  if (S.montMidias) { // o que sumiu do projeto sai da ordem
+    const tem = new Set(ops.map((o) => o.midia));
+    MT.midias = MT.midias.filter((k) => tem.has(k));
+  }
+  el('p', 'sheet-hint', body).textContent = !S.montMidias ? 'Carregando as fotos e clipes…'
+    : `Toque na ordem em que elas entram. O modelo tem ${m.lugares} ${m.lugares === 1 ? 'lugar' : 'lugares'}: `
+      + 'com menos fotos e clipes, eles se repetem em ordem; com mais, os que sobram ficam de fora.';
+  if (ops.length > 1) {
+    const acoes = el('div', 'subtabs mt-acoes', body);
+    const todas = el('button', 'subtab', acoes);
+    todas.type = 'button';
+    todas.dataset.mtTodas = '1';
+    todas.textContent = MT.midias.length === ops.length ? 'Nenhuma' : 'Todas, na ordem';
+  }
+  const grade = el('div', 'mod-grade troca-grade mt-midias', body);
+  for (const o of ops) {
+    const k = MT.midias.indexOf(o.midia);
+    const b = el('button', `mod-card troca-card${k >= 0 ? ' on' : ''}`, grade);
+    b.type = 'button';
+    b.dataset.mtMidia = o.midia;
+    const im = el('img', 'troca-img', b);
+    im.loading = 'lazy'; im.alt = ''; im.draggable = false;
+    im.src = quadroDaMidia(o.midia, o.tipo === 'video' ? Math.min(1, o.duracao / 2) : 0, 240);
+    if (o.tipo === 'video') el('span', 'troca-dur', b).textContent = fmtShort(o.duracao);
+    if (k >= 0) el('span', 'mt-ordem', b).textContent = k + 1;
+    el('span', 'mod-nome', b).textContent = semExt(o.nome);
+  }
+  const mais = el('button', 'mod-card troca-mais', grade);
+  mais.type = 'button';
+  mais.dataset.mtEnviar = 'midias';
+  mais.innerHTML = ICON.mais;
+  el('span', 'mod-nome', mais).textContent = doAparelho();
+}
+// tocar na linha escolhe e ouve; o play só liga e desliga a prévia
+function escolheMusica(row, soOuvir) {
+  const id = row.dataset.mtMusica;
+  const tocando = MT.ouvindo === id && !MT_PREV.paused;
+  if (!soOuvir) {
+    if (row.dataset.mtTrilha) MT.trSel = row.dataset.mtTrilha;
+    else { MT.musica = id; MT.trSel = null; }
+  }
+  if (tocando && soOuvir) MT_PREV.pause();
+  else if (!tocando && row.dataset.previa) {
+    if (MT_PREV.dataset.id !== id) { MT_PREV.src = row.dataset.previa; MT_PREV.dataset.id = id; }
+    MT_PREV.muted = !!S.mudoUsuario;
+    MT.ouvindo = id;
+    MT_PREV.play().catch(() => {});
+  }
+  renderMontagem();
+}
+async function baixaTrilha(id) {
+  if (MT.baixando) return;
+  MT.baixando = id;
+  renderMontagem();
+  try {
+    const r = await fetch('/api/pacotes/usar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || `erro ${r.status}`);
+    const p = (S.trilhas || []).find((x) => x.id === id);
+    if (p) p.baixado = true;
+    MT.musica = d.arquivo;
+    MT.trSel = null;
+    await carregaMusicas();
+  } catch (e) { toast(`A trilha não baixou: ${e.message}`, 3600); }
+  MT.baixando = null;
+  if (MT.aberto) renderMontagem();
+}
+// um de cada vez (o envio é um só): a foto ou o clipe que chega entra no fim da ordem; a música, escolhida
+function enviaParaMontagem(arquivos, tipo) {
+  MT.fila.push(...arquivos.map((f) => ({ f, tipo })));
+  proximoEnvioMontagem();
+}
+function proximoEnvioMontagem() {
+  if (upXhr || !MT.fila.length) return;
+  const { f, tipo } = MT.fila.shift();
+  sendVideo(f, async (res) => {
+    if (tipo === 'musica') { MT.musica = res.arquivo; MT.trSel = null; await carregaMusicas(); }
+    else {
+      await carregaMontMidias();
+      if (!MT.midias.includes(res.arquivo)) MT.midias.push(res.arquivo);
+    }
+    if (MT.aberto) renderMontagem();
+    proximoEnvioMontagem();
+  }, tipo === 'musica' ? 'musica' : 'montagem-nova', () => { MT.fila = []; });
+}
+function guardarComo() {
+  const n = dirtyCount();
+  if (n) { toast(`Salve ou descarte ${n === 1 ? 'o ajuste' : `os ${n} ajustes`} antes: o modelo sai da montagem salva.`, 4200); return; }
+  if (S.savedPending) { toast('Espere o agente aplicar o último Salvar: o modelo sai da montagem como ela está no vídeo.', 4500); return; }
+  MT.guardando = true;
+  renderMontagem();
+}
+async function guardaMontagem(nome) {
+  nome = String(nome || '').trim();
+  if (!nome) { toast('Dê um nome ao modelo', 2200); return; }
+  try {
+    const r = await fetch('/api/montagens', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome }) });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || `erro ${r.status}`);
+    MT.guardando = false;
+    MT.sel = d.modelo.id;
+    await carregaMontagens();
+    renderMontagem();
+    const avisos = (d.avisos || []).map((a) => a.charAt(0).toUpperCase() + a.slice(1)).join('. ');
+    toast(`Modelo "${d.modelo.nome}" guardado (${resumoMontagem(d.modelo)}).${avisos ? ` ${avisos}.` : ''}`, avisos ? 6500 : 3600);
+  } catch (e) { toast(`Não guardei o modelo: ${e.message}`, 4500); }
+}
+async function apagaMontagem(id) {
+  const m = (MT.modelos || []).find((x) => x.id === id);
+  if (!m || !confirm(`Apagar o modelo de montagem "${m.nome}"? As montagens já feitas com ele não mudam.`)) return;
+  try {
+    const d = await (await fetch('/api/montagens/apagar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }) })).json();
+    if (!d.ok) throw new Error(d.error || 'falhou');
+    if (MT.sel === id) MT.sel = null;
+    await carregaMontagens();
+    renderMontagem();
+  } catch (e) { toast(`Não apaguei: ${e.message}`, 3600); }
+}
+// o Montar: vai pelo Salvar, sozinho (a montagem nova refaz o projeto inteiro)
+async function pedeMontagem() {
+  const m = modeloEscolhido();
+  if (!m || !MT.musica || !MT.midias.length || MT.enviando) return;
+  const n = dirtyCount();
+  if (n) { toast(`Salve ou descarte ${n === 1 ? 'o ajuste' : `os ${n} ajustes`} antes: a montagem nova refaz o projeto inteiro.`, 4500); return; }
+  if (S.montagem && !confirm(`Montar de novo com o modelo "${m.nome}"? A montagem de agora é refeita inteira, `
+    + 'com os textos e as transições do modelo.')) return;
+  MT.enviando = true;
+  renderMontagem();
+  const usar = { modelo: m.id, musica: MT.musica, midias: [...MT.midias] };
+  try {
+    const r = await fetch('/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'timeline-edits', projeto: S.projetoId, montagem: { usar } }) });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || `erro ${r.status}`);
+    S.savedPending = true;
+    S.montagemNova = usar;
+    MT.enviando = false;
+    MT.passo = 'modelos'; // reabre nos modelos (guardar esta, ou outra); a música e as fotos ficam escolhidas
+    fechaMontagem();
+    refreshHeader();
+    vazioDaMontagem();
+    toast('Montagem enviada. O agente monta na batida, e o vídeo aparece aqui sozinho.', 4200);
+  } catch (e) {
+    MT.enviando = false;
+    if (MT.aberto) renderMontagem();
+    toast(`Não enviei a montagem: ${e.message}`, 4500);
+  }
+}
+// a Nova montagem sem vídeo: o convite é o modelo; depois do Montar, o aviso de que o agente monta
+// (com o agente já trabalhando nos clipes, vale o "O agente está editando" de sempre)
+function vazioDaMontagem() {
+  if (S.videoDuration > 0 || S.locked || S.emptyAgente || !ehMontagem()) return;
+  const montando = !!S.montagemNova;
+  $('emptyIco').innerHTML = ICON.montagem;
+  $('emptyAlt').classList.add('hidden');
+  $('btnEmptyUpload').classList.toggle('hidden', montando);
+  $('btnEmptyUpload').textContent = 'Escolher o modelo';
+  $('emptyTitle').textContent = montando ? 'O agente está montando' : 'Monte um vídeo na batida';
+  $('emptyText').textContent = montando
+    ? 'Ele põe as fotos e clipes na batida da música. O vídeo aparece aqui sozinho quando ficar pronto.'
+    : 'Escolha um modelo de montagem, a música e as fotos e clipes. O agente monta na batida.';
+}
+$('montClose').innerHTML = ICON.fechar;
+$('montClose').addEventListener('click', fechaMontagem);
+$('montVoltar').addEventListener('click', () => {
+  MT.passo = MT.passo === 'midias' ? 'musica' : 'modelos';
+  renderMontagem();
+});
+$('montSeguir').addEventListener('click', () => {
+  if (MT.passo === 'modelos') {
+    if (modeloEscolhido()) { MT.passo = 'musica'; renderMontagem(); }
+  } else if (MT.passo === 'musica') {
+    if (MT.musica) { MT_PREV.pause(); MT.passo = 'midias'; renderMontagem(); }
+  } else pedeMontagem();
+});
+$('montCorpo').addEventListener('click', (e) => {
+  const t = e.target;
+  const apagar = t.closest('[data-mt-apagar]');
+  if (apagar) { apagaMontagem(apagar.dataset.mtApagar); return; }
+  const card = t.closest('[data-mt-modelo]');
+  if (card) { MT.sel = card.dataset.mtModelo; renderMontagem(); return; }
+  if (t.closest('[data-mt-guardar]')) { guardarComo(); return; }
+  const env = t.closest('[data-mt-enviar]');
+  if (env) { $(env.dataset.mtEnviar === 'musica' ? 'fileMontMusica' : 'fileMontMidia').click(); return; }
+  if (t.closest('[data-mt-todas]')) {
+    const ops = (S.montMidias || []).map((o) => o.midia);
+    MT.midias = MT.midias.length === ops.length ? [] : [...MT.midias, ...ops.filter((k) => !MT.midias.includes(k))];
+    renderMontagem();
+    return;
+  }
+  const md = t.closest('[data-mt-midia]');
+  if (md) {
+    const k = md.dataset.mtMidia;
+    MT.midias = MT.midias.includes(k) ? MT.midias.filter((x) => x !== k) : [...MT.midias, k];
+    renderMontagem();
+    return;
+  }
+  const row = t.closest('[data-mt-musica]');
+  if (row) {
+    const btn = t.closest('[data-act]');
+    const act = btn ? btn.dataset.act : '';
+    if (act === 'usar') baixaTrilha(row.dataset.mtTrilha);
+    else escolheMusica(row, act === 'ouvir');
+  }
+});
+['play', 'pause', 'ended'].forEach((ev) => MT_PREV.addEventListener(ev, () => { if (MT.aberto && MT.passo === 'musica') renderMontagem(); }));
+MT_PREV.addEventListener('error', () => { if (MT.aberto && MT_PREV.dataset.id) toast('A prévia da música não carregou.', 2600); });
+$('fileMontMidia').addEventListener('change', (e) => {
+  const fs = [...(e.target.files || [])];
+  e.target.value = '';
+  if (fs.length) enviaParaMontagem(fs, 'midias');
+});
+$('fileMontMusica').addEventListener('change', (e) => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  if (!ehAudio(f)) { toast('A música da montagem: mp3, m4a, wav, ogg, aac, opus ou flac.', 3200); return; }
+  enviaParaMontagem([f], 'musica');
 });
 
 // ---------- Trecho: que parte do clipe entra no lugar ----------
@@ -2779,8 +3213,13 @@ function download() {
 let upXhr = null;
 const mb = (b) => `${Math.round(b / 1e6)} MB`;
 // `aoChegar`: a imagem enviada vai para quem pediu (o painel Fundo) em vez de virar camada
-// `para` 'montagem': a foto ou o vídeo de um lugar (fica em midia/ e entra no lugar, sem avisar o agente)
-function sendVideo(file, aoChegar, para) {
+// `para` 'montagem': a foto ou o vídeo de um lugar (fica em midia/ e entra no lugar, sem avisar o agente);
+// 'montagem-nova', uma foto ou clipe para o painel Modelos de montagem (também em midia/); 'musica', a
+// música dele (o áudio já vai para midia/ sem `para`, e não vira camada). `aoFalhar`: o envio não chegou
+const PARA_SERVIDOR = { montagem: 'montagem', 'montagem-nova': 'montagem' };
+const CHEGOU = { montagem: 'Chegou. Entra no lugar quando você salvar.', 'montagem-nova': 'Chegou. Está na lista da montagem.',
+  musica: 'Chegou. Está entre as músicas da montagem.' };
+function sendVideo(file, aoChegar, para, aoFalhar) {
   if (upXhr) { toast('Já tem um envio indo — espere terminar', 2400); return; }
   const card = $('upload');
   card.className = 'upload';
@@ -2790,7 +3229,7 @@ function sendVideo(file, aoChegar, para) {
   $('upCancel').textContent = 'Cancelar';
   const xhr = new XMLHttpRequest();
   upXhr = xhr;
-  xhr.open('POST', `/api/upload?name=${encodeURIComponent(file.name)}${S.projetoId ? `&projeto=${S.projetoId}` : ''}${para ? `&para=${para}` : ''}`);
+  xhr.open('POST', `/api/upload?name=${encodeURIComponent(file.name)}${S.projetoId ? `&projeto=${S.projetoId}` : ''}${PARA_SERVIDOR[para] ? `&para=${PARA_SERVIDOR[para]}` : ''}`);
   xhr.upload.onprogress = (e) => {
     if (!e.lengthComputable) return;
     const f = e.loaded / e.total;
@@ -2808,8 +3247,8 @@ function sendVideo(file, aoChegar, para) {
     try { res = JSON.parse(xhr.responseText); } catch (err) { /* resposta sem JSON */ }
     if (xhr.status === 200 && res.ok) {
       $('upBar').style.width = '100%';
-      if (para === 'montagem') {
-        end('done', 'Chegou. Entra no lugar quando você salvar.');
+      if (CHEGOU[para]) {
+        end('done', CHEGOU[para]);
         setTimeout(() => { if (!upXhr) card.classList.add('hidden'); }, 5000);
         if (aoChegar) aoChegar(res);
         return;
@@ -2827,10 +3266,11 @@ function sendVideo(file, aoChegar, para) {
       }
     } else {
       end('bad', res.error || `Não consegui enviar (erro ${xhr.status}).`);
+      if (aoFalhar) aoFalhar();
     }
   };
-  xhr.onerror = () => end('bad', 'A conexão caiu no meio do envio. O celular e o computador ainda estão na mesma rede?');
-  xhr.onabort = () => { upXhr = null; card.classList.add('hidden'); toast('Envio cancelado', 2000); };
+  xhr.onerror = () => { end('bad', 'A conexão caiu no meio do envio. O celular e o computador ainda estão na mesma rede?'); if (aoFalhar) aoFalhar(); };
+  xhr.onabort = () => { upXhr = null; card.classList.add('hidden'); toast('Envio cancelado', 2000); if (aoFalhar) aoFalhar(); };
   xhr.send(file);
 }
 $('upCancel').addEventListener('click', () => { if (upXhr) upXhr.abort(); else $('upload').classList.add('hidden'); });
@@ -2841,7 +3281,7 @@ $('fileInput').addEventListener('change', (e) => {
   e.target.value = '';
   if (f) sendVideo(f);
 });
-$('btnEmptyUpload').addEventListener('click', () => $('fileInput').click());
+$('btnEmptyUpload').addEventListener('click', () => (ehMontagem() ? abreMontagem() : $('fileInput').click()));
 $('emptyIco').innerHTML = ICON.enviar;
 $('upIco').innerHTML = ICON.enviar;
 $('downloadIco').innerHTML = ICON.baixar;
@@ -3313,6 +3753,13 @@ function renderModelos(body) {
     el('div', 'c-name', card).textContent = m.nome;
     el('div', 'c-sub', card).textContent = resumoModelo(m);
   }
+  // a montagem na batida tem os modelos dela, num projeto próprio (o painel Modelos de montagem)
+  const atalho = el('p', 'sheet-hint mt-atalho', body);
+  atalho.append('Fotos e clipes na batida de uma música? ');
+  const ir = el('button', 'mt-link', atalho);
+  ir.type = 'button';
+  ir.dataset.novaMontagem = '1';
+  ir.textContent = 'Comece uma Nova montagem';
 }
 // o visual deste vídeo agora: o Estilo, a legenda fina e o que o vídeo usa em todas as tomadas
 function capturaModelo(nome) {
@@ -3532,6 +3979,11 @@ $('sheetBody').addEventListener('click', (e) => {
   const apagar = e.target.closest('[data-apagar]');
   if (apagar) { apagaModelo(apagar.dataset.apagar); return; }
   if (e.target.closest('[data-salvar-modelo]')) { S.modSalvando = true; renderStyle(); return; }
+  if (e.target.closest('[data-nova-montagem]')) { // fecha o Estilo sem aplicar e vai para os Projetos
+    $('sheetClose').click();
+    abreProjetos().then(() => novoProjeto('montagem'));
+    return;
+  }
   const mod = e.target.closest('[data-modelo]');
   if (mod) { escolheModelo(mod.dataset.modelo); return; }
   const sub = e.target.closest('.subtab');
@@ -6515,7 +6967,7 @@ function renderGuiaTrilhas(box) {
   const btn = el('button', 'tb-btn primary tr-guia-btn', guia);
   btn.type = 'button';
   btn.dataset.act = 'do-celular';
-  btn.textContent = 'Escolher música do celular';
+  btn.textContent = `Escolher música ${isDesk() ? 'do computador' : 'do celular'}`;
   el('p', 'sheet-hint', guia).textContent = 'Se o YouTube reivindicar uma música grátis, '
     + 'conteste com o link da página onde você baixou.';
 }

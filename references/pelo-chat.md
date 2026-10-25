@@ -84,8 +84,11 @@ kit's in `assets/montagens/` (read-only). "Guarda esta montagem como modelo" is
 transitions on the cuts; filters do not go in). "Faz uma montagem com o modelo X, a música Y e
 estas fotos" is `montagem.py usar <template id or JSON file> --musica <file> --midias <files>
 --edit <edit>` (`montagens.py listar` shows the ids). A template's `transicoes` (`[{vaga, pacote, duracao}]`) land in `efeitos.json` on
-the cut that opens each slot. The editor's Usar (the Modelos de montagem panel) saves
+the cut that opens each slot. The editor's Usar (the Modelos de montagem panel, toolbar
+`modelos-montagem`, also opened by "Nova montagem" in Projetos) saves
 `montagem.usar = {modelo, musica, midias}` and the watcher says to run `montagem.py montar <edit>`.
+`musica` is an audio file in `midia/`; `midias` are photos and clips in `midia/` or the open
+montage's own media (the same list the Trocar offers), in the order the person tapped.
 
 ## Colour, filters and transitions (`efeitos.json`)
 

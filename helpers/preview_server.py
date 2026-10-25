@@ -62,7 +62,8 @@ Routes:
                          para as marcas e o ímã da linha do tempo: `pronta` com as batidas, ou
                          `calculando` (a análise roda num processo à parte; na 1ª vez baixa o modelo)
   /api/montagem/midias   GET  numa montagem na batida (montagem.py): o que o Trocar oferece para um
-                         lugar (as mídias da montagem e as fotos e vídeos de midia/), com tipo e duração
+                         lugar (as mídias da montagem e as fotos e vídeos de midia/), com tipo e duração;
+                         na Nova montagem ainda sem edl.json, só as de midia/ (o painel Modelos de montagem)
   /gen/montagem-quadro?midia=&t=&h=  um quadro de uma dessas mídias (Trocar e a tira do Trecho)
   /gen/montagem-video?midia=          o clipe original de um lugar, para o Trecho tocar a janela
   /api/montagens         GET  os modelos de montagem (montagens.py: os da pessoa e os do kit), com o
@@ -70,7 +71,8 @@ Routes:
   /api/montagens         POST {nome}: guarda a montagem aberta como modelo (montagem.py capturar)
   /api/montagens/apagar  POST {id}: apaga um modelo da pessoa
   /api/save com `montagem.usar` = {modelo, musica, midias}: o Usar do painel (a montagem inteira);
-                         conferido em conferir_usar, e o agente roda montagem.py montar
+                         conferido em conferir_usar, e o agente roda montagem.py montar. Até ele
+                         montar, /api/state traz o pedido em `montagemNova`
   /api/projetos/novo     POST {nome, tipo?}: com tipo "montagem", o projeto nasce como montagem
 
 Quem entra: por padrão o servidor ouve só em 127.0.0.1 e atende só este
@@ -394,8 +396,9 @@ def conferir_montagem(root: Path, pasta_videos: Path, pedido: object) -> dict:
 
 def conferir_usar(root: Path, pedido: object) -> dict:
     """O Usar do painel Modelos de montagem: {modelo, musica, midias}. O modelo existe (montagens.py),
-    a música é um áudio de midia/ e as mídias são fotos e vídeos de midia/, de 1 a 400, na ordem em que
-    a pessoa tocou. Um projeto que já é um corte de fala não vira montagem por aqui."""
+    a música é um áudio de midia/ e as mídias são fotos e vídeos de midia/ ou da montagem aberta (as
+    mesmas que o Trocar oferece), de 1 a 400, na ordem em que a pessoa tocou. Um projeto que já é um
+    corte de fala não vira montagem por aqui."""
     if not isinstance(pedido, dict):
         raise MontagemInvalida("usar: um objeto")
     modelo = mg.obter(pedido.get("modelo"))
@@ -405,7 +408,9 @@ def conferir_usar(root: Path, pedido: object) -> dict:
     midias = pedido.get("midias")
     if not isinstance(midias, list) or not 1 <= len(midias) <= mt.MAX_VAGAS:
         raise MontagemInvalida(f"as fotos e clipes: uma lista de 1 a {mt.MAX_VAGAS}")
-    lista = [_do_midia(root, x, cam.IMAGE_EXTS | VIDEO_EXTS, "a foto ou o clipe") for x in midias]
+    mont = montagem_do_projeto(root)
+    originais = {str(Path(x)) for x in originais_da_montagem(mont)} if mont else set()
+    lista = [_midia_da_montagem(root, None, originais, x) for x in midias]
     try:
         edl = json.loads((root / "edl.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -452,6 +457,15 @@ def montagem_do_projeto(root: Path) -> dict | None:
     return mont if isinstance(mont, dict) and mont.get("lugares") else None
 
 
+def montagem_nova(root: Path) -> bool:
+    """Um projeto que ainda vai virar montagem: criado pela Nova montagem e sem edl.json."""
+    try:
+        st = json.loads((root / "state.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(st, dict) and st.get("montagem") is True and not (root / "edl.json").exists()
+
+
 def originais_da_montagem(mont: dict) -> list[str]:
     """As mídias que a montagem recebeu (`midias`) e a de cada lugar, sem repetir, na ordem."""
     lugares = [lg for lg in mont.get("lugares") or [] if isinstance(lg, dict)]
@@ -474,9 +488,9 @@ def opcoes_da_montagem(root: Path) -> list[dict]:
     """O que o Trocar oferece para um lugar: as mídias da montagem e as fotos e vídeos de midia/ (o
     que o editor envia para um lugar cai ali), cada uma com o tipo e a duração."""
     mont = montagem_do_projeto(root)
-    if mont is None:
+    if mont is None and not montagem_nova(root):
         raise MontagemInvalida("este projeto não é uma montagem")
-    chaves = originais_da_montagem(mont)
+    chaves = originais_da_montagem(mont) if mont else []  # na montagem nova, só o que chegou em midia/
     pasta = root / cam.MIDIA_DIR
     if pasta.is_dir():
         chaves += [f"{cam.MIDIA_DIR}/{f.name}" for f in sorted(pasta.iterdir(), key=lambda x: x.stat().st_mtime)
@@ -496,9 +510,9 @@ def arquivo_da_montagem(root: Path, valor: object) -> Path:
     """Um arquivo da montagem que o editor pode ver (quadro, o vídeo do Trecho): um original dela ou
     uma foto ou vídeo de midia/. Nunca um caminho qualquer vindo do pedido."""
     mont = montagem_do_projeto(root)
-    if mont is None:
+    if mont is None and not montagem_nova(root):
         raise MontagemInvalida("este projeto não é uma montagem")
-    chave = _midia_da_montagem(root, None, {str(Path(x)) for x in originais_da_montagem(mont)}, valor)
+    chave = _midia_da_montagem(root, None, {str(Path(x)) for x in originais_da_montagem(mont or {})}, valor)
     return root / chave if chave.startswith(cam.MIDIA_DIR + "/") else Path(chave)
 
 
@@ -1674,11 +1688,13 @@ class Handler(BaseHTTPRequestHandler):
             except json.JSONDecodeError:
                 pass
         edits_p = self.root / "preview_edits.json"
-        # os lugares da montagem salvos e ainda não refeitos: o editor os mostra trocados até o agente refazer
-        pendente = None
+        # os lugares da montagem salvos e ainda não refeitos: o editor os mostra trocados até o agente refazer;
+        # e a montagem nova pedida (Usar um modelo), que o editor mostra como "o agente está montando"
+        pendente = nova = None
         if edits_p.exists():
             try:
-                pendente = (json.loads(edits_p.read_text(encoding="utf-8")).get("montagem") or {}).get("lugares") or None
+                mont = json.loads(edits_p.read_text(encoding="utf-8")).get("montagem") or {}
+                pendente, nova = mont.get("lugares") or None, mont.get("usar") or None
             except (OSError, ValueError, AttributeError):
                 pass
         video = self._current_video()
@@ -1691,6 +1707,7 @@ class Handler(BaseHTTPRequestHandler):
             "videoDuration": probe_duration(video) if video else 0,
             "hasPendingEdits": edits_p.exists(),
             "montagemPendente": pendente,
+            "montagemNova": nova,
             "now": time.time(),
         })
 

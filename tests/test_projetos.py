@@ -204,6 +204,7 @@ def test_nova_montagem_nasce_marcada(srv):
     assert r.status == 200
     st = json.loads(((srv.base / "Viagem" / "edit") / "state.json").read_text(encoding="utf-8"))
     assert st["montagem"] is True and st["novo"] is True and st["project"] == "Viagem"
+    assert pj.resumo(srv.base / "Viagem" / "edit")["montagem"] is True
     r, _ = pedir(srv.port, "POST", "/api/projetos/novo", {"nome": "Corte", "tipo": "outro"})
     assert "montagem" not in json.loads(((srv.base / "Corte" / "edit") / "state.json").read_text(encoding="utf-8"))
 

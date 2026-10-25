@@ -227,6 +227,20 @@
   </footer>
 </section>
 
+<!-- Modelos de montagem: o modelo, a música e as fotos e clipes; numa montagem pronta, guardar ela como modelo -->
+<section class="sheet" id="montSheet" aria-hidden="true">
+  <div class="sheet-head">
+    <button class="sh-close" id="montClose" type="button" aria-label="Fechar"></button>
+    <b class="sh-title" id="montTitulo">Montagem</b>
+  </div>
+  <div class="sheet-body" id="montCorpo"></div>
+  <div class="mt-rodape hidden" id="montRodape">
+    <button class="tb-btn ghost" id="montVoltar" type="button">Voltar</button>
+    <span class="mt-conta" id="montConta"></span>
+    <button class="tb-btn primary" id="montSeguir" type="button">Próximo</button>
+  </div>
+</section>
+
 <!-- Trocar a mídia de um lugar da montagem: as da montagem, as fotos e vídeos de midia/ ou uma do aparelho -->
 <section class="sheet" id="lugarSheet" aria-hidden="true">
   <div class="sheet-head">
@@ -347,6 +361,8 @@
 <input type="file" id="fileImagem" accept="image/*" hidden>
 <input type="file" id="fileFundo" accept="image/*" hidden>
 <input type="file" id="fileLugar" accept="image/*,video/*" hidden>
+<input type="file" id="fileMontMidia" accept="image/*,video/*" multiple hidden>
+<input type="file" id="fileMontMusica" accept="audio/*" hidden>
 <!-- envio de vídeo: vai em pedaços para a pasta dos vídeos no computador -->
 <section class="upload hidden" id="upload" role="status" aria-live="polite">
   <div class="up-row">

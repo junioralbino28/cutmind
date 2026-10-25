@@ -29,7 +29,9 @@ vídeo em que cada troca de imagem cai numa batida.
   5. renderiza, a menos que --so-dados: render.py → cut.mp4; sem nada por cima, mixar_final.py
      --imagem corte põe a música direto no corte; com texto, imagem, filtro ou transição, a imagem
      sai do Remotion (o modelo de Reels da Fase 2, montado em <edit>/remotion/ na primeira vez) e o
-     mixar_final.py põe a música sobre ela. Por fim, o `conferir` no final.mp4.
+     mixar_final.py põe a música sobre ela. Por fim, o `conferir` no final.mp4; se a imagem que saiu
+     do Remotion trocar fora do quadro planejado (com o computador ocupado ele pega um quadro
+     vizinho), o render dele é refeito uma vez, um quadro por vez (conferir_o_render).
 
 `conferir` acha no vídeo onde cada troca de imagem caiu (pela diferença entre quadros) e mostra,
 troca a troca, a distância até a batida da música; e confere, pelas batidas que acha no som do
@@ -775,20 +777,40 @@ def preparar_remotion(edit: Path) -> Path:
     return rem
 
 
-def renderizar(edit: Path) -> None:
+def renderizar(edit: Path, concorrencia: int | None = None, so_remotion: bool = False) -> None:
     """O caminho de sempre: render.py faz o cut.mp4 (a imagem). Sem nada por cima, o mixar_final.py põe
     a música direto nele; com texto, imagem, filtro ou transição, a imagem sai do Remotion (o modelo
-    de Reels da Fase 2, preparar_remotion) e o mixar_final.py põe a música sobre ela."""
+    de Reels da Fase 2, preparar_remotion) e o mixar_final.py põe a música sobre ela. `so_remotion`
+    refaz só a parte do Remotion (o cut.mp4 fica); `concorrencia`, quantos quadros ele desenha juntos."""
     edit = Path(edit).resolve()
-    _passo([str(AQUI / "render.py"), str(edit / "edl.json"), "-o", str(edit / "cut.mp4"), "--no-subtitles"])
+    if not so_remotion:
+        _passo([str(AQUI / "render.py"), str(edit / "edl.json"), "-o", str(edit / "cut.mp4"), "--no-subtitles"])
     if not tem_visual(edit):
         _passo([str(AQUI / "mixar_final.py"), str(edit), "--render", str(edit / "cut.mp4"), "--imagem", "corte"])
         return
     rem = preparar_remotion(edit)
     cli = rem / "node_modules" / "@remotion" / "cli" / "remotion-cli.js"
-    if subprocess.run(["node", str(cli), "render", "Reels", "out/render.mp4"], cwd=rem).returncode != 0:
+    cmd = ["node", str(cli), "render", "Reels", "out/render.mp4"] + ([f"--concurrency={concorrencia}"] if concorrencia else [])
+    if subprocess.run(cmd, cwd=rem).returncode != 0:
         raise ErroMontagem("o render do Remotion falhou (a saída dele está acima)")
     _passo([str(AQUI / "mixar_final.py"), str(edit), "--render", str(rem / "out" / "render.mp4")])
+
+
+def conferir_o_render(edit: Path, modelo_batida: str = batida.MODELO_PADRAO) -> bool:
+    """O conferir depois de um render. Se a IMAGEM saiu fora do quadro planejado num vídeo que passou
+    pelo Remotion, refaz só o render dele uma vez, um quadro por vez, e confere de novo: com o
+    computador ocupado (disco ou memória), o OffthreadVideo serve o quadro mais perto que tiver no
+    cache, e a troca aparece até 3 quadros antes (medido em 25/10: 6 de 33 trocas no quadro com o disco
+    ocupado; o mesmo render, com a máquina parada, 33 de 33)."""
+    rel = conferir(edit, modelo_batida=modelo_batida)
+    if rel["ok"] or not rel.get("fora_do_quadro") or not tem_visual(edit):
+        return rel["ok"]
+    print()
+    print(f"a imagem saiu fora do quadro planejado em {rel['fora_do_quadro']} troca(s): o Remotion pegou um quadro "
+          "vizinho do vídeo, o que acontece com o computador ocupado. Refazendo o render uma vez, um quadro por vez.",
+          flush=True)
+    renderizar(edit, concorrencia=1, so_remotion=True)
+    return conferir(edit, modelo_batida=modelo_batida)["ok"]
 
 
 def mudancas_salvas(edit: Path) -> list[dict]:
@@ -989,7 +1011,8 @@ def pedido_de_montar(edit: Path) -> dict | None:
 
 def montar(edit: Path, modelo_batida: str = batida.MODELO_PADRAO, so_dados: bool = False) -> dict:
     """Faz o que o editor pediu no Salvar: a montagem com o modelo, a música e as fotos e clipes
-    escolhidos, todos arquivos do midia/ do projeto (o servidor conferiu; aqui confere de novo)."""
+    escolhidos. A música é um arquivo do midia/ do projeto; as fotos e clipes, do midia/ ou da
+    montagem aberta (o servidor conferiu; aqui confere de novo)."""
     import montagens  # aqui dentro: o montagens.py importa este arquivo
 
     edit = Path(edit).resolve()
@@ -1000,15 +1023,23 @@ def montar(edit: Path, modelo_batida: str = batida.MODELO_PADRAO, so_dados: bool
     if not modelo:
         raise ErroMontagem(f'o modelo de montagem "{p.get("modelo")}" não existe mais')
     pasta = (edit / cam.MIDIA_DIR).resolve()
+    try:
+        atual = json.loads((edit / "edl.json").read_text(encoding="utf-8")).get("montagem") or {}
+    except (OSError, ValueError, AttributeError):
+        atual = {}
+    usadas = [*(atual.get("midias") or []), *(lg.get("midia") for lg in atual.get("lugares") or [] if isinstance(lg, dict))]
+    originais = {str(Path(x)) for x in usadas if isinstance(x, str) and Path(x).is_absolute()}
 
-    def do_projeto(rel: object) -> Path:
+    def do_projeto(rel: object, da_montagem: bool = False) -> Path:
+        if da_montagem and isinstance(rel, str) and str(Path(rel)) in originais and Path(rel).is_file():
+            return Path(rel)
         q = (edit / str(rel)).resolve()
         if not isinstance(rel, str) or q.parent != pasta or not q.is_file():
             raise ErroMontagem(f"arquivo fora do midia/ do projeto: {rel}")
         return q
 
     musica = do_projeto(p.get("musica"))
-    midias = [str(do_projeto(x)) for x in p.get("midias") or []]
+    midias = [str(do_projeto(x, da_montagem=True)) for x in p.get("midias") or []]
     if not midias:
         raise ErroMontagem("o pedido não tem foto nem clipe")
     return usar(modelo, musica, midias, edit, modelo_batida, so_dados)
@@ -1223,7 +1254,7 @@ def main() -> int:
             print(_resumo_usar(r))
             if a.so_dados:
                 return 0
-            return 0 if conferir(a.edit, modelo_batida=a.modelo_batida)["ok"] else 1
+            return 0 if conferir_o_render(a.edit, a.modelo_batida) else 1
         if a.cmd == "aplicar":
             mudancas = None
             if a.lugar is not None:
@@ -1234,18 +1265,18 @@ def main() -> int:
                   + (f", com o render {r['total_s']} s" if not a.so_dados else ""))
             if a.so_dados:
                 return 0
-            return 0 if conferir(a.edit, modelo_batida=a.modelo_batida)["ok"] else 1
+            return 0 if conferir_o_render(a.edit, a.modelo_batida) else 1
         if a.cmd == "render":
             if "montagem" not in json.loads((Path(a.edit) / "edl.json").read_text(encoding="utf-8")):
                 raise ErroMontagem("este edl.json não é de uma montagem do montagem.py")
             renderizar(a.edit)
-            return 0 if conferir(a.edit, modelo_batida=a.modelo_batida)["ok"] else 1
+            return 0 if conferir_o_render(a.edit, a.modelo_batida) else 1
         if a.cmd == "montar":
             r = montar(a.edit, a.modelo_batida, a.so_dados)
             print(_resumo_usar(r))
             if a.so_dados:
                 return 0
-            return 0 if conferir(a.edit, modelo_batida=a.modelo_batida)["ok"] else 1
+            return 0 if conferir_o_render(a.edit, a.modelo_batida) else 1
         if a.cmd == "capturar":
             import montagens  # aqui dentro: o montagens.py importa este arquivo
             m = capturar(a.edit, a.nome)

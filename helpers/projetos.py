@@ -233,6 +233,7 @@ def resumo(edit: Path) -> dict:
         "fase": fase if isinstance(fase, int) else None,
         "aguardandoEstilo": bool(estado.get("awaitingStyle")),
         "novo": bool(estado.get("novo")) and not (edit / "edl.json").exists(),
+        "montagem": bool(estado.get("montagem")),  # a Nova montagem: o cartão diz "Montagem nova"
         "mensagem": str(estado.get("message") or "")[:300],
         "duracao": round(dur, 2),
         "mudou": mudou,

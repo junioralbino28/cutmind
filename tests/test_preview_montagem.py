@@ -178,6 +178,33 @@ def test_salvar_o_usar_de_um_modelo(srv):
         assert _post(srv.port, "/api/save", {"montagem": {"usar": ruim}})[0].status == 400, ruim
 
 
+def test_usar_aceita_as_fotos_e_clipes_da_montagem_aberta(srv):
+    """Outro modelo numa montagem feita pelo chat: o painel oferece as mídias dela (as do Trocar)."""
+    pedido = {"modelo": "drop-cedo", "musica": "midia/musica.m4a", "midias": [str(srv.clipe), "midia/nova.png", str(srv.foto)]}
+    r, dados = _post(srv.port, "/api/save", {"montagem": {"usar": pedido}})
+    assert r.status == 200, dados
+    assert json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))["montagem"]["usar"]["midias"] == [
+        str(srv.clipe), "midia/nova.png", str(srv.foto)]
+    assert _post(srv.port, "/api/save", {"montagem": {"usar": {**pedido, "midias": [str(srv.fora)]}}})[0].status == 400
+
+
+def test_montagem_nova_no_estado_e_no_trocar(srv):
+    """A Nova montagem ainda sem edl: o painel envia fotos para midia/ e as vê na lista; depois do
+    Salvar, o estado diz que o agente está montando."""
+    (srv.edit / "edl.json").unlink()
+    assert pedir(srv.port, "/api/montagem/midias")[0].status == 404  # um projeto vazio qualquer
+    (srv.edit / "state.json").write_text(json.dumps({"project": "Nova", "phase": 0, "novo": True, "montagem": True}),
+                                         encoding="utf-8")
+    op = json.loads(pedir(srv.port, "/api/montagem/midias")[1])["opcoes"]
+    assert [o["midia"] for o in op] == ["midia/nova.png"]  # só o que chegou: ainda não há montagem
+    assert pedir(srv.port, f"/gen/montagem-quadro?midia={q('midia/nova.png')}&t=0&h=120")[0].status == 200
+    assert pedir(srv.port, f"/gen/montagem-quadro?midia={q(srv.foto)}&t=0")[0].status == 404
+    assert json.loads(pedir(srv.port, "/api/state")[1])["montagemNova"] is None
+    pedido = {"modelo": "drop-cedo", "musica": "midia/musica.m4a", "midias": ["midia/nova.png"]}
+    assert _post(srv.port, "/api/save", {"montagem": {"usar": pedido}})[0].status == 200
+    assert json.loads(pedir(srv.port, "/api/state")[1])["montagemNova"] == pedido
+
+
 def test_usar_vale_num_projeto_novo_e_nao_num_corte_de_fala(srv):
     pedido = {"modelo": "drop-cedo", "musica": "midia/musica.m4a", "midias": ["midia/nova.png"]}
     (srv.edit / "edl.json").unlink()  # a Nova montagem ainda não tem edl

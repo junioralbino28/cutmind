@@ -478,6 +478,76 @@ def test_montar_pelo_salvar_do_editor(tmp_path, monkeypatch):
             m.montar(edit, so_dados=True)
 
 
+def test_montar_aceita_as_fotos_da_montagem_aberta(tmp_path, monkeypatch):
+    """Outro modelo numa montagem feita pelo chat: as fotos dela ficam fora do midia/ e valem; um
+    arquivo qualquer de fora, não. E a música segue tendo de estar no midia/."""
+    import montagens
+
+    _grade_fixa(monkeypatch, [0.5 * k for k in range(20)])
+    edit = tmp_path / "edit"
+    (edit / "midia").mkdir(parents=True)
+    _wav(edit / "midia" / "musica.wav", 2.0, 440)
+    fotos = tmp_path / "fotos"
+    fotos.mkdir()
+    a, b = _foto(fotos / "a.png"), _foto(fotos / "b.png", "blue")
+    musica_fora = _wav(fotos / "musica.wav", 2.0, 440)
+    m.usar({"nome": "Dois", "vagas": [{"batidas": 2, "repetir": 2}]}, edit / "midia" / "musica.wav", [str(a), str(b)],
+           edit, so_dados=True, jobs=1)
+    montagens.salvar({"nome": "Quatro", "vagas": [{"batidas": 1, "repetir": 4}]})
+    pedido = {"modelo": "quatro", "musica": "midia/musica.wav", "midias": [str(b), str(a)]}
+    (edit / "preview_edits.json").write_text(json.dumps({"montagem": {"usar": pedido}}), encoding="utf-8")
+    assert m.montar(edit, so_dados=True)["lugares"] == 4
+    edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    assert [Path(x["midia"]).name for x in edl["montagem"]["lugares"]] == ["b.png", "a.png", "b.png", "a.png"]
+    fora = _foto(tmp_path / "fora.png")
+    for ruim in ({**pedido, "midias": [str(fora)]}, {**pedido, "musica": str(musica_fora)}):
+        (edit / "preview_edits.json").write_text(json.dumps({"montagem": {"usar": ruim}}), encoding="utf-8")
+        with pytest.raises(m.ErroMontagem):
+            m.montar(edit, so_dados=True)
+
+
+def test_imagem_fora_do_quadro_refaz_so_o_remotion_uma_vez(tmp_path, monkeypatch):
+    """Com o computador ocupado, o Remotion pode pegar um quadro vizinho do vídeo: o conferir reprova a
+    imagem e o render dele é refeito uma vez, um quadro por vez. A batida errada com a imagem certa, ou
+    um vídeo sem Remotion (a imagem é o cut.mp4), não refazem nada."""
+    chamadas, respostas = [], []
+    monkeypatch.setattr(m, "conferir", lambda edit, modelo_batida=None: respostas.pop(0))
+    monkeypatch.setattr(m, "renderizar", lambda edit, **kw: chamadas.append(kw))
+    monkeypatch.setattr(m, "tem_visual", lambda edit: True)
+    respostas[:] = [{"ok": False, "fora_do_quadro": 4}, {"ok": True, "fora_do_quadro": 0}]
+    assert m.conferir_o_render(tmp_path) is True
+    assert chamadas == [{"concorrencia": 1, "so_remotion": True}]
+    chamadas.clear()
+    respostas[:] = [{"ok": False, "fora_do_quadro": 4}, {"ok": False, "fora_do_quadro": 2}]
+    assert m.conferir_o_render(tmp_path) is False and len(chamadas) == 1  # uma vez só
+    chamadas.clear()
+    respostas[:] = [{"ok": False, "fora_do_quadro": 0}]
+    assert m.conferir_o_render(tmp_path) is False and chamadas == []
+    monkeypatch.setattr(m, "tem_visual", lambda edit: False)
+    respostas[:] = [{"ok": False, "fora_do_quadro": 3}]
+    assert m.conferir_o_render(tmp_path) is False and chamadas == []
+    respostas[:] = [{"ok": True, "fora_do_quadro": 0}]
+    assert m.conferir_o_render(tmp_path) is True and chamadas == [] and respostas == []
+
+
+def test_renderizar_so_o_remotion_um_quadro_por_vez(tmp_path, monkeypatch):
+    passos, cmds = [], []
+    monkeypatch.setattr(m, "_passo", lambda args: passos.append(Path(args[0]).name))
+    monkeypatch.setattr(m, "tem_visual", lambda edit: True)
+    monkeypatch.setattr(m, "preparar_remotion", lambda edit: tmp_path / "remotion")
+
+    class Feito:
+        returncode = 0
+
+    monkeypatch.setattr(m.subprocess, "run", lambda cmd, cwd=None: cmds.append(cmd) or Feito())
+    m.renderizar(tmp_path, concorrencia=1, so_remotion=True)
+    assert passos == ["mixar_final.py"] and cmds[0][-1] == "--concurrency=1"  # o cut.mp4 fica
+    passos.clear()
+    cmds.clear()
+    m.renderizar(tmp_path)
+    assert passos == ["render.py", "mixar_final.py"] and not [c for c in cmds[0] if c.startswith("--concurrency")]
+
+
 def test_so_passa_pelo_remotion_com_algo_por_cima(tmp_path):
     def camadas(*faixas):
         cam.save(tmp_path / "camadas.json", {"faixas": list(faixas)})
