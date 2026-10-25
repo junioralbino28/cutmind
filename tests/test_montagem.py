@@ -272,6 +272,77 @@ def test_midia_em_pe_sai_igual_a_antes(tmp_path):
     assert hashes(f"[0:v]{antigo}[v]") == hashes(f"[0:v]null[m];{m._enquadrar('m', 'v', 1080, 1920)}")
 
 
+def _quadro_de(video: Path, w: int, h: int) -> np.ndarray:
+    r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-i", str(video), "-frames:v", "1", "-f", "rawvideo",
+                        "-pix_fmt", "rgb24", "-"], capture_output=True, check=True)
+    return np.frombuffer(r.stdout, np.uint8).reshape(h, w, 3).astype(int)
+
+
+def _faixas(caminho: Path, w: int, h: int, deitadas: bool) -> Path:
+    """Vermelho, verde e azul em três faixas (lado a lado, ou de cima para baixo)."""
+    if deitadas:
+        cx = f",drawbox=y=0:h={h // 3}:w={w}:color=red:t=fill,drawbox=y={h - h // 3}:h={h // 3}:w={w}:color=blue:t=fill"
+    else:
+        cx = f",drawbox=x=0:w={w // 3}:h={h}:color=red:t=fill,drawbox=x={w - w // 3}:w={w // 3}:h={h}:color=blue:t=fill"
+    _ffmpeg("-f", "lavfi", "-i", f"color=c=green:s={w}x{h}{cx}", "-frames:v", "1", caminho)
+    return caminho
+
+
+def _cor(px) -> str:
+    r, g, b = px
+    if r > 180 and g < 80 and b < 80:
+        return "vermelho"
+    if b > 180 and r < 80 and g < 80:
+        return "azul"
+    if g > 90 and r < 120 and b < 120:
+        return "verde"
+    return f"? {tuple(px)}"
+
+
+@pytest.mark.parametrize("formato,midia,pontos", [
+    # deitado: a foto em pé entra inteira (as faixas de cima e de baixo aparecem) e o lado é o fundo desfocado
+    ("16:9", (360, 640, True), {(30, 960): "vermelho", (1050, 960): "azul", (540, 100): "verde"}),
+    # deitado: a foto deitada enche a tela até as bordas
+    ("16:9", (640, 360, False), {(30, 30): "vermelho", (1050, 1890): "azul", (540, 960): "verde"}),
+    # quadrado: a 4:3 enche (corta um pouco dos lados); a 16:9 entra inteira, com o fundo em cima
+    ("1:1", (640, 480, False), {(30, 30): "vermelho", (1050, 1050): "azul"}),
+    ("1:1", (640, 360, False), {(540, 30): "vermelho", (540, 1050): "azul", (30, 540): "verde"}),
+])
+def test_cada_formato_enquadra_pela_proporcao_da_midia(tmp_path, formato, midia, pontos):
+    w, h = m.quadro_do_formato(formato)
+    foto = _faixas(tmp_path / "foto.png", *midia)
+    out = tmp_path / "out.mp4"
+    m.padronizar(foto, out, 3, "parado", tamanho=(w, h))
+    s = _sondar(out)["video"]
+    assert (s["width"], s["height"]) == (w, h)
+    q = _quadro_de(out, w, h)
+    assert {p: _cor(q[p]) for p in pontos} == pontos
+
+
+def test_levar_ponto_guarda_o_lugar_relativo_e_o_limite_das_camadas():
+    assert m.levar_ponto(540, 760, "9:16", "16:9") == (960, 427.5)
+    assert m.levar_ponto(960, 427.5, "16:9", "1:1") == (540, 427.5)
+    assert m.levar_ponto(540, 960, None, "9:16") == (540, 960)
+    assert m.levar_ponto(2160, -1920, "9:16", "16:9") == (2160, -1080)  # x passaria de 2160
+    # ir e voltar muitas vezes não faz o texto andar
+    x, y = 333, 761
+    for _ in range(20):
+        x, y = m.levar_ponto(x, y, "9:16", "16:9")
+        x, y = m.levar_ponto(x, y, "16:9", "1:1")
+        x, y = m.levar_ponto(x, y, "1:1", "9:16")
+    assert (x, y) == (333, 761)
+    with pytest.raises(m.ErroMontagem):
+        m.quadro_do_formato("4:3")
+
+
+def test_modelo_guarda_o_formato_dos_textos():
+    mod = m.carregar_modelo({"formato": "16:9", "vagas": [{"batidas": 2}], "textos": [{"texto": "OI"}]})
+    assert mod["formato"] == "16:9" and (mod["textos"][0]["x"], mod["textos"][0]["y"]) == (960, 540)
+    assert m.carregar_modelo({"vagas": [{"batidas": 2}]})["formato"] == "9:16"
+    with pytest.raises(m.ErroMontagem):
+        m.carregar_modelo({"formato": "4:3", "vagas": [{"batidas": 2}]})
+
+
 def test_listar_midias_pasta_em_ordem_e_ponto_de_entrada(tmp_path):
     pasta = tmp_path / "fotos"
     pasta.mkdir()
@@ -586,6 +657,17 @@ def test_renderizar_so_o_remotion_um_quadro_por_vez(tmp_path, monkeypatch):
     assert passos == ["render.py", "mixar_final.py"] and not [c for c in cmds[0] if c.startswith("--concurrency")]
 
 
+def test_render_do_formato_nao_em_pe_guarda_o_tamanho_dos_clipes(tmp_path, monkeypatch):
+    chamadas = []
+    monkeypatch.setattr(m, "_passo", lambda args: chamadas.append(args))
+    monkeypatch.setattr(m, "tem_visual", lambda edit: False)
+    for formato, espera in ((None, False), ("9:16", False), ("16:9", True), ("1:1", True)):
+        (tmp_path / "edl.json").write_text(json.dumps({"montagem": {"formato": formato}}), encoding="utf-8")
+        chamadas.clear()
+        m.renderizar(tmp_path)
+        assert ("--keep-resolution" in chamadas[0]) == espera, formato
+
+
 def test_so_passa_pelo_remotion_com_algo_por_cima(tmp_path):
     def camadas(*faixas):
         cam.save(tmp_path / "camadas.json", {"faixas": list(faixas)})
@@ -647,6 +729,14 @@ def test_preparar_remotion_escreve_o_public_da_montagem(tmp_path, monkeypatch):
     chamados.clear()
     m.preparar_remotion(edit)
     assert chamados == ["atualizar_template", "efeitos_render.py", "camadas_edit_data.py"]
+    # o Remotion desenha no quadro do formato da montagem
+    edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    edl["montagem"]["formato"] = "16:9"
+    (edit / "edl.json").write_text(json.dumps(edl), encoding="utf-8")
+    m.preparar_remotion(edit)
+    ed = json.loads((pub / "edit-data.json").read_text(encoding="utf-8"))
+    tr = json.loads((pub / "track.json").read_text(encoding="utf-8"))
+    assert (ed["width"], ed["height"], tr["width"], tr["height"]) == (1920, 1080, 1920, 1080)
 
 
 def test_template_do_kit_troca_o_codigo_velho_da_montagem(tmp_path):
@@ -753,6 +843,49 @@ def test_aplicar_refaz_so_o_lugar_mudado(tmp_path, monkeypatch):
         m.aplicar(edit, [{"vaga": 2, "midia": str(fotos[0])}, {"vaga": 3, "midia": str(ruim)}], so_dados=True)
     assert (edit / "edl.json").read_bytes() == edl_antes
     assert not list(pasta.glob("*.novo*")) and (pasta / "v02_f2.mp4").is_file()
+
+
+def _tamanhos(edit: Path) -> set[tuple[int, int]]:
+    edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    return {(s["width"], s["height"]) for s in (_sondar(Path(p))["video"] for p in edl["sources"].values())}
+
+
+def test_trocar_o_formato_refaz_todos_os_lugares_e_leva_os_textos(tmp_path, monkeypatch):
+    _grade_fixa(monkeypatch, [0.5 * k for k in range(40)])
+    musica = _wav(tmp_path / "musica.wav", 2.0, 440)
+    fotos = [_foto(tmp_path / "f0.png", "red"), _foto(tmp_path / "f1.png", "blue")]
+    clipe = tmp_path / "clipe.mp4"
+    _ffmpeg("-f", "lavfi", "-i", "testsrc2=s=160x90:r=30:d=3", clipe)
+    modelo = {"vagas": [{"batidas": 2, "repetir": 3}],
+              "textos": [{"nome": "Título", "texto": "OI", "vaga": 1, "x": 540, "y": 760}]}
+    edit = tmp_path / "edit"
+    r = m.usar(modelo, musica, [str(fotos[0]), str(clipe)], edit, so_dados=True, jobs=1, formato="16:9")
+    assert r["formato"] == "16:9" and _tamanhos(edit) == {(1920, 1080)}
+    edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    assert edl["montagem"]["formato"] == "16:9"
+    t = [f for f in cam.load(edit / "camadas.json")["faixas"] if f["tipo"] == "texto"][0]["itens"][0]
+    assert (t["x"], t["y"]) == (960, 427.5)  # o modelo é em pé: o texto vai para o mesmo lugar relativo
+
+    # pelo Salvar do editor: só o formato; o lugar 2 também troca de mídia no mesmo Salvar
+    (edit / "preview_edits.json").write_text(json.dumps({"montagem": {
+        "formato": "1:1", "lugares": [{"vaga": 2, "midia": str(fotos[1])}]}}), encoding="utf-8")
+    ranges_antes = [(x["end"], x.get("velocidade")) for x in edl["ranges"]]
+    r = m.aplicar(edit, so_dados=True)
+    assert r["formato_mudou"] and sorted(x["vaga"] for x in r["lugares"]) == [1, 2, 3]
+    assert _tamanhos(edit) == {(1080, 1080)}
+    edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    assert edl["montagem"]["formato"] == "1:1"
+    assert [x["source"] for x in edl["ranges"]] == ["v01_f0", "v02_f1", "v03_f0"]
+    assert [(x["end"], x.get("velocidade")) for x in edl["ranges"]] == ranges_antes  # o tempo de cada lugar fica
+    t = [f for f in cam.load(edit / "camadas.json")["faixas"] if f["tipo"] == "texto"][0]["itens"][0]
+    assert (t["x"], t["y"]) == (540, 427.5)
+    assert m.capturar(edit, "Quadrado")["formato"] == "1:1"
+
+    # de volta ao em pé, pela linha de comando; o mesmo formato sem lugar nenhum não tem o que refazer
+    m.aplicar(edit, [], so_dados=True, formato="9:16")
+    assert _tamanhos(edit) == {(1080, 1920)}
+    with pytest.raises(m.ErroMontagem):
+        m.aplicar(edit, [], so_dados=True, formato="9:16")
 
 
 def test_conferir_aceita_a_troca_gradual_da_transicao(tmp_path, monkeypatch):

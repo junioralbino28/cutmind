@@ -201,9 +201,13 @@ def digest(p: Path) -> str:
             parts.append("  ⚠ O corte mudou no mesmo Salvar: os trechos são do final ANTIGO. Refaça o final, "
                          "leve os trechos para ele (grave a duração nova) e só então acelere.")
     lugares = (d.get("montagem") or {}).get("lugares") or []
+    formato = (d.get("montagem") or {}).get("formato")
+    if formato:
+        head.append(f"montagem: formato {NOMES_FORMATO.get(formato, formato)}")
     if lugares:
         head.append(f"montagem: {_plural(len(lugares), 'lugar mudado', 'lugares mudados')}")
-        parts += montagem_linhas(lugares, bool(ops))
+    if lugares or formato:
+        parts += montagem_linhas(lugares, bool(ops), formato)
     usar = (d.get("montagem") or {}).get("usar")
     if isinstance(usar, dict):
         head.append(f"MONTAGEM NOVA com o modelo {usar.get('modelo')}")
@@ -211,7 +215,8 @@ def digest(p: Path) -> str:
     if ("camadas" in d or "efeitos" in d) and _eh_montagem(p.parent):
         # numa montagem, o vídeo com texto, imagem ou efeito sai do montagem.py (ele monta o Remotion dela)
         parts.append("  montagem na batida: " + (
-            "o montagem.py aplicar acima já leva estas camadas e efeitos (o servidor gravou os dois)." if lugares else
+            "o montagem.py aplicar acima já leva estas camadas e efeitos (o servidor gravou os dois)."
+            if lugares or formato else
             "as camadas e os efeitos já estão gravados; em vez dos passos acima, rode montagem.py render <edit> "
             "(refaz o vídeo, pelo Remotion quando há texto, imagem ou efeito, e confere a batida)."))
     if "melhorar" in d:
@@ -235,10 +240,18 @@ def _eh_montagem(edit: Path) -> bool:
         return False
 
 
-def montagem_linhas(lugares: list[dict], tomadas_mudaram: bool) -> list[str]:
-    """Os lugares da montagem na batida que o editor mudou (outra mídia, outro trecho do clipe)."""
+NOMES_FORMATO = {"9:16": "em pé (9:16)", "16:9": "deitado (16:9)", "1:1": "quadrado (1:1)"}
+
+
+def montagem_linhas(lugares: list[dict], tomadas_mudaram: bool, formato: str | None = None) -> list[str]:
+    """Os lugares da montagem na batida que o editor mudou (outra mídia, outro trecho do clipe) e o
+    formato novo do vídeo."""
+    refaz = "refaz a montagem inteira no formato novo" if formato else "refaz só estes lugares"
     linhas = [("  montagem na batida: " + ("primeiro grave no edl.json o volume das tomadas; depois " if tomadas_mudaram else "")
-               + "rode montagem.py aplicar <edit> (lê este Salvar, refaz só estes lugares, renderiza e confere):")]
+               + f"rode montagem.py aplicar <edit> (lê este Salvar, {refaz}, renderiza e confere):")]
+    if formato:
+        linhas.append(f"  · formato: {NOMES_FORMATO.get(formato, formato)}; os textos vão para o mesmo lugar do "
+                      "quadro novo")
     for x in lugares:
         oque = []
         if x.get("midia"):
@@ -257,7 +270,8 @@ def usar_linhas(usar: dict) -> list[str]:
             f"  · modelo: {usar.get('modelo')} (montagens.py mostrar {usar.get('modelo')})",
             f"  · música: {Path(str(usar.get('musica'))).name}",
             f"  · {_plural(len(midias), 'foto ou clipe', 'fotos e clipes')}, na ordem: "
-            + ", ".join(midias[:12]) + (" …" if len(midias) > 12 else "")]
+            + ", ".join(midias[:12]) + (" …" if len(midias) > 12 else "")] + (
+        [f"  · formato: {NOMES_FORMATO.get(usar['formato'], usar['formato'])}"] if usar.get("formato") else [])
 
 
 def _plural(n: int, um: str, varios: str) -> str:

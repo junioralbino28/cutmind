@@ -3,9 +3,11 @@
 vídeo em que cada troca de imagem cai numa batida.
 
     uv run python helpers/montagem.py usar <modelo.json> --musica <arquivo> --midias <a> <b> … --edit <dir>
-                                      [--modelo-batida pequeno|completo] [--so-dados] [--substituir]
+                                      [--formato 9:16|16:9|1:1] [--modelo-batida pequeno|completo]
+                                      [--so-dados] [--substituir]
     uv run python helpers/montagem.py conferir <edit> [--video <arquivo>] [--modelo-batida …]
-    uv run python helpers/montagem.py aplicar <edit> [--lugar N [--midia <arquivo>] [--de <s>]] [--so-dados]
+    uv run python helpers/montagem.py aplicar <edit> [--lugar N [--midia <arquivo>] [--de <s>]]
+                                      [--formato 9:16|16:9|1:1] [--so-dados]
     uv run python helpers/montagem.py render <edit> [--modelo-batida …]
     uv run python helpers/montagem.py montar <edit> [--so-dados]
     uv run python helpers/montagem.py capturar <edit> --nome "Meu modelo" [--so-mostrar]
@@ -18,10 +20,11 @@ vídeo em que cada troca de imagem cai numa batida.
      até a seguinte. B0 é o primeiro tempo forte, ou a batida que põe o lugar `drop_na_vaga` no drop.
      Cada borda vai para o quadro mais perto da SUA batida (a 30 qps, no máximo 16,7 ms dela): o erro
      não se acumula de um lugar para o outro. Se a música acaba antes, os lugares que sobram saem;
-  3. cada mídia vira um clipe padronizado em <edit>/montagem/ (1080×1920, 30 qps, com faixa de som,
-     muda quando a mídia não tem som): a mídia em pé enche a tela; a deitada ou quadrada entra
-     inteira, sobre ela mesma desfocada; a foto ganha um zoom leve (`movimento`: zoom-in, zoom-out ou
-     parado); o clipe entra do começo, ou de `arquivo@segundos`, e o que é mais curto que o lugar
+  3. cada mídia vira um clipe padronizado em <edit>/montagem/ (no quadro do formato: 1080×1920 em pé,
+     1920×1080 deitado, 1080×1080 quadrado; 30 qps, com faixa de som, muda quando a mídia não tem
+     som): a mídia com o formato perto do da tela enche a tela; a de formato longe (a deitada ou a
+     quadrada na tela em pé) entra inteira, sobre ela mesma desfocada; a foto ganha um zoom leve
+     (`movimento`: zoom-in, zoom-out ou parado); o clipe entra do começo, ou de `arquivo@segundos`, e o que é mais curto que o lugar
      fica mais lento, até 0,5×, e depois para no último quadro. Com mais lugares que mídias, as mídias
      se repetem em ordem;
   4. escreve edl.json (sem J-cut, que comeria quadros em cada emenda; um range por lugar, com
@@ -41,7 +44,9 @@ a no máximo 1 quadro da batida.
 
 `aplicar` refaz só os lugares mudados (outra mídia, outro trecho do clipe), sem mexer nos outros, e
 renderiza: os do Salvar do editor (`montagem` do preview_edits.json) ou o de `--lugar`. O `usar` guarda
-de onde cada lugar saiu no bloco `montagem.lugares` do edl.json; é dali que o `aplicar` parte.
+de onde cada lugar saiu no bloco `montagem.lugares` do edl.json; é dali que o `aplicar` parte. Com
+outro formato (`--formato`, ou `montagem.formato` do Salvar), ele refaz TODOS os lugares no quadro novo
+e leva cada texto das camadas para o mesmo lugar relativo (a 40% da altura continua a 40%).
 
 `render` refaz o vídeo como ele está (o que mudou foram as camadas, os textos ou os efeitos, que o
 Salvar já gravou) e confere.
@@ -57,7 +62,9 @@ O modelo é um JSON:
      "vagas": [{"batidas": 4, "repetir": 4}, {"batidas": 1, "repetir": 16}, {"batidas": 2, "repetir": 4}]}
 
 `repetir` abre um lugar em vários iguais (o `drop_na_vaga` conta os lugares já abertos); `comeca` é
-"forte" (a música entra no primeiro tempo forte) ou "batida" (na primeira batida). `textos`, opcional,
+"forte" (a música entra no primeiro tempo forte) ou "batida" (na primeira batida). `formato`, opcional,
+é o do vídeo ("9:16", o padrão; "16:9" ou "1:1") e o do quadro em que estão os `x`/`y` dos textos; o
+`usar` num formato diferente leva os textos para o mesmo lugar relativo. `textos`, opcional,
 põe textos trocáveis: [{"nome": "Título", "texto": "SEU TÍTULO", "vaga": 1, "batidas": 4, "x": 540,
 "y": 700, "estilo": {"fonte": "Anton", "cor": "#ffffff"}}] (sem `batidas`, o texto dura o lugar; o
 estilo é o do painel de Texto, camadas.py). `transicoes`, opcional, põe uma transição da biblioteca
@@ -95,7 +102,11 @@ AQUI = Path(__file__).resolve().parent
 TEMPLATE = AQUI.parent / "assets" / "shortform"  # o modelo de Reels da Fase 2 (o Remotion)
 FPS = 30
 LARGURA, ALTURA = 1080, 1920
-IMAGENS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
+# o formato do vídeo: em pé, deitado ou quadrado. O lado menor é sempre 1080: um texto do mesmo
+# tamanho em px ocupa a mesma fração da altura de um e da largura do outro
+FORMATOS = {"9:16": (1080, 1920), "16:9": (1920, 1080), "1:1": (1080, 1080)}
+FORMATO_PADRAO = "9:16"
+IMAGENS ={".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 VIDEOS = {".mp4", ".mov", ".m4v", ".mkv", ".webm", ".avi", ".mts"}
 MOVIMENTOS = ("zoom-in", "zoom-out", "parado")
 ZOOM_POR_SEGUNDO = 0.04  # a foto aproxima 4% por segundo, até 10%: a mesma velocidade em lugar curto e longo
@@ -120,6 +131,24 @@ class ErroMontagem(Exception):
 
 
 # ---------- o modelo ----------
+
+def quadro_do_formato(formato: str | None) -> tuple[int, int]:
+    """Largura e altura do quadro de um formato (FORMATOS); sem formato, o em pé."""
+    f = formato or FORMATO_PADRAO
+    if f not in FORMATOS:
+        raise ErroMontagem(f"formato: {', '.join(FORMATOS)}")
+    return FORMATOS[f]
+
+
+def levar_ponto(x: float, y: float, de: str | None, para: str | None) -> tuple[float, float]:
+    """Um ponto do quadro de um formato no mesmo lugar relativo do quadro do outro: o texto que estava
+    a 40% da altura continua a 40%. O tamanho do texto fica, porque o lado menor dos dois é o mesmo.
+    Fica dentro do que as camadas aceitam (camadas.py). Com duas casas, e não em px inteiro: ir e
+    voltar de formato devolve o mesmo ponto (em inteiro, 760 → 427,5 → 428 → 761 e o texto anda a
+    cada troca)."""
+    (w0, h0), (w1, h1) = quadro_do_formato(de), quadro_do_formato(para)
+    return (round(min(2160, max(-1080, x * w1 / w0)), 2), round(min(3840, max(-1920, y * h1 / h0)), 2))
+
 
 def _inteiro(v, nome: str, lo: int, hi: int) -> int:
     ok = (not isinstance(v, bool) and isinstance(v, (int, float)) and math.isfinite(v)
@@ -169,6 +198,10 @@ def carregar_modelo(fonte: Path | dict) -> dict:
     golpe = m.get("golpe", True)
     if not isinstance(golpe, bool):
         raise ErroMontagem('"golpe" é true ou false')
+    formato = m.get("formato") or FORMATO_PADRAO  # o formato em que os textos do modelo estão
+    if not isinstance(formato, str) or formato not in FORMATOS:
+        raise ErroMontagem(f'"formato" é {", ".join(FORMATOS)}')
+    fw, fh = FORMATOS[formato]
     textos_in = m.get("textos") or []
     if not isinstance(textos_in, list) or len(textos_in) > MAX_TEXTOS:
         raise ErroMontagem(f'"textos": uma lista de até {MAX_TEXTOS}')
@@ -179,7 +212,7 @@ def carregar_modelo(fonte: Path | dict) -> dict:
         vaga = _inteiro(t.get("vaga", 1), f"texto {k}, vaga", 1, len(vagas))
         nb = None if t.get("batidas") is None else _inteiro(t["batidas"], f"texto {k}, batidas", 1, 64 * MAX_VAGAS)
         item = {"id": "x", "nome": t.get("nome") or f"Texto {k}", "texto": t.get("texto"), "duracao": 1,
-                "x": t.get("x", 540), "y": t.get("y", 960), "estilo": t.get("estilo")}
+                "x": t.get("x", fw // 2), "y": t.get("y", fh // 2), "estilo": t.get("estilo")}
         try:  # as mesmas regras de um texto do editor (camadas.py)
             it = cam.normalize({"faixas": [{"id": "t", "tipo": "texto", "itens": [item]}]})["faixas"][0]["itens"][0]
         except cam.CamadasInvalidas as e:
@@ -208,7 +241,7 @@ def carregar_modelo(fonte: Path | dict) -> dict:
         transicoes[vaga] = {"vaga": vaga, "pacote": pacote, "duracao": round(float(dur), 3)}
     ident = str(m.get("id") or "montagem")
     return {"versao": 1, "id": ident, "nome": str(m.get("nome") or ident), "comeca": comeca,
-            "drop_na_vaga": drop, "golpe": golpe, "vagas": vagas, "textos": textos,
+            "drop_na_vaga": drop, "golpe": golpe, "formato": formato, "vagas": vagas, "textos": textos,
             "transicoes": [transicoes[v] for v in sorted(transicoes)]}
 
 
@@ -393,19 +426,21 @@ def _cor(arquivo: Path) -> str:
 
 
 def _enquadrar(entrada: str, saida: str, w: int, h: int) -> str:
-    """O trecho do grafo que põe a mídia em w×h. Em pé, ela enche a tela e o meio é cortado, como
-    sempre. Deitada ou quadrada, entra INTEIRA na largura, sobre ela mesma ampliada e desfocada
-    (cortar uma foto ou um print deitado para encher a tela em pé perdia
-    mais da metade dele). A escolha é feita no grafo, pelo quadro que o decodificador entrega (já
+    """O trecho do grafo que põe a mídia em w×h. Com o formato perto do da tela, ela enche a tela e
+    o que sobra é cortado no meio. Com o formato longe, entra INTEIRA, sobre ela mesma ampliada e
+    desfocada: cortar uma foto deitada para encher a tela em pé perdia mais da metade dela. "Longe" é
+    a mídia ser 16/9 vezes mais larga (ou mais estreita) que a tela, ou mais: na tela em pé, toda
+    mídia deitada ou quadrada; na deitada, toda em pé ou quadrada; na quadrada, a 16:9 e a 9:16 (a
+    4:3 e a 3:4 enchem). A escolha é feita no grafo, pelo quadro que o decodificador entrega (já
     girado): vale também para a foto com rotação no EXIF e o vídeo de celular. O fundo é desfocado em
     1/4 do tamanho e ampliado depois: o mesmo desfoque, com 16 vezes menos conta. A conversão para YUV
     Rec.709 é feita pelas próprias escalas (o `format` logo depois as obriga a isso)."""
     pw, ph = w // FUNDO_REDUCAO, h // FUNDO_REDUCAO
     yuv = "out_color_matrix=bt709:out_range=tv,format=yuv420p"
-    deitada = "gte(iw,ih)"
-    larga = f"gt(iw*{h},ih*{w})"  # em pé, mas mais larga que w×h: enche pela altura
-    fw = f"if({deitada},{w},if({larga},-2,{w}))"
-    fh = f"if({deitada},-2,if({larga},{h},-2))"
+    larga = f"gt(iw*{h},ih*{w})"  # mais larga que a tela, na proporção
+    enche = f"lt(9*iw*{h},16*ih*{w})*lt(9*ih*{w},16*iw*{h})"  # proporção a menos de 16/9 vezes da tela
+    fw = f"if({enche},if({larga},-2,{w}),if({larga},{w},-2))"  # enche: cobre a tela; senão: cabe nela
+    fh = f"if({enche},if({larga},{h},-2),if({larga},-2,{h}))"
     return (f"[{entrada}]split[{saida}_f][{saida}_b];"
             f"[{saida}_b]scale={pw}:{ph}:force_original_aspect_ratio=increase:force_divisible_by=2:{yuv},"
             f"crop={pw}:{ph},gblur=sigma={FUNDO_DESFOQUE},scale={w}:{h}:flags=bicubic[{saida}_bd];"
@@ -413,12 +448,15 @@ def _enquadrar(entrada: str, saida: str, w: int, h: int) -> str:
             f"[{saida}_bd][{saida}_fc]overlay=x=(W-w)/2:y=(H-h)/2:format=yuv420,setsar=1[{saida}]")
 
 
-def padronizar(midia: Path, destino: Path, quadros: int, movimento: str | None = None, de: float = 0.0) -> dict:
-    """A mídia como clipe de 1080×1920 a 30 qps, com faixa de som, e o trecho dele que enche o lugar.
+def padronizar(midia: Path, destino: Path, quadros: int, movimento: str | None = None, de: float = 0.0,
+               tamanho: tuple[int, int] = (LARGURA, ALTURA)) -> dict:
+    """A mídia como clipe do `tamanho` do formato (1080×1920, o em pé) a 30 qps, com faixa de som, e
+    o trecho dele que enche o lugar.
 
     Devolve {"foto", "quadros_no_arquivo", "velocidade", "fim", "congela"}: o lugar toca o arquivo
     de 0 a `fim` a `velocidade`, e isso dura exatamente `quadros` no vídeo."""
     midia, destino = Path(midia), Path(destino)
+    largura, altura = tamanho
     info = sondar(midia)
     if not info["imagem"]:
         raise ErroMontagem(f"{midia.name} não é foto nem vídeo")
@@ -431,9 +469,9 @@ def padronizar(midia: Path, destino: Path, quadros: int, movimento: str | None =
         z = {"zoom-in": f"1+{passo}", "zoom-out": f"{1 + extra:.5f}-{passo}", "parado": "1"}[movimento or "zoom-in"]
         # a foto é escalada ao DOBRO antes do zoompan, que posiciona o recorte em pixel inteiro: no
         # tamanho final o zoom andaria aos trancos
-        grafo = (f"[0:v]{_cor(midia)}null[m];{_enquadrar('m', 'q', 2 * LARGURA, 2 * ALTURA)};"
+        grafo = (f"[0:v]{_cor(midia)}null[m];{_enquadrar('m', 'q', 2 * largura, 2 * altura)};"
                  f"[q]zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={quadros}"
-                 f":s={LARGURA}x{ALTURA}:fps={FPS}[v]")
+                 f":s={largura}x{altura}:fps={FPS}[v]")
         _ffmpeg(["-i", str(midia), *mudo, "-filter_complex", grafo, "-map", "[v]", "-map", "1:a",
                  "-frames:v", str(quadros), "-t", f"{precisa:.6f}", *CODIFICA, str(destino)], midia.name)
         return {"foto": True, "quadros_no_arquivo": _quadros(destino), "velocidade": 1.0,
@@ -446,7 +484,7 @@ def padronizar(midia: Path, destino: Path, quadros: int, movimento: str | None =
     else:
         entrada += mudo
         mapa_som = ["-map", "1:a"]
-    grafo = f"[0:v]{_cor(midia)}fps={FPS}[m];{_enquadrar('m', 'v', LARGURA, ALTURA)}"
+    grafo = f"[0:v]{_cor(midia)}fps={FPS}[m];{_enquadrar('m', 'v', largura, altura)}"
     base = [*entrada, "-filter_complex", grafo, "-map", "[v]", *mapa_som]
     if disponivel >= precisa + 0.5 / FPS:
         _ffmpeg([*base, "-frames:v", str(quadros), "-t", f"{precisa:.6f}", *CODIFICA, str(destino)], midia.name)
@@ -563,10 +601,12 @@ def _grava_json(caminho: Path, dados: dict) -> None:
 
 def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
          modelo_batida: str = batida.MODELO_PADRAO, so_dados: bool = False, substituir: bool = False,
-         jobs: int = 0) -> dict:
-    """Monta o projeto (e, sem `so_dados`, o vídeo). Devolve o resumo."""
+         jobs: int = 0, formato: str | None = None) -> dict:
+    """Monta o projeto (e, sem `so_dados`, o vídeo) no `formato` (sem ele, o do modelo). Devolve o resumo."""
     edit = Path(edit).resolve()
     modelo = carregar_modelo(modelo_arq)
+    formato = formato or modelo["formato"]
+    tamanho = quadro_do_formato(formato)
     lista = listar_midias(midias)
     edl_p = edit / "edl.json"
     if edl_p.exists() and not substituir:
@@ -589,9 +629,10 @@ def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
             plano["avisos"].append(f'o texto "{t["nome"]}" ficou de fora: a música acaba antes do lugar {t["vaga"]}')
             continue
         fid = f"{FAIXA_TEXTO}-{k}"
+        x, y = levar_ponto(t["x"], t["y"], modelo["formato"], formato)
         faixas_texto.append({"id": fid, "tipo": "texto", "oculto": False, "travado": False, "itens": [
             {"id": f"{fid}-1", "nome": t["nome"], "texto": t["texto"], "inicio": round(jan[0] / FPS, 4),
-             "duracao": round(jan[1] / FPS, 4), "x": t["x"], "y": t["y"], "estilo": t["estilo"]}]})
+             "duracao": round(jan[1] / FPS, 4), "x": x, "y": y, "estilo": t["estilo"]}]})
 
     pasta = edit / "montagem"
     if pasta.is_dir():  # clipes de uma montagem anterior: os nomes mudam com as mídias
@@ -606,7 +647,7 @@ def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
 
     def faz(t):
         lugar, arq, de, nome, destino = t
-        return padronizar(arq, destino, lugar["quadros"], lugar.get("movimento"), de)
+        return padronizar(arq, destino, lugar["quadros"], lugar.get("movimento"), de, tamanho)
 
     if jobs <= 0:
         jobs = max(1, min(4, (os.cpu_count() or 4) // 3))
@@ -637,7 +678,7 @@ def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
                         "inicio_musica": plano["inicio_musica"], "bpm": grade.get("bpm"),
                         "confianca": grade.get("confianca"),
                         "batidas": caminho_grade.relative_to(edit).as_posix(), "comeca": modelo["comeca"],
-                        "drop_na_vaga": modelo["drop_na_vaga"], "golpe": modelo["golpe"],
+                        "drop_na_vaga": modelo["drop_na_vaga"], "golpe": modelo["golpe"], "formato": formato,
                         "avisos": plano["avisos"], "lugares": lugares,
                         # todas as mídias dadas (inclusive as que sobraram): as opções do Trocar no editor
                         "midias": list(dict.fromkeys(_chave_midia(edit, p) for p, _ in lista))}}
@@ -671,7 +712,7 @@ def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
         "finalVideo": "final.mp4", "fps": FPS, "sourceDurations": duracoes,
         "message": f"Montagem na batida: {len(ranges)} lugares, {vd:.1f} s, {grade.get('bpm')} BPM"})
 
-    resumo = {"edit": str(edit), "lugares": len(ranges), "duracao": vd, "bpm": grade.get("bpm"),
+    resumo = {"edit": str(edit), "formato": formato, "lugares": len(ranges), "duracao": vd, "bpm": grade.get("bpm"),
               "confianca": grade.get("confianca"), "inicio_musica": plano["inicio_musica"],
               "drop": grade.get("drop"), "drop_na_vaga": modelo["drop_na_vaga"], "lentos": lentos,
               "no_golpe": plano["no_golpe"], "avisos": plano["avisos"],
@@ -766,11 +807,12 @@ def preparar_remotion(edit: Path) -> Path:
     imagem_do_zero(pub / "cut.mp4")
     lag = atraso_da_imagem(pub / "cut.mp4")
     edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    largura, altura = quadro_do_formato((edl.get("montagem") or {}).get("formato"))
     inicios, total = quadros_dos_lugares(edl)
     _grava_json(pub / "segments.json", {"segments": [  # cada lugar é um trecho
         {"start": round(q / FPS, 4), "dur": round(((inicios + [total])[k + 1] - q) / FPS, 4)}
         for k, q in enumerate(inicios)], "videoLag": lag})
-    _grava_json(pub / "track.json", {"fps": FPS, "width": LARGURA, "height": ALTURA, "count": total,
+    _grava_json(pub / "track.json", {"fps": FPS, "width": largura, "height": altura, "count": total,
                                      "points": [[0.5, 0.4]] * total, "neutral": True})
     _grava_json(pub / "captions.json", [])
     ed_p = pub / "edit-data.json"
@@ -779,7 +821,7 @@ def preparar_remotion(edit: Path) -> Path:
     except (OSError, ValueError):
         ed = json.loads((TEMPLATE / "public" / "edit-data.json").read_text(encoding="utf-8"))
     ed.pop("_readme", None)
-    ed.update({"fps": FPS, "width": LARGURA, "height": ALTURA, "durationSec": round(total / FPS, 4),
+    ed.update({"fps": FPS, "width": largura, "height": altura, "durationSec": round(total / FPS, 4),
                "videoLag": lag, "inserts": [i for i in ed.get("inserts") or [] if "camada" in i],
                "behind": [b for b in ed.get("behind") or [] if "camada" in b]})
     for chave in ("hook", "captions", "camera", "soundtrack"):  # a montagem não tem fala, gancho nem zoom
@@ -801,7 +843,15 @@ def renderizar(edit: Path, concorrencia: int | None = None, so_remotion: bool = 
     refaz só a parte do Remotion (o cut.mp4 fica); `concorrencia`, quantos quadros ele desenha juntos."""
     edit = Path(edit).resolve()
     if not so_remotion:
-        _passo([str(AQUI / "render.py"), str(edit / "edl.json"), "-o", str(edit / "cut.mp4"), "--no-subtitles"])
+        try:
+            formato = (json.loads((edit / "edl.json").read_text(encoding="utf-8")).get("montagem") or {}).get("formato")
+        except (OSError, ValueError, AttributeError):
+            formato = None
+        # os clipes já estão no tamanho do formato; sem o --keep-resolution, o render.py levaria o
+        # quadrado (que não é "em pé") a 1920 de largura
+        tamanho = [] if (formato or FORMATO_PADRAO) == FORMATO_PADRAO else ["--keep-resolution"]
+        _passo([str(AQUI / "render.py"), str(edit / "edl.json"), "-o", str(edit / "cut.mp4"), "--no-subtitles",
+                *tamanho])
     if not tem_visual(edit):
         _passo([str(AQUI / "mixar_final.py"), str(edit), "--render", str(edit / "cut.mp4"), "--imagem", "corte"])
         return
@@ -830,30 +880,65 @@ def conferir_o_render(edit: Path, modelo_batida: str = batida.MODELO_PADRAO) -> 
     return conferir(edit, modelo_batida=modelo_batida)["ok"]
 
 
-def mudancas_salvas(edit: Path) -> list[dict]:
-    """O que o Salvar do editor pediu para a montagem (`montagem.lugares` do preview_edits.json)."""
+def _salvo(edit: Path) -> dict:
     try:
         pe = json.loads((Path(edit) / "preview_edits.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return []
-    return list(((pe.get("montagem") or {}).get("lugares")) or [])
+        return {}
+    return (pe.get("montagem") or {}) if isinstance(pe, dict) else {}
 
 
-def aplicar(edit: Path, mudancas: list[dict] | None = None, so_dados: bool = False) -> dict:
+def mudancas_salvas(edit: Path) -> list[dict]:
+    """O que o Salvar do editor pediu para a montagem (`montagem.lugares` do preview_edits.json)."""
+    return list(_salvo(edit).get("lugares") or [])
+
+
+def formato_salvo(edit: Path) -> str | None:
+    """O formato que o Salvar do editor pediu (`montagem.formato` do preview_edits.json)."""
+    return _salvo(edit).get("formato") or None
+
+
+def _levar_textos(edit: Path, de: str, para: str) -> int:
+    """Os textos das camadas no mesmo lugar relativo do quadro novo (levar_ponto). Devolve quantos."""
+    cam_p = edit / "camadas.json"
+    camadas = cam.load(cam_p)
+    n = 0
+    for f in camadas["faixas"]:
+        if f.get("tipo") != "texto":
+            continue
+        for it in f["itens"]:
+            it["x"], it["y"] = levar_ponto(it["x"], it["y"], de, para)
+            n += 1
+    if n:
+        cam.save(cam_p, camadas)
+    return n
+
+
+def aplicar(edit: Path, mudancas: list[dict] | None = None, so_dados: bool = False,
+            formato: str | None = None) -> dict:
     """Refaz só os lugares mudados (outra mídia, outro trecho do clipe) e, sem `so_dados`, o vídeo.
 
-    `mudancas` = [{vaga, midia?, de?}]; sem elas, as do Salvar do editor (preview_edits.json). A mídia é
-    um caminho de arquivo ou `midia/<nome>` do projeto. `de` é de onde o clipe entra, em segundos: sem ele,
-    uma mídia nova entra do começo e a mesma mídia fica no trecho de antes. A duração do lugar, a regra do
-    clipe curto e o movimento da foto são os do lugar. O que já foi pedido de volume da tomada fica."""
+    `mudancas` = [{vaga, midia?, de?}]; sem elas e sem `formato`, as do Salvar do editor
+    (preview_edits.json, com o formato dele). A mídia é um caminho de arquivo ou `midia/<nome>` do
+    projeto. `de` é de onde o clipe entra, em segundos: sem ele, uma mídia nova entra do começo e a
+    mesma mídia fica no trecho de antes. A duração do lugar, a regra do clipe curto e o movimento da
+    foto são os do lugar. O que já foi pedido de volume da tomada fica. Um `formato` diferente do da
+    montagem refaz TODOS os lugares no quadro dele e leva os textos para o mesmo lugar relativo."""
     edit = Path(edit).resolve()
     edl_p = edit / "edl.json"
     edl = json.loads(edl_p.read_text(encoding="utf-8"))
     mont = edl.get("montagem") or {}
     if not mont.get("lugares"):
         raise ErroMontagem("este edl.json não é de uma montagem do montagem.py (falta a lista de lugares)")
-    if mudancas is None:
-        mudancas = mudancas_salvas(edit)
+    if mudancas is None and formato is None:
+        mudancas, formato = mudancas_salvas(edit), formato_salvo(edit)
+    mudancas = list(mudancas or [])
+    era = mont.get("formato") or FORMATO_PADRAO
+    formato = formato or era
+    tamanho = quadro_do_formato(formato)
+    if formato != era:  # o quadro mudou: os lugares que não foram pedidos entram com a mídia e o trecho de agora
+        pedidas = {m.get("vaga") for m in mudancas}
+        mudancas += [{"vaga": lg["vaga"]} for lg in mont["lugares"] if lg["vaga"] not in pedidas]
     if not mudancas:
         raise ErroMontagem("nenhum lugar para refazer")
     por_vaga = {lg["vaga"]: lg for lg in mont["lugares"]}
@@ -887,7 +972,7 @@ def aplicar(edit: Path, mudancas: list[dict] | None = None, so_dados: bool = Fal
             nome = f"v{n:0{largura}d}_{_slug(midia.stem, 24)}"
             novo = pasta / f"{nome}.novo.mp4"
             prontos.append((n, midia, de, quadros, nome, novo, None))
-            p = padronizar(midia, novo, quadros, por_vaga[n].get("movimento"), de)
+            p = padronizar(midia, novo, quadros, por_vaga[n].get("movimento"), de, tamanho)
             prontos[-1] = (n, midia, de, quadros, nome, novo, p)
     except BaseException:
         for *_, novo, _p in prontos:
@@ -911,7 +996,12 @@ def aplicar(edit: Path, mudancas: list[dict] | None = None, so_dados: bool = Fal
                        "congela": p["congela"], "quadros_no_arquivo": p["quadros_no_arquivo"]})
         print(f"  lugar {n:>3}: {midia.name}" + (f" a partir de {de:g} s" if de else "") + f" → {quadros} quadros"
               + (f", {p['velocidade']:.2f}×" if p["velocidade"] != 1.0 else ""), flush=True)
+    mont["formato"] = formato
     _grava_json(edl_p, edl)
+    textos = _levar_textos(edit, era, formato) if formato != era else 0
+    if formato != era:
+        print(f"formato {era} → {formato} ({tamanho[0]}×{tamanho[1]})"
+              + (f"; {textos} texto(s) levado(s) para o mesmo lugar do quadro novo" if textos else ""), flush=True)
     st_p = edit / "state.json"
     try:
         st = json.loads(st_p.read_text(encoding="utf-8"))
@@ -922,7 +1012,8 @@ def aplicar(edit: Path, mudancas: list[dict] | None = None, so_dados: bool = Fal
         _grava_json(st_p, st)
     except (OSError, json.JSONDecodeError):
         pass
-    resumo = {"lugares": feitos, "padronizar_s": round(time.perf_counter() - t0, 1)}
+    resumo = {"lugares": feitos, "formato": formato, "formato_mudou": formato != era,
+              "padronizar_s": round(time.perf_counter() - t0, 1)}
     if not so_dados:
         renderizar(edit)
     resumo["total_s"] = round(time.perf_counter() - t0, 1)
@@ -1012,7 +1103,9 @@ def capturar(edit: Path, nome: str) -> dict:
     drop = mont.get("drop_na_vaga")
     return {"versao": 1, "nome": nome, "comeca": mont.get("comeca", "forte"),
             "drop_na_vaga": drop if isinstance(drop, int) and 1 <= drop <= len(vagas) else None,
-            "golpe": mont.get("golpe", True) is not False, "vagas": vagas, "textos": textos,
+            "golpe": mont.get("golpe", True) is not False,
+            "formato": mont.get("formato") or FORMATO_PADRAO,  # os textos ficam no quadro dele
+            "vagas": vagas, "textos": textos,
             "transicoes": transicoes, "avisos": avisos}
 
 
@@ -1028,8 +1121,9 @@ def pedido_de_montar(edit: Path) -> dict | None:
 
 def montar(edit: Path, modelo_batida: str = batida.MODELO_PADRAO, so_dados: bool = False) -> dict:
     """Faz o que o editor pediu no Salvar: a montagem com o modelo, a música e as fotos e clipes
-    escolhidos. A música é um arquivo do midia/ do projeto; as fotos e clipes, do midia/ ou da
-    montagem aberta (o servidor conferiu; aqui confere de novo)."""
+    escolhidos, no formato escolhido (sem ele, o do modelo). A música é um arquivo do midia/ do
+    projeto; as fotos e clipes, do midia/ ou da montagem aberta (o servidor conferiu; aqui confere de
+    novo)."""
     import montagens  # aqui dentro: o montagens.py importa este arquivo
 
     edit = Path(edit).resolve()
@@ -1059,7 +1153,7 @@ def montar(edit: Path, modelo_batida: str = batida.MODELO_PADRAO, so_dados: bool
     midias = [str(do_projeto(x, da_montagem=True)) for x in p.get("midias") or []]
     if not midias:
         raise ErroMontagem("o pedido não tem foto nem clipe")
-    return usar(modelo, musica, midias, edit, modelo_batida, so_dados)
+    return usar(modelo, musica, midias, edit, modelo_batida, so_dados, formato=p.get("formato") or None)
 
 
 def quadros_dos_lugares(edl: dict, fps: int = FPS) -> tuple[list[int], int]:
@@ -1207,7 +1301,7 @@ def relatorio(rel: dict) -> str:
 
 def _resumo_usar(r: dict) -> str:
     linhas = [f"montagem: {r['lugares']} lugares, {r['duracao']:.2f} s, {r['bpm']} BPM (confiança {r['confianca']}), "
-              f"a música entra aos {r['inicio_musica']:.3f} s"]
+              f"a música entra aos {r['inicio_musica']:.3f} s, formato {r['formato']}"]
     if r["drop_na_vaga"] and r["drop"] is not None:
         linhas.append(f"  drop da música aos {r['drop']:.2f} s, no lugar {r['drop_na_vaga']}")
     if r["no_golpe"]:
@@ -1238,6 +1332,8 @@ def main() -> int:
     u.add_argument("--modelo-batida", choices=sorted(batida.MODELOS), default=batida.MODELO_PADRAO)
     u.add_argument("--so-dados", action="store_true", help="escreve o projeto sem renderizar")
     u.add_argument("--substituir", action="store_true", help="troca uma edição que não é montagem")
+    u.add_argument("--formato", choices=list(FORMATOS), default=None,
+                   help="em pé (9:16), deitado (16:9) ou quadrado (1:1); sem ele, o do modelo")
     c = sub.add_parser("conferir", help="mede onde cada troca caiu e a batida mais perto")
     c.add_argument("edit", type=Path)
     c.add_argument("--video", type=Path, default=None)
@@ -1247,6 +1343,8 @@ def main() -> int:
     p.add_argument("--lugar", type=int, default=None, help="o número do lugar (sem ele: o preview_edits.json)")
     p.add_argument("--midia", default=None, help="a mídia nova do lugar (arquivo ou midia/<nome>)")
     p.add_argument("--de", type=float, default=None, help="de onde o clipe entra, em segundos")
+    p.add_argument("--formato", choices=list(FORMATOS), default=None,
+                   help="refaz a montagem inteira neste formato: em pé (9:16), deitado (16:9) ou quadrado (1:1)")
     p.add_argument("--so-dados", action="store_true", help="refaz os lugares sem renderizar")
     p.add_argument("--modelo-batida", choices=sorted(batida.MODELOS), default=batida.MODELO_PADRAO)
     rd = sub.add_parser("render", help="refaz o vídeo como está (camadas, textos ou efeitos mudaram) e confere")
@@ -1267,7 +1365,7 @@ def main() -> int:
             if not modelo.is_file():  # o id de um modelo guardado (montagens.py), além de um arquivo
                 import montagens  # aqui dentro: o montagens.py importa este arquivo
                 modelo = montagens.obter(str(a.modelo)) or a.modelo
-            r = usar(modelo, a.musica, a.midias, a.edit, a.modelo_batida, a.so_dados, a.substituir)
+            r = usar(modelo, a.musica, a.midias, a.edit, a.modelo_batida, a.so_dados, a.substituir, formato=a.formato)
             print(_resumo_usar(r))
             if a.so_dados:
                 return 0
@@ -1277,8 +1375,12 @@ def main() -> int:
             if a.lugar is not None:
                 mudancas = [{"vaga": a.lugar, **({"midia": a.midia} if a.midia else {}),
                              **({"de": a.de} if a.de is not None else {})}]
-            r = aplicar(a.edit, mudancas, a.so_dados)
-            print(f"aplicar: {len(r['lugares'])} lugar(es) refeito(s); padronizar {r['padronizar_s']} s"
+            elif a.formato is not None:  # só o formato: os lugares ficam como estão
+                mudancas = []
+            r = aplicar(a.edit, mudancas, a.so_dados, formato=a.formato)
+            print(f"aplicar: {len(r['lugares'])} lugar(es) refeito(s)"
+                  + (f" no formato {r['formato']}" if r["formato_mudou"] else "")
+                  + f"; padronizar {r['padronizar_s']} s"
                   + (f", com o render {r['total_s']} s" if not a.so_dados else ""))
             if a.so_dados:
                 return 0

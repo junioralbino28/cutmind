@@ -213,3 +213,48 @@ def test_usar_vale_num_projeto_novo_e_nao_num_corte_de_fala(srv):
                                        encoding="utf-8")
     r, dados = _post(srv.port, "/api/save", {"montagem": {"usar": pedido}})
     assert r.status == 400 and "Nova montagem" in json.loads(dados)["error"]
+
+
+def test_salvar_o_formato_da_montagem(srv):
+    """O formato vai no Salvar; voltar ao de agora antes de o agente refazer desfaz o pedido."""
+    ler = lambda: json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))  # noqa: E731
+    r, dados = _post(srv.port, "/api/save", {"montagem": {"lugares": [], "formato": "16:9"}})
+    assert r.status == 200, dados
+    assert ler()["montagem"] == {"lugares": [], "formato": "16:9"}
+    assert json.loads(pedir(srv.port, "/api/state")[1])["formatoPendente"] == "16:9"
+    # um lugar salvo depois soma, e o formato pedido fica
+    assert _post(srv.port, "/api/save", {"montagem": {"lugares": [{"vaga": 2, "de": 1.0}]}})[0].status == 200
+    assert ler()["montagem"] == {"lugares": [{"vaga": 2, "de": 1.0}], "formato": "16:9"}
+    # de volta ao em pé (o de agora): o formato sai, o lugar fica
+    assert _post(srv.port, "/api/save", {"montagem": {"lugares": [], "formato": "9:16"}})[0].status == 200
+    assert ler()["montagem"] == {"lugares": [{"vaga": 2, "de": 1.0}]}
+    assert json.loads(pedir(srv.port, "/api/state")[1])["formatoPendente"] is None
+    for ruim in ("4:3", 16, ""):
+        assert _post(srv.port, "/api/save", {"montagem": {"lugares": [], "formato": ruim}})[0].status == 400, ruim
+
+
+def test_usar_leva_o_formato_escolhido(srv):
+    pedido = {"modelo": "drop-cedo", "musica": "midia/musica.m4a", "midias": ["midia/nova.png"], "formato": "1:1"}
+    assert _post(srv.port, "/api/save", {"montagem": {"usar": pedido}})[0].status == 200
+    assert json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))["montagem"]["usar"]["formato"] == "1:1"
+    assert _post(srv.port, "/api/save", {"montagem": {"usar": {**pedido, "formato": "21:9"}}})[0].status == 400
+
+
+def test_o_aviso_ao_agente_diz_o_formato(tmp_path):
+    import watch_edits as we
+
+    (tmp_path / "edl.json").write_text(json.dumps({"montagem": {"lugares": []}}), encoding="utf-8")
+    p = tmp_path / "preview_edits.json"
+    p.write_text(json.dumps({"montagem": {"lugares": [], "formato": "16:9"}}), encoding="utf-8")
+    txt = we.digest(p)
+    assert "formato deitado (16:9)" in txt and "montagem.py aplicar" in txt and "montagem inteira" in txt
+
+
+def test_miniatura_da_foto_sem_o_marcador_de_fim(srv):
+    """Foto baixada da internet que termina sem o marcador de fim do JPEG: o ffmpeg a lê pelo demuxer
+    image2, que com `-ss` descartava o único quadro, e a miniatura do Trocar e da Nova montagem saía vazia."""
+    foto = srv.edit / "midia" / "cortada.jpg"
+    _ffmpeg("-f", "lavfi", "-i", "color=c=green:s=90x160", "-frames:v", "1", foto)
+    foto.write_bytes(foto.read_bytes()[:-2])  # sem o FF D9 do fim
+    r, dados = pedir(srv.port, f"/gen/montagem-quadro?midia={q('midia/cortada.jpg')}&t=0.00&h=240")
+    assert r.status == 200 and r.getheader("Content-Type") == "image/jpeg" and dados[:2] == b"\xff\xd8"

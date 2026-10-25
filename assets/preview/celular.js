@@ -137,6 +137,7 @@ const ICON = {
   ima: sv('<path d="M5 4v8a7 7 0 0 0 14 0V4h-4v8a3 3 0 0 1-6 0V4z"/><path d="M5 7.6h4M15 7.6h4"/>'),
   // um lugar da montagem: Trocar a mídia (as duas setas) e o Trecho do clipe (a janela na tira)
   trocar: sv('<path d="M4.5 8.5h14l-3.5-3.5M19.5 15.5h-14l3.5 3.5"/>'),
+  formato: sv('<rect x="3" y="7" width="11" height="10" rx="1.6"/><rect x="15.5" y="4" width="5.5" height="16" rx="1.4"/>'),
   trecho: sv('<rect x="2.5" y="7" width="19" height="10" rx="1.6"/><rect x="8" y="4.5" width="7" height="15" rx="1.4" stroke-width="2.3"/>'),
 };
 
@@ -167,8 +168,16 @@ const NONE_MARK = '<svg viewBox="0 0 64 34" style="width:56%;height:auto">'
  * Dois momentos do vídeo, que no render NUNCA aparecem juntos:
  *  - 'abertura': quadro inteiro, headline e legenda (os primeiros segundos)
  *  - 'meio': a tela dividida com a imagem de apoio e a legenda, sem headline */
-const FRAME_W = 1080;
-const FRAME_H = 1920;
+// o quadro do vídeo em px, com o lado menor 1080 (1080x1920 em pé, 1920x1080 deitado, 1080x1080
+// quadrado): muda quando o vídeo carrega (loadedmetadata)
+let FRAME_W = 1080;
+let FRAME_H = 1920;
+// os formatos de uma montagem (montagem.FORMATOS): em pé, deitado e quadrado
+const FORMATOS = {
+  '9:16': { nome: 'Em pé', uso: 'Reels, TikTok, Shorts', w: 9, h: 16 },
+  '16:9': { nome: 'Deitado', uso: 'YouTube, TV', w: 16, h: 9 },
+  '1:1': { nome: 'Quadrado', uso: 'Feed', w: 1, h: 1 },
+};
 const SPLIT_GEOM = {
   split: { band: 'top', bandH: 750, zoom: 1.25, focusY: 400, capPB: 1074 },
   split2: { band: 'bottom', bandH: 750, zoom: 1.0, focusY: 225, capPB: 790 },
@@ -674,8 +683,10 @@ const lugaresMudados = () => {
   const base = new Map(S.base.map((b) => [b.uid, b]));
   return S.draft.filter((r) => r.vaga != null && trocaKey(r) !== ((base.get(r.uid) || {}).tk || ''));
 };
+// o formato escolhido aqui e ainda não salvo (o salvo que o agente não refez não conta)
+const formatoMudou = () => !!(S.montagem && S.formato && S.formato !== (S.formatoPendente || S.formatoAtual));
 function dirtyCount() {
-  return diffBase() + S.notes.length + S.insertsDraft.filter(insMudou).length + (camadasDirty() ? 1 : 0) + (efeitosDirty() ? 1 : 0)
+  return (formatoMudou() ? 1 : 0) + diffBase() + S.notes.length + S.insertsDraft.filter(insMudou).length + (camadasDirty() ? 1 : 0) + (efeitosDirty() ? 1 : 0)
     + S.cenasDraft.filter(cenaMudou).length + zoomMudados() + destaquesMudados().length + (legendaMudou() ? 1 : 0)
     + (velDirty() ? 1 : 0) + (melhorarDirty() ? 1 : 0) + lugaresMudados().length;
 }
@@ -730,6 +741,7 @@ function snap() {
     vel: JSON.parse(JSON.stringify(S.vel)),
     faixa: S.faixa ? { ...S.faixa } : null,
     melhorar: S.melhorar ? { ...S.melhorar } : null,
+    formato: S.formato,
   };
 }
 function remember(before) {
@@ -769,6 +781,7 @@ function restore(s) {
   S.legSel = !!(S.legenda && s.legSel);
   if (s.vel) S.vel = s.vel;
   if ('melhorar' in s) S.melhorar = s.melhorar;
+  if (s.formato) S.formato = s.formato;
   S.faixa = s.faixa && S.view === 'final' ? s.faixa : null;
   drawCenaBox();
   applyMute();
@@ -874,6 +887,9 @@ async function applyState(data) {
     ...(r.vaga != null ? { vaga: +r.vaga } : {}) })); // o número do lugar, numa montagem na batida
   // a montagem na batida (montagem.py): os lugares, de onde cada um saiu e as mídias que ela usou
   S.montagem = (data.edl && data.edl.montagem && Array.isArray(data.edl.montagem.lugares)) ? data.edl.montagem : null;
+  S.formatoAtual = (S.montagem && FORMATOS[S.montagem.formato] && S.montagem.formato) || '9:16';
+  S.formatoPendente = (S.montagem && FORMATOS[data.formatoPendente] && data.formatoPendente) || null;
+  S.formato = S.formatoPendente || S.formatoAtual;
   carregaMontMidias().then(() => { if (S.selected >= 0) renderToolbar(); }); // o Trecho precisa saber quem é clipe
   S.draft = S.rendered.map((r, i) => ({ ...r, uid: `o${i}`, from: i, orig: { start: r.start, end: r.end } }));
   // os lugares já salvos que o agente ainda não refez seguem marcados com a mídia nova (não contam
@@ -983,6 +999,9 @@ video.addEventListener('loadedmetadata', () => {
   if (!video.videoWidth || !video.videoHeight) return;
   player.style.setProperty('--ar', `${video.videoWidth} / ${video.videoHeight}`);
   player.style.setProperty('--arn', (video.videoWidth / video.videoHeight).toFixed(6));
+  const menor = Math.min(video.videoWidth, video.videoHeight);
+  FRAME_W = Math.round((1080 * video.videoWidth) / menor);
+  FRAME_H = Math.round((1080 * video.videoHeight) / menor);
   // a coluna da prévia ao lado da linha do tempo tem a largura do vídeo na altura da tela
   const raiz = document.documentElement, emPe = video.videoWidth < video.videoHeight;
   raiz.style.setProperty('--arn-v', (video.videoWidth / video.videoHeight).toFixed(6));
@@ -2193,7 +2212,8 @@ const DICA = { volume: 'Volume', velocidade: 'Velocidade e curva', intensidade: 
   fundo: 'Um fundo novo atrás de você, na tomada debaixo da agulha',
   'lugar-trocar': 'Outra foto ou vídeo neste lugar, com a mesma duração', 'lugar-trecho': 'Que parte do clipe entra neste lugar',
   'lugar-original': 'O lugar volta à mídia e ao trecho do vídeo',
-  'modelos-montagem': 'Os modelos de montagem: o ritmo, a música e as fotos e clipes; ou guardar esta montagem como modelo' };
+  'modelos-montagem': 'Os modelos de montagem: o ritmo, a música e as fotos e clipes; ou guardar esta montagem como modelo',
+  formato: 'O formato do vídeo: em pé, deitado ou quadrado' };
 function renderToolbar() {
   const tb = $('toolbar');
   const ctx = $('ctxbar');
@@ -2234,6 +2254,8 @@ function renderToolbar() {
   // pergunta o tipo (o + no fim da faixa abre a mesma escolha)
   tool(tb, 'importar', 'Importar', { icon: ICON.mais });
   if (ehMontagem()) tool(tb, 'modelos-montagem', 'Montagem', { icon: ICON.montagem, on: MT.aberto });
+  if (S.montagem) tool(tb, 'formato', 'Formato', { icon: ICON.formato, disabled: !hasVideo,
+    on: S.formato !== S.formatoAtual });
   tool(tb, 'cortar', 'Cortar', { icon: ICON.corte, disabled: !hasVideo });
   // no Final: escolhe tudo (imagem, som, legenda, efeitos) para mexer junto, como o Ctrl+A
   if (S.view === 'final') tool(tb, 'selecionar', 'Selecionar', { disabled: !hasVideo });
@@ -2399,6 +2421,7 @@ document.addEventListener('click', (e) => {
     case 'imp-imagem': S.importMenu = false; renderToolbar(); $(montagemSemVideo() ? 'fileMontMidia' : 'fileImagem').click(); break;
     case 'imp-audio': S.importMenu = false; renderToolbar(); $(montagemSemVideo() ? 'fileMontMusica' : 'fileAudio').click(); break;
     case 'modelos-montagem': if (MT.aberto) fechaMontagem(); else abreMontagem(); break;
+    case 'formato': openFormato(); break;
     case 'audio': S.audioMenu = true; S.importMenu = false; S.fxMenu = false; S.textMenu = false; renderToolbar(); break;
     case 'trilhas': S.audioMenu = false; renderToolbar(); openTrilhas(); break;
     case 'do-celular': S.audioMenu = false; renderToolbar(); $('fileAudio').click(); break;
@@ -2606,7 +2629,8 @@ $('fileLugar').addEventListener('change', (e) => {
  * (`montagem.usar`) e o agente monta (montagem.py montar). Numa montagem pronta, o painel também
  * guarda ela como modelo: o servidor lê a montagem salva, não o que o editor mostra. */
 const MT = { aberto: false, passo: 'modelos', desenhado: null, modelos: null, sel: null, musica: null, midias: [],
-  audios: null, ouvindo: null, trSel: null, baixando: null, guardando: false, enviando: false, fila: [], autoAberto: false };
+  audios: null, ouvindo: null, trSel: null, baixando: null, guardando: false, enviando: false, fila: [], autoAberto: false,
+  formato: null }; // o formato escolhido no painel; sem ele, o da montagem aberta ou o do modelo
 const MT_PREV = new Audio();
 const ehMontagem = () => !!(S.montagem || (S.state && S.state.montagem));
 const montagemSemVideo = () => ehMontagem() && !(S.videoDuration > 0);
@@ -2790,6 +2814,8 @@ function renderMontMidias(body) {
     const tem = new Set(ops.map((o) => o.midia));
     MT.midias = MT.midias.filter((k) => tem.has(k));
   }
+  el('b', 'mt-sec', body).textContent = 'Formato do vídeo';
+  gradeDeFormatos(body, formatoDaMontagemNova(), (k) => { MT.formato = k; renderMontagem(); });
   el('p', 'sheet-hint', body).textContent = !S.montMidias ? 'Carregando as fotos e clipes…'
     : `Toque na ordem em que elas entram. O modelo tem ${m.lugares} ${m.lugares === 1 ? 'lugar' : 'lugares'}: `
       + 'com menos fotos e clipes, eles se repetem em ordem; com mais, os que sobram ficam de fora.';
@@ -2819,6 +2845,10 @@ function renderMontMidias(body) {
   mais.innerHTML = ICON.mais;
   el('span', 'mod-nome', mais).textContent = doAparelho();
 }
+const formatoDaMontagemNova = () => {
+  const m = modeloEscolhido();
+  return MT.formato || (S.montagem && S.formatoAtual) || (m && FORMATOS[m.formato] && m.formato) || '9:16';
+};
 // tocar na linha escolhe e ouve; o play só liga e desliga a prévia
 function escolheMusica(row, soOuvir) {
   const id = row.dataset.mtMusica;
@@ -2917,7 +2947,7 @@ async function pedeMontagem() {
     + 'com os textos e as transições do modelo.')) return;
   MT.enviando = true;
   renderMontagem();
-  const usar = { modelo: m.id, musica: MT.musica, midias: [...MT.midias] };
+  const usar = { modelo: m.id, musica: MT.musica, midias: [...MT.midias], formato: formatoDaMontagemNova() };
   try {
     const r = await fetch('/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'timeline-edits', projeto: S.projetoId, montagem: { usar } }) });
@@ -2937,6 +2967,48 @@ async function pedeMontagem() {
     toast(`Não enviei a montagem: ${e.message}`, 4500);
   }
 }
+/* Formato: em pé, deitado ou quadrado, como a proporção do CapCut. O agente refaz todos os lugares
+ * no quadro novo (montagem.py aplicar) e leva os textos para o mesmo lugar relativo; a foto ou o clipe
+ * de formato longe do novo entra inteiro, sobre ele mesmo desfocado. */
+function gradeDeFormatos(host, atual, cada) {
+  const grade = el('div', 'fmt-grade', host);
+  for (const [k, f] of Object.entries(FORMATOS)) {
+    const b = el('button', `fmt-op${k === atual ? ' on' : ''}`, grade);
+    b.type = 'button';
+    b.dataset.formato = k;
+    const caixa = el('span', 'fmt-caixa', b);
+    const forma = el('span', 'fmt-forma', caixa);
+    forma.style.aspectRatio = `${f.w} / ${f.h}`;
+    forma.style[f.w >= f.h ? 'width' : 'height'] = '100%';
+    el('b', 'fmt-nome', b).textContent = f.nome;
+    el('span', 'fmt-uso', b).textContent = `${k} · ${f.uso}`;
+    b.addEventListener('click', () => cada(k));
+  }
+}
+function openFormato() {
+  if (!S.montagem) return;
+  video.pause();
+  const box = $('formatoCorpo');
+  box.innerHTML = '';
+  const pend = S.formatoPendente && S.formatoPendente !== S.formatoAtual ? FORMATOS[S.formatoPendente] : null;
+  el('p', 'sheet-hint', box).textContent = pend && S.formato === S.formatoPendente
+    ? `${pend.nome} já foi salvo: o agente está refazendo o vídeo nesse formato.`
+    : 'Ao salvar, o agente refaz o vídeo no formato escolhido. A foto ou o clipe de outro formato entra '
+      + 'inteiro, sobre um fundo desfocado dele mesmo; os textos vão para o mesmo lugar da tela.';
+  gradeDeFormatos(box, S.formato, (k) => {
+    showSheet($('formatoSheet'), false);
+    if (k === S.formato) return;
+    remember();
+    S.formato = k;
+    renderToolbar(); refreshHeader();
+    const f = FORMATOS[k];
+    toast(k === (S.formatoPendente || S.formatoAtual) ? `${f.nome} (${k}): o vídeo fica como está.`
+      : `${f.nome} (${k}). Salve: o agente refaz o vídeo nesse formato.`, 3200);
+  });
+  showSheet($('formatoSheet'), true);
+}
+$('formatoOk').addEventListener('click', () => showSheet($('formatoSheet'), false));
+
 // a Nova montagem sem vídeo: o convite é o modelo; depois do Montar, o aviso de que o agente monta
 // (com o agente já trabalhando nos clipes, vale o "O agente está editando" de sempre)
 function vazioDaMontagem() {
@@ -4377,8 +4449,12 @@ async function salvar(aviso) {
   const comVoz = melhorarDirty();
   if (comVoz) payload.melhorar = S.melhorar;
   // os lugares da montagem trocados: o agente refaz só eles (montagem.py aplicar)
+  // e o formato novo: o agente refaz todos os lugares no quadro dele
   const lugares = lugaresMudados();
-  if (lugares.length) payload.montagem = { lugares: lugares.map(pedidoDoLugar) };
+  const comFormato = formatoMudou();
+  if (lugares.length || comFormato) {
+    payload.montagem = { lugares: lugares.map(pedidoDoLugar), ...(comFormato ? { formato: S.formato } : {}) };
+  }
   if (S.notes.length) {
     payload.notes = S.notes.map((n) => ({
       start: +n.start.toFixed(3),
@@ -4407,6 +4483,7 @@ async function salvar(aviso) {
     S.camadasBase = camSig();
     S.efeitosBase = fxSig();
     S.velBase = velSig();
+    if (comFormato) S.formatoPendente = S.formato === S.formatoAtual ? null : S.formato; // o servidor guarda o mesmo
     if (comVoz) { S.melhorarBase = JSON.stringify(S.melhorar); vozCarregaInfo().then(() => renderTimeline()); }
     S.faixa = null;
     S.insertsDraft.forEach((c) => { c.orig = { start: c.start, end: c.end }; });
@@ -5560,7 +5637,7 @@ const MODELOS_TEXTO = [
     { texto: 'URGENTE', dy: -60, estilo: { fonte: 'Archivo Black', cor: '#ff2d2d', tamanho: 1.3, contorno: 6, corContorno: '#ffffff' } },
     { texto: 'leia antes de comprar', dy: 55, estilo: { fonte: 'Caveat', cor: '#ffffff', tamanho: 1 } }] },
 ];
-const linhaDoModelo = (l) => ({ texto: l.texto, x: FRAME_W / 2, y: MODELO_Y + l.dy, curva: 0,
+const linhaDoModelo = (l) => ({ texto: l.texto, x: FRAME_W / 2, y: Math.round((MODELO_Y * FRAME_H) / 1920) + l.dy, curva: 0,
   estilo: { ...l.estilo, peso: CutMindFontes.pesoDe(l.estilo.fonte) } });
 function openModelos() {
   video.pause();
@@ -5670,7 +5747,8 @@ function desenhaTextos() {
       }
     }
   }
-  const sig = JSON.stringify([lista.map((x) => [x.it, x.sel, x.fantasma, x.d.map(Math.round), x.trav]), S.fontesVersao]);
+  const sig = JSON.stringify([lista.map((x) => [x.it, x.sel, x.fantasma, x.d.map(Math.round), x.trav]), S.fontesVersao,
+    FRAME_W, FRAME_H]);
   if (sig === txSig) return;
   txSig = sig;
   box.innerHTML = '';

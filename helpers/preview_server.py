@@ -361,9 +361,11 @@ class MontagemInvalida(ValueError):
 
 
 def conferir_montagem(root: Path, pasta_videos: Path, pedido: object) -> dict:
-    """O que o editor pede para os lugares de uma montagem (montagem.py): [{vaga, midia?, de?}]. Só
-    lugares que existem; a mídia é uma foto ou vídeo de midia/, um original da própria montagem ou um
-    vídeo enviado para a pasta dos vídeos; `de` é um tempo de verdade. O que não muda nada sai."""
+    """O que o editor pede para uma montagem (montagem.py): os lugares, [{vaga, midia?, de?}], e o
+    `formato` do vídeo (um de montagem.FORMATOS). Só lugares que existem; a mídia é uma foto ou vídeo
+    de midia/, um original da própria montagem ou um vídeo enviado para a pasta dos vídeos; `de` é um
+    tempo de verdade. O lugar que não muda nada sai; o formato vai como veio (um Salvar de volta ao
+    formato de agora desfaz o pedido de outro, ainda não feito: juntar_salvamentos)."""
     try:
         edl = json.loads((root / "edl.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -374,10 +376,10 @@ def conferir_montagem(root: Path, pasta_videos: Path, pedido: object) -> dict:
     if not vagas:
         raise MontagemInvalida("este projeto não é uma montagem")
     originais = {str(Path(x)) for x in originais_da_montagem(mont)}
-    if not isinstance(pedido, dict) or not isinstance(pedido.get("lugares"), list) or len(pedido["lugares"]) > 400:
+    if not isinstance(pedido, dict) or not isinstance(pedido.get("lugares", []), list) or len(pedido.get("lugares", [])) > 400:
         raise MontagemInvalida("lugares: uma lista")
     saida = []
-    for it in pedido["lugares"]:
+    for it in pedido.get("lugares", []):
         v = it.get("vaga") if isinstance(it, dict) else None
         if isinstance(v, bool) or v not in vagas:
             raise MontagemInvalida(f"lugar desconhecido: {v!r}")
@@ -391,14 +393,33 @@ def conferir_montagem(root: Path, pasta_videos: Path, pedido: object) -> dict:
             x["de"] = round(float(de), 3)
         if len(x) > 1:
             saida.append(x)
-    return {"lugares": saida}
+    out = {"lugares": saida}
+    formato = pedido.get("formato")
+    if formato is not None:
+        if not isinstance(formato, str) or formato not in mt.FORMATOS:
+            raise MontagemInvalida(f"formato: {', '.join(mt.FORMATOS)}")
+        out["formato"] = formato
+    return out
+
+
+def sem_formato_novo(root: Path, body: dict) -> None:
+    """Tira do Salvar o formato que é o da montagem de agora (nada a refazer), e a montagem que ficou
+    sem lugar e sem formato."""
+    m = body["montagem"]
+    if "formato" not in m or "usar" in m:
+        return
+    if m["formato"] == ((montagem_do_projeto(root) or {}).get("formato") or mt.FORMATO_PADRAO):
+        del m["formato"]
+        if not m.get("lugares"):
+            del body["montagem"]
 
 
 def conferir_usar(root: Path, pedido: object) -> dict:
-    """O Usar do painel Modelos de montagem: {modelo, musica, midias}. O modelo existe (montagens.py),
-    a música é um áudio de midia/ e as mídias são fotos e vídeos de midia/ ou da montagem aberta (as
-    mesmas que o Trocar oferece), de 1 a 400, na ordem em que a pessoa tocou. Um projeto que já é um
-    corte de fala não vira montagem por aqui."""
+    """O Usar do painel Modelos de montagem: {modelo, musica, midias, formato?}. O modelo existe
+    (montagens.py), a música é um áudio de midia/ e as mídias são fotos e vídeos de midia/ ou da
+    montagem aberta (as mesmas que o Trocar oferece), de 1 a 400, na ordem em que a pessoa tocou; o
+    formato, sem ele o do modelo, é um de montagem.FORMATOS. Um projeto que já é um corte de fala não
+    vira montagem por aqui."""
     if not isinstance(pedido, dict):
         raise MontagemInvalida("usar: um objeto")
     modelo = mg.obter(pedido.get("modelo"))
@@ -417,7 +438,13 @@ def conferir_usar(root: Path, pedido: object) -> dict:
         edl = None
     if isinstance(edl, dict) and edl.get("ranges") and not edl.get("montagem"):
         raise MontagemInvalida("este projeto é um corte de vídeo, não uma montagem: comece uma Nova montagem")
-    return {"modelo": modelo["id"], "musica": musica, "midias": lista}
+    out = {"modelo": modelo["id"], "musica": musica, "midias": lista}
+    formato = pedido.get("formato")
+    if formato is not None:
+        if not isinstance(formato, str) or formato not in mt.FORMATOS:
+            raise MontagemInvalida(f"formato: {', '.join(mt.FORMATOS)}")
+        out["formato"] = formato
+    return out
 
 
 def _do_midia(root: Path, valor: object, exts: set[str], nome: str) -> str:
@@ -562,6 +589,8 @@ def juntar_salvamentos(velho: dict, novo: dict) -> dict:
                 base = {k: w for k, w in base.items() if k != "de"}
             por_vaga[x["vaga"]] = {**base, **x}
         out["montagem"] = {"lugares": [por_vaga[k] for k in sorted(por_vaga)]}
+        if m_novo.get("formato") or m_velho.get("formato"):  # o formato do Salvar mais novo vale
+            out["montagem"]["formato"] = m_novo.get("formato") or m_velho["formato"]
     return out
 
 
@@ -1079,6 +1108,8 @@ class Handler(BaseHTTPRequestHandler):
                 velho = None
             if isinstance(velho, dict):
                 body = juntar_salvamentos(velho, body)
+        if name == "preview_edits.json" and isinstance(body.get("montagem"), dict):
+            sem_formato_novo(self.root, body)
         tmp = out.with_suffix(".tmp")
         tmp.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(out)
@@ -1160,9 +1191,12 @@ class Handler(BaseHTTPRequestHandler):
             if not _frame_slots.acquire(timeout=5):
                 self._json({"error": "ocupado, tente de novo"}, 503)
                 return
+            # foto sem busca: o JPEG sem o marcador de fim (comum em foto baixada da internet) o ffmpeg
+            # lê pelo demuxer image2, e com `-ss` ele descarta o único quadro, sem erro nenhum
+            busca = [] if t <= 0 or path.suffix.lower() in cam.IMAGE_EXTS else ["-ss", f"{t:.3f}"]
             try:
                 jpg = subprocess.run(
-                    ["ffmpeg", "-v", "error", "-ss", f"{t:.3f}", "-i", str(path),
+                    ["ffmpeg", "-v", "error", *busca, "-i", str(path),
                      "-frames:v", "1", "-vf", f"scale=-2:{h}", "-q:v", "5",
                      "-f", "image2pipe", "-vcodec", "mjpeg", "-"],
                     capture_output=True, timeout=15,
@@ -1690,11 +1724,12 @@ class Handler(BaseHTTPRequestHandler):
         edits_p = self.root / "preview_edits.json"
         # os lugares da montagem salvos e ainda não refeitos: o editor os mostra trocados até o agente refazer;
         # e a montagem nova pedida (Usar um modelo), que o editor mostra como "o agente está montando"
-        pendente = nova = None
+        pendente = nova = formato_pendente = None
         if edits_p.exists():
             try:
                 mont = json.loads(edits_p.read_text(encoding="utf-8")).get("montagem") or {}
                 pendente, nova = mont.get("lugares") or None, mont.get("usar") or None
+                formato_pendente = mont.get("formato") or None
             except (OSError, ValueError, AttributeError):
                 pass
         video = self._current_video()
@@ -1708,6 +1743,7 @@ class Handler(BaseHTTPRequestHandler):
             "hasPendingEdits": edits_p.exists(),
             "montagemPendente": pendente,
             "montagemNova": nova,
+            "formatoPendente": formato_pendente,
             "now": time.time(),
         })
 

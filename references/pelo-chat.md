@@ -64,6 +64,7 @@ fills a slot:
 | `lugar-trocar` | "põe a foto do bolo no lugar 3", "troca o 5 por aquele vídeo da praia" | `montagem.py aplicar <edit> --lugar 3 --midia <file>`: a file of the montage (`montagem.midias`), of `<edit>/midia/`, or any photo or video the user gives. It redoes only that slot (same length, the short-clip rule, the photo's movement), renders and checks the beat |
 | `lugar-trecho` | "no lugar 2, usa o pedaço dos 30 s do vídeo" | `montagem.py aplicar <edit> --lugar 2 --de 30`: the same clip, entering at 30 s |
 | `lugar-original` | "volta o lugar 3 como estava" | `--lugar 3 --midia <file> --de <s>` with the values `montagem.lugares` had before the change |
+| `formato` | "deixa o vídeo deitado", "faz uma versão quadrada", "volta para vertical" | `montagem.py aplicar <edit> --formato 16:9` (or `1:1`, `9:16`): every slot is redone in the new frame (1920×1080, 1080×1080 or 1080×1920; the timing stays), a photo or clip whose shape is far from the frame goes in whole over a blurred copy of itself, and each text layer moves to the same relative spot. It renders and checks the beat. `montagem.formato` in `edl.json` says the current one |
 | `volume` (on a slot) | "o som do clipe 4 mais baixo" | only with the clips' sound on (`camadas.json` `video.mudo: false`): `ranges[i].volume` as on any take, keeping `vaga`; then `render.py <edit>/edl.json -o <edit>/cut.mp4 --no-subtitles` and `mixar_final.py <edit> --render <edit>/cut.mp4 --imagem corte` |
 
 The template's texts are ordinary text layers in `camadas.json` (tracks `modelo-texto-N`, each
@@ -73,8 +74,8 @@ as in the layers table below. After changing layers or effects in a montage, run
 the montage's Remotion project (`<edit>/remotion/`, set up on first use) and checks the beat again.
 
 The editor's Salvar sends the same thing as `montagem.lugares` (`[{vaga, midia?, de?}]`, only
-the slots that changed) and the watcher says to run `montagem.py aplicar <edit>`, which reads
-it (and renders the layers saved with it). Proven by `tests/test_montagem.py` (only the asked slots are redone, a failure in the
+the slots that changed) and, from the Formato tool, `montagem.formato`; the watcher says to run
+`montagem.py aplicar <edit>`, which reads both (and renders the layers saved with it). Proven by `tests/test_montagem.py` (only the asked slots are redone, a failure in the
 middle leaves the project as it was, the beat is checked again) and
 `tests/test_preview_montagem.py` (what the editor may open and send).
 
@@ -86,7 +87,9 @@ estas fotos" is `montagem.py usar <template id or JSON file> --musica <file> --m
 --edit <edit>` (`montagens.py listar` shows the ids). A template's `transicoes` (`[{vaga, pacote, duracao}]`) land in `efeitos.json` on
 the cut that opens each slot. The editor's Usar (the Modelos de montagem panel, toolbar
 `modelos-montagem`, also opened by "Nova montagem" in Projetos) saves
-`montagem.usar = {modelo, musica, midias}` and the watcher says to run `montagem.py montar <edit>`.
+`montagem.usar = {modelo, musica, midias, formato}` and the watcher says to run `montagem.py montar <edit>`
+(`usar --formato` from the chat; without it, the template's `formato`, which is also the frame its
+texts' `x`/`y` are in).
 `musica` is an audio file in `midia/`; `midias` are photos and clips in `midia/` or the open
 montage's own media (the same list the Trocar offers), in the order the person tapped.
 
