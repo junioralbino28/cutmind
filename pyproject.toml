@@ -35,6 +35,11 @@ dependencies = [
     # primeiro uso, não na instalação.
     "onnxruntime",
     "transformers",
+    # Grade de batida da música (batida.py), para cortar na batida e para o Modelo
+    # de montagem. Roda no CPU sobre o torch que o whisperx já traz e acrescenta só
+    # pacotes pequenos (einops, rotary-embedding-torch, soxr); o modelo (8 MB o
+    # pequeno, 78 MB o completo) baixa no primeiro uso. MIT no código e nos pesos.
+    "beat-this>=1.1.0",
 ]
 
 [project.optional-dependencies]
