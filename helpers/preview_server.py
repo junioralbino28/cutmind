@@ -57,6 +57,9 @@ Routes:
   /api/melhorar/andamento GET  só o andamento do preparo (leve: o editor pergunta a cada segundo)
   /api/melhorar/preparar POST  começa o preparo num processo à parte (~1 s por s de áudio,
                          até ~4 GB de memória; na 1ª vez baixa os modelos)
+  /api/batida?arquivo=midia/x.mp3  GET  a grade de batida de uma música do projeto (batida.py),
+                         para as marcas e o ímã da linha do tempo: `pronta` com as batidas, ou
+                         `calculando` (a análise roda num processo à parte; na 1ª vez baixa o modelo)
 
 Quem entra: por padrão o servidor ouve só em 127.0.0.1 e atende só este
 computador (e o celular ligado por `adb reverse`, que chega como 127.0.0.1).
@@ -99,6 +102,7 @@ import pacotes as pk  # mesma pasta deste arquivo
 import projetos as pj  # mesma pasta deste arquivo
 import modelos as md  # mesma pasta deste arquivo
 import melhorar_voz as mv  # mesma pasta deste arquivo
+import batida as bt  # mesma pasta deste arquivo
 
 APP_DIR = Path(__file__).resolve().parent.parent / "assets" / "preview"
 EFEITOS_DIR = APP_DIR.parent / "efeitos"
@@ -154,6 +158,9 @@ _recorte_lock = threading.Lock()  # um recorte da pessoa por vez: o modelo usa t
 RECORTE_CACHE = 30  # recortes guardados em .preview_cache/recorte (um por quadro pedido)
 _voz_lock = threading.Lock()
 _voz_jobs: dict[str, subprocess.Popen] = {}  # pasta edit → o processo do preparo da voz
+_batida_lock = threading.Lock()
+_batida_jobs: dict[str, subprocess.Popen] = {}  # música → o processo que analisa a batida dela
+_sha_musicas: dict[tuple[str, int, int], str] = {}
 
 
 def comando_preparo(edit: Path) -> list[str]:
@@ -205,6 +212,60 @@ def andamento_preparo(edit: Path) -> dict | None:
         return {"etapa": "falhou", "n": 0, "de": 0, "texto": "O preparo parou", "fracao": 0.0, "erro": erro,
                 "vivo": False}
     return a
+
+
+def comando_batida(arquivo: Path, edit: Path) -> list[str]:
+    """A grade de batida roda num processo à parte: o detector carrega o torch (~0,5 GB) só enquanto
+    analisa, e o servidor continua leve. Os testes trocam por um falso."""
+    return [sys.executable, "-X", "utf8", str(Path(__file__).resolve().parent / "batida.py"),
+            "analisar", str(arquivo), "--edit", str(edit)]
+
+
+def _sha_da_musica(arquivo: Path) -> str:
+    """O sha256 do arquivo, lembrado pelo tamanho e pela data: o editor pergunta a cada 2 s enquanto
+    a análise roda, e reler 8 MB a cada pergunta seria à toa."""
+    st = arquivo.stat()
+    chave = (str(arquivo), st.st_size, st.st_mtime_ns)
+    if chave not in _sha_musicas:
+        _sha_musicas[chave] = bt.sha256_arquivo(arquivo)
+    return _sha_musicas[chave]
+
+
+def grade_da_musica(arquivo: Path, edit: Path) -> dict:
+    """A grade de batida de uma música do projeto, para as marcas e o ímã da linha do tempo.
+
+    `pronta` quando ela (pelo conteúdo) já foi analisada; senão a análise começa num processo à parte
+    (`calculando`), uma por vez no servidor (`na fila` para as outras), e `falhou`, com a última linha
+    do registro, quando o processo terminou sem deixar a grade."""
+    arquivo, edit = arquivo.resolve(), edit.resolve()
+    sha = _sha_da_musica(arquivo)
+    try:
+        g = json.loads(bt.caminho_grade(sha, bt.MODELO_PADRAO, edit).read_text(encoding="utf-8"))
+        if g.get("versao") == bt.VERSAO and g.get("sha256") == sha:
+            return {"estado": "pronta", **{k: g.get(k) for k in ("bpm", "confianca", "duracao", "batidas", "fortes")}}
+    except (OSError, ValueError):
+        pass
+    registro = edit / "batidas" / "analise.log"
+    with _batida_lock:
+        p = _batida_jobs.get(str(arquivo))
+        if p is not None and p.poll() is None:
+            return {"estado": "calculando"}
+        if p is not None:  # terminou e não deixou a grade
+            del _batida_jobs[str(arquivo)]
+            try:
+                linhas = registro.read_text(encoding="utf-8", errors="replace").splitlines()
+            except OSError:
+                linhas = []
+            ultima = next((x.strip() for x in reversed(linhas) if x.strip()), "")
+            return {"estado": "falhou", "erro": ultima.removeprefix("batida: ") or "a análise parou sem terminar"}
+        if any(q.poll() is None for q in _batida_jobs.values()):
+            return {"estado": "na fila"}  # duas análises juntas dobrariam a memória
+        registro.parent.mkdir(parents=True, exist_ok=True)
+        with open(registro, "ab") as log:
+            _batida_jobs[str(arquivo)] = subprocess.Popen(
+                comando_batida(arquivo, edit), stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return {"estado": "calculando"}
 
 
 # blocos da Fase 2 que o editor manda INTEIROS (todos os de cada tipo) quando algum anda
@@ -699,6 +760,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(andamento_preparo(self.root) or {"etapa": None})
         elif path == "/api/midia":
             self._midia()
+        elif path == "/api/batida":
+            self._batida(query)
         elif path == "/api/pacotes":
             self._pacotes_lista(query)
         elif path == "/gen/pacote-previa":
@@ -1051,6 +1114,19 @@ class Handler(BaseHTTPRequestHandler):
                     itens.append({"arquivo": f"{cam.MIDIA_DIR}/{f.name}", "nome": f.name,
                                   "tipo": tipo, "bytes": f.stat().st_size})
         self._json({"midia": itens})
+
+    def _batida(self, query: str) -> None:
+        """A grade de batida de uma música de <edit>/midia/ (o editor pergunta de novo enquanto calcula)."""
+        rel = (parse_qs(query).get("arquivo") or [""])[0]  # o parse_qs já decodifica
+        if not rel.startswith(cam.MIDIA_DIR + "/") or Path(rel).suffix.lower() not in cam.AUDIO_EXTS:
+            self._json({"error": "arquivo: um áudio de midia/"}, 400)
+            return
+        p = self._safe(self.root, rel)
+        if not p or not p.is_file():
+            self._json({"error": f"não encontrado: {rel}"}, 404)
+            return
+        r = grade_da_musica(p, self.root)
+        self._json(r, {"pronta": 200, "falhou": 500}.get(r["estado"], 202))
 
     # ---- biblioteca (pacotes.py) ----
     def _biblioteca(self) -> pk.Pacotes | None:

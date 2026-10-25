@@ -787,14 +787,27 @@ kbd {
   background: var(--surface3); color: var(--text);
   font-family: var(--font); font-size: 11px; font-weight: 700; text-align: center;
 }
-/* zoom da linha do tempo: no canto direito da régua de tempo */
+/* zoom da linha do tempo: no canto direito da régua de tempo (no celular, só o ímã) */
 .tl-zoom {
   position: absolute; right: 0; top: 0; height: 26px; z-index: 5;
-  align-items: center; gap: 8px; padding: 0 12px 0 26px;
+  display: flex; align-items: center; gap: 8px; padding: 0 12px 0 26px;
   background: linear-gradient(270deg, var(--surface) 82%, rgba(24, 24, 24, 0));
 }
 .tl-zoom .tb-btn { height: 20px; padding: 0 8px; font-size: 11px; border-radius: 5px; }
 .tl-zoom input { width: 120px; accent-color: var(--brand); }
+html:not(.desk) .tl-zoom { padding: 0 6px 0 18px; }
+html:not(.desk) .tl-zoom .tl-ima { height: 24px; padding: 0 10px; } /* no celular, um alvo maior para o dedo */
+/* o ímã: apagado desligado, na cor da marca ligado */
+.tl-ima { display: inline-flex; align-items: center; gap: 4px; color: var(--dim); }
+.tl-ima svg { width: 13px; height: 13px; display: block; }
+.tl-ima.on { color: var(--brand); border-color: rgba(248, 112, 0, 0.55); }
+/* as batidas em cima do bloco da música: um ponto em cada, maior e laranja no tempo forte */
+.chip .l-bat { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; pointer-events: none; }
+.chip .l-bat i {
+  position: absolute; bottom: 2px; width: 3px; height: 3px; margin-left: -1.5px;
+  border-radius: 50%; background: rgba(255, 255, 255, 0.6);
+}
+.chip .l-bat i.f { width: 5px; height: 5px; margin-left: -2.5px; bottom: 1px; background: var(--brand); }
 #btnHelp { width: 34px; padding: 0; font-size: 15px; }
 .phone-body { display: flex; flex-direction: column; gap: 10px; }
 .phone-tabs { display: flex; gap: 6px; flex-wrap: wrap; }

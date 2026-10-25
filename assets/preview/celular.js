@@ -132,6 +132,8 @@ const ICON = {
   // a tela Projetos: a casa
   casa: sv('<path d="M4 10.8 12 4.5l8 6.3"/><path d="M6 9.5v9a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 18 18.5v-9"/><path d="M10 20v-5h4v5"/>'),
   tudo: sv('<path d="M3.5 12h17M7 8.5 3.5 12 7 15.5M17 8.5l3.5 3.5-3.5 3.5"/>'),
+  // o ímã da linha do tempo: a agulha e as pontas grudam na batida da música
+  ima: sv('<path d="M5 4v8a7 7 0 0 0 14 0V4h-4v8a3 3 0 0 1-6 0V4z"/><path d="M5 7.6h4M15 7.6h4"/>'),
 };
 
 /* ---------- catálogo de estilos e amostras: estilos.js ----------
@@ -423,6 +425,9 @@ const S = {
   vel: { versao: 1, trechos: [] }, // a velocidade do vídeo final (velocidade.json): trechos no relógio do final.mp4
   velBase: '',        // os trechos como estavam ao abrir ou no último Salvar
   faixa: null,        // a seleção em massa na vista Final: {a, b} no relógio do final.mp4 (todas as faixas)
+  batidas: {},        // arquivo de midia/ → a grade de batida dele ({estado, batidas, fortes, bpm, confianca})
+  grade: [],          // as batidas das músicas no tempo da linha do tempo: [{t, forte, it}], em ordem
+  ima: lerPref('cutmind.ima') !== '0', // ímã ligado: agulha e pontas grudam na batida (lembrado)
 };
 
 const fmt = (t) => {
@@ -542,10 +547,9 @@ function draftToRendered(t) {
   const d = dl[k];
   return itemRendered(d, Math.min(t, d.out + Math.max(0, d.dur - 1e-3)));
 }
-// o contrário, só para o que ainda está no lugar de origem (vídeo final e faixas dele)
-function renderedToDraft(t) {
-  const dl = draftLayout();
-  const rl = renderedLayout();
+// o contrário, só para o que ainda está no lugar de origem (vídeo final e faixas dele). Quem
+// converte muitos tempos de uma vez (as batidas) passa os dois layouts prontos
+function renderedToDraft(t, dl = draftLayout(), rl = renderedLayout()) {
   for (let i = rl.length - 1; i >= 0; i--) {
     const r = rl[i];
     if (t < r.out) continue;
@@ -933,7 +937,7 @@ function seguirAgulha() {
 }
 function levaAgulha(x, rapido) {
   x = Math.max(DESK_MARGEM, Math.min(x, timeline.clientWidth - 1));
-  S.t = clampT(S.v0 + (x - DESK_MARGEM) / S.pps);
+  S.t = clampT(imaPonto(S.v0 + (x - DESK_MARGEM) / S.pps)); // com o ímã, gruda na batida
   positionTimeline();
   scheduleSeek(rapido);
 }
@@ -1004,6 +1008,8 @@ let lanes = []; // elementos que andam juntos sob a agulha
 function renderTimeline() {
   tracksEl.innerHTML = '';
   lanes = [];
+  S.grade = batidasNaLinha(); // as marcas e o ímã andam com a música (ela pode ter sido arrastada)
+  syncIma();
   const width = `${Math.max(totalT(), 0.1) * S.pps}px`;
   const plan = trackPlan();
   const vaos = 6 * (plan.length - 1);
@@ -1265,6 +1271,26 @@ function drawRuler() {
       ctx.beginPath(); ctx.moveTo(xm, h - 3.5); ctx.lineTo(xm, h); ctx.stroke();
     }
   }
+  drawBatidasRegua(ctx, x0, t0, t1, h);
+}
+/* As batidas da música na régua: um ponto em cada uma, maior e laranja no tempo forte. Com o zoom
+ * baixo, quando ficariam a menos de 5 px umas das outras, só os tempos fortes; e nem eles, se
+ * também colarem. */
+function drawBatidasRegua(ctx, x0, t0, t1, h) {
+  const grade = S.grade;
+  if (!grade.length) return;
+  const passo = grade.length > 1 ? ((grade[grade.length - 1].t - grade[0].t) / (grade.length - 1)) * S.pps : Infinity;
+  if (passo * 4 < 5) return;
+  const soFortes = passo < 5;
+  for (const g of grade) {
+    if (g.t < t0 - 0.1) continue;
+    if (g.t > t1 + 0.1) break;
+    if (soFortes && !g.forte) continue;
+    ctx.fillStyle = g.forte ? '#f87000' : 'rgba(255,255,255,0.55)';
+    ctx.beginPath();
+    ctx.arc(x0 + g.t * S.pps, h - 3, g.forte ? 2.4 : 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 function drawWave() {
@@ -1315,6 +1341,9 @@ const syncZoom = () => {
 };
 $('zoomRange').addEventListener('input', (e) => setZoom(zoomDe(+e.target.value)));
 $('zoomFit').addEventListener('click', () => { S.v0 = 0; setZoom(S.minPps, DESK_MARGEM); });
+$('btnIma').innerHTML = `${ICON.ima}<span>Ímã</span>`;
+$('btnIma').addEventListener('click', alternaIma);
+syncIma();
 
 // ---------- busca no vídeo enquanto o dedo arrasta ----------
 let seekQueued = false;
@@ -1501,6 +1530,11 @@ timeline.addEventListener('pointermove', (e) => {
       r.end = Math.max(T.r.end + dt * vb, r.start + MIN_SEG);
       const srcDur = (S.state.sourceDurations || {})[r.source];
       if (srcDur) r.end = Math.min(r.end, srcDur);
+      // o ímã: o fim da tomada é o corte para a seguinte, e ele gruda na batida. A ponta esquerda
+      // não anda na linha do tempo (aparar o começo encurta a tomada no mesmo lugar)
+      const d = draftLayout()[T.i], fim = d.out + d.dur, alvo = imaPonto(fim);
+      const e2 = r.end + (alvo - fim) * vb;
+      if (alvo !== fim && e2 > r.start + MIN_SEG && (!srcDur || e2 <= srcDur)) r.end = e2;
     }
     requestPeek(r.source, edgeT(r, T.side));
     const ref = r.orig || T.r; // pedaço novo (divisão, cópia) não tem borda original: conta do início do gesto
@@ -1549,7 +1583,7 @@ timeline.addEventListener('pointermove', (e) => {
     const dtMs = Math.max(1, now - G.lastT);
     G.vel = 0.8 * ((e.clientX - G.lastX) / dtMs) + 0.2 * G.vel; // px/ms, suavizada
     G.lastX = e.clientX; G.lastT = now;
-    S.t = clampT(G.t0 - dx / S.pps);
+    S.t = clampT(imaPonto(G.t0 - dx / S.pps)); // com o ímã, a agulha gruda na batida enquanto o dedo arrasta
     positionTimeline();
     scheduleSeek(true);
   }
@@ -1861,6 +1895,8 @@ document.addEventListener('keydown', (e) => {
     passo(k === 'ArrowRight' ? seg : -seg);
   } else if (kl === 'm' && !ctrl) {
     toggleMark();
+  } else if (kl === 'n' && !ctrl) { // o "snapping" do CapCut desktop também é no N
+    alternaIma();
   } else if (k === 'Delete' || k === 'Backspace') {
     e.preventDefault();
     if (S.layerSel) deleteLayerSel();
@@ -3687,6 +3723,99 @@ async function loadCamadas() {
   applyMute();
   // trilha da biblioteca aparece pelo nome do catálogo, não pelo nome do arquivo
   if (!S.trilhas && S.camadas.faixas.some((f) => f.itens.some((it) => it.trilha))) loadTrilhas().then(renderTimeline);
+  carregaBatidas();
+}
+
+// ---------- batidas das músicas: as marcas e o ímã da linha do tempo ----------
+/* O servidor tira a grade de cada música das camadas (batida.py, num processo à parte, uma vez
+ * por música; na 1ª vez baixa o modelo). Enquanto calcula, o editor pergunta a cada 2 s. */
+function carregaBatidas() {
+  for (const f of S.camadas.faixas) {
+    if (f.tipo !== 'audio') continue;
+    for (const it of f.itens) if (!S.batidas[it.arquivo]) pedeBatida(it.arquivo, 0);
+  }
+}
+async function pedeBatida(arq, vez) {
+  S.batidas[arq] = S.batidas[arq] || { estado: 'calculando' };
+  let j = null;
+  try { j = await (await fetch(`/api/batida?arquivo=${encodeURIComponent(arq)}`)).json(); } catch (e) { /* tenta de novo */ }
+  if (j && (j.estado === 'pronta' || j.estado === 'falhou')) {
+    S.batidas[arq] = j;
+    if (j.estado === 'pronta') renderTimeline();
+    return;
+  }
+  if (vez < 150) setTimeout(() => pedeBatida(arq, vez + 1), 2000); // calculando ou na fila
+  else S.batidas[arq] = { estado: 'falhou', erro: 'a análise da batida demorou demais' };
+}
+/* As batidas das músicas das camadas no tempo da linha do tempo, com o tempo forte marcado. Fica de
+ * fora a faixa silenciada e a música de batida irregular (confiança baixa): ali o ímã mais
+ * atrapalharia do que ajudaria. */
+function batidasNaLinha() {
+  const out = [], dl = draftLayout(), rl = renderedLayout();
+  for (const f of S.camadas.faixas) {
+    if (f.tipo !== 'audio' || f.mudo) continue;
+    for (const it of f.itens) {
+      const g = S.batidas[it.arquivo];
+      if (!g || g.estado !== 'pronta' || g.confianca === 'baixa') continue;
+      const fortes = new Set((g.fortes || []).map((x) => x.toFixed(3)));
+      for (const b of g.batidas || []) {
+        if (b < it.corte - 1e-6 || b > it.corte + it.duracao + 1e-6) continue;
+        out.push({ t: renderedToDraft(it.inicio + (b - it.corte), dl, rl), forte: fortes.has(b.toFixed(3)), it: it.id });
+      }
+    }
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
+const IMA_PX = () => (isDesk() ? 8 : 14); // o alcance do ímã na tela: o dedo é menos preciso que o mouse
+/* O ímã: a batida mais perto de t (tempo da linha do tempo), se estiver a poucos pixels; senão o
+ * próprio t. `exceto` deixa de fora as batidas do item que está sendo arrastado: grudar a música
+ * nela mesma não faz sentido. */
+function imaGruda(t, exceto) {
+  if (!S.ima || !S.grade.length) return t;
+  let melhor = t, d0 = IMA_PX() / S.pps;
+  for (const g of S.grade) {
+    if (exceto && g.it === exceto) continue;
+    const d = Math.abs(g.t - t);
+    if (d <= d0) { d0 = d; melhor = g.t; }
+  }
+  return melhor;
+}
+// o celular vibra de leve quando grudou numa batida nova (e não a cada quadro em que continua grudado)
+function imaSinal(grudou) {
+  if (grudou != null && grudou !== S.imaUltima && navigator.vibrate) navigator.vibrate(8);
+  S.imaUltima = grudou;
+}
+// um ponto só (a agulha, uma ponta): o tempo grudado, ou o próprio
+function imaPonto(t, exceto) {
+  const a = imaGruda(t, exceto);
+  imaSinal(a !== t ? a : null);
+  return a;
+}
+// um item inteiro sendo levado: a ponta mais perto de uma batida gruda; devolve quanto ele anda (0 se nada)
+function imaDesloca(pontas, exceto) {
+  let melhor = 0, dist = Infinity;
+  for (const p of pontas) {
+    const a = imaGruda(p, exceto);
+    if (a !== p && Math.abs(a - p) < dist) { dist = Math.abs(a - p); melhor = a - p; }
+  }
+  imaSinal(melhor ? pontas[0] + melhor : null);
+  return melhor;
+}
+function alternaIma() {
+  S.ima = !S.ima;
+  gravaPref('cutmind.ima', S.ima ? '1' : '0');
+  syncIma();
+  toast(S.ima ? 'Ímã ligado: a agulha e as pontas grudam na batida da música' : 'Ímã desligado', 2200);
+}
+function syncIma() {
+  const b = $('btnIma');
+  if (!b) return;
+  b.classList.toggle('on', S.ima);
+  b.setAttribute('aria-pressed', String(S.ima));
+  const n = S.grade.length;
+  b.title = S.ima
+    ? `Ímã ligado (N): a agulha e as pontas grudam na batida${n ? '' : '. Ainda não tem música com batida no projeto'}`
+    : 'Ímã desligado (N): ligue para a agulha e as pontas grudarem na batida da música';
 }
 const nomeMidia = (arq) => String(arq || '').replace(/^midia\//, '');
 function newFaixaId(letra) {
@@ -3727,6 +3856,7 @@ async function addLayer(tipo, arquivo, extra = {}) {
   S.layerSel = item.id;
   S.fxSel = null;
   S.selected = -1;
+  if (tipo === 'audio') carregaBatidas(); // a música nova ganha as marcas de batida quando a grade sai
   renderTimeline(); renderToolbar(); refreshHeader();
 }
 
@@ -3776,6 +3906,8 @@ function renderLayerTrack(track, lane, f) {
       im.draggable = false;
     } else {
       el('span', 'l-ico', chip).innerHTML = ICON.audio;
+      const g = S.batidas[it.arquivo];
+      if (g && g.estado === 'pronta' && g.confianca !== 'baixa') pontosDeBatida(chip, it, g, a);
     }
     el('span', 'l-name', chip).textContent = it.trilha ? (S.trilhaNomes[it.trilha] || it.trilha) : nomeMidia(it.arquivo);
     if (it.melhorar) el('span', 'l-tag', chip).innerHTML = ICON.melhorar;
@@ -3789,6 +3921,21 @@ function renderLayerTrack(track, lane, f) {
     }
   }
   trackHead(track, f);
+}
+// os pontos das batidas em cima do bloco da música, maiores no tempo forte (como no CapCut); com o
+// zoom baixo, só os tempos fortes, e nenhum se eles também colarem
+function pontosDeBatida(chip, it, g, a) {
+  const bs = (g.batidas || []).filter((b) => b >= it.corte - 1e-6 && b <= it.corte + it.duracao + 1e-6);
+  if (bs.length < 2) return;
+  const passo = ((bs[bs.length - 1] - bs[0]) / (bs.length - 1)) * S.pps;
+  if (passo * 4 < 5) return;
+  const fortes = new Set((g.fortes || []).map((x) => x.toFixed(3)));
+  const box = el('div', 'l-bat', chip), dl = draftLayout(), rl = renderedLayout();
+  for (const b of bs) {
+    const forte = fortes.has(b.toFixed(3));
+    if (passo < 5 && !forte) continue;
+    el('i', forte ? 'f' : '', box).style.left = `${(renderedToDraft(it.inicio + (b - it.corte), dl, rl) - a) * S.pps}px`;
+  }
 }
 function tapLayer(id) {
   const hit = camItem(id);
@@ -3866,16 +4013,28 @@ function dragLayer(x) {
   const hit = camItem(L.id);
   if (!hit) return;
   const it = hit.it, o = L.it0, aud = hit.f.tipo === 'audio';
-  const dt = (x - L.x0) / S.pps;
+  let dt = (x - L.x0) / S.pps;
   const fim = S.videoDuration || totalT();
+  // o ímã: a ponta que anda (ou a mais perto, levando o item inteiro) gruda na batida da música. Só
+  // mexe quando grudou: a ida e volta entre o relógio do corte e o da linha do tempo não é exata
+  // num trecho aparado, e o item pularia sem batida nenhuma perto
+  const gruda = (r) => {
+    const a = renderedToDraft(r), b = imaPonto(a, it.id);
+    return b === a ? 0 : draftToRendered(b) - r;
+  };
   if (L.kind === 'move') {
+    const s = o.inicio + dt, a = renderedToDraft(s);
+    const desl = imaDesloca([a, renderedToDraft(s + o.duracao)], it.id);
+    if (desl) dt += draftToRendered(a + desl) - s;
     it.inicio = +Math.max(0, Math.min(o.inicio + dt, fim - 0.2)).toFixed(3);
   } else if (L.side === 'r') {
+    dt += gruda(o.inicio + o.duracao + dt);
     let d = Math.max(0.2, o.duracao + dt);
     const tot = aud && S.midiaDur[it.arquivo];
     if (tot) d = Math.min(d, tot - it.corte);
     it.duracao = +d.toFixed(3);
   } else { // a ponta esquerda anda; a direita fica onde está
+    dt += gruda(o.inicio + dt);
     let k = Math.min(dt, o.duracao - 0.2);
     k = Math.max(k, -o.inicio);
     if (aud) k = Math.max(k, -o.corte); // não volta antes do começo do arquivo

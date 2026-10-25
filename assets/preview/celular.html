@@ -94,10 +94,11 @@
     <div class="tracks" id="tracks"></div>
     <div class="needle" id="needle"></div>
     <div class="trim-tip hidden" id="trimTip"></div>
-    <!-- no computador: o zoom da linha do tempo (a rodinha com Ctrl faz o mesmo) -->
-    <div class="tl-zoom desk-only" id="tlZoom">
-      <button class="tb-btn" id="zoomFit" type="button" title="Ver o vídeo inteiro">Ajustar</button>
-      <input type="range" id="zoomRange" min="0" max="100" step="1" value="0" aria-label="Zoom da linha do tempo" title="Zoom (Ctrl + rodinha)">
+    <!-- o ímã (no computador e no celular) e, no computador, o zoom da linha do tempo (a rodinha com Ctrl faz o mesmo) -->
+    <div class="tl-zoom" id="tlZoom">
+      <button class="tb-btn tl-ima" id="btnIma" type="button" aria-pressed="true" aria-label="Ímã: a agulha e as pontas grudam na batida da música"></button>
+      <button class="tb-btn desk-only" id="zoomFit" type="button" title="Ver o vídeo inteiro">Ajustar</button>
+      <input class="desk-only" type="range" id="zoomRange" min="0" max="100" step="1" value="0" aria-label="Zoom da linha do tempo" title="Zoom (Ctrl + rodinha)">
     </div>
   </section>
 
@@ -380,6 +381,7 @@
       <li><span><kbd>Espaço</kbd></span><span>tocar / pausar</span></li>
       <li><span><kbd>←</kbd> <kbd>→</kbd></span><span>um quadro; com <kbd>Shift</kbd>, 1 segundo</span></li>
       <li><span><kbd>M</kbd></span><span>marca o início e depois o fim do trecho a mudar</span></li>
+      <li><span><kbd>N</kbd></span><span>liga e desliga o ímã: a agulha e as pontas grudam na batida da música</span></li>
       <li><span><kbd>Ctrl</kbd>+<kbd>B</kbd></span><span>divide a tomada na agulha</span></li>
       <li><span><kbd>Ctrl</kbd>+<kbd>D</kbd></span><span>duplica a tomada ou a camada escolhida</span></li>
       <li><span><kbd>Delete</kbd></span><span>exclui o que está escolhido</span></li>
