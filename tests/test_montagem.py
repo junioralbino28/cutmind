@@ -234,6 +234,44 @@ def test_foto_e_clipes_viram_1080x1920_a_30_qps_com_som(tmp_path):
         assert int(s["video"]["nb_frames"]) == p["quadros_no_arquivo"] >= round(p["fim"] * 30), nome
 
 
+def _primeiro_quadro(video: Path) -> np.ndarray:
+    r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-i", str(video), "-frames:v", "1", "-f", "rawvideo",
+                        "-pix_fmt", "rgb24", "-"], capture_output=True, check=True)
+    return np.frombuffer(r.stdout, np.uint8).reshape(1920, 1080, 3).astype(int)
+
+
+def test_midia_deitada_entra_inteira_sobre_ela_mesma_desfocada(tmp_path):
+    """Faixas vermelha, verde e azul lado a lado: cortada para encher a tela em pé, só o verde do meio
+    sobraria. Inteira, as duas pontas aparecem no meio da altura, e em cima fica o fundo desfocado."""
+    caixas = ",drawbox=x=0:w=213:h=360:color=red:t=fill,drawbox=x=427:w=213:h=360:color=blue:t=fill"
+    foto, clipe = tmp_path / "deitada.png", tmp_path / "deitado.mp4"
+    _ffmpeg("-f", "lavfi", "-i", f"color=c=green:s=640x360{caixas}", "-frames:v", "1", foto)
+    _ffmpeg("-f", "lavfi", "-i", f"color=c=green:s=640x360:r=30:d=1{caixas}", clipe)
+    for src in (foto, clipe):
+        out = tmp_path / f"{src.stem}.out.mp4"
+        m.padronizar(src, out, 10, "parado")
+        q = _primeiro_quadro(out)
+        esq, dir_, topo = q[960, 30], q[960, 1050], q[100, 30]
+        assert esq[0] > 180 and esq[1] < 80 and esq[2] < 80, (src.name, esq)  # a ponta vermelha
+        assert dir_[2] > 180 and dir_[0] < 80 and dir_[1] < 80, (src.name, dir_)  # a ponta azul
+        assert topo[1] > 90 and topo[0] < 120, (src.name, topo)  # acima da imagem: o meio dela, desfocado
+
+
+def test_midia_em_pe_sai_igual_a_antes(tmp_path):
+    """Em pé, o enquadramento novo dá o mesmo quadro, bit a bit, que o corte para encher a tela."""
+    clipe = tmp_path / "em-pe.mp4"
+    _ffmpeg("-f", "lavfi", "-i", "testsrc2=s=480x640:r=30:d=0.3", clipe)
+    antigo = ("scale=1080:1920:force_original_aspect_ratio=increase:force_divisible_by=2:flags=lanczos"
+              ":out_color_matrix=bt709:out_range=tv,format=yuv420p,crop=1080:1920,setsar=1")
+
+    def hashes(grafo):
+        r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-i", str(clipe), "-filter_complex", grafo, "-map", "[v]",
+                            "-f", "framemd5", "-"], capture_output=True, text=True, check=True)
+        return [x.split(",")[-1].strip() for x in r.stdout.splitlines() if x and not x.startswith("#")]
+
+    assert hashes(f"[0:v]{antigo}[v]") == hashes(f"[0:v]null[m];{m._enquadrar('m', 'v', 1080, 1920)}")
+
+
 def test_listar_midias_pasta_em_ordem_e_ponto_de_entrada(tmp_path):
     pasta = tmp_path / "fotos"
     pasta.mkdir()

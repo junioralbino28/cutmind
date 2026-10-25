@@ -19,7 +19,8 @@ vídeo em que cada troca de imagem cai numa batida.
      Cada borda vai para o quadro mais perto da SUA batida (a 30 qps, no máximo 16,7 ms dela): o erro
      não se acumula de um lugar para o outro. Se a música acaba antes, os lugares que sobram saem;
   3. cada mídia vira um clipe padronizado em <edit>/montagem/ (1080×1920, 30 qps, com faixa de som,
-     muda quando a mídia não tem som): a foto ganha um zoom leve (`movimento`: zoom-in, zoom-out ou
+     muda quando a mídia não tem som): a mídia em pé enche a tela; a deitada ou quadrada entra
+     inteira, sobre ela mesma desfocada; a foto ganha um zoom leve (`movimento`: zoom-in, zoom-out ou
      parado); o clipe entra do começo, ou de `arquivo@segundos`, e o que é mais curto que o lugar
      fica mais lento, até 0,5×, e depois para no último quadro. Com mais lugares que mídias, as mídias
      se repetem em ordem;
@@ -99,6 +100,8 @@ VIDEOS = {".mp4", ".mov", ".m4v", ".mkv", ".webm", ".avi", ".mts"}
 MOVIMENTOS = ("zoom-in", "zoom-out", "parado")
 ZOOM_POR_SEGUNDO = 0.04  # a foto aproxima 4% por segundo, até 10%: a mesma velocidade em lugar curto e longo
 ZOOM_MAX = 0.10
+FUNDO_REDUCAO = 4    # a mídia deitada fica sobre ela mesma desfocada, feita em 1/4 do tamanho
+FUNDO_DESFOQUE = 12  # sigma do desfoque nesse tamanho (~48 px no quadro cheio)
 VEL_MIN = 0.5  # o clipe curto desacelera até 0,5× e depois para no último quadro
 PUXA = 1.5  # o golpe no contratempo leva a troca quando é 1,5× mais forte que a batida
 MEIO_MIN = 0.4  # duas trocas nunca ficam a menos de 0,4 batida uma da outra
@@ -389,11 +392,25 @@ def _cor(arquivo: Path) -> str:
     return largo + "," if largo else ""
 
 
-def _encher(w: int, h: int) -> str:
-    """Escala para cobrir w×h e corta o meio: a mídia em pé ou deitada enche a tela em pé. A conversão
-    para YUV Rec.709 é feita pela própria escala (o `format` logo depois a obriga a isso)."""
-    return (f"scale={w}:{h}:force_original_aspect_ratio=increase:force_divisible_by=2:flags=lanczos"
-            f":out_color_matrix=bt709:out_range=tv,format=yuv420p,crop={w}:{h},setsar=1")
+def _enquadrar(entrada: str, saida: str, w: int, h: int) -> str:
+    """O trecho do grafo que põe a mídia em w×h. Em pé, ela enche a tela e o meio é cortado, como
+    sempre. Deitada ou quadrada, entra INTEIRA na largura, sobre ela mesma ampliada e desfocada
+    (cortar uma foto ou um print deitado para encher a tela em pé perdia
+    mais da metade dele). A escolha é feita no grafo, pelo quadro que o decodificador entrega (já
+    girado): vale também para a foto com rotação no EXIF e o vídeo de celular. O fundo é desfocado em
+    1/4 do tamanho e ampliado depois: o mesmo desfoque, com 16 vezes menos conta. A conversão para YUV
+    Rec.709 é feita pelas próprias escalas (o `format` logo depois as obriga a isso)."""
+    pw, ph = w // FUNDO_REDUCAO, h // FUNDO_REDUCAO
+    yuv = "out_color_matrix=bt709:out_range=tv,format=yuv420p"
+    deitada = "gte(iw,ih)"
+    larga = f"gt(iw*{h},ih*{w})"  # em pé, mas mais larga que w×h: enche pela altura
+    fw = f"if({deitada},{w},if({larga},-2,{w}))"
+    fh = f"if({deitada},-2,if({larga},{h},-2))"
+    return (f"[{entrada}]split[{saida}_f][{saida}_b];"
+            f"[{saida}_b]scale={pw}:{ph}:force_original_aspect_ratio=increase:force_divisible_by=2:{yuv},"
+            f"crop={pw}:{ph},gblur=sigma={FUNDO_DESFOQUE},scale={w}:{h}:flags=bicubic[{saida}_bd];"
+            f"[{saida}_f]scale=w='{fw}':h='{fh}':flags=lanczos:{yuv},crop=w='min(iw,{w})':h='min(ih,{h})'[{saida}_fc];"
+            f"[{saida}_bd][{saida}_fc]overlay=x=(W-w)/2:y=(H-h)/2:format=yuv420,setsar=1[{saida}]")
 
 
 def padronizar(midia: Path, destino: Path, quadros: int, movimento: str | None = None, de: float = 0.0) -> dict:
@@ -414,10 +431,10 @@ def padronizar(midia: Path, destino: Path, quadros: int, movimento: str | None =
         z = {"zoom-in": f"1+{passo}", "zoom-out": f"{1 + extra:.5f}-{passo}", "parado": "1"}[movimento or "zoom-in"]
         # a foto é escalada ao DOBRO antes do zoompan, que posiciona o recorte em pixel inteiro: no
         # tamanho final o zoom andaria aos trancos
-        vf = (f"{_cor(midia)}{_encher(2 * LARGURA, 2 * ALTURA)},"
-              f"zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={quadros}"
-              f":s={LARGURA}x{ALTURA}:fps={FPS}")
-        _ffmpeg(["-i", str(midia), *mudo, "-filter_complex", f"[0:v]{vf}[v]", "-map", "[v]", "-map", "1:a",
+        grafo = (f"[0:v]{_cor(midia)}null[m];{_enquadrar('m', 'q', 2 * LARGURA, 2 * ALTURA)};"
+                 f"[q]zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={quadros}"
+                 f":s={LARGURA}x{ALTURA}:fps={FPS}[v]")
+        _ffmpeg(["-i", str(midia), *mudo, "-filter_complex", grafo, "-map", "[v]", "-map", "1:a",
                  "-frames:v", str(quadros), "-t", f"{precisa:.6f}", *CODIFICA, str(destino)], midia.name)
         return {"foto": True, "quadros_no_arquivo": _quadros(destino), "velocidade": 1.0,
                 "fim": round(precisa, 6), "congela": False}
@@ -429,8 +446,8 @@ def padronizar(midia: Path, destino: Path, quadros: int, movimento: str | None =
     else:
         entrada += mudo
         mapa_som = ["-map", "1:a"]
-    vf = f"{_cor(midia)}fps={FPS},{_encher(LARGURA, ALTURA)}"
-    base = [*entrada, "-filter_complex", f"[0:v]{vf}[v]", "-map", "[v]", *mapa_som]
+    grafo = f"[0:v]{_cor(midia)}fps={FPS}[m];{_enquadrar('m', 'v', LARGURA, ALTURA)}"
+    base = [*entrada, "-filter_complex", grafo, "-map", "[v]", *mapa_som]
     if disponivel >= precisa + 0.5 / FPS:
         _ffmpeg([*base, "-frames:v", str(quadros), "-t", f"{precisa:.6f}", *CODIFICA, str(destino)], midia.name)
     else:
