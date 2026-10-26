@@ -39,6 +39,8 @@
     <div class="t-spacer"></div>
     <span class="pill sent hidden" id="sentPill">enviado</span>
     <!-- no computador: o QR que abre este mesmo editor no celular -->
+    <!-- o idioma do editor: mostra o atual, troca e guarda neste navegador (i18n.js) -->
+    <button class="tb-btn ghost idioma-btn" id="btnIdioma" type="button"></button>
     <button class="tb-btn desk-only" id="btnHelp" type="button" title="Atalhos do teclado (?)" aria-label="Atalhos do teclado">?</button>
     <button class="tb-btn desk-only" id="btnPhone" type="button" title="Mostrar o QR para abrir no celular"><span class="tb-ico" id="phoneIco"></span>Abrir no celular</button>
     <!-- no computador: jogar fora os ajustes e voltar ao último vídeo do agente -->
@@ -457,6 +459,8 @@
     </ul>
   </div>
 </div>
+<script src="/assets/i18n-en.js"></script>
+<script src="/assets/i18n.js"></script>
 <script src="/assets/estilos.js"></script>
 <script src="/assets/tempo.js"></script>
 <script src="/assets/fontes.js"></script>

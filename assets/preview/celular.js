@@ -2051,6 +2051,17 @@ document.addEventListener('keydown', (e) => {
   }
 });
 $('btnHelp').addEventListener('click', () => mostraAjuda(true));
+// o idioma: mostra o atual; trocar grava e recarrega (cada texto sai já no idioma novo), e não
+// recarrega por cima de ajuste que ainda não foi salvo
+$('btnIdioma').textContent = IDIOMA === 'pt' ? 'PT' : 'EN';
+$('btnIdioma').title = IDIOMA === 'pt' ? t('Idioma do editor: português. Trocar para inglês')
+  : t('Idioma do editor: inglês. Trocar para português');
+$('btnIdioma').setAttribute('aria-label', $('btnIdioma').title);
+$('btnIdioma').addEventListener('click', () => {
+  if (dirtyCount()) { toast(t('Salve ou descarte seus ajustes antes de trocar o idioma.'), 4000); return; }
+  trocarIdioma(IDIOMA === 'pt' ? 'en' : 'pt');
+  location.reload();
+});
 $('helpClose').addEventListener('click', () => mostraAjuda(false));
 $('helpModal').addEventListener('click', (e) => { if (e.target === $('helpModal')) mostraAjuda(false); });
 

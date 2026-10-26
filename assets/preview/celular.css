@@ -90,6 +90,8 @@ button { font-family: inherit; cursor: pointer; }
 .tb-btn.primary { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
 .tb-btn.primary:active { filter: brightness(0.9); }
 .tb-btn.ghost:active { background: rgba(255, 255, 255, 0.06); }
+/* PT | EN: o idioma do editor, curto para caber na barra do celular */
+.tb-btn.idioma-btn { padding: 0 9px; min-width: 38px; font-size: 12px; letter-spacing: 0.04em; color: var(--dim); }
 .tb-btn.danger { color: #ff8a80; border-color: rgba(255, 138, 128, 0.35); }
 .tb-btn.big { height: 46px; border-radius: 10px; padding: 0 26px; font-size: 15px; }
 .pill {
