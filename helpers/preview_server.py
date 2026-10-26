@@ -866,10 +866,32 @@ class Handler(BaseHTTPRequestHandler):
         """O da tela: o editor manda em cada pedido; a página aberta direto vai pelo do navegador."""
         return idm.do_pedido(self.headers.get("X-CutMind-Idioma"), self.headers.get("Accept-Language"))
 
+    def _descartar_corpo(self, teto: int = 64 * 1024) -> None:
+        """Lê e joga fora o corpo pequeno de um pedido negado. Fechar a conexão com dados ainda por ler
+        faz o Windows mandar um reset, que às vezes chega antes da resposta: o cliente via "conexão
+        interrompida" no lugar do 403 (falha intermitente da suíte, 2 vezes em 26/10/2026). Corpo
+        grande (um envio de vídeo) não é lido: a conexão só fecha."""
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return
+        if not 0 < n <= teto:
+            return
+        antes = self.connection.gettimeout()
+        try:
+            self.connection.settimeout(2)
+            self.rfile.read(n)
+        except OSError:
+            pass
+        finally:
+            self.connection.settimeout(antes)
+
     def _deny(self, code: int, msg: str, path: str) -> None:
         sys.stderr.write(f"[{time.strftime('%H:%M:%S')}] negado {code} "
                          f"{self.client_address[0]} {self.command} {path}\n")
-        self.close_connection = True  # um POST negado deixa o corpo sem ler
+        if self.command in ("POST", "PUT"):
+            self._descartar_corpo()
+        self.close_connection = True  # o corpo grande de um POST negado fica sem ler
         msg = idm.traduzir(msg, self._idioma())
         if path.startswith(("/api/", "/gen/", "/media/")):
             body = json.dumps({"error": msg}, ensure_ascii=False).encode()
