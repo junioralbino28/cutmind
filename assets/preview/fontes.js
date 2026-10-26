@@ -107,7 +107,7 @@
     ["Chango", 400, "retrô"],
     ["Rye", 400, "retrô"],
   ];
-  const CATEGORIAS = [['alta', 'Em alta'], ['impacto', 'Impacto'], ['sem serifa', 'Sem serifa'], ['serifa', 'Serifa'], ['manuscrita', 'Manuscrita'], ['retrô', 'Retrô']];
+  const CATEGORIAS = [['alta', t('Em alta')], ['impacto', t('Impacto')], ['sem serifa', t('Sem serifa')], ['serifa', t('Serifa')], ['manuscrita', t('Manuscrita')], ['retrô', t('Retrô')]];
   // as chaves com que os efeitos foram desenhados (FONTE em src/cenas/comum.tsx)
   const LEGADO = { poppins: 'Poppins', anton: 'Anton', bebas: 'Bebas Neue', oswald: 'Oswald', playfair: 'Playfair Display', caveat: 'Caveat',
     marker: 'Permanent Marker', elite: 'Special Elite', instrument: 'Instrument Serif', abril: 'Abril Fatface', oldstd: 'Old Standard TT' };

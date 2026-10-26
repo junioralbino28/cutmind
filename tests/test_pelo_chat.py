@@ -21,7 +21,7 @@ def ferramentas() -> list[str]:
 def curvas() -> list[tuple[str, str]]:
     bloco = re.search(r"const CURVAS = \[(.*?)\n\];", JS, re.S)
     assert bloco, "não achei o CURVAS no celular.js"
-    return re.findall(r"\['([a-z]+)', '[^']*', (\[\[.*?\]\])\]", bloco.group(1))
+    return re.findall(r"\['([a-z]+)', (?:t\()?'[^']*'\)?, (\[\[.*?\]\])\]", bloco.group(1))
 
 
 def test_o_detector_acha_as_ferramentas():

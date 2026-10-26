@@ -37,7 +37,7 @@
         // default for every new project — a clean full-frame cut, with inserts as
         // something the user opts into.
         id: 'limpa',
-        name: 'Limpa',
+        name: t('Limpa'),
         mock: `<svg viewBox="0 0 66 118" xmlns="http://www.w3.org/2000/svg">
           <rect x=".5" y=".5" width="65" height="117" rx="7" fill="#0b0e13" stroke="rgba(255,255,255,.12)"/>
           <rect x="3" y="3" width="60" height="112" rx="5" fill="rgba(255,255,255,.05)"/>
@@ -53,7 +53,7 @@
       },
       {
         id: 'split',
-        name: 'Tela dividida',
+        name: t('Tela dividida'),
         mock: `<svg viewBox="0 0 66 118" xmlns="http://www.w3.org/2000/svg">
           <rect x=".5" y=".5" width="65" height="117" rx="7" fill="#0b0e13" stroke="rgba(255,255,255,.12)"/>
           <rect x="3" y="3" width="60" height="36" rx="5" fill="rgba(255,119,19,.16)"/>
@@ -71,7 +71,7 @@
       },
       {
         id: 'split2',
-        name: 'Tela dividida 2',
+        name: t('Tela dividida 2'),
         mock: `<svg viewBox="0 0 66 118" xmlns="http://www.w3.org/2000/svg">
           <rect x=".5" y=".5" width="65" height="117" rx="7" fill="#0b0e13" stroke="rgba(255,255,255,.12)"/>
           <rect x="3" y="3" width="60" height="65" rx="5" fill="rgba(255,255,255,.05)"/>
@@ -91,53 +91,53 @@
     // No names on purpose: the sample headline IS the label. Ids and geometry
     // mirror HL_STYLES in the template's Main.tsx — keep the two in step.
     headlines: [
-      {id: 'outline', name: 'Contorno', hl: 'outline'},
-      {id: 'card', name: 'Cartão', hl: 'card'},
-      {id: 'realce', name: 'Realce', hl: 'realce'},
-      {id: 'misto', name: 'Misto', hl: 'misto'},
+      {id: 'outline', name: t('Contorno'), hl: 'outline'},
+      {id: 'card', name: t('Cartão'), hl: 'card'},
+      {id: 'realce', name: t('Realce'), hl: 'realce'},
+      {id: 'misto', name: t('Misto'), hl: 'misto'},
       // Last on purpose: defaultStyle() takes headlines[0]. `hlbox` only so the
       // card matches the height of its siblings in this row.
-      {id: 'none', name: 'Nenhum', none: true, hlbox: true},
+      {id: 'none', name: t('Nenhum'), none: true, hlbox: true},
     ],
     // `multiline`: more than one line on screen at once (the phone editor's
     // "Uma linha / Várias linhas" filter reads it).
     captions: [
-      {id: 'karaoke', name: 'Karaokê', demo: 'karaoke'},
-      {id: 'stacked', name: 'Empilhado', demo: 'stacked', multiline: true},
-      {id: 'scatter', name: 'Disperso', demo: 'scatter', multiline: true},
-      {id: 'simples', name: 'Simples', stat: 'simples'},
-      {id: 'serifada', name: 'Serifada', stat: 'serifada'},
-      {id: 'classica', name: 'Clássica', stat: 'classica', multiline: true},
-      {id: 'none', name: 'Nenhum', none: true},
+      {id: 'karaoke', name: t('Karaokê'), demo: 'karaoke'},
+      {id: 'stacked', name: t('Empilhado'), demo: 'stacked', multiline: true},
+      {id: 'scatter', name: t('Disperso'), demo: 'scatter', multiline: true},
+      {id: 'simples', name: t('Simples'), stat: 'simples'},
+      {id: 'serifada', name: t('Serifada'), stat: 'serifada'},
+      {id: 'classica', name: t('Clássica'), stat: 'classica', multiline: true},
+      {id: 'none', name: t('Nenhum'), none: true},
     ],
     elements: [
       {
         id: 'tracking',
-        name: 'Movimento de tracking',
+        name: t('Movimento de tracking'),
         def: false,
         icon: '<svg viewBox="0 0 16 16"><path d="M2 5.6V3.4A1.4 1.4 0 013.4 2h2.2M10.4 2h2.2A1.4 1.4 0 0114 3.4v2.2M14 10.4v2.2a1.4 1.4 0 01-1.4 1.4h-2.2M5.6 14H3.4A1.4 1.4 0 012 12.6v-2.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="8" r="2.1"/></svg>',
       },
       {
         id: 'zoomAuto',
-        name: 'Automação de zoom in',
+        name: t('Automação de zoom in'),
         def: true,
         icon: '<svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.6 10.6L14 14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"/><path d="M7 5.1v3.8M5.1 7h3.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/></svg>',
       },
       {
         id: 'zoomCuts',
-        name: 'Zoom in e out nos cortes',
+        name: t('Zoom in e out nos cortes'),
         def: true,
         icon: '<svg viewBox="0 0 16 16"><rect x="1.2" y="3.4" width="6" height="9.2" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="9.6" y="1.9" width="5.2" height="12.2" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8.4 8h.7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
       },
       {
         id: 'flashCut',
-        name: 'Flash na transição',
+        name: t('Flash na transição'),
         def: false,
         icon: '<svg viewBox="0 0 16 16"><path d="M3 13.2L13 3.2" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" fill="none"/><path d="M6.6 14L9.4 11.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".55"/><path d="M6.6 4.8L3.8 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".55"/></svg>',
       },
       {
         id: 'musicAI',
-        name: 'Trilha sonora com IA',
+        name: t('Trilha sonora com IA'),
         // OFF by default, unlike the other two defaults-on. Those are free; this
         // is the only element in the catalog that needs an account. Pre-ticked, it
         // walked every first-time user into a signup they never asked for, at the
@@ -163,7 +163,7 @@
    * template's caption look changes, change it HERE too — a preview that lies
    * about the style is worse than no preview.
    */
-  const CAP_TEXT = 'É assim que sua legenda irá aparecer';
+  const CAP_TEXT = t('É assim que sua legenda irá aparecer');
   const FPS_REF = 30; // the template's reference fps for frame-based timings
   const wordsOf = (text) => String(text || '').trim().split(/\s+/).filter(Boolean);
 
@@ -240,10 +240,15 @@
   // Stacked: one cue, lines cycling the STACK_MIXED styles (bold-italic gradient →
   // regular small → Playfair italic orange). Words rise 46px with a blur that
   // resolves; the cue leaves with the blur_up exit.
-  const STK_LINES = [
+  // the same sample sentence as CAP_TEXT, broken into the three stacked lines, per editor language
+  const STK_LINES = IDIOMA === 'pt' ? [
     { words: ['É', 'assim'], style: 0 },
     { words: ['que', 'sua', 'legenda'], style: 1 },
     { words: ['irá', 'aparecer'], style: 2 },
+  ] : [
+    { words: ['This', 'is'], style: 0 },
+    { words: ['how', 'your', 'captions'], style: 1 },
+    { words: ['will', 'look'], style: 2 },
   ];
   // A cue from the director itself (caption_style.py, served by the preview at
   // /gen/frases): its own lines, line styles and sizes, as StackedCaptions sizes
@@ -338,7 +343,7 @@
    * the preview shows the real break at the real size, not an approximation.
    * HL_STYLES exists on both sides; change one, change the other.
    */
-  const HEADLINE_TEXT = 'É assim que vai ficar a sua headline';
+  const HEADLINE_TEXT = t('É assim que vai ficar a sua headline');
   const HL_MIN = 28;
   const HL_STYLES = {
     outline: { weights: [800, 800], cap: 51, safeW: 900, lh: 1.02 },

@@ -175,9 +175,9 @@ let FRAME_W = 1080;
 let FRAME_H = 1920;
 // os formatos de uma montagem (montagem.FORMATOS): em pé, deitado e quadrado
 const FORMATOS = {
-  '9:16': { nome: 'Em pé', uso: 'Reels, TikTok, Shorts', w: 9, h: 16, px: [1080, 1920] },
-  '16:9': { nome: 'Deitado', uso: 'YouTube, TV', w: 16, h: 9, px: [1920, 1080] },
-  '1:1': { nome: 'Quadrado', uso: 'Feed', w: 1, h: 1, px: [1080, 1080] },
+  '9:16': { nome: t('Em pé'), uso: t('Reels, TikTok, Shorts'), w: 9, h: 16, px: [1080, 1920] },
+  '16:9': { nome: t('Deitado'), uso: t('YouTube, TV'), w: 16, h: 9, px: [1920, 1080] },
+  '1:1': { nome: t('Quadrado'), uso: t('Feed'), w: 1, h: 1, px: [1080, 1080] },
 };
 const SPLIT_GEOM = {
   split: { band: 'top', bandH: 750, zoom: 1.25, focusY: 400, capPB: 1074 },
@@ -319,7 +319,7 @@ function setBand(band, on, live) {
   } else if (src && S.bandUrl) {
     band.style.backgroundImage = `url("${S.bandUrl}")`;
   } else {
-    el('div', 'band-ph', band).innerHTML = `${ICON.imagem}<span>sua imagem de apoio</span>`;
+    el('div', 'band-ph', band).innerHTML = `${ICON.imagem}<span>${t('sua imagem de apoio')}</span>`;
   }
 }
 // um quadro da imagem de apoio em vídeo, para os cartões (um vídeo tocando por cartão pesa no celular)
@@ -600,7 +600,7 @@ function buildInsertsDraft() {
   const d = S.editData || {};
   const list = [];
   // o texto do gancho vem em `lines` (modelo antigo) ou em `text`, com quebra de linha
-  const gancho = (h) => (h.lines || (h.text ? String(h.text).split('\n') : [])).join(' / ') || 'Gancho';
+  const gancho = (h) => (h.lines || (h.text ? String(h.text).split('\n') : [])).join(' / ') || t('Gancho');
   if (d.hook && d.hook.enabled) list.push({ kind: 'hook', label: gancho(d.hook), start: 0, end: d.hook.endSec || 4 });
   (d.inserts || []).forEach((it, i) => list.push({ kind: 'insert', label: (it.src || '').split('/').pop(), start: +it.start, end: +it.end, ref: i }));
   (d.splitInserts || []).forEach((it, i) => list.push({ kind: 'split', label: it.label || (it.src || '').split('/').pop(), start: +it.start, end: +it.end, ref: i }));
@@ -662,7 +662,7 @@ function pedidoDoLugar(r) {
   return p;
 }
 function avisaLugar() {
-  toast('Numa montagem, a duração de cada lugar segue a batida da música. Troque a mídia ou o trecho.', 3200);
+  toast(t('Numa montagem, a duração de cada lugar segue a batida da música. Troque a mídia ou o trecho.'), 3200);
 }
 async function carregaMontMidias() {
   if (!ehMontagem()) { S.montMidias = null; return; } // a Nova montagem também: o painel mostra o que chegou
@@ -719,7 +719,7 @@ function refreshHeader() {
   $('btnDownload').classList.toggle('hidden', n > 0 || !hasVideo);
   $('dirtyCount').textContent = n;
   $('sentPill').classList.toggle('hidden', !(S.savedPending && n === 0));
-  $('modeLabel').textContent = S.view === 'final' ? 'Final' : 'Corte';
+  $('modeLabel').textContent = S.view === 'final' ? t('Final') : t('Corte');
   // com trechos acelerados, a duração da entrega ao lado da do final
   const entregue = S.view === 'final' && S.vel.trechos.length ? duracaoEntregue() : null;
   $('projectSub').textContent = !hasVideo ? '' : entregue != null ? `${fmtShort(totalT())} → ${fmtShort(entregue)}` : fmtShort(totalT());
@@ -824,20 +824,20 @@ function renderHistory() {
 // ---------- dados ----------
 // Pela rede, o servidor só entrega os dados a quem abriu pelo link/QR do computador.
 // no computador o vídeo vem do computador; no celular, da galeria (o texto do HTML)
-if (isDesk()) $('emptyText').textContent = 'Escolha um vídeo do computador. O corte começa assim que ele chegar.';
+if (isDesk()) $('emptyText').textContent = t('Escolha um vídeo do computador. O corte começa assim que ele chegar.');
 const EMPTY_TEXTS = { title: $('emptyTitle').textContent, text: $('emptyText').textContent };
 function setLocked(on) {
   if (!!S.locked === on) return;
   S.locked = on;
-  $('emptyTitle').textContent = on ? 'Falta o código deste computador' : EMPTY_TEXTS.title;
+  $('emptyTitle').textContent = on ? t('Falta o código deste computador') : EMPTY_TEXTS.title;
   $('emptyText').textContent = on
-    ? 'Por segurança, pela rede o editor só abre com o link ou o QR code que aparece no computador. Abra por ele uma vez: este celular fica liberado.'
+    ? t('Por segurança, pela rede o editor só abre com o link ou o QR code que aparece no computador. Abra por ele uma vez: este celular fica liberado.')
     : EMPTY_TEXTS.text;
   $('btnEmptyUpload').classList.toggle('hidden', on);
   $('emptyAlt').classList.toggle('hidden', on);
   if (on) {
     $('empty').classList.remove('hidden');
-    $('projectSub').textContent = 'sem o código deste computador';
+    $('projectSub').textContent = t('sem o código deste computador');
   }
 }
 
@@ -867,10 +867,10 @@ async function poll() {
         await applyState(data);
       } else if (!S.newStateWarned) { // uma vez só, até a versão nova entrar
         S.newStateWarned = true;
-        toast(S.styling ? 'Chegou uma versão nova: ela aparece quando você fechar o Estilo.'
-          : fxAberto() || vozAberto() || FU.aberto ? 'Chegou uma versão nova: ela aparece quando você fechar este painel.'
-          : isDesk() ? 'Chegou uma versão nova do agente. Salve ou descarte seus ajustes para ver.'
-            : 'Chegou uma versão nova — salve seus ajustes para ver', 4500);
+        toast(S.styling ? t('Chegou uma versão nova: ela aparece quando você fechar o Estilo.')
+          : fxAberto() || vozAberto() || FU.aberto ? t('Chegou uma versão nova: ela aparece quando você fechar este painel.')
+          : isDesk() ? t('Chegou uma versão nova do agente. Salve ou descarte seus ajustes para ver.')
+            : t('Chegou uma versão nova — salve seus ajustes para ver'), 4500);
       }
     }
   } catch (e) { /* servidor reiniciando: continua tentando */ }
@@ -942,7 +942,7 @@ async function applyState(data) {
     $('emptyIco').innerHTML = agente ? ICON.corte : ICON.enviar;
     if (!agente) { $('emptyTitle').textContent = EMPTY_TEXTS.title; $('emptyText').textContent = EMPTY_TEXTS.text; }
   }
-  if (agente) { $('emptyTitle').textContent = 'O agente está editando'; $('emptyText').textContent = S.state.message; }
+  if (agente) { $('emptyTitle').textContent = t('O agente está editando'); $('emptyText').textContent = S.state.message; }
   S.montagemNova = data.montagemNova || null; // o Montar do painel, salvo e ainda não feito pelo agente
   vazioDaMontagem();
   if (!hasFinal() && S.view === 'final') S.view = 'corte';
@@ -1255,7 +1255,7 @@ function renderTakes(lane) {
       im.alt = ''; im.draggable = false;
     }
     if (lugar) { c.classList.add('lugar'); el('span', 't-vaga', c).textContent = r.vaga; }
-    el('div', 't-label', c).textContent = lugar ? lugar.nome : r.beat || r.source || `tomada ${i + 1}`;
+    el('div', 't-label', c).textContent = lugar ? lugar.nome : r.beat || r.source || t('tomada {p0}', { p0: i + 1 });
     if (r.troca) c.classList.add('trocado');
     if ((r.vol !== 1 || r.vel !== 1 || r.curva) && !movendo) {
       const tags = el('div', 't-tags', c);
@@ -1275,7 +1275,7 @@ function renderTakes(lane) {
     const add = el('button', 'add-tile', lane);
     add.type = 'button';
     add.innerHTML = ICON.mais;
-    add.setAttribute('aria-label', 'Importar vídeo, imagem ou áudio');
+    add.setAttribute('aria-label', t('Importar vídeo, imagem ou áudio'));
     add.style.left = `${dl.reduce((a, d) => Math.max(a, d.out + d.dur), 0) * S.pps + 10}px`;
   }
   if (G.mode === 'move') el('div', 'move-caret', lane).id = 'moveCaret'; // onde ela vai cair
@@ -1290,7 +1290,7 @@ function jcutHead(track) {
   b.type = 'button';
   b.dataset.act = 'jcut';
   b.innerHTML = ICON.seta;
-  const dica = S.jcutOpen ? 'Esconder as faixas A1 e A2 do J-cut' : 'Mostrar as faixas A1 e A2 do J-cut (a voz que entra antes da imagem)';
+  const dica = S.jcutOpen ? t('Esconder as faixas A1 e A2 do J-cut') : t('Mostrar as faixas A1 e A2 do J-cut (a voz que entra antes da imagem)');
   b.setAttribute('aria-label', dica);
   b.setAttribute('aria-expanded', String(S.jcutOpen));
   b.title = dica;
@@ -1304,12 +1304,12 @@ function renderJcutLane(track, lane, par) {
     b.style.left = `${r.aout * S.pps}px`;
     b.style.width = `${Math.max(r.adur * S.pps, 6)}px`;
     if (r.lead > 1e-6) el('div', 'ablock-lead', b).style.width = `${r.lead * S.pps}px`;
-    const nome = r.beat || r.source || `tomada ${i + 1}`;
+    const nome = r.beat || r.source || t('tomada {p0}', { p0: i + 1 });
     el('span', 'ablock-label', b).textContent = nome;
     const tf = (r.orig && S.jcut[r.from] && S.jcut[r.from].tail_trim_frames) || 0;
-    let dica = `${nome}\náudio ${r.adur.toFixed(2)} s`;
-    if (r.lead > 1e-6) dica += `\nJ-cut: a voz entra ${Math.round(r.lead * fps)} quadros (${Math.round(r.lead * 1000)} ms) antes da imagem`;
-    if (tf) dica += `\ncauda aparada: ${tf} quadros`;
+    let dica = t('{nome}\náudio {p1} s', { nome, p1: r.adur.toFixed(2) });
+    if (r.lead > 1e-6) dica += t('\nJ-cut: a voz entra {p0} quadros ({p1} ms) antes da imagem', { p0: Math.round(r.lead * fps), p1: Math.round(r.lead * 1000) });
+    if (tf) dica += t('\ncauda aparada: {tf} quadros', { tf });
     b.title = dica;
   });
 }
@@ -1322,7 +1322,7 @@ function renderTrilhaF2(lane) {
   el('span', 'l-ico', chip).innerHTML = ICON.audio;
   const nome = String(st.file || 'trilha.mp3').split('/').pop();
   el('span', 'l-name', chip).textContent = st.volume != null ? `${nome} · ${Math.round(st.volume * 100)}%` : nome;
-  chip.title = 'Trilha da Fase 2. Para trocar, mudar o volume ou tirar, peça ao agente.';
+  chip.title = t('Trilha da Fase 2. Para trocar, mudar o volume ou tirar, peça ao agente.');
 }
 
 function renderNotes(lane) {
@@ -1474,7 +1474,7 @@ const syncZoom = () => {
 };
 $('zoomRange').addEventListener('input', (e) => setZoom(zoomDe(+e.target.value)));
 $('zoomFit').addEventListener('click', () => { S.v0 = 0; setZoom(S.minPps, DESK_MARGEM); });
-$('btnIma').innerHTML = `${ICON.ima}<span>Ímã</span>`;
+$('btnIma').innerHTML = `${ICON.ima}<span>${t('Ímã')}</span>`;
 $('btnIma').addEventListener('click', alternaIma);
 syncIma();
 
@@ -1673,7 +1673,7 @@ timeline.addEventListener('pointermove', (e) => {
     const ref = r.orig || T.r; // pedaço novo (divisão, cópia) não tem borda original: conta do início do gesto
     const d = T.side === 'l' ? r.start - ref.start : r.end - ref.end;
     const tip = $('trimTip');
-    tip.textContent = `${T.side === 'l' ? 'início' : 'fim'} ${d >= 0 ? '+' : ''}${d.toFixed(2)} s`;
+    tip.textContent = `${T.side === 'l' ? t('início') : 'fim'} ${d >= 0 ? '+' : ''}${d.toFixed(2)} s`;
     tip.classList.remove('hidden');
     if (!G.trimQueued) {
       G.trimQueued = true;
@@ -1786,7 +1786,7 @@ function startMove(i, x) {
   const ghost = el('div', 'move-ghost', timeline);
   const thumb = timeline.querySelector(`.take[data-i="${i}"] .strip img`);
   if (thumb) el('img', '', ghost).src = thumb.src;
-  el('span', '', ghost).textContent = S.draft[i].beat || `tomada ${i + 1}`;
+  el('span', '', ghost).textContent = S.draft[i].beat || t('tomada {p0}', { p0: i + 1 });
   G.mv.ghost = ghost;
   updateMove();
   let last = performance.now();
@@ -1995,7 +1995,7 @@ document.addEventListener('keydown', (e) => {
     if (ajuda) mostraAjuda(false);
     else if (S.posMode) exitPosMode();
     else if (fechaPainel()) { /* fechou o painel */ }
-    else if (S.pendingIn != null) { S.pendingIn = null; renderTimeline(); renderToolbar(); toast('Marcação cancelada', 1600); }
+    else if (S.pendingIn != null) { S.pendingIn = null; renderTimeline(); renderToolbar(); toast(t('Marcação cancelada'), 1600); }
     else soltaEscolha();
     return;
   }
@@ -2072,36 +2072,36 @@ $('helpModal').addEventListener('click', (e) => { if (e.target === $('helpModal'
 function quandoFoi(ts) {
   const s = Math.max(0, Date.now() / 1000 - ts);
   if (s < 90) return 'agora';
-  if (s < 3600) return `há ${Math.round(s / 60)} min`;
-  if (s < 86400) return `há ${Math.round(s / 3600)} h`;
+  if (s < 3600) return t('há {p0} min', { p0: Math.round(s / 60) });
+  if (s < 86400) return t('há {p0} h', { p0: Math.round(s / 3600) });
   const d = Math.round(s / 86400);
-  return d === 1 ? 'ontem' : `há ${d} dias`;
+  return d === 1 ? t('ontem') : t('há {d} dias', { d });
 }
 function faseDoProjeto(p) {
-  if (p.novo) return p.montagem ? 'Montagem nova' : 'Novo';
-  if (p.aguardandoEstilo) return 'Estilo';
-  if (p.fase >= 2) return 'Final';
-  return p.fase === 1 ? 'Corte' : 'Começando';
+  if (p.novo) return p.montagem ? t('Montagem nova') : t('Novo');
+  if (p.aguardandoEstilo) return t('Estilo');
+  if (p.fase >= 2) return t('Final');
+  return p.fase === 1 ? t('Corte') : t('Começando');
 }
 function fechaProjetos() { $('projModal').classList.add('hidden'); }
 async function abreProjetos() {
   $('projModal').classList.remove('hidden');
   $('projNovo').classList.add('hidden');
-  $('projInfo').textContent = 'Carregando…';
+  $('projInfo').textContent = t('Carregando…');
   try {
     const d = await (await fetch('/api/projetos')).json();
-    $('projInfo').textContent = d.projetos.length > 1 ? '' : 'Por enquanto só este. Os próximos vídeos que você editar aparecem aqui.';
+    $('projInfo').textContent = d.projetos.length > 1 ? '' : t('Por enquanto só este. Os próximos vídeos que você editar aparecem aqui.');
     desenhaProjetos(d.projetos);
   } catch (e) {
-    $('projInfo').textContent = 'Não consegui ler a lista de projetos. O editor ainda está ligado no computador?';
+    $('projInfo').textContent = t('Não consegui ler a lista de projetos. O editor ainda está ligado no computador?');
   }
 }
 function desenhaProjetos(lista) {
   const g = $('projGrade');
   g.innerHTML = `<button class="pj novo" type="button" data-novo="corte"><div class="pj-capa">${ICON.mais}</div>
-    <div class="pj-nome">Novo projeto</div><div class="pj-meta">envie os vídeos e o agente corta</div></button>
+    <div class="pj-nome">${t('Novo projeto')}</div><div class="pj-meta">${t('envie os vídeos e o agente corta')}</div></button>
     <button class="pj novo" type="button" data-novo="montagem"><div class="pj-capa">${ICON.montagem}</div>
-    <div class="pj-nome">Nova montagem</div><div class="pj-meta">fotos e clipes na batida de uma música</div></button>`;
+    <div class="pj-nome">${t('Nova montagem')}</div><div class="pj-meta">${t('fotos e clipes na batida de uma música')}</div></button>`;
   for (const p of lista) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -2109,7 +2109,7 @@ function desenhaProjetos(lista) {
     b.dataset.id = p.id;
     const dur = p.duracao > 0 ? ` · ${fmtShort(p.duracao)}` : '';
     b.innerHTML = `<div class="pj-capa">${p.temCapa ? '' : ICON.final}</div>
-      ${p.aberto ? '<span class="pj-selo">aberto</span>' : ''}
+      ${p.aberto ? `<span class="pj-selo">${t('aberto')}</span>` : ''}
       <div class="pj-nome">${escSvg(p.nome)}</div><div class="pj-meta">${faseDoProjeto(p)}${dur} · ${quandoFoi(p.mudou)}</div>`;
     // a capa por URL (com o id), sem montar CSS com texto do projeto
     if (p.temCapa) b.querySelector('.pj-capa').style.backgroundImage = `url("/gen/projeto-capa?id=${encodeURIComponent(p.id)}&v=${Math.round(p.mudou)}")`;
@@ -2120,13 +2120,13 @@ function desenhaProjetos(lista) {
 async function abreProjeto(id) {
   if (id === S.projetoId) { fechaProjetos(); return; }
   const n = dirtyCount();
-  if (n) { toast(`${n === 1 ? 'Há 1 ajuste' : `Há ${n} ajustes`} sem salvar aqui. Salve ou descarte antes de trocar de projeto.`, 4200); return; }
+  if (n) { toast(t('{p0} sem salvar aqui. Salve ou descarte antes de trocar de projeto.', { p0: n === 1 ? t('Há 1 ajuste') : t('Há {n} ajustes', { n }) }), 4200); return; }
   try {
     const out = await (await fetch('/api/projetos/abrir', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }) })).json();
     if (!out.ok) throw new Error(out.error || 'falhou');
     location.reload();
-  } catch (e) { toast(`Não abri o projeto: ${e.message}`, 4000); }
+  } catch (e) { toast(t('Não abri o projeto: {message}', { message: e.message }), 4000); }
 }
 $('projIco').innerHTML = ICON.casa;
 $('btnProjetos').addEventListener('click', abreProjetos);
@@ -2140,10 +2140,10 @@ $('projModal').addEventListener('click', (e) => {
 });
 // o nome do projeto novo; a Nova montagem nasce marcada e abre no painel Modelos de montagem
 function novoProjeto(tipo) {
-  if (dirtyCount()) { toast('Salve ou descarte seus ajustes antes de começar outro projeto.', 4000); return; }
+  if (dirtyCount()) { toast(t('Salve ou descarte seus ajustes antes de começar outro projeto.'), 4000); return; }
   $('projNovo').dataset.tipo = tipo;
   $('projGrade').querySelectorAll('.pj.novo').forEach((b) => b.classList.toggle('on', b.dataset.novo === tipo));
-  $('projNome').placeholder = tipo === 'montagem' ? 'Nome da montagem (ex.: Viagem de julho)' : 'Nome do projeto (ex.: Reels da semana)';
+  $('projNome').placeholder = tipo === 'montagem' ? t('Nome da montagem (ex.: Viagem de julho)') : t('Nome do projeto (ex.: Reels da semana)');
   $('projNovo').classList.remove('hidden');
   $('projNome').focus();
 }
@@ -2157,15 +2157,15 @@ $('projNovo').addEventListener('submit', async (e) => {
       body: JSON.stringify({ nome, tipo }) })).json();
     if (!out.ok) throw new Error(out.error || 'falhou');
     location.reload(); // o projeto novo abre vazio, pedindo os vídeos (Enviar) ou, na montagem, no painel
-  } catch (err) { toast(`Não criei o projeto: ${err.message}`, 4200); }
+  } catch (err) { toast(t('Não criei o projeto: {message}', { message: err.message }), 4200); }
 });
 // outro aparelho trocou o projeto e este tinha ajustes: voltar (o servidor reabre este) ou descartar
 function avisaTroca(novoId) {
   if (S.trocaAvisada === novoId) return;
   S.trocaAvisada = novoId;
   const n = dirtyCount();
-  $('trocaTxt').textContent = `Outro aparelho abriu outro projeto neste editor, e aqui ${n === 1 ? 'há 1 ajuste' : `há ${n} ajustes`} `
-    + `sem salvar em "${(S.state && S.state.project) || 'este projeto'}". Volte para ele para salvar, ou descarte e siga no outro.`;
+  $('trocaTxt').textContent = t('Outro aparelho abriu outro projeto neste editor, e aqui {p0} ', { p0: n === 1 ? t('há 1 ajuste') : t('há {n} ajustes', { n }) })
+    + t('sem salvar em "{p0}". Volte para ele para salvar, ou descarte e siga no outro.', { p0: (S.state && S.state.project) || t('este projeto') });
   $('trocaModal').classList.remove('hidden');
 }
 $('trocaVoltar').addEventListener('click', async () => {
@@ -2175,8 +2175,8 @@ $('trocaVoltar').addEventListener('click', async () => {
     if (!out.ok) throw new Error(out.error || 'falhou');
     S.trocaAvisada = null;
     $('trocaModal').classList.add('hidden');
-    toast('Voltou para este projeto. Agora dá para salvar.', 3200);
-  } catch (e) { toast(`Não voltei: ${e.message}`, 4000); }
+    toast(t('Voltou para este projeto. Agora dá para salvar.'), 3200);
+  } catch (e) { toast(t('Não voltei: {message}', { message: e.message }), 4000); }
 });
 $('trocaDescartar').addEventListener('click', () => location.reload());
 
@@ -2238,24 +2238,24 @@ function followDraft() {
 // ---------- barra de ferramentas ----------
 /* dica ao passar o mouse: o nome da ferramenta (quando o rótulo é um valor, como "100%") e o atalho */
 const ATALHO = { dividir: 'Ctrl+B', duplicar: 'Ctrl+D', excluir: 'Delete', marcar: 'M', voltar: 'Esc', selecionar: 'Ctrl+A', tudo: 'Ctrl+A' };
-const DICA = { volume: 'Volume', velocidade: 'Velocidade e curva', intensidade: 'Intensidade do filtro',
-  texto: 'Texto solto ou modelo', 'texto-novo': 'Texto novo na agulha', modelos: 'Dois ou três textos de uma vez, em fontes misturadas',
-  'texto-editar': 'Texto, fonte, cor, tamanho, contorno, curva e altura',
-  atras: 'No vídeo final, a camada passa atrás da pessoa', 'texto-segue': 'No vídeo final, o texto anda junto com a pessoa',
-  'leg-texto': 'Fonte, cor, tamanho e contorno de todas as frases', 'leg-segue': 'No vídeo final, a legenda anda junto com a pessoa',
-  'leg-posicao': 'O lugar de cada frase da legenda', 'leg-original': 'A legenda como o agente fez',
-  selecionar: 'Escolhe o vídeo todo (imagem, som, legenda e efeitos juntos); no computador, arrastar no vão escolhe um trecho',
-  'vel-trecho': 'Velocidade de tudo no trecho: nada sai do lugar', 'vel-normal': 'O trecho volta à velocidade normal',
-  tudo: 'O vídeo inteiro',
-  'melhorar-voz': 'A voz do vídeo mais limpa ou com som de estúdio, e quanto do ambiente fica',
-  fundo: 'Um fundo novo atrás de você, na tomada debaixo da agulha',
-  'lugar-trocar': 'Outra foto ou vídeo neste lugar, com a mesma duração', 'lugar-trecho': 'Que parte do clipe entra neste lugar',
-  'lugar-original': 'O lugar volta à mídia e ao trecho do vídeo',
-  'modelos-montagem': 'Os modelos de montagem: o ritmo, a música e as fotos e clipes; ou guardar esta montagem como modelo',
-  formato: 'O formato do vídeo: em pé, deitado ou quadrado',
-  'lugar-caber': 'A foto ou o clipe inteiro na tela (arraste a mídia e a bolinha do canto para ajustar à mão)',
-  'lugar-encher': 'A foto ou o clipe cobrindo a tela inteira', 'lugar-auto': 'O enquadramento automático do lugar',
-  'lugar-repetir': 'O mesmo enquadramento nos outros lugares com esta mídia' };
+const DICA = { volume: t('Volume'), velocidade: t('Velocidade e curva'), intensidade: t('Intensidade do filtro'),
+  texto: t('Texto solto ou modelo'), 'texto-novo': t('Texto novo na agulha'), modelos: t('Dois ou três textos de uma vez, em fontes misturadas'),
+  'texto-editar': t('Texto, fonte, cor, tamanho, contorno, curva e altura'),
+  atras: t('No vídeo final, a camada passa atrás da pessoa'), 'texto-segue': t('No vídeo final, o texto anda junto com a pessoa'),
+  'leg-texto': t('Fonte, cor, tamanho e contorno de todas as frases'), 'leg-segue': t('No vídeo final, a legenda anda junto com a pessoa'),
+  'leg-posicao': t('O lugar de cada frase da legenda'), 'leg-original': t('A legenda como o agente fez'),
+  selecionar: t('Escolhe o vídeo todo (imagem, som, legenda e efeitos juntos); no computador, arrastar no vão escolhe um trecho'),
+  'vel-trecho': t('Velocidade de tudo no trecho: nada sai do lugar'), 'vel-normal': t('O trecho volta à velocidade normal'),
+  tudo: t('O vídeo inteiro'),
+  'melhorar-voz': t('A voz do vídeo mais limpa ou com som de estúdio, e quanto do ambiente fica'),
+  fundo: t('Um fundo novo atrás de você, na tomada debaixo da agulha'),
+  'lugar-trocar': t('Outra foto ou vídeo neste lugar, com a mesma duração'), 'lugar-trecho': t('Que parte do clipe entra neste lugar'),
+  'lugar-original': t('O lugar volta à mídia e ao trecho do vídeo'),
+  'modelos-montagem': t('Os modelos de montagem: o ritmo, a música e as fotos e clipes; ou guardar esta montagem como modelo'),
+  formato: t('O formato do vídeo: em pé, deitado ou quadrado'),
+  'lugar-caber': t('A foto ou o clipe inteiro na tela (arraste a mídia e a bolinha do canto para ajustar à mão)'),
+  'lugar-encher': t('A foto ou o clipe cobrindo a tela inteira'), 'lugar-auto': t('O enquadramento automático do lugar'),
+  'lugar-repetir': t('O mesmo enquadramento nos outros lugares com esta mídia') };
 function renderToolbar() {
   const tb = $('toolbar');
   const ctx = $('ctxbar');
@@ -2286,154 +2286,154 @@ function renderToolbar() {
     tb.classList.add('hidden');
     ctx.classList.remove('hidden');
     ctx.innerHTML = '';
-    tool(ctx, 'pronto', 'Pronto', { icon: ICON.check, cls: 'back' });
-    tool(ctx, 'todas', 'Todas', { icon: ICON.todas, on: S.todas });
-    tool(ctx, 'padrao', 'Padrão', { icon: ICON.original });
+    tool(ctx, 'pronto', t('Pronto'), { icon: ICON.check, cls: 'back' });
+    tool(ctx, 'todas', t('Todas'), { icon: ICON.todas, on: S.todas });
+    tool(ctx, 'padrao', t('Padrão'), { icon: ICON.original });
     return;
   }
   tb.innerHTML = '';
   // Corte/Final virou o seletor do topo. Importar traz qualquer arquivo do celular e
   // pergunta o tipo (o + no fim da faixa abre a mesma escolha)
-  tool(tb, 'importar', 'Importar', { icon: ICON.mais });
-  if (ehMontagem()) tool(tb, 'modelos-montagem', 'Montagem', { icon: ICON.montagem, on: MT.aberto });
-  if (S.montagem) tool(tb, 'formato', 'Formato', { icon: ICON.formato, disabled: !hasVideo,
+  tool(tb, 'importar', t('Importar'), { icon: ICON.mais });
+  if (ehMontagem()) tool(tb, 'modelos-montagem', t('Montagem'), { icon: ICON.montagem, on: MT.aberto });
+  if (S.montagem) tool(tb, 'formato', t('Formato'), { icon: ICON.formato, disabled: !hasVideo,
     on: S.formato !== S.formatoAtual });
-  tool(tb, 'cortar', 'Cortar', { icon: ICON.corte, disabled: !hasVideo });
+  tool(tb, 'cortar', t('Cortar'), { icon: ICON.corte, disabled: !hasVideo });
   // no Final: escolhe tudo (imagem, som, legenda, efeitos) para mexer junto, como o Ctrl+A
-  if (S.view === 'final') tool(tb, 'selecionar', 'Selecionar', { disabled: !hasVideo });
-  tool(tb, 'audio', 'Áudio', { disabled: !hasVideo });
-  tool(tb, 'texto', 'Texto', { disabled: !hasVideo });
-  tool(tb, 'efeitos', 'Efeitos', { disabled: !hasVideo });
-  tool(tb, 'legenda', 'Legenda', { disabled: !hasVideo || !canStyle() });
-  tool(tb, 'estilo', 'Estilo', { disabled: !hasVideo || !canStyle() });
-  tool(tb, 'marcar', S.pendingIn != null ? 'Fim' : 'Marcar', { armed: S.pendingIn != null, disabled: !hasVideo });
+  if (S.view === 'final') tool(tb, 'selecionar', t('Selecionar'), { disabled: !hasVideo });
+  tool(tb, 'audio', t('Áudio'), { disabled: !hasVideo });
+  tool(tb, 'texto', t('Texto'), { disabled: !hasVideo });
+  tool(tb, 'efeitos', t('Efeitos'), { disabled: !hasVideo });
+  tool(tb, 'legenda', t('Legenda'), { disabled: !hasVideo || !canStyle() });
+  tool(tb, 'estilo', t('Estilo'), { disabled: !hasVideo || !canStyle() });
+  tool(tb, 'marcar', S.pendingIn != null ? t('Fim') : t('Marcar'), { armed: S.pendingIn != null, disabled: !hasVideo });
 
   ctx.innerHTML = '';
   if (imenu) { // Importar: o tipo do arquivo. Vídeo vai para a pasta dos vídeos (o agente corta);
     // imagem e áudio entram como camadas novas, na agulha (o servidor guarda em midia/)
-    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
-    tool(ctx, 'imp-video', 'Vídeo', { icon: ICON.final });
-    tool(ctx, 'imp-imagem', 'Imagem', { icon: ICON.imagem, disabled: !hasVideo && !ehMontagem() });
-    tool(ctx, 'imp-audio', 'Áudio', { icon: ICON.audio, disabled: !hasVideo && !ehMontagem() });
+    tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
+    tool(ctx, 'imp-video', t('Vídeo'), { icon: ICON.final });
+    tool(ctx, 'imp-imagem', t('Imagem'), { icon: ICON.imagem, disabled: !hasVideo && !ehMontagem() });
+    tool(ctx, 'imp-audio', t('Áudio'), { icon: ICON.audio, disabled: !hasVideo && !ehMontagem() });
     return;
   }
   if (amenu) { // Áudio: uma trilha da biblioteca do kit ou um arquivo do celular
-    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
-    tool(ctx, 'trilhas', 'Trilhas', { icon: ICON.audio });
+    tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
+    tool(ctx, 'trilhas', t('Trilhas'), { icon: ICON.audio });
     tool(ctx, 'do-celular', doAparelho(), { icon: ICON.enviar }); // no computador, "Do computador"
-    tool(ctx, 'melhorar-voz', 'Melhorar voz', { icon: ICON.voz });
+    tool(ctx, 'melhorar-voz', t('Melhorar voz'), { icon: ICON.voz });
     return;
   }
   if (tmenu) { // Texto: um texto solto na agulha, ou um modelo de dois ou três textos em fontes misturadas
-    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
-    tool(ctx, 'texto-novo', 'Texto', { icon: ICON.texto });
-    tool(ctx, 'modelos', 'Modelos', { icon: ICON.estilo });
+    tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
+    tool(ctx, 'texto-novo', t('Texto'), { icon: ICON.texto });
+    tool(ctx, 'modelos', t('Modelos'), { icon: ICON.estilo });
     return;
   }
   if (fmenu) { // Efeitos: filtro e fundo na tomada debaixo da agulha, transição no corte mais perto
-    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
-    tool(ctx, 'filtros', 'Filtros', { icon: ICON.filtro });
-    tool(ctx, 'transicoes', 'Transições', { icon: ICON.transicao });
-    tool(ctx, 'fundo', 'Fundo', { icon: ICON.fundo, disabled: !fundoPode() });
+    tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
+    tool(ctx, 'filtros', t('Filtros'), { icon: ICON.filtro });
+    tool(ctx, 'transicoes', t('Transições'), { icon: ICON.transicao });
+    tool(ctx, 'fundo', t('Fundo'), { icon: ICON.fundo, disabled: !fundoPode() });
     return;
   }
   if (bsel) { // a seleção em massa: o trecho de todas as faixas
     const f = fatorDaFaixa(bsel);
-    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
-    tool(ctx, 'vel-trecho', f == null ? 'Velocidade' : fmtVel(f), { icon: ICON.velocidade });
-    tool(ctx, 'vel-normal', 'Normal', { icon: ICON.original, disabled: f === 1 });
-    tool(ctx, 'tudo', 'Tudo', { disabled: faixaETudo(bsel) });
+    tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
+    tool(ctx, 'vel-trecho', f == null ? t('Velocidade') : fmtVel(f), { icon: ICON.velocidade });
+    tool(ctx, 'vel-normal', t('Normal'), { icon: ICON.original, disabled: f === 1 });
+    tool(ctx, 'tudo', t('Tudo'), { disabled: faixaETudo(bsel) });
     return;
   }
   if (fsel) { // um efeito escolhido na linha do tempo
-    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
+    tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
     if (fsel.tipo === 'filtro') tool(ctx, 'intensidade', `${Math.round(fxIntensidade(fsel) * 100)}%`);
-    if (fsel.tipo === 'ajuste') tool(ctx, 'ajustar', 'Ajustar');
-    tool(ctx, 'excluir', 'Excluir', { icon: ICON.remover });
+    if (fsel.tipo === 'ajuste') tool(ctx, 'ajustar', t('Ajustar'));
+    tool(ctx, 'excluir', t('Excluir'), { icon: ICON.remover });
     return;
   }
   if (isel) { // um bloco da Fase 2: segurar move, as alças aparam; "Original" volta ao tempo do agente
-    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
+    tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
     const dq = destaqueDoBloco(isel);
     if (dq) {
-      tool(ctx, 'cena-texto', 'Texto', { icon: ICON.texto });
-      tool(ctx, 'cena-lugar', 'Centralizar', { icon: ICON.mover, disabled: Math.round(blocoDaCena(dq).x) === FRAME_W / 2 });
+      tool(ctx, 'cena-texto', t('Texto'), { icon: ICON.texto });
+      tool(ctx, 'cena-lugar', t('Centralizar'), { icon: ICON.mover, disabled: Math.round(blocoDaCena(dq).x) === FRAME_W / 2 });
     }
-    tool(ctx, 'f2-original', 'Original', { icon: ICON.original, disabled: !insMudou(isel) && !(dq && cenaMudou(dq)) });
+    tool(ctx, 'f2-original', t('Original'), { icon: ICON.original, disabled: !insMudou(isel) && !(dq && cenaMudou(dq)) });
     return;
   }
   if (csel) { // um efeito: o tempo segue a tomada; o bloco se arrasta na prévia; o Fundo troca a imagem
-    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
-    if (csel.tipo === 'fundo') tool(ctx, 'fundo', 'Fundo', { icon: ICON.fundo });
-    tool(ctx, 'cena-liga', csel.desligada ? 'Ligar' : 'Desligar', { icon: csel.desligada ? ICON.olhoFechado : ICON.olho });
-    if (Object.keys(csel.textos).length) tool(ctx, 'cena-texto', 'Texto', { icon: ICON.texto, disabled: csel.desligada });
-    if (CENA_BLOCO[csel.tipo]) tool(ctx, 'cena-lugar', 'Centralizar', { icon: ICON.mover, disabled: csel.desligada || Math.round(blocoDaCena(csel).x) === FRAME_W / 2 });
+    tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
+    if (csel.tipo === 'fundo') tool(ctx, 'fundo', t('Fundo'), { icon: ICON.fundo });
+    tool(ctx, 'cena-liga', csel.desligada ? t('Ligar') : t('Desligar'), { icon: csel.desligada ? ICON.olhoFechado : ICON.olho });
+    if (Object.keys(csel.textos).length) tool(ctx, 'cena-texto', t('Texto'), { icon: ICON.texto, disabled: csel.desligada });
+    if (CENA_BLOCO[csel.tipo]) tool(ctx, 'cena-lugar', t('Centralizar'), { icon: ICON.mover, disabled: csel.desligada || Math.round(blocoDaCena(csel).x) === FRAME_W / 2 });
     // o Fundo criado aqui não tem um original para onde voltar: sai da tomada
-    if (csel.nova) tool(ctx, 'excluir', 'Excluir', { icon: ICON.remover });
-    else tool(ctx, 'cena-original', 'Original', { icon: ICON.original, disabled: !cenaMudou(csel) });
+    if (csel.nova) tool(ctx, 'excluir', t('Excluir'), { icon: ICON.remover });
+    else tool(ctx, 'cena-original', t('Original'), { icon: ICON.original, disabled: !cenaMudou(csel) });
     return;
   }
   if (lgsel) { // a legenda do vídeo final: o texto dela, acompanhar a pessoa e o lugar das frases
-    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
-    tool(ctx, 'leg-texto', 'Texto', { icon: ICON.texto });
-    tool(ctx, 'leg-segue', 'Acompanhar', { icon: ICON.alvo, on: S.legenda.acompanhar });
-    tool(ctx, 'leg-posicao', 'Posição', { icon: ICON.mover, disabled: !S.style || !S.style.captions || S.style.captions === 'none' });
-    tool(ctx, 'leg-original', 'Original', { icon: ICON.original, disabled: !legendaMudou() });
+    tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
+    tool(ctx, 'leg-texto', t('Texto'), { icon: ICON.texto });
+    tool(ctx, 'leg-segue', t('Acompanhar'), { icon: ICON.alvo, on: S.legenda.acompanhar });
+    tool(ctx, 'leg-posicao', t('Posição'), { icon: ICON.mover, disabled: !S.style || !S.style.captions || S.style.captions === 'none' });
+    tool(ctx, 'leg-original', t('Original'), { icon: ICON.original, disabled: !legendaMudou() });
     return;
   }
   if (zsel) { // o zoom de uma tomada no vídeo final
     const z = S.zoomDraft[S.zoomSel];
-    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
+    tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
     tool(ctx, 'zoom-valor', `${Math.round(z * 100)}%`, { icon: ICON.lupa });
-    tool(ctx, 'zoom-sem', 'Sem zoom', { icon: ICON.semZoom, disabled: Math.abs(z - 1) < 0.005 });
-    tool(ctx, 'zoom-original', 'Original', { icon: ICON.original, disabled: z === S.zoomOrig[S.zoomSel] });
+    tool(ctx, 'zoom-sem', t('Sem zoom'), { icon: ICON.semZoom, disabled: Math.abs(z - 1) < 0.005 });
+    tool(ctx, 'zoom-original', t('Original'), { icon: ICON.original, disabled: z === S.zoomOrig[S.zoomSel] });
     return;
   }
   if (lsel) { // um item de camada escolhido
     const aud = lsel.f.tipo === 'audio';
-    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
+    tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
     if (lsel.f.tipo === 'texto') {
-      tool(ctx, 'texto-editar', 'Editar', { icon: ICON.texto });
-      tool(ctx, 'atras', 'Atrás da pessoa', { icon: ICON.pessoa, on: lsel.it.atras });
-      tool(ctx, 'texto-segue', 'Acompanhar', { icon: ICON.alvo, on: lsel.it.acompanhar });
+      tool(ctx, 'texto-editar', t('Editar'), { icon: ICON.texto });
+      tool(ctx, 'atras', t('Atrás da pessoa'), { icon: ICON.pessoa, on: lsel.it.atras });
+      tool(ctx, 'texto-segue', t('Acompanhar'), { icon: ICON.alvo, on: lsel.it.acompanhar });
     }
-    if (lsel.f.tipo === 'imagem') tool(ctx, 'atras', 'Atrás da pessoa', { icon: ICON.pessoa, on: !!lsel.it.atras });
+    if (lsel.f.tipo === 'imagem') tool(ctx, 'atras', t('Atrás da pessoa'), { icon: ICON.pessoa, on: !!lsel.it.atras });
     if (aud) {
       tool(ctx, 'volume', `${Math.round(lsel.it.volume * 100)}%`);
       // Melhorar é a cadeia de voz (tira ruído): numa música da biblioteca só estragaria
-      if (!lsel.it.trilha) tool(ctx, 'melhorar', 'Melhorar', { on: lsel.it.melhorar });
+      if (!lsel.it.trilha) tool(ctx, 'melhorar', t('Melhorar'), { on: lsel.it.melhorar });
     }
-    tool(ctx, 'duplicar', 'Duplicar');
-    tool(ctx, 'excluir', 'Excluir', { icon: ICON.remover });
+    tool(ctx, 'duplicar', t('Duplicar'));
+    tool(ctx, 'excluir', t('Excluir'), { icon: ICON.remover });
     return;
   }
   if (sel && emLugar(sel)) { // um lugar da montagem: a mídia e o trecho mudam, a duração não
     const op = opcaoDe(lugarAgora(sel).midia);
-    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
-    tool(ctx, 'lugar-trocar', 'Trocar', { icon: ICON.trocar });
-    tool(ctx, 'lugar-trecho', 'Trecho', { icon: ICON.trecho, disabled: !(op && op.tipo === 'video') });
+    tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
+    tool(ctx, 'lugar-trocar', t('Trocar'), { icon: ICON.trocar });
+    tool(ctx, 'lugar-trecho', t('Trecho'), { icon: ICON.trecho, disabled: !(op && op.tipo === 'video') });
     // o volume do clipe só vale com o som dos clipes ligado (o da faixa de vídeo)
     if (!S.camadas.video.mudo) tool(ctx, 'volume', `${Math.round(sel.vol * 100)}%`);
-    tool(ctx, 'ouvir', 'Ouvir');
-    tool(ctx, 'lugar-caber', 'Caber', { icon: ICON.formato });
-    tool(ctx, 'lugar-encher', 'Encher', { icon: ICON.formato });
-    tool(ctx, 'lugar-auto', 'Automático', { icon: ICON.formato, disabled: !enqDoLugar(sel) });
+    tool(ctx, 'ouvir', t('Ouvir'));
+    tool(ctx, 'lugar-caber', t('Caber'), { icon: ICON.formato });
+    tool(ctx, 'lugar-encher', t('Encher'), { icon: ICON.formato });
+    tool(ctx, 'lugar-auto', t('Automático'), { icon: ICON.formato, disabled: !enqDoLugar(sel) });
     const outras = outrasVezes(sel).length;
-    tool(ctx, 'lugar-repetir', outras ? `Repetir (${outras})` : 'Repetir', { icon: ICON.formato, disabled: !outras });
-    tool(ctx, 'lugar-original', 'Original', { icon: ICON.original, disabled: !sel.troca });
+    tool(ctx, 'lugar-repetir', outras ? t('Repetir ({outras})', { outras }) : t('Repetir'), { icon: ICON.formato, disabled: !outras });
+    tool(ctx, 'lugar-original', t('Original'), { icon: ICON.original, disabled: !sel.troca });
     return;
   }
   if (sel) {
-    tool(ctx, 'voltar', 'Voltar', { cls: 'back' });
-    tool(ctx, 'dividir', 'Dividir');
-    tool(ctx, 'duplicar', 'Duplicar');
+    tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
+    tool(ctx, 'dividir', t('Dividir'));
+    tool(ctx, 'duplicar', t('Duplicar'));
     tool(ctx, 'volume', `${Math.round(sel.vol * 100)}%`);
     tool(ctx, 'velocidade', sel.curva ? nomeCurva(sel.curva.nome) : fmtVel(sel.vel));
-    tool(ctx, 'ajustar', 'Ajustar');
-    tool(ctx, 'excluir', 'Excluir', { icon: ICON.remover, disabled: S.draft.length < 2 });
-    tool(ctx, 'ouvir', 'Ouvir');
+    tool(ctx, 'ajustar', t('Ajustar'));
+    tool(ctx, 'excluir', t('Excluir'), { icon: ICON.remover, disabled: S.draft.length < 2 });
+    tool(ctx, 'ouvir', t('Ouvir'));
     // "Original" volta às bordas que o agente cortou; pedaço novo não tem
-    tool(ctx, 'original', 'Original', { disabled: !sel.orig || (sel.start === sel.orig.start && sel.end === sel.orig.end) });
+    tool(ctx, 'original', t('Original'), { disabled: !sel.orig || (sel.start === sel.orig.start && sel.end === sel.orig.end) });
   }
 }
 
@@ -2530,7 +2530,7 @@ document.addEventListener('click', (e) => {
     case 'todas':
       S.todas = !S.todas;
       renderToolbar();
-      flashName(`<span>${S.todas ? 'Todas: mexer em uma mexe em todas' : 'Só a frase que está na tela'}</span>`, 1800);
+      flashName(`<span>${S.todas ? t('Todas: mexer em uma mexe em todas') : t('Só a frase que está na tela')}</span>`, 1800);
       break;
     case 'padrao': resetSpot(); break;
     default: break;
@@ -2562,7 +2562,7 @@ function splitSelected() {
   if (emLugar(S.draft[i])) { avisaLugar(); return; }
   const d = draftLayout()[i];
   if (!d || S.t <= d.out + MIN_SEG || S.t >= d.out + d.dur - MIN_SEG) {
-    toast('Ponha a agulha dentro da tomada para dividir', 2400);
+    toast(t('Ponha a agulha dentro da tomada para dividir'), 2400);
     return;
   }
   const r = S.draft[i];
@@ -2610,7 +2610,7 @@ async function openTroca() {
   video.pause();
   LT.aberto = true;
   LT.uid = r.uid;
-  $('lugarTitulo').textContent = `Trocar o lugar ${r.vaga}`;
+  $('lugarTitulo').textContent = t('Trocar o lugar {vaga}', { vaga: r.vaga });
   showSheet($('lugarSheet'), true);
   renderTroca();
   await carregaMontMidias(); // de novo: pode ter chegado mídia nova
@@ -2627,7 +2627,7 @@ function renderTroca() {
   if (!r) return;
   const agora = lugarAgora(r);
   el('p', 'sheet-hint', box).textContent = S.montMidias
-    ? `Toque numa foto ou vídeo: entra no lugar ${r.vaga} com a mesma duração, na batida.` : 'Carregando as mídias…';
+    ? t('Toque numa foto ou vídeo: entra no lugar {vaga} com a mesma duração, na batida.', { vaga: r.vaga }) : t('Carregando as mídias…');
   const grade = el('div', 'mod-grade troca-grade', box);
   for (const m of S.montMidias || []) {
     const b = el('button', 'mod-card troca-card', grade);
@@ -2644,7 +2644,7 @@ function renderTroca() {
   mais.type = 'button';
   mais.dataset.trocaMais = '1';
   mais.innerHTML = ICON.mais;
-  el('span', 'mod-nome', mais).textContent = 'Do aparelho';
+  el('span', 'mod-nome', mais).textContent = t('Do aparelho');
 }
 function escolheTroca(midia) {
   const r = tomadaPorUid(LT.uid);
@@ -2656,7 +2656,7 @@ function escolheTroca(midia) {
   if (trocaKey(r) === k) return;
   remember(antes);
   renderTimeline(); renderToolbar(); refreshHeader();
-  if (r.troca) toast(`Lugar ${r.vaga}: ${r.troca.nome}. Salve: o agente refaz só este lugar.`, 3000);
+  if (r.troca) toast(t('Lugar {vaga}: {nome}. Salve: o agente refaz só este lugar.', { vaga: r.vaga, nome: r.troca.nome }), 3000);
 }
 $('lugarClose').innerHTML = ICON.fechar;
 $('lugarClose').addEventListener('click', closeTroca);
@@ -2688,7 +2688,7 @@ const MT_PREV = new Audio();
 const ehMontagem = () => !!(S.montagem || (S.state && S.state.montagem));
 const montagemSemVideo = () => ehMontagem() && !(S.videoDuration > 0);
 const modeloEscolhido = () => (MT.modelos || []).find((m) => m.id === MT.sel) || null;
-const doAparelho = () => (isDesk() ? 'Do computador' : 'Do celular');
+const doAparelho = () => (isDesk() ? t('Do computador') : t('Do celular'));
 const semExt = (nome) => String(nome || '').replace(/\.[^.]+$/, '');
 const ehAudio = (f) => /\.(mp3|m4a|aac|wav|ogg|opus|flac|weba)$/i.test(f.name); // os de camadas.AUDIO_EXTS
 async function carregaMontagens() {
@@ -2711,7 +2711,7 @@ async function carregaComunidade(mais) {
   try {
     const r = await fetch(`/api/mural${mais && c.seguinte ? `?antes=${encodeURIComponent(c.seguinte)}` : ''}`);
     const d = await r.json();
-    if (!r.ok) throw new Error(d.error || `erro ${r.status}`);
+    if (!r.ok) throw new Error(d.error || t('erro {status}', { status: r.status }));
     c.modelos = mais ? [...c.modelos, ...d.modelos.filter((x) => !c.modelos.some((y) => y.id === x.id))] : d.modelos;
     c.seguinte = d.seguinte;
   } catch (e) { c.erro = e.message; }
@@ -2728,12 +2728,12 @@ async function pegaDoMural(codigo) {
     const r = await fetch('/api/mural/pegar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ codigo }) });
     const d = await r.json();
-    if (!d.ok) throw new Error(d.error || `erro ${r.status}`);
+    if (!d.ok) throw new Error(d.error || t('erro {status}', { status: r.status }));
     await carregaMontagens();
     MT.sel = d.modelo.id;
     MT.aba = 'meus';
-    toast(`"${d.modelo.nome}"${m && m.autor ? `, de @${m.autor},` : ''} está nos seus modelos. Toque em Próximo para escolher a música.`, 4500);
-  } catch (e) { toast(`Não trouxe o modelo: ${e.message}`, 4500); }
+    toast(t('"{nome}"{p1} está nos seus modelos. Toque em Próximo para escolher a música.', { nome: d.modelo.nome, p1: m && m.autor ? t(', de @{autor},', { autor: m.autor }) : '' }), 4500);
+  } catch (e) { toast(t('Não trouxe o modelo: {message}', { message: e.message }), 4500); }
   MT.pegando = null;
   if (MT.aberto) renderMontagem();
 }
@@ -2761,10 +2761,10 @@ function fechaMontagem() {
   renderToolbar();
 }
 function resumoMontagem(m) {
-  const b = [`${m.lugares} ${m.lugares === 1 ? 'lugar' : 'lugares'}`, `${m.batidas} batidas`];
-  if (m.textos.length) b.push(m.textos.length === 1 ? '1 texto' : `${m.textos.length} textos`);
-  if (m.transicoes) b.push(m.transicoes === 1 ? '1 transição' : `${m.transicoes} transições`);
-  if (m.doKit) b.push('do kit');
+  const b = [m.lugares === 1 ? t('1 lugar') : t('{lugares} lugares', { lugares: m.lugares }), t('{batidas} batidas', { batidas: m.batidas })];
+  if (m.textos.length) b.push(m.textos.length === 1 ? t('1 texto') : t('{length} textos', { length: m.textos.length }));
+  if (m.transicoes) b.push(m.transicoes === 1 ? t('1 transição') : t('{transicoes} transições', { transicoes: m.transicoes }));
+  if (m.doKit) b.push(t('do kit'));
   return b.join(' · ');
 }
 // a capa é o ritmo: uma barra por lugar, na largura das batidas dele, mais alta do drop em diante;
@@ -2790,7 +2790,7 @@ function renderMontagem() {
   if (MT.passo !== 'modelos' && !modeloEscolhido()) MT.passo = 'modelos';
   body.innerHTML = '';
   const passo = MT.passo;
-  $('montTitulo').textContent = passo === 'musica' ? 'A música' : passo === 'midias' ? 'As fotos e clipes' : 'Modelos de montagem';
+  $('montTitulo').textContent = passo === 'musica' ? t('A música') : passo === 'midias' ? t('As fotos e clipes') : t('Modelos de montagem');
   if (passo === 'musica') renderMontMusica(body);
   else if (passo === 'midias') renderMontMidias(body);
   else renderMontModelos(body);
@@ -2802,27 +2802,27 @@ function renderMontagem() {
   $('montVoltar').classList.toggle('invisivel', passo === 'modelos');
   const seguir = $('montSeguir');
   if (passo === 'modelos' && MT.mural && MT.aba === 'comunidade') {
-    $('montConta').textContent = 'Toque num modelo';
-    seguir.textContent = 'Próximo';
+    $('montConta').textContent = t('Toque num modelo');
+    seguir.textContent = t('Próximo');
     seguir.disabled = true;
   } else if (passo === 'modelos') {
-    $('montConta').textContent = m ? m.nome : 'Escolha um modelo';
-    seguir.textContent = 'Próximo';
+    $('montConta').textContent = m ? m.nome : t('Escolha um modelo');
+    seguir.textContent = t('Próximo');
     seguir.disabled = !m;
   } else if (passo === 'musica') {
-    $('montConta').textContent = MT.musica ? semExt(nomeArq(MT.musica)) : 'Escolha a música';
-    seguir.textContent = 'Próximo';
+    $('montConta').textContent = MT.musica ? semExt(nomeArq(MT.musica)) : t('Escolha a música');
+    seguir.textContent = t('Próximo');
     seguir.disabled = !MT.musica;
   } else {
-    $('montConta').textContent = `${MT.midias.length} de ${m.lugares}`;
-    seguir.textContent = MT.enviando ? 'Enviando…' : 'Montar';
+    $('montConta').textContent = t('{length} de {lugares}', { length: MT.midias.length, lugares: m.lugares });
+    seguir.textContent = MT.enviando ? t('Enviando…') : t('Montar');
     seguir.disabled = !MT.midias.length || MT.enviando;
   }
 }
 function renderMontModelos(body) {
   if (MT.mural) { // com o mural ligado: os seus e os do kit, ou os da comunidade
     const abas = el('div', 'subtabs mt-abas', body);
-    for (const [k, nome] of [['meus', 'Seus e do kit'], ['comunidade', 'Da comunidade']]) {
+    for (const [k, nome] of [['meus', t('Seus e do kit')], ['comunidade', t('Da comunidade')]]) {
       const b = el('button', `subtab${MT.aba === k ? ' on' : ''}`, abas);
       b.type = 'button';
       b.dataset.mtAba = k;
@@ -2835,23 +2835,23 @@ function renderMontModelos(body) {
     if (MT.guardando) {
       const form = el('form', 'mod-salvar', linha);
       const inp = el('input', '', form);
-      inp.type = 'text'; inp.maxLength = 60; inp.placeholder = 'Nome do modelo (ex.: Viagem rápida)';
-      inp.setAttribute('aria-label', 'Nome do modelo de montagem');
+      inp.type = 'text'; inp.maxLength = 60; inp.placeholder = t('Nome do modelo (ex.: Viagem rápida)');
+      inp.setAttribute('aria-label', t('Nome do modelo de montagem'));
       const ok = el('button', 'tb-btn primary', form);
-      ok.type = 'submit'; ok.textContent = 'Guardar';
+      ok.type = 'submit'; ok.textContent = t('Guardar');
       form.addEventListener('submit', (e) => { e.preventDefault(); guardaMontagem(inp.value); });
       setTimeout(() => inp.focus(), 50);
     } else {
       const b = el('button', 'tb-btn ghost mt-guardar-btn', linha);
       b.type = 'button';
       b.dataset.mtGuardar = '1';
-      b.textContent = 'Guardar esta montagem como modelo';
+      b.textContent = t('Guardar esta montagem como modelo');
     }
   }
-  if (!MT.modelos) { el('p', 'sheet-hint', body).textContent = 'Carregando os modelos…'; return; }
+  if (!MT.modelos) { el('p', 'sheet-hint', body).textContent = t('Carregando os modelos…'); return; }
   el('p', 'sheet-hint', body).textContent = S.montagem
-    ? 'Outro modelo refaz a montagem inteira. Escolha um, a música e as fotos e clipes.'
-    : 'Cada modelo é um ritmo: uma barra por lugar, na largura das batidas, mais alta do drop em diante. Escolha um.';
+    ? t('Outro modelo refaz a montagem inteira. Escolha um, a música e as fotos e clipes.')
+    : t('Cada modelo é um ritmo: uma barra por lugar, na largura das batidas, mais alta do drop em diante. Escolha um.');
   const grid = el('div', 'cards wide mt-grade', body);
   for (const m of MT.modelos) {
     const card = el('button', `card mt-card${MT.sel === m.id ? ' on' : ''}`, grid);
@@ -2864,18 +2864,18 @@ function renderMontModelos(body) {
       ver.dataset.mtPrevia = m.previa;
       ver.dataset.nome = m.nome;
       ver.innerHTML = ICON.play;
-      ver.title = 'Ver o exemplo';
+      ver.title = t('Ver o exemplo');
     }
     if (!m.doKit) {
       const del = el('span', 'c-del', face);
       del.dataset.mtApagar = m.id;
       del.innerHTML = ICON.remover;
-      del.title = 'Apagar o modelo';
+      del.title = t('Apagar o modelo');
       if (MT.mural) {
         const sh = el('span', 'c-share', face);
         sh.dataset.mtCompartilhar = m.id;
         sh.innerHTML = ICON.compartilhar;
-        sh.title = 'Compartilhar no mural';
+        sh.title = t('Compartilhar no mural');
       }
     }
     el('div', 'c-name', card).textContent = m.nome;
@@ -2901,13 +2901,13 @@ function verExemplo(pid, nome) {
   const x = el('button', 'sh-close', topo);
   x.type = 'button';
   x.innerHTML = ICON.fechar;
-  x.setAttribute('aria-label', 'Fechar o exemplo');
+  x.setAttribute('aria-label', t('Fechar o exemplo'));
   x.addEventListener('click', () => d.close());
   const v = el('video', 'mt-exemplo-video', d);
   v.controls = true; v.playsInline = true; v.autoplay = true; v.muted = !!S.mudoUsuario;
   const aviso = el('p', 'sheet-hint', d);
-  aviso.textContent = 'No seu vídeo, as suas fotos e vídeos entram no lugar destas imagens. A batida é do kit.';
-  v.addEventListener('error', () => { aviso.textContent = 'O exemplo não baixou agora. Confira a internet e tente de novo.'; });
+  aviso.textContent = t('No seu vídeo, as suas fotos e vídeos entram no lugar destas imagens. A batida é do kit.');
+  v.addEventListener('error', () => { aviso.textContent = t('O exemplo não baixou agora. Confira a internet e tente de novo.'); });
   v.src = `/gen/pacote-previa?id=${encodeURIComponent(pid)}`;
   d.showModal();
 }
@@ -2918,16 +2918,16 @@ function linkExterno(host, href, texto) {
 }
 function renderComunidade(body) {
   const c = MT.com;
-  el('p', 'sheet-hint', body).textContent = 'Modelos que outras pessoas publicaram no mural. Toque num para trazer '
-    + 'para os seus; depois é só escolher a música e as fotos e clipes.';
-  if (!c || (c.carregando && !c.modelos.length)) { el('p', 'sheet-hint', body).textContent = 'Carregando o mural…'; return; }
+  el('p', 'sheet-hint', body).textContent = t('Modelos que outras pessoas publicaram no mural. Toque num para trazer ')
+    + t('para os seus; depois é só escolher a música e as fotos e clipes.');
+  if (!c || (c.carregando && !c.modelos.length)) { el('p', 'sheet-hint', body).textContent = t('Carregando o mural…'); return; }
   if (c.erro && !c.modelos.length) {
-    el('p', 'sheet-hint', body).textContent = `O mural não abriu: ${c.erro}.`;
+    el('p', 'sheet-hint', body).textContent = t('O mural não abriu: {erro}.', { erro: c.erro });
     const de = el('button', 'tb-btn ghost mt-mais', body);
-    de.type = 'button'; de.dataset.mtComRecarregar = '1'; de.textContent = 'Tentar de novo';
+    de.type = 'button'; de.dataset.mtComRecarregar = '1'; de.textContent = t('Tentar de novo');
     return;
   }
-  if (!c.modelos.length) { el('p', 'sheet-hint', body).textContent = 'Ninguém publicou um modelo ainda.'; return; }
+  if (!c.modelos.length) { el('p', 'sheet-hint', body).textContent = t('Ninguém publicou um modelo ainda.'); return; }
   const grid = el('div', 'cards wide mt-grade', body);
   for (const m of c.modelos) {
     const card = el('div', `card mt-card mt-com${MT.pegando === m.id ? ' pegando' : ''}`, grid);
@@ -2938,19 +2938,19 @@ function renderComunidade(body) {
     const face = el('div', 'face mt-face', b);
     capaRitmo(face, m);
     el('span', 'mt-fmt', face).textContent = m.formato;
-    el('div', 'c-name', b).textContent = MT.pegando === m.id ? 'Trazendo…' : m.nome;
+    el('div', 'c-name', b).textContent = MT.pegando === m.id ? t('Trazendo…') : m.nome;
     el('div', 'c-sub', b).textContent = resumoMontagem(m);
     if (m.autor || m.post) { // quem fez e o post em que ela usou: abrem no Instagram, TikTok ou YouTube
       const quem = el('div', 'c-sub mt-quem', card);
       if (m.autor) linkExterno(quem, m.perfil, `@${m.autor}`);
       if (m.autor && m.post) quem.append(' · ');
-      if (m.post) linkExterno(quem, m.post, 'ver o post');
+      if (m.post) linkExterno(quem, m.post, t('ver o post'));
     }
   }
   if (c.seguinte) {
     const mais = el('button', 'tb-btn ghost mt-mais', body);
     mais.type = 'button'; mais.dataset.mtComMais = '1';
-    mais.textContent = c.carregando ? 'Carregando…' : 'Ver mais';
+    mais.textContent = c.carregando ? t('Carregando…') : t('Ver mais');
     mais.disabled = c.carregando;
   }
 }
@@ -2965,7 +2965,7 @@ function linhaMusica(host, o) {
   play.dataset.act = 'ouvir';
   play.disabled = !o.previa;
   play.innerHTML = tocando ? ICON.pause : ICON.play;
-  play.setAttribute('aria-label', `${tocando ? 'Parar' : 'Ouvir'} ${o.nome}`);
+  play.setAttribute('aria-label', `${tocando ? t('Parar') : t('Ouvir')} ${o.nome}`);
   const txt = el('div', 'tr-txt', row);
   el('b', null, txt).textContent = o.nome;
   el('span', null, txt).textContent = o.info;
@@ -2973,17 +2973,17 @@ function linhaMusica(host, o) {
     const usar = el('button', 'tb-btn primary tr-usar', row);
     usar.type = 'button';
     usar.dataset.act = 'usar';
-    usar.textContent = MT.baixando === o.trilha ? 'Baixando…' : 'Usar';
+    usar.textContent = MT.baixando === o.trilha ? t('Baixando…') : t('Usar');
     usar.disabled = !!MT.baixando;
   } else if (o.on) el('span', 'mt-check', row).innerHTML = ICON.check;
 }
 function renderMontMusica(body) {
-  el('p', 'sheet-hint', body).textContent = 'A montagem segue a batida da música. Toque numa para ouvir e escolher.';
+  el('p', 'sheet-hint', body).textContent = t('A montagem segue a batida da música. Toque numa para ouvir e escolher.');
   const lista = el('div', 'tr-lista mt-musicas', body);
-  if (!MT.audios) el('p', 'sheet-hint', lista).textContent = 'Carregando…';
-  else if (!MT.audios.length) el('p', 'sheet-hint', lista).textContent = 'Nenhuma música no projeto ainda.';
+  if (!MT.audios) el('p', 'sheet-hint', lista).textContent = t('Carregando…');
+  else if (!MT.audios.length) el('p', 'sheet-hint', lista).textContent = t('Nenhuma música no projeto ainda.');
   for (const a of MT.audios || []) {
-    linhaMusica(lista, { id: a.arquivo, nome: semExt(a.nome), info: 'no projeto', on: MT.musica === a.arquivo,
+    linhaMusica(lista, { id: a.arquivo, nome: semExt(a.nome), info: t('no projeto'), on: MT.musica === a.arquivo,
       previa: `/media/${a.arquivo.split('/').map(encodeURIComponent).join('/')}` });
   }
   const enviar = el('button', 'tb-btn ghost mt-enviar', body);
@@ -2991,11 +2991,11 @@ function renderMontMusica(body) {
   enviar.dataset.mtEnviar = 'musica';
   enviar.innerHTML = `${ICON.enviar}<span>${doAparelho()}</span>`;
   if (!(S.trilhas || []).length) return;
-  el('b', 'mt-sec', body).textContent = 'Da biblioteca';
+  el('b', 'mt-sec', body).textContent = t('Da biblioteca');
   const bib = el('div', 'tr-lista mt-musicas', body);
   for (const p of S.trilhas) {
     linhaMusica(bib, { id: `trilha:${p.id}`, trilha: p.id, nome: p.nome, on: MT.trSel === p.id,
-      info: [p.clima, fmtDur(p.duracao), p.baixado ? 'no computador' : ''].filter(Boolean).join(' · '),
+      info: [p.clima, fmtDur(p.duracao), p.baixado ? t('no computador') : ''].filter(Boolean).join(' · '),
       previa: p.previa ? `/gen/pacote-previa?id=${encodeURIComponent(p.id)}` : '' });
   }
 }
@@ -3006,17 +3006,17 @@ function renderMontMidias(body) {
     const tem = new Set(ops.map((o) => o.midia));
     MT.midias = MT.midias.filter((k) => tem.has(k));
   }
-  el('b', 'mt-sec', body).textContent = 'Formato do vídeo';
+  el('b', 'mt-sec', body).textContent = t('Formato do vídeo');
   gradeDeFormatos(body, formatoDaMontagemNova(), (k) => { MT.formato = k; renderMontagem(); });
-  el('p', 'sheet-hint', body).textContent = !S.montMidias ? 'Carregando as fotos e clipes…'
-    : `Toque na ordem em que elas entram. O modelo tem ${m.lugares} ${m.lugares === 1 ? 'lugar' : 'lugares'}: `
-      + 'com menos fotos e clipes, eles se repetem em ordem; com mais, os que sobram ficam de fora.';
+  el('p', 'sheet-hint', body).textContent = !S.montMidias ? t('Carregando as fotos e clipes…')
+    : t('Toque na ordem em que elas entram. O modelo tem {lugares} {p1}: ', { lugares: m.lugares, p1: m.lugares === 1 ? t('lugar') : t('lugares') })
+      + t('com menos fotos e clipes, eles se repetem em ordem; com mais, os que sobram ficam de fora.');
   if (ops.length > 1) {
     const acoes = el('div', 'subtabs mt-acoes', body);
     const todas = el('button', 'subtab', acoes);
     todas.type = 'button';
     todas.dataset.mtTodas = '1';
-    todas.textContent = MT.midias.length === ops.length ? 'Nenhuma' : 'Todas, na ordem';
+    todas.textContent = MT.midias.length === ops.length ? t('Nenhuma') : t('Todas, na ordem');
   }
   const grade = el('div', 'mod-grade troca-grade mt-midias', body);
   for (const o of ops) {
@@ -3066,13 +3066,13 @@ async function baixaTrilha(id) {
     const r = await fetch('/api/pacotes/usar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }) });
     const d = await r.json();
-    if (!r.ok) throw new Error(d.error || `erro ${r.status}`);
+    if (!r.ok) throw new Error(d.error || t('erro {status}', { status: r.status }));
     const p = (S.trilhas || []).find((x) => x.id === id);
     if (p) p.baixado = true;
     MT.musica = d.arquivo;
     MT.trSel = null;
     await carregaMusicas();
-  } catch (e) { toast(`A trilha não baixou: ${e.message}`, 3600); }
+  } catch (e) { toast(t('A trilha não baixou: {message}', { message: e.message }), 3600); }
   MT.baixando = null;
   if (MT.aberto) renderMontagem();
 }
@@ -3096,30 +3096,30 @@ function proximoEnvioMontagem() {
 }
 function guardarComo() {
   const n = dirtyCount();
-  if (n) { toast(`Salve ou descarte ${n === 1 ? 'o ajuste' : `os ${n} ajustes`} antes: o modelo sai da montagem salva.`, 4200); return; }
-  if (S.savedPending) { toast('Espere o agente aplicar o último Salvar: o modelo sai da montagem como ela está no vídeo.', 4500); return; }
+  if (n) { toast(t('Salve ou descarte {p0} antes: o modelo sai da montagem salva.', { p0: n === 1 ? t('o ajuste') : t('os {n} ajustes', { n }) }), 4200); return; }
+  if (S.savedPending) { toast(t('Espere o agente aplicar o último Salvar: o modelo sai da montagem como ela está no vídeo.'), 4500); return; }
   MT.guardando = true;
   renderMontagem();
 }
 async function guardaMontagem(nome) {
   nome = String(nome || '').trim();
-  if (!nome) { toast('Dê um nome ao modelo', 2200); return; }
+  if (!nome) { toast(t('Dê um nome ao modelo'), 2200); return; }
   try {
     const r = await fetch('/api/montagens', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nome }) });
     const d = await r.json();
-    if (!d.ok) throw new Error(d.error || `erro ${r.status}`);
+    if (!d.ok) throw new Error(d.error || t('erro {status}', { status: r.status }));
     MT.guardando = false;
     MT.sel = d.modelo.id;
     await carregaMontagens();
     renderMontagem();
     const avisos = (d.avisos || []).map((a) => a.charAt(0).toUpperCase() + a.slice(1)).join('. ');
-    toast(`Modelo "${d.modelo.nome}" guardado (${resumoMontagem(d.modelo)}).${avisos ? ` ${avisos}.` : ''}`, avisos ? 6500 : 3600);
-  } catch (e) { toast(`Não guardei o modelo: ${e.message}`, 4500); }
+    toast(t('Modelo "{nome}" guardado ({p1}).{p2}', { nome: d.modelo.nome, p1: resumoMontagem(d.modelo), p2: avisos ? ` ${avisos}.` : '' }), avisos ? 6500 : 3600);
+  } catch (e) { toast(t('Não guardei o modelo: {message}', { message: e.message }), 4500); }
 }
 async function apagaMontagem(id) {
   const m = (MT.modelos || []).find((x) => x.id === id);
-  if (!m || !confirm(`Apagar o modelo de montagem "${m.nome}"? As montagens já feitas com ele não mudam.`)) return;
+  if (!m || !confirm(t('Apagar o modelo de montagem "{nome}"? As montagens já feitas com ele não mudam.', { nome: m.nome }))) return;
   try {
     const d = await (await fetch('/api/montagens/apagar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }) })).json();
@@ -3127,16 +3127,16 @@ async function apagaMontagem(id) {
     if (MT.sel === id) MT.sel = null;
     await carregaMontagens();
     renderMontagem();
-  } catch (e) { toast(`Não apaguei: ${e.message}`, 3600); }
+  } catch (e) { toast(t('Não apaguei: {message}', { message: e.message }), 3600); }
 }
 // o Montar: vai pelo Salvar, sozinho (a montagem nova refaz o projeto inteiro)
 async function pedeMontagem() {
   const m = modeloEscolhido();
   if (!m || !MT.musica || !MT.midias.length || MT.enviando) return;
   const n = dirtyCount();
-  if (n) { toast(`Salve ou descarte ${n === 1 ? 'o ajuste' : `os ${n} ajustes`} antes: a montagem nova refaz o projeto inteiro.`, 4500); return; }
-  if (S.montagem && !confirm(`Montar de novo com o modelo "${m.nome}"? A montagem de agora é refeita inteira, `
-    + 'com os textos e as transições do modelo.')) return;
+  if (n) { toast(t('Salve ou descarte {p0} antes: a montagem nova refaz o projeto inteiro.', { p0: n === 1 ? t('o ajuste') : t('os {n} ajustes', { n }) }), 4500); return; }
+  if (S.montagem && !confirm(t('Montar de novo com o modelo "{nome}"? A montagem de agora é refeita inteira, ', { nome: m.nome })
+    + t('com os textos e as transições do modelo.'))) return;
   MT.enviando = true;
   renderMontagem();
   const usar = { modelo: m.id, musica: MT.musica, midias: [...MT.midias], formato: formatoDaMontagemNova() };
@@ -3144,7 +3144,7 @@ async function pedeMontagem() {
     const r = await fetch('/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'timeline-edits', projeto: S.projetoId, montagem: { usar } }) });
     const d = await r.json();
-    if (!d.ok) throw new Error(d.error || `erro ${r.status}`);
+    if (!d.ok) throw new Error(d.error || t('erro {status}', { status: r.status }));
     S.savedPending = true;
     S.montagemNova = usar;
     MT.enviando = false;
@@ -3152,11 +3152,11 @@ async function pedeMontagem() {
     fechaMontagem();
     refreshHeader();
     vazioDaMontagem();
-    toast('Montagem enviada. O agente monta na batida, e o vídeo aparece aqui sozinho.', 4200);
+    toast(t('Montagem enviada. O agente monta na batida, e o vídeo aparece aqui sozinho.'), 4200);
   } catch (e) {
     MT.enviando = false;
     if (MT.aberto) renderMontagem();
-    toast(`Não enviei a montagem: ${e.message}`, 4500);
+    toast(t('Não enviei a montagem: {message}', { message: e.message }), 4500);
   }
 }
 /* Formato: em pé, deitado ou quadrado, como a proporção do CapCut. O agente refaz todos os lugares
@@ -3184,9 +3184,9 @@ function openFormato() {
   box.innerHTML = '';
   const pend = S.formatoPendente && S.formatoPendente !== S.formatoAtual ? FORMATOS[S.formatoPendente] : null;
   el('p', 'sheet-hint', box).textContent = pend && S.formato === S.formatoPendente
-    ? `${pend.nome} já foi salvo: o agente está refazendo o vídeo nesse formato.`
-    : 'Escolha e veja a prévia no player, sem esperar. Ao salvar, o agente faz o vídeo nesse formato. A foto ou '
-      + 'o clipe de outro formato entra inteiro, sobre um fundo desfocado dele mesmo; os textos vão para o mesmo lugar da tela.';
+    ? t('{nome} já foi salvo: o agente está refazendo o vídeo nesse formato.', { nome: pend.nome })
+    : t('Escolha e veja a prévia no player, sem esperar. Ao salvar, o agente faz o vídeo nesse formato. A foto ou ')
+      + t('o clipe de outro formato entra inteiro, sobre um fundo desfocado dele mesmo; os textos vão para o mesmo lugar da tela.');
   gradeDeFormatos(box, S.formato, (k) => {
     showSheet($('formatoSheet'), false);
     if (k === S.formato) return;
@@ -3201,8 +3201,8 @@ function openFormato() {
     aplicaQuadro();
     renderToolbar(); refreshHeader();
     const f = FORMATOS[k];
-    toast(k === (S.formatoPendente || S.formatoAtual) ? `${f.nome} (${k}): o vídeo fica como está.`
-      : `Prévia: ${f.nome} (${k}). Toque o vídeo para ver; salve para o agente fazer nesse formato.`, 3600);
+    toast(k === (S.formatoPendente || S.formatoAtual) ? t('{nome} ({k}): o vídeo fica como está.', { nome: f.nome, k })
+      : t('Prévia: {nome} ({k}). Toque o vídeo para ver; salve para o agente fazer nesse formato.', { nome: f.nome, k }), 3600);
   });
   showSheet($('formatoSheet'), true);
 }
@@ -3216,11 +3216,11 @@ function vazioDaMontagem() {
   $('emptyIco').innerHTML = ICON.montagem;
   $('emptyAlt').classList.add('hidden');
   $('btnEmptyUpload').classList.toggle('hidden', montando);
-  $('btnEmptyUpload').textContent = 'Escolher o modelo';
-  $('emptyTitle').textContent = montando ? 'O agente está montando' : 'Monte um vídeo na batida';
+  $('btnEmptyUpload').textContent = t('Escolher o modelo');
+  $('emptyTitle').textContent = montando ? t('O agente está montando') : t('Monte um vídeo na batida');
   $('emptyText').textContent = montando
-    ? 'Ele põe as fotos e clipes na batida da música. O vídeo aparece aqui sozinho quando ficar pronto.'
-    : 'Escolha um modelo de montagem, a música e as fotos e clipes. O agente monta na batida.';
+    ? t('Ele põe as fotos e clipes na batida da música. O vídeo aparece aqui sozinho quando ficar pronto.')
+    : t('Escolha um modelo de montagem, a música e as fotos e clipes. O agente monta na batida.');
 }
 $('montClose').innerHTML = ICON.fechar;
 $('montClose').addEventListener('click', fechaMontagem);
@@ -3282,7 +3282,7 @@ $('montCorpo').addEventListener('click', (e) => {
   }
 });
 ['play', 'pause', 'ended'].forEach((ev) => MT_PREV.addEventListener(ev, () => { if (MT.aberto && MT.passo === 'musica') renderMontagem(); }));
-MT_PREV.addEventListener('error', () => { if (MT.aberto && MT_PREV.dataset.id) toast('A prévia da música não carregou.', 2600); });
+MT_PREV.addEventListener('error', () => { if (MT.aberto && MT_PREV.dataset.id) toast(t('A prévia da música não carregou.'), 2600); });
 $('fileMontMidia').addEventListener('change', (e) => {
   const fs = [...(e.target.files || [])];
   e.target.value = '';
@@ -3292,7 +3292,7 @@ $('fileMontMusica').addEventListener('change', (e) => {
   const f = e.target.files && e.target.files[0];
   e.target.value = '';
   if (!f) return;
-  if (!ehAudio(f)) { toast('A música da montagem: mp3, m4a, wav, ogg, aac, opus ou flac.', 3200); return; }
+  if (!ehAudio(f)) { toast(t('A música da montagem: mp3, m4a, wav, ogg, aac, opus ou flac.'), 3200); return; }
   enviaParaMontagem([f], 'musica');
 });
 
@@ -3315,7 +3315,7 @@ function openTrecho() {
   const d = draftLayout()[S.selected];
   Object.assign(TC, { aberto: true, uid: r.uid, midia: a.midia, dur: op.duracao, lugar: d.dur, arr: null, feitos: new Set() });
   TC.de = Math.min(a.de, trechoMax());
-  $('trechoTitulo').textContent = `Trecho do lugar ${r.vaga}`;
+  $('trechoTitulo').textContent = t('Trecho do lugar {vaga}', { vaga: r.vaga });
   $('trechoQuadros').innerHTML = '';
   $('trechoTira').classList.toggle('curto', trechoCurto());
   const v = $('trechoVideo');
@@ -3358,10 +3358,10 @@ function trechoDesenha() {
   const m = $('trechoMarca');
   m.style.left = `${curto ? 0 : (TC.de / TC.dur) * 100}%`;
   m.style.width = `${curto ? 100 : (TC.lugar / TC.dur) * 100}%`;
-  $('trechoVal').textContent = curto ? 'o clipe inteiro' : `${segs(TC.de)} → ${segs(TC.de + TC.lugar)}`;
+  $('trechoVal').textContent = curto ? t('o clipe inteiro') : `${segs(TC.de)} → ${segs(TC.de + TC.lugar)}`;
   $('trechoNota').textContent = curto
-    ? 'O clipe é mais curto que o lugar: entra inteiro, mais lento, e para no último quadro.'
-    : 'Arraste a tira: o que fica dentro da moldura entra neste lugar, com a duração da batida.';
+    ? t('O clipe é mais curto que o lugar: entra inteiro, mais lento, e para no último quadro.')
+    : t('Arraste a tira: o que fica dentro da moldura entra neste lugar, com a duração da batida.');
 }
 function trechoVai(de, tocar) {
   TC.de = Math.min(trechoMax(), Math.max(0, de));
@@ -3391,7 +3391,7 @@ function trechoPronto() {
   if (trocaKey(r) === k) return;
   remember(antes);
   renderTimeline(); renderToolbar(); refreshHeader();
-  toast(`Lugar ${r.vaga}: entra aos ${segs(de)} do clipe. Salve: o agente refaz só este lugar.`, 3000);
+  toast(t('Lugar {vaga}: entra aos {p1} do clipe. Salve: o agente refaz só este lugar.', { vaga: r.vaga, p1: segs(de) }), 3000);
 }
 // a tira: arrastar corre o clipe por baixo da janela (para a esquerda, mais adiante no clipe)
 $('trechoTira').addEventListener('pointerdown', (e) => {
@@ -3441,13 +3441,13 @@ $('trechoOk').addEventListener('click', trechoPronto);
 $('btnDiscard').addEventListener('click', async () => {
   const n = dirtyCount();
   if (!n || !S.lastData) return;
-  if (!confirm(`Descartar ${n} ajuste${n > 1 ? 's' : ''}? O editor volta ao último vídeo do agente, e isso não se desfaz.`)) return;
+  if (!confirm(t('Descartar {n} ajuste{p1}? O editor volta ao último vídeo do agente, e isso não se desfaz.', { n, p1: n > 1 ? 's' : '' }))) return;
   if (S.editingNote) { S.editingNote = null; showSheet($('noteSheet'), false); }
   S.notes = [];
   S.pendingIn = null;
   S.lastSig = assinatura(S.lastData);
   await applyState(S.lastData);
-  toast('Ajustes descartados', 2000);
+  toast(t('Ajustes descartados'), 2000);
 });
 
 $('btnMode').addEventListener('click', () => {
@@ -3489,9 +3489,9 @@ function download() {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  toast(entrega ? 'Baixando o vídeo final, com a velocidade'
-    : hasFinal() && S.vel.trechos.length ? 'Baixando o final SEM a velocidade: a versão acelerada ainda não ficou pronta'
-      : hasFinal() ? 'Baixando o vídeo final' : 'Baixando o corte (o final ainda não existe)', 3200);
+  toast(entrega ? t('Baixando o vídeo final, com a velocidade')
+    : hasFinal() && S.vel.trechos.length ? t('Baixando o final SEM a velocidade: a versão acelerada ainda não ficou pronta')
+      : hasFinal() ? t('Baixando o vídeo final') : t('Baixando o corte (o final ainda não existe)'), 3200);
 }
 
 // ---------- enviar vídeo: vai em pedaços para a pasta dos vídeos no computador ----------
@@ -3504,16 +3504,16 @@ const mb = (b) => `${Math.round(b / 1e6)} MB`;
 // 'montagem-nova', uma foto ou clipe para o painel Modelos de montagem (também em midia/); 'musica', a
 // música dele (o áudio já vai para midia/ sem `para`, e não vira camada). `aoFalhar`: o envio não chegou
 const PARA_SERVIDOR = { montagem: 'montagem', 'montagem-nova': 'montagem' };
-const CHEGOU = { montagem: 'Chegou. Entra no lugar quando você salvar.', 'montagem-nova': 'Chegou. Está na lista da montagem.',
-  musica: 'Chegou. Está entre as músicas da montagem.' };
+const CHEGOU = { montagem: t('Chegou. Entra no lugar quando você salvar.'), 'montagem-nova': t('Chegou. Está na lista da montagem.'),
+  musica: t('Chegou. Está entre as músicas da montagem.') };
 function sendVideo(file, aoChegar, para, aoFalhar) {
-  if (upXhr) { toast('Já tem um envio indo — espere terminar', 2400); return; }
+  if (upXhr) { toast(t('Já tem um envio indo — espere terminar'), 2400); return; }
   const card = $('upload');
   card.className = 'upload';
   $('upName').textContent = file.name;
   $('upBar').style.width = '0%';
-  $('upPct').textContent = `0% · 0 de ${mb(file.size)}`;
-  $('upCancel').textContent = 'Cancelar';
+  $('upPct').textContent = t('0% · 0 de {p0}', { p0: mb(file.size) });
+  $('upCancel').textContent = t('Cancelar');
   const xhr = new XMLHttpRequest();
   upXhr = xhr;
   xhr.open('POST', `/api/upload?name=${encodeURIComponent(file.name)}${S.projetoId ? `&projeto=${S.projetoId}` : ''}${PARA_SERVIDOR[para] ? `&para=${PARA_SERVIDOR[para]}` : ''}`);
@@ -3521,13 +3521,13 @@ function sendVideo(file, aoChegar, para, aoFalhar) {
     if (!e.lengthComputable) return;
     const f = e.loaded / e.total;
     $('upBar').style.width = `${(f * 100).toFixed(1)}%`;
-    $('upPct').textContent = `${Math.floor(f * 100)}% · ${mb(e.loaded)} de ${mb(e.total)}`;
+    $('upPct').textContent = t('{p0}% · {p1} de {p2}', { p0: Math.floor(f * 100), p1: mb(e.loaded), p2: mb(e.total) });
   };
   const end = (cls, msg) => {
     upXhr = null;
     card.className = `upload ${cls}`;
     $('upPct').textContent = msg;
-    $('upCancel').textContent = 'Fechar';
+    $('upCancel').textContent = t('Fechar');
   };
   xhr.onload = () => {
     let res = {};
@@ -3542,22 +3542,22 @@ function sendVideo(file, aoChegar, para, aoFalhar) {
       }
       const camada = res.tipo === 'imagem' || res.tipo === 'audio';
       const fundo = aoChegar && res.tipo === 'imagem';
-      end('done', fundo ? 'Chegou. Está entre os fundos.' : camada ? 'Chegou. Está na linha do tempo, na agulha.' : 'Chegou no computador. O agente já foi avisado.');
+      end('done', fundo ? t('Chegou. Está entre os fundos.') : camada ? t('Chegou. Está na linha do tempo, na agulha.') : t('Chegou no computador. O agente já foi avisado.'));
       setTimeout(() => { if (!upXhr) card.classList.add('hidden'); }, 7000);
       if (fundo) { aoChegar(res); return; }
       if (camada) { addLayer(res.tipo, res.arquivo); return; }
       if (!(S.videoDuration > 0)) {
-        $('emptyTitle').textContent = 'Vídeo recebido';
-        $('emptyText').textContent = 'O agente já foi avisado. O corte aparece aqui sozinho quando ficar pronto.';
-        $('btnEmptyUpload').textContent = 'Enviar outro';
+        $('emptyTitle').textContent = t('Vídeo recebido');
+        $('emptyText').textContent = t('O agente já foi avisado. O corte aparece aqui sozinho quando ficar pronto.');
+        $('btnEmptyUpload').textContent = t('Enviar outro');
       }
     } else {
-      end('bad', res.error || `Não consegui enviar (erro ${xhr.status}).`);
+      end('bad', res.error || t('Não consegui enviar (erro {status}).', { status: xhr.status }));
       if (aoFalhar) aoFalhar();
     }
   };
-  xhr.onerror = () => { end('bad', 'A conexão caiu no meio do envio. O celular e o computador ainda estão na mesma rede?'); if (aoFalhar) aoFalhar(); };
-  xhr.onabort = () => { upXhr = null; card.classList.add('hidden'); toast('Envio cancelado', 2000); if (aoFalhar) aoFalhar(); };
+  xhr.onerror = () => { end('bad', t('A conexão caiu no meio do envio. O celular e o computador ainda estão na mesma rede?')); if (aoFalhar) aoFalhar(); };
+  xhr.onabort = () => { upXhr = null; card.classList.add('hidden'); toast(t('Envio cancelado'), 2000); if (aoFalhar) aoFalhar(); };
   xhr.send(file);
 }
 $('upCancel').addEventListener('click', () => { if (upXhr) upXhr.abort(); else $('upload').classList.add('hidden'); });
@@ -3581,23 +3581,23 @@ $('btnDownload').addEventListener('click', download);
 async function abrirNoCelular() {
   const body = $('phoneBody');
   body.innerHTML = '';
-  el('p', 'phone-hint', body).textContent = 'Carregando…';
+  el('p', 'phone-hint', body).textContent = t('Carregando…');
   $('phoneModal').classList.remove('hidden');
   let d = null, r = null;
   try { r = await fetch('/api/celular'); d = await r.json(); } catch (e) { /* servidor reiniciando */ }
   body.innerHTML = '';
   if (r && r.status === 403) { // outro aparelho na rede: o código do QR só sai no computador do editor
-    el('p', 'phone-hint', body).textContent = 'O código para abrir no celular só aparece no computador onde o editor está rodando.';
+    el('p', 'phone-hint', body).textContent = t('O código para abrir no celular só aparece no computador onde o editor está rodando.');
     return;
   }
   if (!d || !d.enabled) {
-    el('p', 'phone-hint', body).textContent = 'Agora o editor está aberto só para este computador.';
-    el('p', 'phone-hint', body).innerHTML = 'Para editar pelo celular, peça no chat: <b>"abre o editor no celular"</b>. '
-      + 'O agente libera o editor para a sua rede, com um código, e o QR aparece aqui.';
+    el('p', 'phone-hint', body).textContent = t('Agora o editor está aberto só para este computador.');
+    el('p', 'phone-hint', body).innerHTML = t('Para editar pelo celular, peça no chat: <b>"abre o editor no celular"</b>. ')
+      + t('O agente libera o editor para a sua rede, com um código, e o QR aparece aqui.');
     return;
   }
   if (!d.urls.length) {
-    el('p', 'phone-hint', body).textContent = 'Não achei a rede deste computador. Ele está conectado ao Wi-Fi ou ao cabo?';
+    el('p', 'phone-hint', body).textContent = t('Não achei a rede deste computador. Ele está conectado ao Wi-Fi ou ao cabo?');
     return;
   }
   const tabs = d.urls.length > 1 ? el('div', 'phone-tabs', body) : null;
@@ -3610,9 +3610,9 @@ async function abrirNoCelular() {
     qr.classList.toggle('hidden', !u.qr);
     url.textContent = u.url;
     hint.innerHTML = /tailscale/i.test(u.label)
-      ? 'Com o <b>Tailscale ligado no celular</b>, funciona de qualquer lugar. Aponte a câmera para o código.'
-      : 'Com o celular <b>no mesmo Wi-Fi</b> deste computador, aponte a câmera para o código. '
-        + 'Se não abrir, o Windows pode estar pedindo para liberar o Python na rede: aceite para redes privadas.';
+      ? t('Com o <b>Tailscale ligado no celular</b>, funciona de qualquer lugar. Aponte a câmera para o código.')
+      : t('Com o celular <b>no mesmo Wi-Fi</b> deste computador, aponte a câmera para o código. ')
+        + t('Se não abrir, o Windows pode estar pedindo para liberar o Python na rede: aceite para redes privadas.');
     if (tabs) [...tabs.children].forEach((b, k) => b.classList.toggle('on', k === i));
   };
   if (tabs) d.urls.forEach((u, i) => {
@@ -3634,11 +3634,11 @@ function toggleMark() {
     remember();
     S.pendingIn = S.t;
     renderTimeline(); renderToolbar();
-    toast('Início marcado. Arraste até o fim do trecho e toque em Fim.', 3000);
+    toast(t('Início marcado. Arraste até o fim do trecho e toque em Fim.'), 3000);
     return;
   }
   const start = Math.min(S.pendingIn, S.t), end = Math.max(S.pendingIn, S.t);
-  if (end - start < 0.05) { toast('Trecho curto demais — arraste a linha do tempo', 2200); return; }
+  if (end - start < 0.05) { toast(t('Trecho curto demais — arraste a linha do tempo'), 2200); return; }
   remember();
   S.pendingIn = null;
   const note = { id: `n${Date.now()}`, start, end, text: '' };
@@ -3670,7 +3670,7 @@ function closeNote(keep) {
   renderTimeline(); refreshHeader();
 }
 $('noteOk').addEventListener('click', () => {
-  if (!$('noteText').value.trim()) { toast('Escreva o que mudar', 1800); return; }
+  if (!$('noteText').value.trim()) { toast(t('Escreva o que mudar'), 1800); return; }
   closeNote(true);
 });
 $('noteCancel').addEventListener('click', () => closeNote(false));
@@ -3690,7 +3690,7 @@ function showSheet(sheet, open) {
 }
 
 // ---------- Estilo: painel que sobe + prévia ao vivo ----------
-const TABS = [['edit', 'Edição'], ['captions', 'Legenda'], ['headline', 'Headline'], ['accent', 'Cor'], ['extras', 'Extras'], ['modelos', 'Modelos']];
+const TABS = [['edit', t('Edição')], ['captions', t('Legenda')], ['headline', t('Headline')], ['accent', t('Cor')], ['extras', t('Extras')], ['modelos', t('Modelos')]];
 const normHex = (v) => {
   let s = String(v || '').trim().replace(/^#/, '');
   if (/^[0-9a-f]{3}$/i.test(s)) s = s.split('').map((c) => c + c).join('');
@@ -3723,7 +3723,7 @@ async function openStyle(tab) {
   renderStyle();
   if (!S.swipeTaught) { // uma vez por visita: mostra que dá para deslizar
     S.swipeTaught = true;
-    flashName(`${ICON.voltar}<span>Deslize para trocar</span>${ICON.avancar}`, 1800);
+    flashName(`${ICON.voltar}<span>${t('Deslize para trocar')}</span>${ICON.avancar}`, 1800);
   }
 }
 
@@ -3795,22 +3795,22 @@ function styleHint() {
   switch (S.styleTab) {
     case 'edit':
       return S.style.edit === 'limpa'
-        ? 'Sem imagem de apoio: tela inteira o vídeo todo.'
-        : 'No resto do vídeo, você aparece na tela inteira.';
+        ? t('Sem imagem de apoio: tela inteira o vídeo todo.')
+        : t('No resto do vídeo, você aparece na tela inteira.');
     case 'captions': return S.capText
-      ? 'Toque num estilo e veja em cima, no seu vídeo, com as palavras deste trecho.'
-      : 'Toque num estilo e veja em cima, no seu vídeo e no tamanho real.';
+      ? t('Toque num estilo e veja em cima, no seu vídeo, com as palavras deste trecho.')
+      : t('Toque num estilo e veja em cima, no seu vídeo e no tamanho real.');
     case 'headline':
       return hookText() !== HEADLINE_TEXT
-        ? 'A frase que abre o vídeo, já com a headline deste projeto.'
-        : 'A frase que abre o vídeo. O texto de verdade o agente escreve depois.';
+        ? t('A frase que abre o vídeo, já com a headline deste projeto.')
+        : t('A frase que abre o vídeo. O texto de verdade o agente escreve depois.');
     default: return '';
   }
 }
 
 /* Legenda: o filtro de cima separa as de uma linha das de várias (o "Nenhum" aparece
  * nos dois). Ao entrar na aba ele abre no grupo da legenda escolhida. */
-const CAP_FILTERS = [['uma', 'Uma linha'], ['varias', 'Várias linhas']];
+const CAP_FILTERS = [['uma', t('Uma linha')], ['varias', t('Várias linhas')]];
 const capFilterOf = (o) => (o.multiline ? 'varias' : 'uma');
 function syncCapFilter() {
   const o = STYLE_CATALOG.captions.find((x) => x.id === S.style.captions);
@@ -3833,8 +3833,8 @@ function renderCapFilter(body) {
   const pos = el('button', `pos-btn${p.all || p.phrases.length ? ' own' : ''}`, row);
   pos.type = 'button';
   pos.disabled = !S.style.captions || S.style.captions === 'none';
-  pos.innerHTML = `${ICON.mover}<span>Posição</span>`;
-  pos.setAttribute('aria-label', 'Posição das frases');
+  pos.innerHTML = `${ICON.mover}<span>${t('Posição')}</span>`;
+  pos.setAttribute('aria-label', t('Posição das frases'));
 }
 
 const CARD_ZOOM = 1.15; // nos cartões de legenda e headline o quadro aparece um pouco ampliado
@@ -3883,7 +3883,7 @@ function renderAccent(body) {
   const inp = el('input', '', sw);
   inp.type = 'color';
   inp.value = cur;
-  inp.setAttribute('aria-label', 'Escolher cor de destaque');
+  inp.setAttribute('aria-label', t('Escolher cor de destaque'));
   const field = el('div', 'hex-field', row);
   el('span', '', field).textContent = '#';
   const hex = el('input', '', field);
@@ -3891,14 +3891,14 @@ function renderAccent(body) {
   hex.maxLength = 7;
   hex.spellcheck = false;
   hex.value = cur.slice(1).toUpperCase();
-  hex.setAttribute('aria-label', 'Cor em hexadecimal');
+  hex.setAttribute('aria-label', t('Cor em hexadecimal'));
   const where = [
-    ACCENT_USERS.headlines.includes(S.style.headline) && 'na headline',
-    ACCENT_USERS.captions.includes(S.style.captions) && 'na legenda',
+    ACCENT_USERS.headlines.includes(S.style.headline) && t('na headline'),
+    ACCENT_USERS.captions.includes(S.style.captions) && t('na legenda'),
   ].filter(Boolean);
   el('p', 'sheet-hint', body).textContent = where.length
-    ? `Aparece ${where.join(' e ')}. Arraste a cor e veja ao vivo em cima.`
-    : 'Os estilos escolhidos não usam cor de destaque. Troque a headline para Realce ou Misto, ou a legenda para Empilhado.';
+    ? t('Aparece {p0}. Arraste a cor e veja ao vivo em cima.', { p0: where.join(t(' e ')) })
+    : t('Os estilos escolhidos não usam cor de destaque. Troque a headline para Realce ou Misto, ou a legenda para Empilhado.');
   const commit = (v, fromHex) => {
     const n = normHex(v);
     if (!n) return;
@@ -3930,7 +3930,7 @@ function renderExtras(body) {
   }
   const note = el('textarea', 'note-field', body);
   note.rows = 2;
-  note.placeholder = 'Algo mais para o agente saber? (opcional)';
+  note.placeholder = t('Algo mais para o agente saber? (opcional)');
   note.value = S.style.note || '';
   note.addEventListener('input', () => { S.style.note = note.value; });
 }
@@ -3986,29 +3986,29 @@ async function capaModelo(m) {
 }
 const lookDoModelo = (m) => ({ ...S.style, ...m.estilo, elements: { ...defaultStyle().elements, ...(m.estilo.elements || {}) } });
 function resumoModelo(m) {
-  const b = [`legenda ${styleName('captions', m.estilo.captions || S.style.captions)}`];
+  const b = [t('legenda {p0}', { p0: styleName('captions', m.estilo.captions || S.style.captions) })];
   if (m.legenda && m.legenda.estilo && m.legenda.estilo.fonte) b.push(m.legenda.estilo.fonte);
-  if (m.filtro) b.push(`filtro ${m.filtro.nome || S.fxNomes[m.filtro.pacote] || m.filtro.pacote}`);
-  if (m.transicao) b.push(`transição ${m.transicao.nome || S.fxNomes[m.transicao.pacote] || ''}`.trim());
-  if (m.ajuste) b.push('cor ajustada');
-  if (m.trilha) b.push(`trilha ${m.trilha.nome || ''}`.trim());
+  if (m.filtro) b.push(t('filtro {p0}', { p0: m.filtro.nome || S.fxNomes[m.filtro.pacote] || m.filtro.pacote }));
+  if (m.transicao) b.push(t('transição {p0}', { p0: m.transicao.nome || S.fxNomes[m.transicao.pacote] || '' }).trim());
+  if (m.ajuste) b.push(t('cor ajustada'));
+  if (m.trilha) b.push(t('trilha {p0}', { p0: m.trilha.nome || '' }).trim());
   return b.join(' · ');
 }
 function renderModelos(body) {
   if (!S.modelos) {
-    el('p', 'sheet-hint', body).textContent = 'Carregando os modelos…';
+    el('p', 'sheet-hint', body).textContent = t('Carregando os modelos…');
     carregaModelos().then(() => { if (S.styling && S.styleTab === 'modelos') renderStyle(); });
     return;
   }
   el('p', 'sheet-hint', body).textContent = S.modelos.length
-    ? 'Toque num modelo para ver no seu vídeo. Aplicar leva o visual inteiro (legenda, headline, cor, filtro, transição e trilha).'
-    : 'Guarde o visual deste vídeo com um nome (a marca de um cliente, por exemplo) e use em qualquer outro vídeo.';
+    ? t('Toque num modelo para ver no seu vídeo. Aplicar leva o visual inteiro (legenda, headline, cor, filtro, transição e trilha).')
+    : t('Guarde o visual deste vídeo com um nome (a marca de um cliente, por exemplo) e use em qualquer outro vídeo.');
   const form = el('form', `mod-salvar${S.modSalvando ? '' : ' hidden'}`, body);
   const inp = el('input', '', form);
-  inp.type = 'text'; inp.maxLength = 60; inp.placeholder = 'Nome do modelo (ex.: Canal de Receitas)';
-  inp.setAttribute('aria-label', 'Nome do modelo');
+  inp.type = 'text'; inp.maxLength = 60; inp.placeholder = t('Nome do modelo (ex.: Canal de Receitas)');
+  inp.setAttribute('aria-label', t('Nome do modelo'));
   const ok = el('button', 'tb-btn primary', form);
-  ok.type = 'submit'; ok.textContent = 'Salvar';
+  ok.type = 'submit'; ok.textContent = t('Salvar');
   form.addEventListener('submit', (e) => { e.preventDefault(); salvaModelo(inp.value); });
   if (S.modSalvando) setTimeout(() => inp.focus(), 50);
   const grid = el('div', 'cards mods', body);
@@ -4016,7 +4016,7 @@ function renderModelos(body) {
   novo.type = 'button';
   novo.dataset.salvarModelo = '1';
   el('div', 'face', novo).innerHTML = ICON.mais;
-  el('div', 'c-name', novo).textContent = 'Salvar o estilo deste vídeo';
+  el('div', 'c-name', novo).textContent = t('Salvar o estilo deste vídeo');
   for (const m of S.modelos) {
     const card = el('button', `card mod${S.modeloSel === m.id ? ' on' : ''}`, grid);
     card.type = 'button';
@@ -4036,17 +4036,17 @@ function renderModelos(body) {
     const del = el('span', 'c-del', face);
     del.dataset.apagar = m.id;
     del.innerHTML = ICON.remover;
-    del.title = 'Apagar o modelo';
+    del.title = t('Apagar o modelo');
     el('div', 'c-name', card).textContent = m.nome;
     el('div', 'c-sub', card).textContent = resumoModelo(m);
   }
   // a montagem na batida tem os modelos dela, num projeto próprio (o painel Modelos de montagem)
   const atalho = el('p', 'sheet-hint mt-atalho', body);
-  atalho.append('Fotos e clipes na batida de uma música? ');
+  atalho.append(t('Fotos e clipes na batida de uma música? '));
   const ir = el('button', 'mt-link', atalho);
   ir.type = 'button';
   ir.dataset.novaMontagem = '1';
-  ir.textContent = 'Comece uma Nova montagem';
+  ir.textContent = t('Comece uma Nova montagem');
 }
 // o visual deste vídeo agora: o Estilo, a legenda fina e o que o vídeo usa em todas as tomadas
 function capturaModelo(nome) {
@@ -4069,7 +4069,7 @@ function capturaModelo(nome) {
 }
 async function salvaModelo(nome) {
   nome = String(nome || '').trim();
-  if (!nome) { toast('Dê um nome ao modelo', 2200); return; }
+  if (!nome) { toast(t('Dê um nome ao modelo'), 2200); return; }
   try {
     const r = await fetch('/api/modelos', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ modelo: capturaModelo(nome) }) });
@@ -4079,12 +4079,12 @@ async function salvaModelo(nome) {
     S.modeloSel = null;
     await carregaModelos();
     renderStyle();
-    toast(`Modelo "${d.modelo.nome}" guardado. Ele aparece aqui em qualquer projeto.`, 3200);
-  } catch (e) { toast(`Não guardei o modelo: ${e.message}`, 4200); }
+    toast(t('Modelo "{nome}" guardado. Ele aparece aqui em qualquer projeto.', { nome: d.modelo.nome }), 3200);
+  } catch (e) { toast(t('Não guardei o modelo: {message}', { message: e.message }), 4200); }
 }
 async function apagaModelo(id) {
   const m = (S.modelos || []).find((x) => x.id === id);
-  if (!m || !confirm(`Apagar o modelo "${m.nome}"? Os vídeos que já usaram ele não mudam.`)) return;
+  if (!m || !confirm(t('Apagar o modelo "{nome}"? Os vídeos que já usaram ele não mudam.', { nome: m.nome }))) return;
   try {
     const d = await (await fetch('/api/modelos/apagar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }) })).json();
@@ -4092,7 +4092,7 @@ async function apagaModelo(id) {
     if (S.modeloSel === id) S.modeloSel = null;
     await carregaModelos();
     renderStyle();
-  } catch (e) { toast(`Não apaguei: ${e.message}`, 3600); }
+  } catch (e) { toast(t('Não apaguei: {message}', { message: e.message }), 3600); }
 }
 // tocar no cartão: o Estilo vira o do modelo, e a prévia de cima mostra
 function escolheModelo(id) {
@@ -4126,7 +4126,7 @@ async function aplicaModeloDeEstilo(m) {
     const r = await fetch('/api/pacotes/usar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: m.trilha.pacote }) });
     const d = await r.json();
-    if (!r.ok) throw new Error(`a trilha não baixou: ${d.error || r.status}`);
+    if (!r.ok) throw new Error(t('a trilha não baixou: {p0}', { p0: d.error || r.status }));
     trilha = { arquivo: d.arquivo, dur: await midiaDuration(d.arquivo) };
   }
   if (m.filtro || m.transicao || m.ajuste || m.trilha) remember();
@@ -4154,7 +4154,7 @@ async function aplicaModeloDeEstilo(m) {
       inicio: 0, duracao: +dur.toFixed(3), corte: 0, volume: m.trilha.volume, melhorar: false, trilha: m.trilha.pacote }] });
   }
   renderTimeline(); renderToolbar(); refreshHeader();
-  if (dirtyCount()) return salvar(`Modelo "${m.nome}" aplicado. O agente refaz o vídeo com ele.`);
+  if (dirtyCount()) return salvar(t('Modelo "{nome}" aplicado. O agente refaz o vídeo com ele.', { nome: m.nome }));
   return true;
 }
 
@@ -4174,11 +4174,12 @@ function applyLive() {
 
 function updateSummary() {
   const on = STYLE_CATALOG.elements.filter((e) => S.style.elements[e.id]);
-  const accentBit = accentUsed() ? ` · cor ${String(S.style.accent).toUpperCase()}` : '';
-  $('sheetSum').textContent = `${styleName('edits', S.style.edit)} · legenda ${styleName('captions', S.style.captions)}`
-    + ` · headline ${styleName('headlines', S.style.headline)}${accentBit}`
-    + (on.length ? ` · ${on.length} extra${on.length > 1 ? 's' : ''}` : '');
-  $('sheetApply').textContent = S.state.awaitingStyle ? 'Começar' : 'Aplicar';
+  const partes = [styleName('edits', S.style.edit), t('legenda {p0}', { p0: styleName('captions', S.style.captions) }),
+    t('headline {p0}', { p0: styleName('headlines', S.style.headline) })];
+  if (accentUsed()) partes.push(t('cor {p0}', { p0: String(S.style.accent).toUpperCase() }));
+  if (on.length) partes.push(on.length > 1 ? t('{n} extras', { n: on.length }) : t('1 extra'));
+  $('sheetSum').textContent = partes.join(' · ');
+  $('sheetApply').textContent = S.state.awaitingStyle ? t('Começar') : t('Aplicar');
 }
 
 $('sheetTabs').addEventListener('click', (e) => {
@@ -4306,7 +4307,7 @@ $('sheetApply').addEventListener('click', async () => {
     // efeitos e trilha vão pelo Salvar (são do corte); se não deu, nada do Estilo sai sozinho
     try {
       if (!(await aplicaModeloDeEstilo(modelo))) return;
-    } catch (err) { toast(`Não apliquei o modelo: ${err.message}`, 4200); return; }
+    } catch (err) { toast(t('Não apliquei o modelo: {message}', { message: err.message }), 4200); return; }
   }
   const payload = {
     type: 'style-setup',
@@ -4333,7 +4334,7 @@ $('sheetApply').addEventListener('click', async () => {
     const res = await fetch('/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const out = await res.json();
     if (!out.ok) {
-      if (out.error) { toast(`Não enviei: ${out.error}`, 4500); return; }
+      if (out.error) { toast(t('Não enviei: {error}', { error: out.error }), 4500); return; }
       throw new Error('falhou');
     }
     S.savedPending = true;
@@ -4341,9 +4342,9 @@ $('sheetApply').addEventListener('click', async () => {
     S.estiloAntesDoModelo = null;
     closeStyle();
     refreshHeader();
-    toast(modelo ? `Modelo "${modelo.nome}" aplicado. O agente refaz o vídeo com ele.` : 'Estilo enviado. O agente refaz o vídeo com ele.', 3200);
+    toast(modelo ? t('Modelo "{nome}" aplicado. O agente refaz o vídeo com ele.', { nome: modelo.nome }) : t('Estilo enviado. O agente refaz o vídeo com ele.'), 3200);
   } catch (err) {
-    toast('Não consegui enviar — o editor ainda está ligado no computador?', 4000);
+    toast(t('Não consegui enviar — o editor ainda está ligado no computador?'), 4000);
   }
 });
 
@@ -4498,14 +4499,14 @@ function setSpot(f, spot) {
 function resetSpot() {
   const p = capPos();
   if (S.todas) {
-    if (!p.all && !p.phrases.length) { toast('Todas já estão no lugar do estilo', 2200); return; }
+    if (!p.all && !p.phrases.length) { toast(t('Todas já estão no lugar do estilo'), 2200); return; }
     remember();
     S.style.captionPositions = noPos();
   } else {
     const f = S.fraseShown;
     const own = f ? anchorsIn(f) : [];
     if (!own.length) {
-      toast(p.all ? 'Esta frase segue a posição de todas. Ligue "Todas" para mexer nelas.' : 'Esta frase já está no lugar do estilo', 2800);
+      toast(p.all ? t('Esta frase segue a posição de todas. Ligue "Todas" para mexer nelas.') : t('Esta frase já está no lugar do estilo'), 2800);
       return;
     }
     remember();
@@ -4516,9 +4517,9 @@ function resetSpot() {
 
 async function enterPosMode() {
   if (!S.style.captions || S.style.captions === 'none') return;
-  if (edlDirty()) { toast('Salve os cortes antes: as frases saem do vídeo já cortado.', 3200); return; }
+  if (edlDirty()) { toast(t('Salve os cortes antes: as frases saem do vídeo já cortado.'), 3200); return; }
   const frases = await loadFrases();
-  if (!frases.length) { toast('Ainda não há transcrição do corte para montar as frases.', 3200); return; }
+  if (!frases.length) { toast(t('Ainda não há transcrição do corte para montar as frases.'), 3200); return; }
   closeStyle();
   if (S.view !== 'corte') switchView('corte');
   S.posMode = true;
@@ -4530,7 +4531,7 @@ async function enterPosMode() {
   renderTimeline();
   renderToolbar();
   drawFrase(true);
-  if (!S.posTaught) { S.posTaught = true; flashName('<span>Toque na frase e arraste</span>', 2200); }
+  if (!S.posTaught) { S.posTaught = true; flashName(`<span>${t('Toque na frase e arraste')}</span>`, 2200); }
 }
 function exitPosMode() {
   S.posMode = false;
@@ -4686,7 +4687,7 @@ async function salvar(aviso) {
     const out = await res.json();
     if (!out.ok) {
       // camada recusada pelo servidor: o motivo vale mais que o aviso genérico
-      if (out.error) { toast(`Não salvei: ${out.error}`, 4500); return false; }
+      if (out.error) { toast(t('Não salvei: {error}', { error: out.error }), 4500); return false; }
       throw new Error('falhou');
     }
     S.savedPending = true;
@@ -4717,19 +4718,21 @@ async function salvar(aviso) {
     drawCenaBox();
     forgetHistory(); // o que foi enviado ao agente não se desfaz daqui
     renderTimeline(); renderToolbar(); refreshHeader();
-    const oque = comEfeitos ? (comCamadas ? 'Camadas e efeitos salvos' : 'Efeitos salvos') : 'Camadas salvas';
+    const oque = comEfeitos ? (comCamadas ? t('Camadas e efeitos salvos') : t('Efeitos salvos')) : t('Camadas salvas');
     const soVoz = comVoz && soCamadas && !comF2 && !comVel && !comCamadas && !comEfeitos;
     const soLugares = lugares.length > 0 && soCamadas && !comF2 && !comVel && !comCamadas && !comEfeitos && !comVoz;
-    toast(aviso || (soVoz ? 'Melhorar voz enviado. O agente aplica a voz no vídeo.'
-      : soLugares ? `${lugares.length > 1 ? `${lugares.length} lugares enviados` : 'Lugar enviado'}. O agente refaz só ${lugares.length > 1 ? 'eles' : 'ele'}, na batida.`
-      : lugares.length && soCamadas && !comF2 && !comVel ? 'Lugares e camadas enviados. O agente refaz a montagem na batida.'
-      : !soCamadas ? 'Ajustes enviados. O agente refaz o corte.'
-      : comF2 ? 'Ajustes enviados. O agente refaz só os trechos do vídeo final que mudaram.'
-        : comVel && !comCamadas && !comEfeitos ? 'Velocidade salva. O agente faz o vídeo de entrega com ela.'
-          : `${oque}. O agente põe no vídeo final.`), 3000);
+    toast(aviso || (soVoz ? t('Melhorar voz enviado. O agente aplica a voz no vídeo.')
+      : soLugares ? (lugares.length > 1
+        ? t('{length} lugares enviados. O agente refaz só eles, na batida.', { length: lugares.length })
+        : t('Lugar enviado. O agente refaz só ele, na batida.'))
+      : lugares.length && soCamadas && !comF2 && !comVel ? t('Lugares e camadas enviados. O agente refaz a montagem na batida.')
+      : !soCamadas ? t('Ajustes enviados. O agente refaz o corte.')
+      : comF2 ? t('Ajustes enviados. O agente refaz só os trechos do vídeo final que mudaram.')
+        : comVel && !comCamadas && !comEfeitos ? t('Velocidade salva. O agente faz o vídeo de entrega com ela.')
+          : t('{oque}. O agente põe no vídeo final.', { oque })), 3000);
     return true;
   } catch (err) {
-    toast('Não consegui salvar — o editor ainda está ligado no computador?', 4000);
+    toast(t('Não consegui salvar — o editor ainda está ligado no computador?'), 4000);
     return false;
   }
 }
@@ -4740,14 +4743,14 @@ async function salvar(aviso) {
 $('pedido').addEventListener('submit', async (e) => {
   e.preventDefault();
   const campo = $('pedidoTexto'), txt = campo.value.trim();
-  if (!txt) { toast('Escreva o que mudar', 1800); campo.focus(); return; }
+  if (!txt) { toast(t('Escreva o que mudar'), 1800); campo.focus(); return; }
   const id = `p${Date.now()}`;
   S.notes.push({ id, start: S.t, end: S.t, text: txt, geral: true });
-  if (await salvar('Pedido enviado. O agente responde na barra de cima.')) {
+  if (await salvar(t('Pedido enviado. O agente responde na barra de cima.'))) {
     campo.value = '';
     crescePedido();
     const h = new Date();
-    $('pedidoInfo').textContent = `Enviado às ${h.getHours()}:${String(h.getMinutes()).padStart(2, '0')}. A resposta aparece na barra de cima.`;
+    $('pedidoInfo').textContent = t('Enviado às {p0}:{p1}. A resposta aparece na barra de cima.', { p0: h.getHours(), p1: String(h.getMinutes()).padStart(2, '0') });
   } else S.notes = S.notes.filter((n) => n.id !== id); // não foi: o texto fica na caixa para tentar de novo
 });
 $('pedidoTexto').addEventListener('keydown', (e) => {
@@ -4813,7 +4816,7 @@ async function pedeBatida(arq, vez) {
     return;
   }
   if (vez < 150) setTimeout(() => pedeBatida(arq, vez + 1), 2000); // calculando ou na fila
-  else S.batidas[arq] = { estado: 'falhou', erro: 'a análise da batida demorou demais' };
+  else S.batidas[arq] = { estado: 'falhou', erro: t('a análise da batida demorou demais') };
 }
 /* As batidas das músicas das camadas no tempo da linha do tempo, com o tempo forte marcado. Fica de
  * fora a faixa silenciada e a música de batida irregular (confiança baixa): ali o ímã mais
@@ -4873,7 +4876,7 @@ function alternaIma() {
   S.ima = !S.ima;
   gravaPref('cutmind.ima', S.ima ? '1' : '0');
   syncIma();
-  toast(S.ima ? 'Ímã ligado: a agulha e as pontas grudam na batida da música' : 'Ímã desligado', 2200);
+  toast(S.ima ? t('Ímã ligado: a agulha e as pontas grudam na batida da música') : t('Ímã desligado'), 2200);
 }
 function syncIma() {
   const b = $('btnIma');
@@ -4882,8 +4885,9 @@ function syncIma() {
   b.setAttribute('aria-pressed', String(S.ima));
   const n = S.grade.length;
   b.title = S.ima
-    ? `Ímã ligado (N): a agulha e as pontas grudam na batida${n ? '' : '. Ainda não tem música com batida no projeto'}`
-    : 'Ímã desligado (N): ligue para a agulha e as pontas grudarem na batida da música';
+    ? (n ? t('Ímã ligado (N): a agulha e as pontas grudam na batida')
+      : t('Ímã ligado (N): a agulha e as pontas grudam na batida. Ainda não tem música com batida no projeto'))
+    : t('Ímã desligado (N): ligue para a agulha e as pontas grudarem na batida da música');
 }
 const nomeMidia = (arq) => String(arq || '').replace(/^midia\//, '');
 function newFaixaId(letra) {
@@ -4940,10 +4944,10 @@ function trackHead(track, f) {
     b.setAttribute('aria-label', label);
     b.setAttribute('aria-pressed', String(!!on));
   };
-  if (!f) { btn('video-mudo', S.camadas.video.mudo ? ICON.semSom : ICON.som, 'Silenciar o som do vídeo', S.camadas.video.mudo); return; }
-  if (f.tipo === 'audio') btn('mudo', f.mudo ? ICON.semSom : ICON.som, 'Silenciar a camada', f.mudo);
-  else btn('oculto', f.oculto ? ICON.olhoFechado : ICON.olho, 'Esconder a camada', f.oculto);
-  btn('travar', f.travado ? ICON.cadeado : ICON.cadeadoAberto, 'Travar a camada', f.travado);
+  if (!f) { btn('video-mudo', S.camadas.video.mudo ? ICON.semSom : ICON.som, t('Silenciar o som do vídeo'), S.camadas.video.mudo); return; }
+  if (f.tipo === 'audio') btn('mudo', f.mudo ? ICON.semSom : ICON.som, t('Silenciar a camada'), f.mudo);
+  else btn('oculto', f.oculto ? ICON.olhoFechado : ICON.olho, t('Esconder a camada'), f.oculto);
+  btn('travar', f.travado ? ICON.cadeado : ICON.cadeadoAberto, t('Travar a camada'), f.travado);
 }
 function renderLayerTrack(track, lane, f) {
   track.classList.toggle('mudo', f.tipo === 'audio' && f.mudo);
@@ -4957,7 +4961,7 @@ function renderLayerTrack(track, lane, f) {
     chip.style.width = `${Math.max((b - a) * S.pps, 8)}px`;
     if (f.tipo === 'texto') { // a 1ª linha do texto, e as marcas de atrás e acompanhar
       el('span', 'l-ico', chip).innerHTML = ICON.texto;
-      const linha = String(it.texto).split('\n')[0].slice(0, 60) || 'Texto';
+      const linha = String(it.texto).split('\n')[0].slice(0, 60) || t('Texto');
       el('span', 'l-name', chip).textContent = it.nome ? `${it.nome}: ${linha}` : linha; // o do modelo diz qual é
       if (it.atras) el('span', 'l-tag', chip).innerHTML = ICON.pessoa;
       if (it.acompanhar) el('span', 'l-tag', chip).innerHTML = ICON.alvo;
@@ -5009,7 +5013,7 @@ function pontosDeBatida(chip, it, g, a) {
 function tapLayer(id) {
   const hit = camItem(id);
   if (!hit) return;
-  if (hit.f.travado) { toast('Camada travada: toque no cadeado para soltar', 2200); return; }
+  if (hit.f.travado) { toast(t('Camada travada: toque no cadeado para soltar'), 2200); return; }
   S.layerSel = S.layerSel === id ? null : id;
   S.selected = -1;
   S.insSel = -1;
@@ -5037,7 +5041,7 @@ document.addEventListener('click', (e) => {
   remember();
   if (act === 'video-mudo') {
     S.camadas.video.mudo = !S.camadas.video.mudo;
-    toast(S.camadas.video.mudo ? 'Som do vídeo desligado' : 'Som do vídeo ligado', 1600);
+    toast(S.camadas.video.mudo ? t('Som do vídeo desligado') : t('Som do vídeo ligado'), 1600);
   } else {
     const f = S.camadas.faixas.find((x) => x.id === b.dataset.f);
     if (!f) return;
@@ -5067,7 +5071,7 @@ function holdLayer(id, x) {
   if (G.mode !== 'pan' || G.moved) return;
   const hit = camItem(id);
   if (!hit) return;
-  if (hit.f.travado) { toast('Camada travada: toque no cadeado para soltar', 2200); return; }
+  if (hit.f.travado) { toast(t('Camada travada: toque no cadeado para soltar'), 2200); return; }
   const before = snap();
   S.layerSel = id;
   S.fxSel = null;
@@ -5112,7 +5116,7 @@ function dragLayer(x) {
     if (aud) it.corte = +(o.corte + k).toFixed(3);
   }
   const tip = $('trimTip');
-  tip.textContent = L.kind === 'move' ? `começa em ${fmt(it.inicio)}` : `dura ${it.duracao.toFixed(2)} s`;
+  tip.textContent = L.kind === 'move' ? t('começa em {p0}', { p0: fmt(it.inicio) }) : t('dura {p0} s', { p0: it.duracao.toFixed(2) });
   tip.classList.remove('hidden');
   if (!G.layerQueued) {
     G.layerQueued = true;
@@ -5161,7 +5165,7 @@ function holdIns(i, x) {
   const c = S.insertsDraft[i];
   if (!c) return;
   // o gancho abre o vídeo: ele não anda, só a ponta da direita apara
-  if (c.kind === 'hook') { toast('O gancho começa no início do vídeo: puxe a ponta da direita', 2400); return; }
+  if (c.kind === 'hook') { toast(t('O gancho começa no início do vídeo: puxe a ponta da direita'), 2400); return; }
   const before = snap();
   S.insSel = i; S.selected = -1; S.layerSel = null; S.fxSel = null;
   if (navigator.vibrate) navigator.vibrate(12);
@@ -5208,16 +5212,16 @@ function endInsDrag() {
  * continua sendo o vídeo de agora: a moldura mostra para onde o bloco vai, e o Salvar
  * leva as mudanças pelo `ref` para o agente refazer só os trechos tocados. */
 const CENA_NOME = {
-  fundo: 'Fundo', corteZoom: 'Corte no zoom', revelacao: 'Revelação', papel: 'Recorte de papel', mural: 'Mural', parede: 'Parede de fotos',
-  capa: 'Capa de revista', grafico: 'Gráfico', app: 'App', checklist: 'Checklist', zoomDigital: 'Zoom digital',
-  saindo: 'Saindo da tela', rabisco: 'Rabisco', vertigem: 'Vertigem', celular: 'Celular', vidro: 'Vidro', orbita: 'Órbita', chroma: 'Site',
+  fundo: t('Fundo'), corteZoom: t('Corte no zoom'), revelacao: t('Revelação'), papel: t('Recorte de papel'), mural: t('Mural'), parede: t('Parede de fotos'),
+  capa: t('Capa de revista'), grafico: t('Gráfico'), app: t('App'), checklist: t('Checklist'), zoomDigital: t('Zoom digital'),
+  saindo: t('Saindo da tela'), rabisco: t('Rabisco'), vertigem: t('Vertigem'), celular: t('Celular'), vidro: t('Vidro'), orbita: t('Órbita'), chroma: t('Site'),
 };
 // o véu e o desfoque do Fundo quando o item não diz (src/cenas/fundo.tsx): mudou lá, muda aqui
 const FUNDO_PADRAO = { escurecer: 0.25, desfoque: 0 };
 // os campos de texto que a pessoa pode trocar (texto solto ou uma lista de linhas)
-const CENA_TEXTOS = { titulo: 'Título', pergunta: 'Pergunta', frase: 'Frase', palavra: 'Palavra', pequeno: 'Faixa de cima',
-  gigante: 'Palavra grande', etiqueta: 'Etiqueta', botao: 'Botão', nome: 'Nome', batidas: 'Palavras (uma por batida)',
-  text: 'Texto', prefixo: 'Antes do número', valor: 'Número', sufixo: 'Depois do número', rotulo: 'Linha de baixo' };
+const CENA_TEXTOS = { titulo: t('Título'), pergunta: t('Pergunta'), frase: t('Frase'), palavra: t('Palavra'), pequeno: t('Faixa de cima'),
+  gigante: t('Palavra grande'), etiqueta: t('Etiqueta'), botao: t('Botão'), nome: t('Nome'), batidas: t('Palavras (uma por batida)'),
+  text: t('Texto'), prefixo: t('Antes do número'), valor: t('Número'), sufixo: t('Depois do número'), rotulo: t('Linha de baixo') };
 const linhasDe = (v) => (Array.isArray(v) ? v : [v || '']).map(String);
 const maisLonga = (v) => linhasDe(v).reduce((a, s) => (s.length > a.length ? s : a), '');
 const largo = (s, px) => Math.min(1040, Math.max(160, String(s || '').length * px));
@@ -5351,8 +5355,8 @@ function destaqueDe(tipo, ref, nome, obj, textos) {
 function buildDestaques(d) {
   const h = d.hook && d.hook.enabled ? d.hook : null;
   S.destaques = {
-    hook: h ? destaqueDe('hook', 0, 'Gancho', h, { text: h.text != null ? String(h.text) : (h.lines || []).join(' ') }) : null,
-    numeros: (d.numeros || []).map((n, i) => destaqueDe('numero', i, 'Número', n,
+    hook: h ? destaqueDe('hook', 0, t('Gancho'), h, { text: h.text != null ? String(h.text) : (h.lines || []).join(' ') }) : null,
+    numeros: (d.numeros || []).map((n, i) => destaqueDe('numero', i, t('Número'), n,
       { prefixo: n.prefixo || '', valor: String(n.valor ?? ''), sufixo: n.sufixo || '', rotulo: n.rotulo || '' })),
   };
 }
@@ -5369,7 +5373,7 @@ function rotulosDestaques() {
   for (const b of S.insertsDraft) {
     const dq = destaqueDoBloco(b);
     if (!dq) continue;
-    b.label = b.kind === 'hook' ? (dq.textos.text || 'Gancho') : `${dq.textos.prefixo || ''}${dq.textos.valor || ''}${dq.textos.sufixo || ''}`;
+    b.label = b.kind === 'hook' ? (dq.textos.text || t('Gancho')) : `${dq.textos.prefixo || ''}${dq.textos.valor || ''}${dq.textos.sufixo || ''}`;
   }
 }
 function blocoDaCena(c) {
@@ -5388,7 +5392,7 @@ function renderCenas(lane) {
     chip.style.left = `${a * S.pps}px`;
     chip.style.width = `${Math.max((b - a) * S.pps - 2, 6)}px`;
     el('span', 'l-name', chip).textContent = c.nome;
-    chip.title = c.desligada ? `${c.nome} (desligado)` : c.nome;
+    chip.title = c.desligada ? t('{nome} (desligado)', { nome: c.nome }) : c.nome;
     if (c.desligada) chip.classList.add('off');
     if (cenaMudou(c)) chip.classList.add('dirty');
     if (i === S.cenaSel) chip.classList.add('sel');
@@ -5421,7 +5425,7 @@ function tapCena(i) {
     if (!(S.t >= a && S.t < b)) { video.pause(); S.t = clampT(a + (b - a) * 0.65); positionTimeline(); preciseSeek(); }
     if (blocoDaCena(c) && !c.desligada && !S.cenaEnsinou) {
       S.cenaEnsinou = true;
-      flashName(`<span>${isDesk() ? 'Arraste a moldura no vídeo, ou use as setas' : 'Arraste a moldura no vídeo'}</span>`, 2400);
+      flashName(`<span>${isDesk() ? t('Arraste a moldura no vídeo, ou use as setas') : t('Arraste a moldura no vídeo')}</span>`, 2400);
     }
   }
   renderTimeline(); renderToolbar(); drawCenaBox();
@@ -5458,7 +5462,7 @@ function drawCenaBox() {
   box.style.width = pct(b.w / FRAME_W);
   box.style.height = pct(b.h / FRAME_H);
   box.classList.toggle('own', !!c.texto);
-  $('ovCenaNome').textContent = c.texto ? `${c.nome}: lugar novo` : c.nome;
+  $('ovCenaNome').textContent = c.texto ? t('{nome}: lugar novo', { nome: c.nome }) : c.nome;
   desenhaFantasma(c, b);
 }
 /* A prévia do texto novo dentro da moldura, num SVG do tamanho dela no quadro: só quando o
@@ -5573,7 +5577,7 @@ function paletaCores(host, atual, extra, muda) {
   const livre = el('input', 'tx-cor-livre', linha);
   livre.type = 'color';
   livre.value = /^#[0-9a-f]{6}$/i.test(atual) ? atual : '#ffffff';
-  livre.title = 'Outra cor';
+  livre.title = t('Outra cor');
   livre.addEventListener('input', () => { muda(livre.value); for (const x of linha.children) if (x !== livre) x.classList.remove('on'); });
 }
 function regua(host, min, max, passo, valor, mostra, muda) {
@@ -5596,7 +5600,7 @@ function reguaPoe(r, v) {
  * vídeo final também some (aconteceu no teste: amarelo a 1 px, e "a cor não aparece"). */
 const CONTORNO_VISIVEL = 6;
 function campoContorno(box, e, mudaLargura, mudaCor) {
-  const sec = campoTexto(box, 'Contorno');
+  const sec = campoTexto(box, t('Contorno'));
   const r = regua(sec, 0, 30, 1, e.contorno, (v) => (v ? `${v} px` : 'sem'), mudaLargura);
   paletaCores(sec, e.corContorno, null, (cor) => {
     mudaCor(cor);
@@ -5619,7 +5623,7 @@ function textoMuda(fn) {
 const mudaEstilo = (k, v) => textoMuda((c) => { c.estilo = { ...(c.estilo || {}), [k]: v }; });
 // a grade de fontes por aba, aberta na aba da fonte de agora (Em alta, se ela está lá)
 function fonteGrade(box, atual, escolhe) {
-  const sec = campoTexto(box, 'Fonte');
+  const sec = campoTexto(box, t('Fonte'));
   const abas = el('div', 'tx-abas', sec);
   const grade = el('div', 'tx-fontes', sec);
   const f0 = CutMindFontes.FONTES.find((f) => f.familia === atual);
@@ -5655,7 +5659,7 @@ function openCenaTexto() {
   const d = CENA_ESTILO[c.tipo];
   const pode = (k) => !!d && (d.so ? d.so.includes(k) : !(d.sem || []).includes(k));
   if (d && pode('fonte')) CutMindFontes.carregarTodas();
-  $('cenaSheetNome').textContent = `Texto · ${c.nome}`;
+  $('cenaSheetNome').textContent = t('Texto · {nome}', { nome: c.nome });
   const box = $('cenaCampos');
   box.innerHTML = '';
   // o que está escrito: um campo por texto; lista de linhas numa caixa, uma por linha
@@ -5679,18 +5683,18 @@ function openCenaTexto() {
   // computador ela escondia o resto (no teste, "não tem como mudar o tamanho")
   const e = estiloEfetivo(c);
   if (e && pode('tamanho')) {
-    regua(campoTexto(box, 'Tamanho'), 40, 200, 5, Math.round(e.tamanho * 100), (v) => `${v}%`, (v) => mudaEstilo('tamanho', +(v / 100).toFixed(2)));
+    regua(campoTexto(box, t('Tamanho')), 40, 200, 5, Math.round(e.tamanho * 100), (v) => `${v}%`, (v) => mudaEstilo('tamanho', +(v / 100).toFixed(2)));
   }
-  if (e && pode('cor')) paletaCores(campoTexto(box, 'Cor'), e.cor, S.style && S.style.accent, (cor) => mudaEstilo('cor', cor));
+  if (e && pode('cor')) paletaCores(campoTexto(box, t('Cor')), e.cor, S.style && S.style.accent, (cor) => mudaEstilo('cor', cor));
   if (e && pode('contorno')) campoContorno(box, e, (v) => mudaEstilo('contorno', v), (cor) => mudaEstilo('corContorno', cor));
   const b = CENA_BLOCO[c.tipo] && blocoDaCena(c);
   if (b) {
-    const sec = campoTexto(box, 'Altura');
+    const sec = campoTexto(box, t('Altura'));
     regua(sec, 0, 100, 1, Math.round((b.y / FRAME_H) * 100), (v) => `${v}%`, (v) => textoMuda((x) => {
       const bx = blocoDaCena(x);
       x.texto = { x: Math.round(bx.x), y: Math.round((v / 100) * FRAME_H) };
     }));
-    el('p', 'tx-dica', sec).textContent = isDesk() ? 'Para o lado, arraste a moldura no vídeo ou use as setas do teclado.' : 'Para o lado, arraste a moldura no vídeo.';
+    el('p', 'tx-dica', sec).textContent = isDesk() ? t('Para o lado, arraste a moldura no vídeo ou use as setas do teclado.') : t('Para o lado, arraste a moldura no vídeo.');
   }
   if (e && pode('fonte')) fonteGrade(box, e.fonte, (f) => textoMuda((x) => { x.estilo = { ...(x.estilo || {}), fonte: f.familia, peso: f.peso }; }));
   showSheet($('cenaSheet'), true);
@@ -5759,7 +5763,7 @@ function duplicateLayerSel() {
   S.camadas.faixas.splice(S.camadas.faixas.indexOf(hit.f) + 1, 0, { ...hit.f, id: fid, travado: false, itens: [item] });
   S.layerSel = item.id;
   renderTimeline(); renderToolbar(); refreshHeader();
-  toast(hit.f.tipo === 'audio' ? 'Cópia numa camada nova' : 'Cópia numa camada nova, por cima da original', 2000);
+  toast(hit.f.tipo === 'audio' ? t('Cópia numa camada nova') : t('Cópia numa camada nova, por cima da original'), 2000);
 }
 
 /* ---------- camadas de texto ----------
@@ -5812,7 +5816,7 @@ function addTexto() {
   const inicio = inicioNaAgulha(total);
   remember();
   const fid = newFaixaId('t');
-  const item = { id: `${fid}-1`, texto: 'Seu texto', inicio, duracao: +Math.min(3, Math.max(0.5, total - inicio)).toFixed(3),
+  const item = { id: `${fid}-1`, texto: t('Seu texto'), inicio, duracao: +Math.min(3, Math.max(0.5, total - inicio)).toFixed(3),
     x: FRAME_W / 2, y: FRAME_H / 2, estilo: {}, atras: false, acompanhar: false, curva: 0 };
   S.camadas.faixas.push({ id: fid, tipo: 'texto', oculto: false, travado: false, itens: [item] });
   S.layerSel = item.id;
@@ -5830,27 +5834,27 @@ function addTexto() {
  * peso de cada fonte vem do catálogo (é o que o render carrega). */
 const MODELO_Y = 900;
 const MODELOS_TEXTO = [
-  { nome: 'Mistura', linhas: [
+  { nome: t('Mistura'), linhas: [
     { texto: 'Zoom', dy: -150, estilo: { fonte: 'Archivo Black', cor: '#ffffff', tamanho: 2.2 } },
-    { texto: 'do seu', dy: -20, estilo: { fonte: 'Playfair Display', cor: '#d9d9d9', tamanho: 0.75 } },
-    { texto: 'vídeo', dy: 115, estilo: { fonte: 'Pacifico', cor: '#ff4fa3', tamanho: 1.6 } }] },
-  { nome: 'Chamada', linhas: [
-    { texto: 'O SEGREDO', dy: -75, estilo: { fonte: 'Oswald', cor: '#ffe500', tamanho: 0.8 } },
-    { texto: 'QUE NINGUÉM CONTA', dy: 30, estilo: { fonte: 'Anton', cor: '#ffffff', tamanho: 1.2, contorno: 8, corContorno: '#000000' } }] },
-  { nome: 'Número', linhas: [
+    { texto: t('do seu'), dy: -20, estilo: { fonte: 'Playfair Display', cor: '#d9d9d9', tamanho: 0.75 } },
+    { texto: t('vídeo'), dy: 115, estilo: { fonte: 'Pacifico', cor: '#ff4fa3', tamanho: 1.6 } }] },
+  { nome: t('Chamada'), linhas: [
+    { texto: t('O SEGREDO'), dy: -75, estilo: { fonte: 'Oswald', cor: '#ffe500', tamanho: 0.8 } },
+    { texto: t('QUE NINGUÉM CONTA'), dy: 30, estilo: { fonte: 'Anton', cor: '#ffffff', tamanho: 1.2, contorno: 8, corContorno: '#000000' } }] },
+  { nome: t('Número'), linhas: [
     { texto: '3', dy: -150, estilo: { fonte: 'Bebas Neue', cor: '#ffe500', tamanho: 4 } },
-    { texto: 'erros que', dy: 55, estilo: { fonte: 'Poppins', cor: '#ffffff', tamanho: 0.75 } },
-    { texto: 'custam caro', dy: 150, estilo: { fonte: 'Permanent Marker', cor: '#ff3b30', tamanho: 1.15 } }] },
-  { nome: 'Elegante', linhas: [
-    { texto: 'menos', dy: -125, estilo: { fonte: 'Cormorant Garamond', cor: '#ffffff', tamanho: 1.6 } },
-    { texto: 'é', dy: 0, estilo: { fonte: 'Great Vibes', cor: '#f2c14e', tamanho: 1.4 } },
-    { texto: 'mais', dy: 125, estilo: { fonte: 'Cormorant Garamond', cor: '#ffffff', tamanho: 1.6 } }] },
-  { nome: 'Retrô', linhas: [
+    { texto: t('erros que'), dy: 55, estilo: { fonte: 'Poppins', cor: '#ffffff', tamanho: 0.75 } },
+    { texto: t('custam caro'), dy: 150, estilo: { fonte: 'Permanent Marker', cor: '#ff3b30', tamanho: 1.15 } }] },
+  { nome: t('Elegante'), linhas: [
+    { texto: t('menos'), dy: -125, estilo: { fonte: 'Cormorant Garamond', cor: '#ffffff', tamanho: 1.6 } },
+    { texto: t('é'), dy: 0, estilo: { fonte: 'Great Vibes', cor: '#f2c14e', tamanho: 1.4 } },
+    { texto: t('mais'), dy: 125, estilo: { fonte: 'Cormorant Garamond', cor: '#ffffff', tamanho: 1.6 } }] },
+  { nome: t('Retrô'), linhas: [
     { texto: 'GAME', dy: -70, estilo: { fonte: 'Press Start 2P', cor: '#39e5ff', tamanho: 0.9 } },
     { texto: 'OVER', dy: 70, estilo: { fonte: 'Monoton', cor: '#ff3fd8', tamanho: 1.5 } }] },
-  { nome: 'Manchete', linhas: [
-    { texto: 'URGENTE', dy: -60, estilo: { fonte: 'Archivo Black', cor: '#ff2d2d', tamanho: 1.3, contorno: 6, corContorno: '#ffffff' } },
-    { texto: 'leia antes de comprar', dy: 55, estilo: { fonte: 'Caveat', cor: '#ffffff', tamanho: 1 } }] },
+  { nome: t('Manchete'), linhas: [
+    { texto: t('URGENTE'), dy: -60, estilo: { fonte: 'Archivo Black', cor: '#ff2d2d', tamanho: 1.3, contorno: 6, corContorno: '#ffffff' } },
+    { texto: t('leia antes de comprar'), dy: 55, estilo: { fonte: 'Caveat', cor: '#ffffff', tamanho: 1 } }] },
 ];
 const linhaDoModelo = (l) => ({ texto: l.texto, x: FRAME_W / 2, y: Math.round((MODELO_Y * FRAME_H) / 1920) + l.dy, curva: 0,
   estilo: { ...l.estilo, peso: CutMindFontes.pesoDe(l.estilo.fonte) } });
@@ -5859,7 +5863,7 @@ function openModelos() {
   CutMindFontes.carregarTodas();
   const box = $('modeloLista');
   box.innerHTML = '';
-  el('p', 'sheet-hint', box).textContent = 'Dois ou três textos de uma vez, em fontes misturadas. Cada linha vira uma camada: depois, toque em uma para trocar o que está escrito.';
+  el('p', 'sheet-hint', box).textContent = t('Dois ou três textos de uma vez, em fontes misturadas. Cada linha vira uma camada: depois, toque em uma para trocar o que está escrito.');
   const grade = el('div', 'mod-grade', box);
   const idx = Math.min(S.thumbCount || 1, Math.floor(draftToRendered(S.t) / THUMB_EVERY) + 1); // o quadro da agulha
   const fundo = S.thumbCount > 0 ? `url("/gen/thumbs/${String(idx).padStart(4, '0')}.jpg")` : 'none';
@@ -5890,7 +5894,7 @@ function aplicaModelo(m) {
   S.fxSel = null; S.selected = -1; S.insSel = -1; S.cenaSel = -1; S.zoomSel = -1; S.legSel = false;
   fechaModelos();
   renderTimeline(); renderToolbar(); refreshHeader(); drawCenaBox();
-  toast(`${m.linhas.length} textos, cada um numa camada: toque em um para trocar o que está escrito`, 2800);
+  toast(t('{length} textos, cada um numa camada: toque em um para trocar o que está escrito', { length: m.linhas.length }), 2800);
 }
 $('modeloClose').innerHTML = ICON.fechar;
 $('modeloClose').addEventListener('click', fechaModelos);
@@ -5905,10 +5909,10 @@ function textoLiga(k) {
   const a = hit.it.inicio, b = hit.it.inicio + hit.it.duracao;
   const cobre = k === 'atras' && liga && [...S.cenasDraft.filter((c) => !c.desligada), ...S.insertsDraft.filter((c) => c.kind === 'split' || c.kind === 'splitvideo')]
     .find((c) => isFinite(c.start) && isFinite(c.end) && c.start < b && c.end > a);
-  if (cobre) { toast(`Atenção: ${cobre.nome || 'a tela dividida'} ocupa a tela inteira nesse trecho e cobre o que fica atrás da pessoa`, 4200); renderTimeline(); renderToolbar(); refreshHeader(); return; }
-  if (hit.f.tipo === 'imagem') toast(liga ? 'No vídeo final a imagem vira o cartão grande atrás da pessoa (a prévia mostra por cima, transparente)' : 'A imagem volta para o cartão de cima', 3200);
-  else if (k === 'atras') toast(liga ? 'No vídeo final o texto passa atrás da pessoa (a prévia mostra na frente)' : 'O texto volta para a frente', 2800);
-  else toast(liga ? (S.rastreio ? 'O texto anda junto com a pessoa' : 'O texto anda junto com a pessoa no vídeo final (o agente rastreia o rosto)') : 'O texto fica parado', 2800);
+  if (cobre) { toast(t('Atenção: {p0} ocupa a tela inteira nesse trecho e cobre o que fica atrás da pessoa', { p0: cobre.nome || t('a tela dividida') }), 4200); renderTimeline(); renderToolbar(); refreshHeader(); return; }
+  if (hit.f.tipo === 'imagem') toast(liga ? t('No vídeo final a imagem vira o cartão grande atrás da pessoa (a prévia mostra por cima, transparente)') : t('A imagem volta para o cartão de cima'), 3200);
+  else if (k === 'atras') toast(liga ? t('No vídeo final o texto passa atrás da pessoa (a prévia mostra na frente)') : t('O texto volta para a frente'), 2800);
+  else toast(liga ? (S.rastreio ? t('O texto anda junto com a pessoa') : t('O texto anda junto com a pessoa no vídeo final (o agente rastreia o rosto)')) : t('O texto fica parado'), 2800);
   renderTimeline(); renderToolbar(); refreshHeader();
 }
 
@@ -6058,7 +6062,7 @@ function textoEmpurra(dx, dy) {
 // tocar no que já estava escolhido abre o painel, como no CapCut
 const txDrag = { id: null };
 $('ovTextos').addEventListener('pointerdown', (e) => {
-  if (formatoPrevia()) { toast('Na prévia do formato os textos só aparecem. Salve o formato para mexer neles.', 3200); return; }
+  if (formatoPrevia()) { toast(t('Na prévia do formato os textos só aparecem. Salve o formato para mexer neles.'), 3200); return; }
   const bola = e.target.closest('[data-tam]');
   if (bola) { comecaTamanho(e, bola.dataset.tam); return; }
   const alvo = e.target.closest('[data-tx]');
@@ -6167,11 +6171,11 @@ function openTextoCamada(novo) {
   painel.antes = snap();
   painel.valor = JSON.parse(JSON.stringify(it));
   CutMindFontes.carregarTodas();
-  $('cenaSheetNome').textContent = it.nome || 'Texto'; // o texto de um modelo de montagem diz qual é ("Título")
+  $('cenaSheetNome').textContent = it.nome || t('Texto'); // o texto de um modelo de montagem diz qual é ("Título")
   const box = $('cenaCampos');
   box.innerHTML = '';
   const lab = el('label', 'cena-campo', box);
-  el('span', '', lab).textContent = 'O que está escrito';
+  el('span', '', lab).textContent = t('O que está escrito');
   const inp = el('textarea', '', lab);
   inp.rows = Math.max(2, Math.min(5, String(it.texto).split('\n').length));
   inp.maxLength = 400;
@@ -6180,15 +6184,15 @@ function openTextoCamada(novo) {
   // tamanho, cor e contorno logo abaixo do texto; as fontes por último (a grade é alta e, na
   // coluna do computador, empurrava o resto para fora da vista)
   const e = estiloTexto(it);
-  const tam = campoTexto(box, 'Tamanho');
+  const tam = campoTexto(box, t('Tamanho'));
   painel.reguaTam = regua(tam, 20, 500, 5, Math.round(e.tamanho * 100), (v) => `${v}%`, (v) => txEstilo('tamanho', +(v / 100).toFixed(2)));
-  el('p', 'tx-dica', tam).textContent = 'Ou puxe a bolinha no canto do texto, no vídeo.';
-  paletaCores(campoTexto(box, 'Cor'), e.cor, S.style && S.style.accent, (cor) => txEstilo('cor', cor));
+  el('p', 'tx-dica', tam).textContent = t('Ou puxe a bolinha no canto do texto, no vídeo.');
+  paletaCores(campoTexto(box, t('Cor')), e.cor, S.style && S.style.accent, (cor) => txEstilo('cor', cor));
   campoContorno(box, e, (v) => txEstilo('contorno', v), (cor) => txEstilo('corContorno', cor));
-  regua(campoTexto(box, 'Curva'), -100, 100, 1, Math.round(+it.curva || 0), (v) => (v ? `${v > 0 ? '+' : ''}${v}` : 'reto'), (v) => txMuda((x) => { x.curva = v; }));
-  const alt = campoTexto(box, 'Altura');
+  regua(campoTexto(box, t('Curva')), -100, 100, 1, Math.round(+it.curva || 0), (v) => (v ? `${v > 0 ? '+' : ''}${v}` : 'reto'), (v) => txMuda((x) => { x.curva = v; }));
+  const alt = campoTexto(box, t('Altura'));
   painel.reguaAlt = regua(alt, 0, 100, 1, Math.round((it.y / FRAME_H) * 100), (v) => `${v}%`, (v) => txMuda((x) => { x.y = Math.round((v / 100) * FRAME_H); }));
-  el('p', 'tx-dica', alt).textContent = isDesk() ? 'Para o lado, arraste o texto no vídeo ou use as setas do teclado.' : 'Para o lado, arraste o texto no vídeo.';
+  el('p', 'tx-dica', alt).textContent = isDesk() ? t('Para o lado, arraste o texto no vídeo ou use as setas do teclado.') : t('Para o lado, arraste o texto no vídeo.');
   fonteGrade(box, e.fonte, (f) => txMuda((x) => { x.estilo = { ...(x.estilo || {}), fonte: f.familia, peso: f.peso }; }));
   showSheet($('cenaSheet'), true);
   // texto novo: já é só digitar por cima (depois que o painel sobe, como o da nota)
@@ -6204,7 +6208,7 @@ function fechaTextoCamada(guarda) {
       hit.f.itens = hit.f.itens.filter((x) => x !== hit.it);
       if (!hit.f.itens.length) S.camadas.faixas = S.camadas.faixas.filter((f) => f !== hit.f);
       S.layerSel = null;
-      toast('Texto vazio: a camada saiu', 1800);
+      toast(t('Texto vazio: a camada saiu'), 1800);
     } else if (JSON.stringify(hit.it) !== JSON.stringify(painel.valor)) remember(painel.antes);
   }
   renderTimeline(); renderToolbar(); refreshHeader(); desenhaTextos();
@@ -6269,8 +6273,8 @@ function dragCap(x) {
   if (Math.abs(d) < 0.001) delete t[c.i0]; else t[c.i0] = d;
   if (Object.keys(t).length) S.legenda.tempos = t; else delete S.legenda.tempos;
   const tip = $('trimTip');
-  const encostou = d && (d <= D.lo + 1e-6 || d >= D.hi - 1e-6) ? ' (encostou na frase vizinha)' : '';
-  tip.textContent = d ? `"${c.text}" ${d > 0 ? '+' : ''}${d.toFixed(2)} s${encostou}` : `"${c.text}" no lugar`;
+  const encostou = d && (d <= D.lo + 1e-6 || d >= D.hi - 1e-6) ? t(' (encostou na frase vizinha)') : '';
+  tip.textContent = d ? `"${c.text}" ${d > 0 ? '+' : ''}${d.toFixed(2)} s${encostou}` : t('"{text}" no lugar', { text: c.text });
   tip.classList.remove('hidden');
   if (!G.capQueued) {
     G.capQueued = true;
@@ -6299,7 +6303,7 @@ function legendaSegue() {
   if (!S.legenda) return;
   remember();
   S.legenda.acompanhar = !S.legenda.acompanhar;
-  toast(S.legenda.acompanhar ? 'A legenda anda junto com a pessoa no vídeo final (o agente rastreia o rosto)' : 'A legenda fica parada', 2800);
+  toast(S.legenda.acompanhar ? t('A legenda anda junto com a pessoa no vídeo final (o agente rastreia o rosto)') : t('A legenda fica parada'), 2800);
   renderTimeline(); renderToolbar(); refreshHeader();
 }
 // o que vale agora: o escolhido no painel por cima do desenho do estilo
@@ -6337,19 +6341,19 @@ function openLegendaTexto() {
   painel.vista = S.view;
   if (S.view !== 'corte') switchView('corte'); // o corte não tem a legenda queimada: a prévia não sai dobrada
   CutMindFontes.carregarTodas();
-  $('cenaSheetNome').textContent = 'Texto da legenda';
+  $('cenaSheetNome').textContent = t('Texto da legenda');
   const box = $('cenaCampos');
   box.innerHTML = '';
   const e = legendaEfetiva();
   // como no texto: tamanho, cor e contorno em cima, as fontes por último
-  regua(campoTexto(box, 'Tamanho'), 30, 300, 5, Math.round(e.tamanho * 100), (v) => `${v}%`, (v) => legEstilo('tamanho', +(v / 100).toFixed(2)));
+  regua(campoTexto(box, t('Tamanho')), 30, 300, 5, Math.round(e.tamanho * 100), (v) => `${v}%`, (v) => legEstilo('tamanho', +(v / 100).toFixed(2)));
   if (!so) {
-    paletaCores(campoTexto(box, 'Cor'), e.cor, S.style && S.style.accent, (cor) => legEstilo('cor', cor));
+    paletaCores(campoTexto(box, t('Cor')), e.cor, S.style && S.style.accent, (cor) => legEstilo('cor', cor));
     campoContorno(box, e, (v) => legEstilo('contorno', v), (cor) => legEstilo('corContorno', cor));
   }
   el('p', 'tx-dica', box).textContent = so
-    ? 'Neste estilo as fontes e as cores fazem parte do desenho: aqui muda o tamanho. A altura de cada frase fica em "Posição".'
-    : 'Vale para todas as frases. A altura de cada frase fica em "Posição".';
+    ? t('Neste estilo as fontes e as cores fazem parte do desenho: aqui muda o tamanho. A altura de cada frase fica em "Posição".')
+    : t('Vale para todas as frases. A altura de cada frase fica em "Posição".');
   if (!so) fonteGrade(box, e.fonte, (f) => legMuda((L) => { L.estilo = { ...(L.estilo || {}), fonte: f.familia, peso: f.peso }; }));
   showSheet($('cenaSheet'), true);
   desenhaLegendaPrevia(true);
@@ -6388,7 +6392,7 @@ function toggleMelhorar() {
   if (!hit) return;
   remember();
   hit.it.melhorar = !hit.it.melhorar;
-  toast(hit.it.melhorar ? 'O agente melhora este áudio: tira o ruído e acerta o volume' : 'Este áudio entra como está', 2600);
+  toast(hit.it.melhorar ? t('O agente melhora este áudio: tira o ruído e acerta o volume') : t('Este áudio entra como está'), 2600);
   renderTimeline(); renderToolbar(); refreshHeader();
 }
 /* volume: um painel pequeno com a régua; 100% é o arquivo como veio. Serve à camada de
@@ -6396,9 +6400,9 @@ function toggleMelhorar() {
 let volBefore = null;
 function volAlvo() {
   const hit = S.layerSel ? camItem(S.layerSel) : null;
-  if (hit) return { max: 200, nome: 'camada', get: () => hit.it.volume, set: (v) => { hit.it.volume = v; } };
+  if (hit) return { max: 200, nome: t('Volume da camada'), get: () => hit.it.volume, set: (v) => { hit.it.volume = v; } };
   const r = S.selected >= 0 && S.view === 'corte' ? S.draft[S.selected] : null;
-  if (r) return { max: 400, nome: 'tomada', get: () => r.vol, set: (v) => { r.vol = v; }, tomada: r };
+  if (r) return { max: 400, nome: t('Volume da tomada'), get: () => r.vol, set: (v) => { r.vol = v; }, tomada: r };
   return null;
 }
 function volMostrar(a) {
@@ -6413,7 +6417,7 @@ function openVolume() {
   volBefore = snap();
   $('volRange').max = a.max;
   $('volRange').value = Math.round(a.get() * 100);
-  $('volRange').setAttribute('aria-label', `Volume da ${a.nome}`);
+  $('volRange').setAttribute('aria-label', a.nome);
   volMostrar(a);
   showSheet($('volSheet'), true);
 }
@@ -6454,7 +6458,7 @@ function velMostrar(r) {
   const d = draftLayout()[S.selected];
   const orig = d ? r.end - r.start - (d.leadSrc || 0) - (d.tailSrc || 0) : 0; // o trecho da gravação que aparece, a 1×
   const igual = r.vel === 1 && !r.curva;
-  $('velDur').textContent = igual ? `Duração: ${fmtSeg(orig)}` : `Duração: ${fmtSeg(orig)} → ${fmtSeg(d ? d.dur : 0)}`;
+  $('velDur').textContent = igual ? t('Duração: {p0}', { p0: fmtSeg(orig) }) : t('Duração: {p0} → {p1}', { p0: fmtSeg(orig), p1: fmtSeg(d ? d.dur : 0) });
 }
 function openVelocidade() {
   const r = velTomada();
@@ -6574,14 +6578,14 @@ function escolheFaixa(a, b) {
   S.faixa = hi - lo >= VEL_MIN_FAIXA ? { a: lo, b: hi } : null;
 }
 function selecionaTudo() {
-  if (!hasFinal()) { toast('A seleção de tudo é no vídeo final, que ainda não existe', 2600); return; }
+  if (!hasFinal()) { toast(t('A seleção de tudo é no vídeo final, que ainda não existe'), 2600); return; }
   if (S.view !== 'final') switchView('final');
   soltaEscolha();
   S.faixa = { a: 0, b: noQuadro(fimFinal()) };
   renderTimeline(); renderToolbar();
   if (!S.faixaEnsinou) {
     S.faixaEnsinou = true;
-    flashName('<span>Tudo escolhido. Puxe as pontas laranja</span>', 2600);
+    flashName(`<span>${t('Tudo escolhido. Puxe as pontas laranja')}</span>`, 2600);
   }
 }
 // o tempo do rascunho debaixo de um x da tela (o mesmo nas duas agulhas)
@@ -6643,7 +6647,7 @@ function renderVelTrack(lane) {
     chip.style.left = `${a * S.pps}px`;
     chip.style.width = `${Math.max((b - a) * S.pps - 2, 6)}px`;
     chip.textContent = fmtVel(s.fator);
-    chip.title = `${fmtVel(s.fator)}: ${fmtSeg(s.fim - s.inicio)} viram ${fmtSeg((s.fim - s.inicio) / s.fator)}`;
+    chip.title = t('{p0}: {p1} viram {p2}', { p0: fmtVel(s.fator), p1: fmtSeg(s.fim - s.inicio), p2: fmtSeg((s.fim - s.inicio) / s.fator) });
     if (S.faixa && Math.abs(S.faixa.a - s.inicio) < 1e-3 && Math.abs(S.faixa.b - s.fim) < 1e-3) chip.classList.add('sel');
   });
 }
@@ -6653,8 +6657,8 @@ const VF = { on: false, base: null, before: null };
 function velFaixaMostra(f) {
   const F = S.faixa, d = F.b - F.a;
   $('velVal').textContent = fmtVel(f);
-  $('velDur').textContent = `Trecho: ${f !== 1 ? `${fmtSeg(d)} → ${fmtSeg(d / f)}` : fmtSeg(d)} · vídeo: `
-    + `${fmtShort(fimFinal())} → ${fmtShort(duracaoEntregue())}. Tudo no trecho acelera junto.`;
+  $('velDur').textContent = t('Trecho: {p0} · vídeo: ', { p0: f !== 1 ? `${fmtSeg(d)} → ${fmtSeg(d / f)}` : fmtSeg(d) })
+    + t('{p0} → {p1}. Tudo no trecho acelera junto.', { p0: fmtShort(fimFinal()), p1: fmtShort(duracaoEntregue()) });
 }
 function openVelFaixa() {
   const F = S.faixa;
@@ -6702,16 +6706,16 @@ function fechaVelFaixa() {
  * descem), + Ponto na agulha, − Ponto no escolhido, Redefinir volta ao desenho da curva.
  * Escala de 0,1× a 10× em log, com a linha do 1× no meio, como no CapCut. */
 const CURVAS = [
-  ['personalizar', 'Personalizar', [[0, 1], [0.25, 1], [0.5, 1], [0.75, 1], [1, 1]]],
-  ['montagem', 'Montagem', [[0, 0.9], [0.1, 0.9], [0.5, 6.8], [0.65, 0.3], [0.8, 1], [1, 1]]],
-  ['heroi', 'Herói', [[0, 1], [0.05, 1], [0.35, 5.5], [0.45, 0.5], [0.55, 0.5], [0.65, 5.5], [0.95, 1], [1, 1]]],
-  ['bala', 'Bala', [[0, 5.2], [0.4, 5.2], [0.46, 0.5], [0.54, 0.5], [0.6, 5.2], [1, 5.2]]],
-  ['salto', 'Salto', [[0, 0.6], [0.43, 0.6], [0.5, 6], [0.57, 0.6], [1, 0.6]]],
-  ['entrada', 'Entrada rápida', [[0, 5.2], [0.4, 5.2], [0.6, 1], [1, 1]]],
-  ['saida', 'Saída rápida', [[0, 1], [0.4, 1], [0.6, 5.2], [1, 5.2]]],
+  ['personalizar', t('Personalizar'), [[0, 1], [0.25, 1], [0.5, 1], [0.75, 1], [1, 1]]],
+  ['montagem', t('Montagem'), [[0, 0.9], [0.1, 0.9], [0.5, 6.8], [0.65, 0.3], [0.8, 1], [1, 1]]],
+  ['heroi', t('Herói'), [[0, 1], [0.05, 1], [0.35, 5.5], [0.45, 0.5], [0.55, 0.5], [0.65, 5.5], [0.95, 1], [1, 1]]],
+  ['bala', t('Bala'), [[0, 5.2], [0.4, 5.2], [0.46, 0.5], [0.54, 0.5], [0.6, 5.2], [1, 5.2]]],
+  ['salto', t('Salto'), [[0, 0.6], [0.43, 0.6], [0.5, 6], [0.57, 0.6], [1, 0.6]]],
+  ['entrada', t('Entrada rápida'), [[0, 5.2], [0.4, 5.2], [0.6, 1], [1, 1]]],
+  ['saida', t('Saída rápida'), [[0, 1], [0.4, 1], [0.6, 5.2], [1, 5.2]]],
 ];
 const CURVA_MAX_PONTOS = 20;
-const nomeCurva = (id) => (CURVAS.find((c) => c[0] === id) || [id, 'Curva'])[1];
+const nomeCurva = (id) => (CURVAS.find((c) => c[0] === id) || [id, t('Curva')])[1];
 // posição vertical de uma velocidade no gráfico: log10 de −1 (0,1×) a 1 (10×)
 const curvaY = (v, h) => h / 2 - Math.log10(Math.max(0.1, Math.min(10, v))) * (h / 2 - 8);
 const curvaV = (y, h) => Math.pow(10, (h / 2 - y) / (h / 2 - 8));
@@ -6739,7 +6743,7 @@ function renderCurvas() {
   const r = velTomada();
   const box = $('velCurvas');
   box.textContent = '';
-  for (const [id, nome, pts] of [[null, 'Nenhuma', [[0, 1], [1, 1]]], ...CURVAS]) {
+  for (const [id, nome, pts] of [[null, t('Nenhuma'), [[0, 1], [1, 1]]], ...CURVAS]) {
     const b = el('button', 'vel-curva', box);
     b.type = 'button';
     b.dataset.curva = id || '';
@@ -6838,7 +6842,7 @@ $('velMais').addEventListener('click', () => {
   const pts = r.curva.pontos.map((p) => [p[0], p[1]]);
   const j = pts.findIndex((p) => p[0] > x);
   const [xa, ya] = pts[j - 1], [xb, yb] = pts[j];
-  if (x - xa < 0.01 || xb - x < 0.01) { toast('Já tem um ponto aí', 1800); return; }
+  if (x - xa < 0.01 || xb - x < 0.01) { toast(t('Já tem um ponto aí'), 1800); return; }
   pts.splice(j, 0, [+x.toFixed(4), +(ya + (yb - ya) * (x - xa) / (xb - xa)).toFixed(2)]);
   r.curva = { nome: r.curva.nome, pontos: pts };
   S.velPonto = j;
@@ -6893,7 +6897,7 @@ async function vozCarregaInfo() {
 function vozRotulo() {
   const v = S.melhorar || vozBase(VOZ.info);
   if (!v) return '';
-  return v.desligar ? 'Voz original' : `Voz ${v.voz} · Fundo ${v.fundo}`;
+  return v.desligar ? t('Voz original') : t('Voz {voz} · Fundo {fundo}', { voz: v.voz, fundo: v.fundo });
 }
 function vozEtiqueta(track) {
   const rot = vozRotulo();
@@ -6902,7 +6906,7 @@ function vozEtiqueta(track) {
   const b = el('button', `voz-tag${melhorarDirty() ? ' dirty' : ''}`, th);
   b.type = 'button';
   b.innerHTML = `${ICON.voz}<span>${rot}</span>`;
-  b.title = melhorarDirty() ? 'Melhorar voz (falta salvar)' : 'Melhorar voz';
+  b.title = melhorarDirty() ? t('Melhorar voz (falta salvar)') : t('Melhorar voz');
 }
 document.addEventListener('click', (e) => { if (e.target.closest('.voz-tag')) openVoz(); });
 
@@ -6937,8 +6941,8 @@ function vozMostra({ a = null, erro = '', texto = '', nota = '' } = {}) {
   box.classList.toggle('hidden', !algo);
   box.classList.toggle('erro', !!erro);
   $('vozDeNovo').classList.toggle('hidden', !erro);
-  $('vozPrepTexto').textContent = erro ? `Não deu: ${erro}`
-    : a ? `${a.texto || 'Preparando a voz'}…` : texto;
+  $('vozPrepTexto').textContent = erro ? t('Não deu: {erro}', { erro })
+    : a ? `${a.texto || t('Preparando a voz')}…` : texto;
   $('vozPrepBarra').style.width = a && a.de ? `${Math.round(vozFracao(a) * 100)}%` : '0%';
   $('vozPrepNota').textContent = nota;
   $('vozPrepNota').classList.toggle('hidden', !nota);
@@ -6947,8 +6951,8 @@ function vozMostra({ a = null, erro = '', texto = '', nota = '' } = {}) {
 function vozNotaPreparo() {
   const m = (VOZ.info && VOZ.info.modelos) || {};
   const min = Math.max(1, Math.round((((VOZ.info && VOZ.info.duracao) || S.videoDuration) * 1.3) / 60));
-  return (m.prontos === false && m.faltam_mb ? `Na primeira vez o computador baixa os modelos de voz (${m.faltam_mb} MB). ` : '')
-    + `O preparo leva cerca de ${min} min e é uma vez por corte. Pode fechar: ele continua no computador.`;
+  return (m.prontos === false && m.faltam_mb ? t('Na primeira vez o computador baixa os modelos de voz ({faltam_mb} MB). ', { faltam_mb: m.faltam_mb }) : '')
+    + t('O preparo leva cerca de {min} min e é uma vez por corte. Pode fechar: ele continua no computador.', { min });
 }
 async function openVoz() {
   if (VOZ.aberto || !S.videoDuration) return;
@@ -6966,7 +6970,7 @@ async function openVoz() {
   VOZ.voz = v.voz; VOZ.fundo = v.fundo; VOZ.original = false;
   vozValores();
   vozRegs(false);
-  vozMostra({ texto: 'Conferindo a voz deste vídeo…' });
+  vozMostra({ texto: t('Conferindo a voz deste vídeo…') });
   showSheet($('vozSheet'), true);
   await vozCarregaInfo();
   vozSegue(false);
@@ -6974,10 +6978,10 @@ async function openVoz() {
 async function vozSegue(deNovo) {
   if (!VOZ.aberto) return;
   const i = VOZ.info;
-  if (!i) { vozMostra({ erro: 'o editor não respondeu. Ele ainda está ligado no computador?' }); return; }
+  if (!i) { vozMostra({ erro: t('o editor não respondeu. Ele ainda está ligado no computador?') }); return; }
   if (i.preparo === 'pronto') {
     if ((i.duracao || S.videoDuration) > VOZ_PREVIA_MAX) { // escolhe sem ouvir: os números valem igual
-      vozMostra({ nota: 'Vídeo longo: a prévia toca até 3 min de vídeo. A Voz e o Fundo escolhidos valem do mesmo jeito.' });
+      vozMostra({ nota: t('Vídeo longo: a prévia toca até 3 min de vídeo. A Voz e o Fundo escolhidos valem do mesmo jeito.') });
       vozRegs(true);
       return;
     }
@@ -6986,14 +6990,14 @@ async function vozSegue(deNovo) {
     return;
   }
   const a = i.andamento;
-  if (!deNovo && a && a.etapa === 'falhou') { vozMostra({ erro: a.erro || 'o preparo parou' }); return; }
+  if (!deNovo && a && a.etapa === 'falhou') { vozMostra({ erro: a.erro || t('o preparo parou') }); return; }
   if (i.preparo !== 'preparando') { // nenhum, ou o corte mudou desde o último preparo
     try {
       const r = await fetch('/api/melhorar/preparar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       const out = await r.json();
-      if (!r.ok) { vozMostra({ erro: out.error || 'não consegui começar o preparo' }); return; }
+      if (!r.ok) { vozMostra({ erro: out.error || t('não consegui começar o preparo') }); return; }
       if (out.pronto) { await vozCarregaInfo(); vozSegue(false); return; }
-    } catch (e) { vozMostra({ erro: 'não consegui começar o preparo' }); return; }
+    } catch (e) { vozMostra({ erro: t('não consegui começar o preparo') }); return; }
   }
   vozAcompanha();
 }
@@ -7005,15 +7009,15 @@ function vozAcompanha() {
     try { a = await (await fetch('/api/melhorar/andamento')).json(); } catch (e) { /* servidor reiniciando */ }
     if (!VOZ.aberto) return;
     if (a && a.etapa === 'pronto') { await vozCarregaInfo(); vozSegue(false); return; }
-    if (a && a.etapa === 'falhou') { vozMostra({ erro: a.erro || 'o preparo parou' }); return; }
-    vozMostra({ a: a && a.etapa ? a : { texto: 'Começando o preparo', n: 0, de: 0 }, nota: vozNotaPreparo() });
+    if (a && a.etapa === 'falhou') { vozMostra({ erro: a.erro || t('o preparo parou') }); return; }
+    vozMostra({ a: a && a.etapa ? a : { texto: t('Começando o preparo'), n: 0, de: 0 }, nota: vozNotaPreparo() });
     VOZ.timer = setTimeout(passo, 700);
   };
   passo();
 }
 async function vozBaixaFaixas(i) {
   const prep = i.preparado;
-  vozMostra({ texto: 'Carregando a prévia…' });
+  vozMostra({ texto: t('Carregando a prévia…') });
   try {
     const bufs = await Promise.all(VOZ_FAIXAS.map(async (k) => {
       const r = await fetch(`/media/${i.previa[k].split('/').map(encodeURIComponent).join('/')}`);
@@ -7024,7 +7028,7 @@ async function vozBaixaFaixas(i) {
     VOZ.buf = bufs;
     VOZ.preparado = prep;
   } catch (e) {
-    vozMostra({ erro: `não consegui carregar a prévia (${e.message})` });
+    vozMostra({ erro: t('não consegui carregar a prévia ({message})', { message: e.message }) });
     return;
   }
   vozPronto();
@@ -7111,7 +7115,7 @@ video.addEventListener('timeupdate', () => {
 $('vozVoz').addEventListener('input', () => { VOZ.voz = +$('vozVoz').value; VOZ.original = false; vozValores(); vozAplica(false); });
 $('vozFundo').addEventListener('input', () => { VOZ.fundo = +$('vozFundo').value; VOZ.original = false; vozValores(); vozAplica(false); });
 $('vozOriginal').addEventListener('click', () => { VOZ.original = !VOZ.original; vozValores(); vozAplica(false); });
-$('vozDeNovo').addEventListener('click', () => { vozMostra({ texto: 'Começando de novo…' }); vozSegue(true); });
+$('vozDeNovo').addEventListener('click', () => { vozMostra({ texto: t('Começando de novo…') }); vozSegue(true); });
 $('vozOk').addEventListener('click', () => closeVoz('pronto'));
 $('vozTirar').addEventListener('click', () => closeVoz('tirar'));
 document.addEventListener('keydown', (e) => { if (VOZ.aberto && e.key === 'Escape') { e.preventDefault(); closeVoz(null); } });
@@ -7207,7 +7211,7 @@ function syncQuadro() {
   S.quadroCobre = !!m;
   OQ.geo = null;
   $('oqCaixa').classList.add('hidden');
-  const selo = m && formatoPrevia() ? `Prévia · ${FORMATOS[S.formato].nome} (${S.formato})` : m && mudou ? 'Prévia do enquadramento' : '';
+  const selo = m && formatoPrevia() ? t('Prévia · {nome} ({formato})', { nome: FORMATOS[S.formato].nome, formato: S.formato }) : m && mudou ? t('Prévia do enquadramento') : '';
   if ($('oqSelo').textContent !== selo) $('oqSelo').textContent = selo;
   if (!m) return;
   if (!pronto) { if (im) return; preCarregaQuadros(); return; }
@@ -7297,7 +7301,7 @@ function oqFim(e) {
 function enqRapido(qual) {
   const r = S.draft[S.selected], g = OQ.geo;
   if (!r || r.vaga == null) return;
-  if (qual !== 'auto' && !(g && g.vaga === r.vaga)) { toast('Ponha a agulha neste lugar para ver o enquadramento.', 2600); return; }
+  if (qual !== 'auto' && !(g && g.vaga === r.vaga)) { toast(t('Ponha a agulha neste lugar para ver o enquadramento.'), 2600); return; }
   remember();
   if (qual === 'auto') poeEnq(r, null);
   else poeEnq(r, { escala: qual === 'caber' ? 1 : Math.round(g.cobrir * 10000) / 10000, x: 0.5, y: 0.5 });
@@ -7312,7 +7316,7 @@ function enqNasOutras() {
   remember();
   const enq = enqDoLugar(r);
   for (const o of outras) poeEnq(o, enq ? { ...enq } : null);
-  toast(`O mesmo enquadramento em mais ${outras.length} ${outras.length === 1 ? 'lugar' : 'lugares'} com esta mídia.`, 2600);
+  toast(t('O mesmo enquadramento em mais {length} {p1} com esta mídia.', { length: outras.length, p1: outras.length === 1 ? t('lugar') : t('lugares') }), 2600);
   renderTimeline(); renderToolbar(); refreshHeader();
 }
 function syncLayers() {
@@ -7369,16 +7373,16 @@ const TRILHA_VOLUME = 0.15; // o mesmo do pacotes.py: embaixo da voz
 /* O kit não hospeda música: com a biblioteca vazia, o painel mostra onde baixar de
  * graça. A mesma lista está em references/trilhas-gratis.md (o teste confere). */
 const TRILHAS_GRATIS = [
-  ['Sem precisar dar crédito', [
-    ['Pixabay Música', 'https://pixabay.com/music/'],
+  [t('Sem precisar dar crédito'), [
+    [t('Pixabay Música'), 'https://pixabay.com/music/'],
     ['Mixkit', 'https://mixkit.co/free-stock-music/'],
     ['StreamBeats', 'https://www.streambeats.com/'],
-    ['Holizna', 'https://holiznacc0.bandcamp.com/', 'lo-fi e hip hop em domínio público'],
+    ['Holizna', 'https://holiznacc0.bandcamp.com/', t('lo-fi e hip hop em domínio público')],
   ]],
-  ['Grátis, com crédito na descrição do post', [
-    ['Biblioteca de áudio do YouTube', 'https://studio.youtube.com/', 'no YouTube Studio; só algumas pedem crédito'],
+  [t('Grátis, com crédito na descrição do post'), [
+    [t('Biblioteca de áudio do YouTube'), 'https://studio.youtube.com/', t('no YouTube Studio; só algumas pedem crédito')],
     ['Uppbeat', 'https://uppbeat.io/'],
-    ['Incompetech', 'https://incompetech.com/music/royalty-free/music.html', 'do Kevin MacLeod'],
+    ['Incompetech', 'https://incompetech.com/music/royalty-free/music.html', t('do Kevin MacLeod')],
     ['Free To Use', 'https://freetouse.com/music'],
   ]],
 ];
@@ -7390,7 +7394,7 @@ async function loadTrilhas() {
   try {
     const r = await fetch('/api/pacotes?tipo=trilha');
     const d = await r.json();
-    if (!r.ok) throw new Error(d.error || `erro ${r.status}`);
+    if (!r.ok) throw new Error(d.error || t('erro {status}', { status: r.status }));
     S.trilhas = d.pacotes;
   } catch (e) {
     S.trilhas = S.trilhas || [];
@@ -7399,7 +7403,7 @@ async function loadTrilhas() {
 }
 async function openTrilhas() {
   video.pause();
-  if (!S.trilhas) $('trilhaLista').innerHTML = '<p class="sheet-hint">Carregando…</p>';
+  if (!S.trilhas) $('trilhaLista').innerHTML = `<p class="sheet-hint">${t('Carregando…')}</p>`;
   showSheet($('trilhaSheet'), true);
   await loadTrilhas();
   renderTrilhas();
@@ -7411,11 +7415,11 @@ function closeTrilhas() {
 }
 function renderGuiaTrilhas(box) {
   const guia = el('div', 'tr-guia', box);
-  el('p', 'tr-guia-lead', guia).textContent = 'Vai postar no Instagram, no TikTok ou no Shorts? '
-    + 'Deixe sem trilha e escolha a música na hora de postar, no próprio app.';
-  el('p', 'sheet-hint', guia).textContent = 'Conta comercial no Instagram vê só a Sound Collection da Meta. '
-    + 'No TikTok, conta empresa vê só a Biblioteca de Música Comercial, que vale só dentro do TikTok.';
-  el('p', 'tr-guia-lead', guia).textContent = 'Para a música ficar no vídeo, baixe de graça num destes sites e traga pelo botão.';
+  el('p', 'tr-guia-lead', guia).textContent = t('Vai postar no Instagram, no TikTok ou no Shorts? ')
+    + t('Deixe sem trilha e escolha a música na hora de postar, no próprio app.');
+  el('p', 'sheet-hint', guia).textContent = t('Conta comercial no Instagram vê só a Sound Collection da Meta. ')
+    + t('No TikTok, conta empresa vê só a Biblioteca de Música Comercial, que vale só dentro do TikTok.');
+  el('p', 'tr-guia-lead', guia).textContent = t('Para a música ficar no vídeo, baixe de graça num destes sites e traga pelo botão.');
   for (const [grupo, sites] of TRILHAS_GRATIS) {
     el('b', 'tr-guia-grupo', guia).textContent = grupo;
     for (const [nome, url, nota] of sites) {
@@ -7430,9 +7434,9 @@ function renderGuiaTrilhas(box) {
   const btn = el('button', 'tb-btn primary tr-guia-btn', guia);
   btn.type = 'button';
   btn.dataset.act = 'do-celular';
-  btn.textContent = `Escolher música ${isDesk() ? 'do computador' : 'do celular'}`;
-  el('p', 'sheet-hint', guia).textContent = 'Se o YouTube reivindicar uma música grátis, '
-    + 'conteste com o link da página onde você baixou.';
+  btn.textContent = t('Escolher música {p0}', { p0: isDesk() ? t('do computador') : t('do celular') });
+  el('p', 'sheet-hint', guia).textContent = t('Se o YouTube reivindicar uma música grátis, ')
+    + t('conteste com o link da página onde você baixou.');
 }
 function renderTrilhas() {
   const lista = S.trilhas || [];
@@ -7444,7 +7448,7 @@ function renderTrilhas() {
     renderGuiaTrilhas($('trilhaLista'));
     return;
   }
-  for (const [id, nome] of [['todas', 'Todas'], ['favoritas', 'Favoritas'],
+  for (const [id, nome] of [['todas', t('Todas')], ['favoritas', t('Favoritas')],
     ...climas.map((c) => [c, c[0].toUpperCase() + c.slice(1)])]) {
     const b = el('button', `subtab${trFiltro === id ? ' on' : ''}`, filtros);
     b.type = 'button';
@@ -7456,8 +7460,8 @@ function renderTrilhas() {
   const vis = lista.filter((p) => trFiltro === 'todas' || (trFiltro === 'favoritas' ? p.favorito : p.clima === trFiltro));
   if (!vis.length) {
     el('p', 'sheet-hint', box).textContent = trFiltro === 'favoritas'
-        ? 'Toque na estrela de uma trilha para guardá-la aqui. A favorita fica neste computador.'
-        : 'Nenhuma trilha aqui.';
+        ? t('Toque na estrela de uma trilha para guardá-la aqui. A favorita fica neste computador.')
+        : t('Nenhuma trilha aqui.');
     return;
   }
   const tocando = !PREV.paused && PREV.dataset.id;
@@ -7469,23 +7473,23 @@ function renderTrilhas() {
     play.dataset.act = 'ouvir';
     play.disabled = !p.previa;
     play.innerHTML = tocando === p.id ? ICON.pause : ICON.play;
-    play.setAttribute('aria-label', `${tocando === p.id ? 'Parar' : 'Ouvir'} ${p.nome}`);
+    play.setAttribute('aria-label', `${tocando === p.id ? t('Parar') : t('Ouvir')} ${p.nome}`);
     const txt = el('div', 'tr-txt', row);
     el('b', null, txt).textContent = p.nome;
     const info = [p.clima, fmtDur(p.duracao)];
-    if (p.baixado) info.push('no computador');
+    if (p.baixado) info.push(t('no computador'));
     el('span', null, txt).textContent = info.filter(Boolean).join(' · ');
     const fav = el('button', `tr-fav${p.favorito ? ' on' : ''}`, row);
     fav.type = 'button';
     fav.dataset.act = 'favorito';
     fav.innerHTML = p.favorito ? ICON.estrelaCheia : ICON.estrela;
-    fav.setAttribute('aria-label', p.favorito ? 'Tirar dos favoritos' : 'Favoritar');
+    fav.setAttribute('aria-label', p.favorito ? t('Tirar dos favoritos') : t('Favoritar'));
     fav.setAttribute('aria-pressed', String(!!p.favorito));
     if (trSel === p.id) { // a escolhida mostra Usar, como no app de celular
       const usar = el('button', 'tb-btn primary tr-usar', row);
       usar.type = 'button';
       usar.dataset.act = 'usar';
-      usar.textContent = trBaixando === p.id ? 'Baixando…' : 'Usar';
+      usar.textContent = trBaixando === p.id ? t('Baixando…') : t('Usar');
       usar.disabled = !!trBaixando;
     }
   }
@@ -7517,7 +7521,7 @@ async function favTrilha(id) {
   } catch (e) {
     p.favorito = !p.favorito;
     if (trAberto()) renderTrilhas();
-    toast('Não deu para favoritar agora', 2200);
+    toast(t('Não deu para favoritar agora'), 2200);
   }
 }
 async function usarTrilha(id) {
@@ -7528,18 +7532,18 @@ async function usarTrilha(id) {
     const r = await fetch('/api/pacotes/usar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }) });
     const d = await r.json();
-    if (!r.ok) throw new Error(d.error || `erro ${r.status}`);
+    if (!r.ok) throw new Error(d.error || t('erro {status}', { status: r.status }));
     const p = S.trilhas.find((x) => x.id === id);
     if (p) p.baixado = true;
     S.trilhaNomes[id] = d.nome;
     trBaixando = null;
     closeTrilhas();
     await addLayer('audio', d.arquivo, { volume: TRILHA_VOLUME, trilha: id });
-    toast(`"${d.nome}" entrou na agulha, com volume de fundo (${Math.round(TRILHA_VOLUME * 100)}%)`, 2600);
+    toast(t('"{nome}" entrou na agulha, com volume de fundo ({p1}%)', { nome: d.nome, p1: Math.round(TRILHA_VOLUME * 100) }), 2600);
   } catch (e) {
     trBaixando = null;
     if (trAberto()) renderTrilhas();
-    toast(`A trilha não baixou: ${e.message}`, 3600);
+    toast(t('A trilha não baixou: {message}', { message: e.message }), 3600);
   }
 }
 $('trilhaClose').innerHTML = ICON.fechar;
@@ -7568,7 +7572,7 @@ $('trilhaLista').addEventListener('click', (e) => {
 });
 ['play', 'pause'].forEach((ev) => PREV.addEventListener(ev, () => { if (trAberto()) renderTrilhas(); }));
 PREV.addEventListener('error', () => {
-  if (PREV.dataset.id && trAberto()) toast('A prévia não carregou. Confira a internet do computador.', 3000);
+  if (PREV.dataset.id && trAberto()) toast(t('A prévia não carregou. Confira a internet do computador.'), 3000);
 });
 
 /* ---------- efeitos: filtros e transições da biblioteca (helpers/efeitos.py) ----------
@@ -7618,7 +7622,7 @@ async function loadFxLista(tipo) {
   try {
     const r = await fetch(`/api/pacotes?tipo=${tipo}`);
     const d = await r.json();
-    if (!r.ok) throw new Error(d.error || `erro ${r.status}`);
+    if (!r.ok) throw new Error(d.error || t('erro {status}', { status: r.status }));
     S.fxLista[tipo] = d.pacotes;
   } catch (e) {
     S.fxLista[tipo] = S.fxLista[tipo] || [];
@@ -7687,7 +7691,7 @@ function quadroDoCorte(n) {
       fxVid.addEventListener('seeked', tirar, { once: true });
       fxVid.currentTime = (Math.max(0, n) + 0.5) / fps; // o meio do quadro: cai nele, não no vizinho
     };
-    setTimeout(() => falha(new Error('o quadro parado não carregou')), 15000);
+    setTimeout(() => falha(new Error(t('o quadro parado não carregou'))), 15000);
     if (fxVid.dataset.src !== src) {
       fxVid.dataset.src = src;
       fxVid.src = src;
@@ -7806,7 +7810,7 @@ function renderFxTrack(lane, ajustes) {
     chip.style.left = `${a * S.pps}px`;
     chip.style.width = `${Math.max((b - a) * S.pps, 12)}px`;
     el('span', 'l-ico', chip).innerHTML = { filtro: ICON.filtro, transicao: ICON.transicao, ajuste: ICON.ajustar }[it.tipo];
-    el('span', 'l-name', chip).textContent = it.tipo === 'ajuste' ? 'Ajuste' : S.fxNomes[it.pacote] || it.pacote;
+    el('span', 'l-name', chip).textContent = it.tipo === 'ajuste' ? t('Ajuste') : S.fxNomes[it.pacote] || it.pacote;
   }
 }
 function tapFx(id) {
@@ -7862,8 +7866,8 @@ $('fxIntOk').addEventListener('click', () => {
  * um por tomada; a prévia desenha ao vivo enquanto a régua anda, por cima do filtro. Valor
  * perto de zero encosta no zero (no dedo, acertar o 0 exato é difícil); tudo em zero tira o
  * ajuste no Pronto. As chaves são as do helpers/efeitos.py. */
-const AJ_NOMES = { brilho: 'Brilho', contraste: 'Contraste', saturacao: 'Saturação', exposicao: 'Exposição',
-  temperatura: 'Temperatura', matiz: 'Matiz', realces: 'Realces', sombras: 'Sombras', vinheta: 'Vinheta' };
+const AJ_NOMES = { brilho: t('Brilho'), contraste: t('Contraste'), saturacao: t('Saturação'), exposicao: t('Exposição'),
+  temperatura: t('Temperatura'), matiz: t('Matiz'), realces: t('Realces'), sombras: t('Sombras'), vinheta: t('Vinheta') };
 const AJ = { id: null, k: 'brilho', antes: null };
 const ajTexto = (v) => (v > 0 ? `+${v}` : `${v}`);
 function openAjuste() {
@@ -8033,11 +8037,11 @@ async function openFx(tipo) {
   // desenha por cima e a faixa de efeitos não aparece; o "Usar" ficava invisível
   if (S.view === 'final') {
     switchView('corte');
-    toast('Efeitos no corte: a prévia toca aqui', 2600);
+    toast(t('Efeitos no corte: a prévia toca aqui'), 2600);
   }
   video.pause();
-  $('fxTitle').textContent = tipo === 'filtro' ? 'Filtros' : 'Transições';
-  if (!S.fxLista[tipo]) $('fxLista').innerHTML = '<p class="sheet-hint">Carregando…</p>';
+  $('fxTitle').textContent = tipo === 'filtro' ? t('Filtros') : t('Transições');
+  if (!S.fxLista[tipo]) $('fxLista').innerHTML = `<p class="sheet-hint">${t('Carregando…')}</p>`;
   app.classList.add('efeitando');
   showSheet($('fxSheet'), true);
   await loadFxLista(tipo);
@@ -8060,12 +8064,12 @@ function renderFxLista() {
   const filtro = fxTipo === 'filtro';
   if (!lista.length) {
     el('p', 'sheet-hint', box).textContent = filtro
-      ? 'A biblioteca deste kit ainda não tem filtros.' : 'A biblioteca deste kit ainda não tem transições.';
+      ? t('A biblioteca deste kit ainda não tem filtros.') : t('A biblioteca deste kit ainda não tem transições.');
     return;
   }
   el('p', 'sheet-hint', box).textContent = filtro
-    ? 'Toque para ver no vídeo. "Usar" põe o filtro na tomada debaixo da agulha.'
-    : 'Toque para ver no corte mais perto da agulha. "Usar" põe a transição nele.';
+    ? t('Toque para ver no vídeo. "Usar" põe o filtro na tomada debaixo da agulha.')
+    : t('Toque para ver no corte mais perto da agulha. "Usar" põe a transição nele.');
   for (const p of lista) {
     const row = el('div', `tr-row${fxEscolha === p.id ? ' on' : ''}`, box);
     row.dataset.id = p.id;
@@ -8077,14 +8081,14 @@ function renderFxLista() {
     el('b', null, txt).textContent = p.nome;
     const info = [];
     if (!filtro && p.duracao) info.push(`${p.duracao.toFixed(1).replace('.', ',')} s`);
-    if (fxBaixando === p.id) info.push('baixando…');
-    else if (p.baixado) info.push('no computador');
+    if (fxBaixando === p.id) info.push(t('baixando…'));
+    else if (p.baixado) info.push(t('no computador'));
     el('span', null, txt).textContent = info.join(' · ');
     if (fxEscolha === p.id) {
       const usar = el('button', 'tb-btn primary tr-usar', row);
       usar.type = 'button';
       usar.dataset.act = 'usar';
-      usar.textContent = 'Usar';
+      usar.textContent = t('Usar');
       usar.disabled = fxBaixando === p.id;
     }
   }
@@ -8110,7 +8114,7 @@ function testarFx(id) {
     S.fxTeste = { id: '_teste', tipo: 'filtro', pacote: id, inicio: +tk.out.toFixed(3), duracao: +tk.dur.toFixed(3) };
   } else {
     const corte = corteMaisPerto(rt);
-    if (corte == null) { toast('A transição vai num corte: este vídeo ainda é uma tomada só', 2800); return; }
+    if (corte == null) { toast(t('A transição vai num corte: este vídeo ainda é uma tomada só'), 2800); return; }
     const dur = Math.min(5, Math.max(0.1, p.duracao || 1));
     S.fxTeste = { id: '_teste', tipo: 'transicao', pacote: id, corte: +corte.toFixed(3), duracao: dur };
     // mostra a transição tocando: começa um pouco antes da janela e para um pouco depois
@@ -8125,7 +8129,7 @@ function testarFx(id) {
   if (!m.ef) {
     fxBaixando = id;
     m.p.then(() => { if (fxBaixando === id) fxBaixando = null; p.baixado = true; if (fxAberto()) renderFxLista(); },
-      (e) => { fxBaixando = null; if (fxAberto()) renderFxLista(); toast(`O efeito não baixou: ${e.message}`, 3600); });
+      (e) => { fxBaixando = null; if (fxAberto()) renderFxLista(); toast(t('O efeito não baixou: {message}', { message: e.message }), 3600); });
   }
   renderFxLista();
   fxRedesenhar();
@@ -8153,7 +8157,7 @@ function usarFx(id) {
   const nome = S.fxNomes[id] || id;
   closeFx();
   renderTimeline(); renderToolbar(); refreshHeader();
-  toast(t.tipo === 'filtro' ? `"${nome}" entrou na tomada` : `"${nome}" entrou no corte`, 2400);
+  toast(t.tipo === 'filtro' ? t('"{nome}" entrou na tomada', { nome }) : t('"{nome}" entrou no corte', { nome }), 2400);
 }
 $('fxClose').innerHTML = ICON.fechar;
 $('fxClose').addEventListener('click', closeFx);
@@ -8172,7 +8176,7 @@ $('fxLista').addEventListener('click', (e) => {
  * cartão. O primeiro cartão é o vídeo como está. Pronto cria o efeito, troca o Fundo que a
  * tomada já tem ou o desliga; o agente recorta a janela e refaz só esse trecho. A prévia grande
  * mostra o escolhido parado no quadro da agulha: o vídeo de agora segue com o fundo de antes. */
-const FUNDOS_PRONTOS = [['concreto', 'Concreto'], ['parede', 'Parede'], ['kraft', 'Papel kraft'], ['lousa', 'Lousa'], ['estudio', 'Estúdio'], ['neon', 'Neon']];
+const FUNDOS_PRONTOS = [['concreto', t('Concreto')], ['parede', t('Parede')], ['kraft', t('Papel kraft')], ['lousa', t('Lousa')], ['estudio', t('Estúdio')], ['neon', t('Neon')]];
 const FU = { aberto: false, alvo: -1, a: 0, b: 0, t: -1, escolha: '', escurecer: FUNDO_PADRAO.escurecer, desfoque: FUNDO_PADRAO.desfoque,
   quadro: null, recorte: null, erro: null, midia: [], outro: null, pedido: null, espera: null };
 const fundoPode = () => hasFinal() && !!S.editData; // o Fundo é um efeito do vídeo final (edit-data.json)
@@ -8181,14 +8185,14 @@ const cruzaFundo = (x) => x.start < FU.b - 0.01 && x.end > FU.a + 0.01;
 const naJanela = () => { const rt = draftToRendered(S.t); return rt >= FU.a - 0.01 && rt < FU.b; };
 const fundoVars = (n) => { n.style.setProperty('--veu', FU.escurecer); n.style.setProperty('--desfoque', FU.desfoque); };
 // o que impede o Pronto de pôr um fundo: outro efeito ligado na janela, ou uma tomada curta demais
-const fundoBloqueio = () => (FU.outro ? `Esta tomada já tem o efeito ${FU.outro.nome}: desligue ele na faixa de efeitos para pôr um fundo aqui.`
-  : FU.b - FU.a < 0.3 ? 'Esta tomada é curta demais para um fundo novo.' : null);
+const fundoBloqueio = () => (FU.outro ? t('Esta tomada já tem o efeito {nome}: desligue ele na faixa de efeitos para pôr um fundo aqui.', { nome: FU.outro.nome })
+  : FU.b - FU.a < 0.3 ? t('Esta tomada é curta demais para um fundo novo.') : null);
 function novoFundo(a, b, campos) {
   return { ref: null, nova: true, tipo: 'fundo', start: a, end: b, nome: CENA_NOME.fundo, cena: { tipo: 'fundo', start: a, end: b },
     desligada: false, texto: null, textos: {}, estilo: null, campos, orig: null };
 }
 async function openFundo(i) {
-  if (!fundoPode()) { toast('O Fundo entra no vídeo final: ele aparece depois que o agente fizer a Fase 2', 3200); return; }
+  if (!fundoPode()) { toast(t('O Fundo entra no vídeo final: ele aparece depois que o agente fizer a Fase 2'), 3200); return; }
   if (S.view !== 'final') switchView('final');
   video.pause();
   let c = i != null ? S.cenasDraft[i] : null;
@@ -8209,7 +8213,7 @@ async function openFundo(i) {
   FU.t = -1;
   FU.erro = null;
   FU.aberto = true;
-  $('fundoTitulo').textContent = c ? 'Fundo da tomada' : 'Fundo novo';
+  $('fundoTitulo').textContent = c ? t('Fundo da tomada') : t('Fundo novo');
   $('fundoEscurecer').value = Math.round(FU.escurecer * 100);
   $('fundoDesfoque').value = FU.desfoque;
   app.classList.add('efeitando');
@@ -8245,14 +8249,14 @@ function renderFundo() {
     } else if (FU.quadro) b.style.backgroundImage = `url("${FU.quadro}")`;
     el('span', 'mod-nome', b).textContent = nome;
   };
-  cartao('', 'Original');
+  cartao('', t('Original'));
   for (const [id, nome] of FUNDOS_PRONTOS) cartao(`fundos/${id}`, nome);
   for (const m of FU.midia) cartao(m.arquivo, m.nome.replace(/\.[^.]+$/, ''));
   const mais = el('button', 'mod-card fundo-mais', grade); // uma foto do aparelho vira fundo (vai para midia/)
   mais.type = 'button';
   mais.dataset.fundoMais = '1';
   mais.innerHTML = ICON.mais;
-  el('span', 'mod-nome', mais).textContent = 'Sua imagem';
+  el('span', 'mod-nome', mais).textContent = t('Sua imagem');
   fundoEstado();
 }
 // o que muda sem redesenhar os cartões: o escolhido, a dica, as réguas e o Pronto
@@ -8261,9 +8265,9 @@ function fundoEstado() {
   const bloqueio = FU.escolha ? fundoBloqueio() : null;
   const dica = $('fundoDica');
   if (dica) {
-    dica.textContent = bloqueio || (FU.erro ? `Os cartões estão sem você: ${FU.erro}`
-      : !FU.recorte ? 'Recortando você do quadro da agulha…'
-        : 'Toque num fundo: ele entra atrás de você nesta tomada.');
+    dica.textContent = bloqueio || (FU.erro ? t('Os cartões estão sem você: {erro}', { erro: FU.erro })
+      : !FU.recorte ? t('Recortando você do quadro da agulha…')
+        : t('Toque num fundo: ele entra atrás de você nesta tomada.'));
   }
   $('fundoRegs').classList.toggle('off', !FU.escolha);
   $('fundoEscurecerVal').textContent = `${Math.round(FU.escurecer * 100)}%`;
@@ -8304,7 +8308,7 @@ async function fundoRecorte() {
   try {
     const r = await fetch(`/gen/recorte?t=${t.toFixed(3)}&v=${S.mtimes.video || 0}`, { signal: pedido.signal });
     if (!r.ok) {
-      let msg = `erro ${r.status}`;
+      let msg = t('erro {status}', { status: r.status });
       try { msg = (await r.json()).error || msg; } catch (e) { /* sem JSON */ }
       throw new Error(msg);
     }
@@ -8349,8 +8353,8 @@ function fundoPronto() {
   S.zoomSel = -1; S.insSel = -1; S.selected = -1; S.layerSel = null; S.fxSel = null; S.legSel = false;
   renderTimeline(); renderToolbar(); refreshHeader(); drawCenaBox();
   if (mudou) {
-    toast(!campos ? 'A tomada volta ao fundo do vídeo' : c ? 'Fundo trocado. Salve: o agente refaz só esta tomada'
-      : 'Fundo novo nesta tomada. Salve: o agente recorta você e refaz só este trecho', 3200);
+    toast(!campos ? t('A tomada volta ao fundo do vídeo') : c ? t('Fundo trocado. Salve: o agente refaz só esta tomada')
+      : t('Fundo novo nesta tomada. Salve: o agente recorta você e refaz só este trecho'), 3200);
   }
 }
 // o Fundo criado aqui, na faixa: nunca salvo, sai; já enviado, vai desligado (o agente não acrescenta)

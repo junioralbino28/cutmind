@@ -54,7 +54,7 @@ def test_o_editor_oferece_os_fundos_prontos_do_kit():
     js = CELULAR.read_text(encoding="utf-8")
     m = re.search(r"const FUNDOS_PRONTOS = \[(.*?)\];", js)
     assert m, "não achei o FUNDOS_PRONTOS"
-    ids = re.findall(r"\['(\w+)', '", m.group(1))
+    ids = re.findall(r"\['(\w+)', (?:t\()?'", m.group(1))
     assert ids == list(cenas.FUNDOS)
     assert all((RAIZ / "assets" / "preview" / "fundos" / f"{i}.jpg").is_file() for i in ids)
 

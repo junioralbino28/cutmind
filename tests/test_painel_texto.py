@@ -24,7 +24,7 @@ def corpo(nome: str, js: str = JS) -> str:
 
 def ordem(trecho: str) -> list[str]:
     """Os campos do painel na ordem em que são montados."""
-    achados = [(m.start(), m.group(1)) for m in re.finditer(r"campoTexto\(box, '([A-Za-zçã]+)'\)", trecho)]
+    achados = [(m.start(), m.group(1)) for m in re.finditer(r"campoTexto\(box, (?:t\()?'([A-Za-zçã]+)'\)?\)", trecho)]
     achados += [(m.start(), "Contorno") for m in re.finditer(r"campoContorno\(box", trecho)]
     achados += [(m.start(), "Fonte") for m in re.finditer(r"fonteGrade\(box", trecho)]
     return [n for _, n in sorted(achados)]
