@@ -36,7 +36,7 @@ window.I18N_EN = {
   "Zoom da linha do tempo": "Timeline zoom",
   "Zoom (Ctrl + rodinha)": "Zoom (Ctrl + scroll wheel)",
   "O que você quer mudar?": "What do you want to change?",
-  "O que você quer mudar? Ex.: deixa a legenda maior no começo": "What do you want to change? E.g.: make the captions bigger at the start",
+  "O que você quer mudar? Ex.: deixa a legenda maior no começo": "What should change? E.g.: bigger captions at the start",
   "Vai para o agente junto com o que estiver por salvar (Ctrl+Enter)": "Goes to the agent along with anything not saved yet (Ctrl+Enter)",
   "Aplicar mudanças": "Apply changes",
   "Filtros, transições, trilhas e estilo abrem aqui.": "Filters, transitions, music and style open here.",
