@@ -110,8 +110,9 @@ def test_catalogo_com_montagem_sem_modelo_e_recusado(estrago):
         pk.validar({"versao": 1, "base": "https://exemplo.invalid", "pacotes": [p]})
 
 
-def test_catalogo_sem_montagem_nao_muda_nada(monkeypatch, tmp_path):
-    """O catálogo do kit hoje: nenhum modelo da biblioteca, e o painel segue com os de sempre."""
+def test_catalogo_do_kit_soma_os_modelos_da_biblioteca_aos_de_sempre(monkeypatch, tmp_path):
+    """O catálogo do kit traz os modelos publicados na biblioteca, e o painel segue com os de sempre."""
     monkeypatch.setenv("CUTMIND_PACOTES_DIR", str(tmp_path / "cache"))
-    assert [m["id"] for m in mg.listar() if m.get("pacote")] == []
+    assert sorted(m["id"] for m in mg.listar() if m.get("pacote")) == [
+        "antes-e-depois", "drop-rapido", "fotos-com-zoom", "lancamento"]
     assert mg.obter("drop-cedo") is not None
