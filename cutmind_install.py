@@ -136,6 +136,8 @@ EN = {
     "  ! Remotion falhou em {skills_dir}: {e}": "  ! Remotion failed in {skills_dir}: {e}",
     "  ! skill do Remotion não instalada (a Fase 1 não depende dela)": "  ! Remotion skill not installed (Phase 1 doesn't depend on it)",
     "verificação:": "checks:",
+    "  · macOS {mac} — a Fase 1 (transcrição, corte, editor) funciona; a Fase 2 (legenda animada, textos e efeitos, pelo Remotion) precisa do macOS 13 ou mais novo.":
+        "  · macOS {mac} — Phase 1 (transcription, cut, editor) works; Phase 2 (animated captions, text and effects, through Remotion) needs macOS 13 or newer.",
     "  x uv         — necessário: {p0}": "  x uv         — required: {p0}",
     "  x dependências — {motivo}. Sem elas a transcrição não funciona.": "  x dependencies — {motivo}. Without them, transcription won't work.",
     "  ok dependências": "  ok dependencies",
@@ -570,6 +572,18 @@ def hint(tool: str) -> str:
             "git": "sudo apt install git"}[tool]
 
 
+def macos_antigo() -> str | None:
+    """A versão do macOS quando é anterior à 13: o compositor do Remotion (Fase 2) não roda nela (cai com
+    "Symbol not found: _AVCaptureDeviceTypeContinuityCamera"; medido num MacBook Air 2015 com macOS 12)."""
+    if sys.platform != "darwin":
+        return None
+    v = platform.mac_ver()[0]
+    try:
+        return v if int(v.split(".")[0]) < 13 else None
+    except ValueError:
+        return None
+
+
 def node_version(exe: str | None = None) -> int | None:
     """The major version of `node` (or of `exe`), or None when absent/unreadable."""
     exe = exe or shutil.which("node")
@@ -770,6 +784,10 @@ def main() -> None:
     else:
         missing.append("node")
         log(f"  x node       — Remotion (Fase 2). Instale com: {hint('node')}")
+    mac = macos_antigo()
+    if mac:
+        log(f"  · macOS {mac} — a Fase 1 (transcrição, corte, editor) funciona; a Fase 2 (legenda animada, textos e"
+            " efeitos, pelo Remotion) precisa do macOS 13 ou mais novo.")
     # git is not a CutMind dependency — the install above used no git at all. But
     # Claude Code leans on it, so its absence is worth a word rather than
     # silence. Deliberately NOT added to `missing`: nothing here is blocked by it.

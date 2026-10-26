@@ -926,6 +926,11 @@ def renderizar(edit: Path, concorrencia: int | None = None, so_remotion: bool = 
     if not tem_visual(edit):
         _passo([str(AQUI / "mixar_final.py"), str(edit), "--render", str(edit / "cut.mp4"), "--imagem", "corte"])
         return
+    v = aquecer_navegador.macos_antigo()
+    if v:
+        raise ErroMontagem(f"o que vai por cima da montagem (texto, imagem, filtro, transição) é desenhado pelo Remotion, "
+                           f"que precisa do macOS 13 ou mais novo, e este Mac está no {v}. Sem nada por cima a "
+                           "montagem sai: esconda as camadas de texto e imagem e tire os efeitos")
     rem = preparar_remotion(edit)
     cli = rem / "node_modules" / "@remotion" / "cli" / "remotion-cli.js"
     cmd = ["node", str(cli), "render", "Reels", "out/render.mp4"] + ([f"--concurrency={concorrencia}"] if concorrencia else [])

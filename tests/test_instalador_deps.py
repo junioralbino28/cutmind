@@ -200,3 +200,13 @@ def test_openmp_so_mexe_no_mac_intel(tmp_path, monkeypatch, plataforma, maquina_
     site = _venv_mac_intel(tmp_path / "skill")
     assert inst.um_so_openmp(tmp_path / "skill") == 0
     assert (site / "torch/lib/libiomp5.dylib").read_bytes() == b"torch/lib"
+
+
+@pytest.mark.parametrize("versao, avisa", [("12.7.6", True), ("13.6", False), ("15.1", False)])
+def test_mac_antigo_ouve_que_a_fase_2_precisa_do_macos_13(maquina, capsys, monkeypatch, versao, avisa):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(inst.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(inst.platform, "mac_ver", lambda: (versao, ("", "", ""), "arm64"))
+    codigo, saida = instalar(capsys)
+    assert codigo == 0                                   # não é falha: a Fase 1 funciona
+    assert (f"macOS {versao}" in saida and "macOS 13 ou mais novo" in saida) is avisa

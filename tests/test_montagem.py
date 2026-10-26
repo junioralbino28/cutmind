@@ -674,6 +674,7 @@ def test_imagem_fora_do_quadro_refaz_so_o_remotion_uma_vez(tmp_path, monkeypatch
 
 def test_renderizar_so_o_remotion_um_quadro_por_vez(tmp_path, monkeypatch):
     passos, cmds = [], []
+    monkeypatch.setattr(m.aquecer_navegador, "macos_antigo", lambda: None)
     monkeypatch.setattr(m, "_passo", lambda args: passos.append(Path(args[0]).name))
     monkeypatch.setattr(m, "tem_visual", lambda edit: True)
     monkeypatch.setattr(m, "preparar_remotion", lambda edit: tmp_path / "remotion")
@@ -1022,3 +1023,14 @@ def test_montagem_de_ponta_a_ponta_corta_na_batida(tmp_path):
                    check=True, capture_output=True)
     rel = m.conferir(edit, video=deslocado, modelo_batida="pequeno", mostrar=False)
     assert not rel["ok"] and rel["som_vs_plano_ms"] == pytest.approx(-100, abs=20), m.relatorio(rel)
+
+
+def test_montagem_com_texto_num_macos_antigo_para_antes_do_remotion(tmp_path, monkeypatch):
+    """No macOS 12 o compositor do Remotion cai com "Symbol not found": a montagem diz o que fazer em vez
+    de esperar o render morrer (medido num MacBook Air 2015)."""
+    monkeypatch.setattr(m, "_passo", lambda args: None)
+    monkeypatch.setattr(m, "tem_visual", lambda edit: True)
+    monkeypatch.setattr(m, "preparar_remotion", lambda edit: (_ for _ in ()).throw(AssertionError("não devia preparar")))
+    monkeypatch.setattr(m.aquecer_navegador, "macos_antigo", lambda: "12.7.6")
+    with pytest.raises(m.ErroMontagem, match=r"macOS 13 ou mais novo, e este Mac está no 12\.7\.6"):
+        m.renderizar(tmp_path, so_remotion=True)

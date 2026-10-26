@@ -213,6 +213,9 @@ def aplicar(edit: Path, remotion: Path, pac: pk.Pacotes | None = None, bloco: in
         tmp = Path(t)
         montar_public(tmp / "public", ids, pac)
         bundle = tmp / "bundle"
+        if aquecer_navegador.macos_antigo():
+            raise RuntimeError(f"filtros e transições são desenhados pelo Remotion, que precisa do macOS 13 ou mais "
+                               f"novo, e este Mac está no {aquecer_navegador.macos_antigo()}")
         print(aquecer_navegador.aquecer(remotion), flush=True)
         _node("bundle", str(remotion), str(tmp / "public"), str(bundle), projeto=remotion)
         quadros_dir = bundle / "public" / "efeitos" / "quadros"

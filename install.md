@@ -174,6 +174,13 @@ stubs that open an "install developer tools" window on the user's screen. The ki
 needs neither (uv brings its own Python; the installer downloads with Python's own
 HTTP).
 
+**Phase 2 needs macOS 13 (Ventura) or newer.** Remotion's compositor, which reads
+the video frames, is built for macOS 13+ and aborts on macOS 12 with `Symbol not
+found: _AVCaptureDeviceTypeContinuityCamera`. On macOS 12 and older, Phase 1 works
+(transcription, the cut, the editor, a montage with nothing on top); the installer
+says so in its checklist, and the montage stops with a clear message instead of a
+dead render. Tell the user before they plan captions or effects on such a Mac.
+
 **Intel Macs** get an older, pinned stack (the comment in `pyproject.toml` has the
 versions): PyTorch stopped publishing Intel Mac builds at 2.2.2. The installer asks
 `uv sync` for Python 3.12 on those machines by itself; a manual sync there is

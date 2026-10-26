@@ -14,6 +14,7 @@ vez num projeto deixa uma marca em node_modules/.remotion e não abre de novo.
 """
 from __future__ import annotations
 
+import platform
 import shutil
 import subprocess
 import sys
@@ -21,6 +22,23 @@ import time
 from pathlib import Path
 
 MARCA = ".cutmind-aquecido"
+MACOS_MINIMO = 13
+
+
+def macos_antigo() -> str | None:
+    """A versão do macOS quando ela é anterior à 13, em que o Remotion não renderiza: o compositor dele
+    (que tira os quadros do vídeo) é compilado para o macOS 13 ou mais novo e, no 12, cai com "Symbol
+    not found: _AVCaptureDeviceTypeContinuityCamera" (medido num MacBook Air 2015 com macOS 12.7.6 em
+    26/10/2026; issues #4515 e #4879 do Remotion). None em outro sistema ou num macOS novo."""
+    if sys.platform != "darwin":
+        return None
+    v = platform.mac_ver()[0]
+    try:
+        return v if int(v.split(".")[0]) < MACOS_MINIMO else None
+    except ValueError:
+        return None
+
+
 NOMES = ("chrome-headless-shell", "chrome-headless-shell.exe")
 
 
@@ -35,6 +53,9 @@ def executavel(rem: Path) -> Path | None:
 def aquecer(rem: Path, prazo: float = 600) -> str:
     """Garante o Chrome do Remotion e abre ele uma vez. Devolve, em uma linha, o que aconteceu. Nunca
     para o trabalho: se não der para aquecer, o render tenta do jeito de sempre."""
+    v = macos_antigo()
+    if v:
+        return f"navegador do Remotion: o Remotion não renderiza no macOS {v} (precisa do {MACOS_MINIMO} ou mais novo)"
     rem = Path(rem)
     marca = rem / "node_modules" / ".remotion" / MARCA
     if marca.is_file():

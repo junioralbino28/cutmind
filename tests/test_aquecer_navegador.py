@@ -69,3 +69,20 @@ def test_download_que_nao_deixa_o_chrome_explica(tmp_path, monkeypatch):
     monkeypatch.setattr(aq.subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(cmd, 1, "", "sem rede"))
     msg = aq.aquecer(rem)
     assert "não achei o Chrome" in msg and "sem rede" in msg
+
+
+def test_macos_anterior_ao_13_e_reconhecido(monkeypatch):
+    """O compositor do Remotion é compilado para o macOS 13+: no 12 ele cai (medido num MacBook Air 2015)."""
+    monkeypatch.setattr(aq.sys, "platform", "darwin")
+    for versao, antigo in (("12.7.6", True), ("11.7", True), ("10.15.7", True), ("13.0", False), ("15.1", False), ("", False)):
+        monkeypatch.setattr(aq.platform, "mac_ver", lambda v=versao: (v, ("", "", ""), "x86_64"))
+        assert (aq.macos_antigo() == versao) is antigo, versao
+    monkeypatch.setattr(aq.sys, "platform", "win32")
+    assert aq.macos_antigo() is None
+
+
+def test_no_macos_antigo_o_aquecimento_avisa_e_nao_baixa_nada(tmp_path, monkeypatch):
+    monkeypatch.setattr(aq, "macos_antigo", lambda: "12.7.6")
+    monkeypatch.setattr(aq.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("não devia rodar")))
+    msg = aq.aquecer(_projeto(tmp_path))
+    assert "12.7.6" in msg and "13" in msg
