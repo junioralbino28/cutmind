@@ -12,7 +12,8 @@ word times are already on the output timeline.
 Usage:
     python helpers/caption_style.py --transcript <edit>/transcripts/cut.json \
         -o <edit>/remotion/public/caption-cues.json
-    # optional: --lang pt (default) tunes the accent/negation word lists
+    # optional: --lang pt|en forces the accent/negation word lists (default: the
+    # language WhisperX recorded in the transcript; anything not Portuguese uses English)
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ import argparse
 import json
 import unicodedata
 from pathlib import Path
+from typing import NamedTuple
 
 # ---- Portuguese defaults (accent lands on content words, never on connectives) ----
 EMPH = {
@@ -40,6 +42,50 @@ STOP = {
     "voce", "vai", "foi", "ser", "ter", "ja", "so", "ate", "como", "isso", "esse",
     "essa", "aqui", "ali", "la", "meu", "minha", "seu", "sua", "te", "me",
 }
+# ---- English (the same jobs: accent on content words, never on connectives) ----
+EMPH_EN = {
+    "reference", "time", "excuse", "favorite", "free", "limit", "unlimited", "irresistible",
+    "zero", "guarantee", "guaranteed", "transform", "profit", "never", "today", "now",
+    "impossible", "everything", "unknown", "revenue", "secret", "mistake", "mistakes",
+    "147", "3,000", "thousand", "million", "24", "15", "50", "100", "200", "400", "500",
+    "250", "12", "ai", "intelligence", "artificial", "money", "clients", "customers", "edit",
+    "editor", "editing", "sell", "sales", "content", "videos", "video", "record", "post",
+    "instagram", "whatsapp", "tiktok", "youtube", "community", "course", "courses",
+}
+NEG_EN = {"not", "never", "nothing", "no", "nobody", "none", "don't", "doesn't", "didn't",
+          "can't", "cannot", "won't", "isn't", "aren't", "wasn't", "weren't", "shouldn't"}
+STOP_EN = {
+    "a", "an", "the", "of", "to", "in", "on", "at", "by", "for", "with", "and", "but", "or",
+    "so", "if", "is", "are", "was", "be", "it", "its", "it's", "i", "you", "we", "they", "he",
+    "she", "my", "your", "our", "their", "this", "that", "as", "from", "up", "just", "do",
+    "does", "did", "have", "has", "had", "will", "would", "can", "could", "me", "him", "her",
+    "them", "there", "here", "what", "than", "then", "into", "about",
+}
+
+
+class Listas(NamedTuple):
+    emph: set
+    neg: set
+    stop: set
+
+
+LISTAS = {"pt": Listas(EMPH, NEG, STOP), "en": Listas(EMPH_EN, NEG_EN, STOP_EN)}
+
+
+def listas(lang: str | None) -> Listas:
+    """Portuguese for pt*, English for anything else (the lists only steer emphasis)."""
+    return LISTAS["pt" if str(lang or "pt").lower().startswith("pt") else "en"]
+
+
+def idioma_da_transcricao(transcript_path: Path) -> str:
+    """The language WhisperX recorded in the transcript ("pt" when it says nothing)."""
+    try:
+        dados = json.loads(Path(transcript_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return "pt"
+    return str(dados.get("language") or dados.get("language_code") or "pt")
+
+
 ENDBREAK = (".", ",", "!", "?", "…", ";", ":")
 PAUSE_MS = 400
 MAX_WORDS = 4
@@ -58,7 +104,7 @@ def strip_p(t: str) -> str:
 
 
 def norm(t: str) -> str:
-    t = strip_p(t).lower()
+    t = strip_p(t.replace("’", "'")).lower()
     return "".join(c for c in unicodedata.normalize("NFD", t) if unicodedata.category(c) != "Mn")
 
 
@@ -94,11 +140,12 @@ def load_words(transcript_path: Path) -> list[dict]:
     return fused
 
 
-def is_degenerate(w: dict) -> bool:
+def is_degenerate(w: dict, L: Listas | None = None) -> bool:
+    L = L or LISTAS["pt"]
     t = norm(w["text"])
-    if t in EMPH:
+    if t in L.emph:
         return False
-    return len(strip_p(w["text"])) <= 2 or (t in STOP and len(strip_p(w["text"])) <= 3)
+    return len(strip_p(w["text"])) <= 2 or (t in L.stop and len(strip_p(w["text"])) <= 3)
 
 
 def too_brief(w: dict) -> bool:
@@ -111,12 +158,12 @@ def too_brief(w: dict) -> bool:
     return (w["endMs"] - w["startMs"]) < MIN_SOLO_MS
 
 
-def unsolo(w: dict) -> bool:
+def unsolo(w: dict, L: Listas | None = None) -> bool:
     """Should this one-word cue be folded into a neighbour instead of standing alone?"""
-    return is_degenerate(w) or too_brief(w)
+    return is_degenerate(w, L) or too_brief(w)
 
 
-def group_cues(words: list[dict]) -> list[list[dict]]:
+def group_cues(words: list[dict], L: Listas | None = None) -> list[list[dict]]:
     cues: list[list[dict]] = []
     cur: list[dict] = []
     for i, w in enumerate(words):
@@ -137,7 +184,7 @@ def group_cues(words: list[dict]) -> list[list[dict]]:
     for cw in cues:
         if (
             len(cw) == 1
-            and unsolo(cw[0])
+            and unsolo(cw[0], L)
             and merged
             and len(merged[-1]) < MAX_WORDS
             and cw[0]["startMs"] - merged[-1][-1]["endMs"] <= PAUSE_MS
@@ -151,7 +198,7 @@ def group_cues(words: list[dict]) -> list[list[dict]]:
         cw = merged[i]
         if (
             len(cw) == 1
-            and unsolo(cw[0])
+            and unsolo(cw[0], L)
             and i + 1 < len(merged)
             and len(merged[i + 1]) < MAX_WORDS
             and merged[i + 1][0]["startMs"] - cw[0]["endMs"] <= PAUSE_MS
@@ -167,7 +214,7 @@ def group_cues(words: list[dict]) -> list[list[dict]]:
         cw, nxt = fixed[k], fixed[k + 1]
         if len(cw) > 1:
             gap = nxt[0]["startMs"] - cw[-1]["endMs"]
-            remaining_ok = len(cw) > 2 or not is_degenerate(cw[0])
+            remaining_ok = len(cw) > 2 or not is_degenerate(cw[0], L)
             if gap <= PAUSE_MS and cw[-1]["startMs"] > nxt[0]["startMs"] - 260 and remaining_ok:
                 nxt.insert(0, cw.pop())
     return fixed
@@ -200,12 +247,13 @@ def build_lines(ws: list[dict]) -> list[list[dict]]:
     return lines
 
 
-def line_styles(lines: list[list[dict]], offset: int):
+def line_styles(lines: list[list[dict]], offset: int, L: Listas | None = None):
     """0=bold-italic 1=regular(small) 2=serif-orange 3=bold; plus emph/boost flags."""
+    L = L or LISTAS["pt"]
     n = len(lines)
     serif_i = None
     for i, ln in enumerate(lines):
-        if any(norm(w["text"]) in EMPH for w in ln):
+        if any(norm(w["text"]) in L.emph for w in ln):
             serif_i = i
             break
     if serif_i is None and n >= 3:
@@ -213,7 +261,7 @@ def line_styles(lines: list[list[dict]], offset: int):
         for i, ln in enumerate(lines):
             for w in ln:
                 t = norm(w["text"])
-                if t in STOP or t in NEG:
+                if t in L.stop or t in L.neg:
                     continue
                 if len(t) > best[1]:
                     best = (i, len(t))
@@ -226,12 +274,12 @@ def line_styles(lines: list[list[dict]], offset: int):
     for i, ln in enumerate(lines):
         if i == serif_i:
             styles.append(2)
-            emph[i] = any(norm(w["text"]) in EMPH for w in ln)
+            emph[i] = any(norm(w["text"]) in L.emph for w in ln)
             continue
         txts = [norm(w["text"]) for w in ln]
-        if any(t in NEG for t in txts):
+        if any(t in L.neg for t in txts):
             styles.append(0 if i % 2 == 0 else 3)
-        elif all(t in STOP for t in txts) and not (i == 0 and len(ln) == 1):
+        elif all(t in L.stop for t in txts) and not (i == 0 and len(ln) == 1):
             styles.append(1)
         else:
             styles.append(alt[ai % 3])
@@ -244,15 +292,16 @@ def line_styles(lines: list[list[dict]], offset: int):
     return styles, boost, emph
 
 
-def build_cues(words: list[dict]) -> list[dict]:
-    groups = group_cues(words)
+def build_cues(words: list[dict], lang: str | None = "pt") -> list[dict]:
+    L = listas(lang)
+    groups = group_cues(words, L)
     out: list[dict] = []
     solo_alt = 0
     for ci, cw in enumerate(groups):
         start = cw[0]["startMs"]
         end = cw[-1]["endMs"]
         if len(cw) == 1:
-            if norm(cw[0]["text"]) in EMPH:
+            if norm(cw[0]["text"]) in L.emph:
                 preset = "SOLO_OUTLINE"
             else:
                 preset = "SOLO_BIG" if solo_alt % 2 == 0 else "SOLO_OUTLINE"
@@ -262,7 +311,7 @@ def build_cues(words: list[dict]) -> list[dict]:
         else:
             preset = "STACK_MIXED"
             lines = build_lines(cw)
-            styles, boost, emph = line_styles(lines, ci)
+            styles, boost, emph = line_styles(lines, ci, L)
         nxt_start = groups[ci + 1][0]["startMs"] if ci + 1 < len(groups) else None
         gap_after = (nxt_start - end) if nxt_start is not None else 9999
         exit_ = "blur_up" if gap_after > PAUSE_MS else "abrupt"
@@ -287,11 +336,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="→ caption-cues.json (stacked caption style)")
     ap.add_argument("--transcript", type=Path, required=True, help="Transcript of the final cut.mp4")
     ap.add_argument("-o", "--output", type=Path, required=True, help="Output caption-cues.json path")
-    ap.add_argument("--lang", default="pt", help="Language hint for accent/negation lists (default pt)")
+    ap.add_argument("--lang", default=None,
+                    help="pt or en word lists (default: the transcript's language)")
     args = ap.parse_args()
 
     words = load_words(args.transcript.resolve())
-    cues = build_cues(words)
+    cues = build_cues(words, args.lang or idioma_da_transcricao(args.transcript.resolve()))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(cues, ensure_ascii=False), encoding="utf-8")
     solos = sum(1 for c in cues if c["preset"] != "STACK_MIXED")

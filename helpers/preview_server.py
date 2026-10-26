@@ -1311,7 +1311,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         import caption_style  # mesma pasta deste arquivo
         try:
-            cues = caption_style.build_cues(caption_style.load_words(tr))
+            cues = caption_style.build_cues(caption_style.load_words(tr), caption_style.idioma_da_transcricao(tr))
         except (OSError, ValueError, KeyError) as e:
             self._json({"error": f"transcrição ilegível ({e.__class__.__name__})"}, 500)
             return

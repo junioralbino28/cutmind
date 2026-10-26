@@ -146,7 +146,7 @@ const ICON = {
  * Carregado antes deste. Os ids e nomes são o contrato com a skill
  * (preview_style.json). Cada opção aparece sobre um quadro do próprio vídeo. */
 const {
-  STYLE_CATALOG, ACCENT_USERS, ACCENT_DEFAULT, CAP_TEXT, HEADLINE_TEXT, HL_STYLES, STATIC_VARIANTS, ORPHAN_PT,
+  STYLE_CATALOG, ACCENT_USERS, ACCENT_DEFAULT, CAP_TEXT, HEADLINE_TEXT, HL_STYLES, STATIC_VARIANTS, ORPHAN,
   CAP_BUILDERS, buildHeadlineDemo, buildStaticDemo, capPhrases,
 } = CutMindEstilos;
 
@@ -290,7 +290,7 @@ function wordsAt(words, t) {
     if (clean) out.push(clean);
     if (out.length >= 4 && /[.!?…]$/.test(w)) break; // termina com a frase, se ela acabar logo
   }
-  while (out.length > 3 && ORPHAN_PT.test(out[out.length - 1])) out.pop(); // não acaba em "e", "de", "que"
+  while (out.length > 3 && ORPHAN.test(out[out.length - 1])) out.pop(); // não acaba em "e", "de", "the"
   return out.length >= 3 ? out.join(' ') : null;
 }
 

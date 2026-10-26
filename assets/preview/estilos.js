@@ -521,7 +521,8 @@
     serifada: {family: "'Libre Baskerville',serif", weight: 700, size: 67, maxWords: 3, lines: 1, sx: 1, sy: 1, tracking: -1, maxW: 860},
     classica: {family: "'Inter',sans-serif", weight: 500, size: 42, maxWords: 14, lines: 2, sx: 1, sy: 1, tracking: 0, maxW: 840},
   };
-  const ORPHAN_PT = /^(o|a|os|as|e|é|de|do|da|em|no|na|um|uma|que|se|ao|à|por|com)$/i;
+  // a mesma lista do SimpleCaptions.tsx: as palavras de ligação do português e do inglês
+  const ORPHAN = /^(o|a|os|as|e|é|de|do|da|em|no|na|um|uma|que|se|ao|à|por|com|an|the|of|to|in|on|at|by|for|and|or|but|with|from|my|your|our|their|its)$/i;
 
   function buildStaticDemo(host, id, text = CAP_TEXT) {
     const V = STATIC_VARIANTS[id];
@@ -550,7 +551,7 @@
       if (V.lines === 2 && cue.length > 1) {
         let best = 1, bestScore = Infinity;
         for (let i = 1; i < cue.length; i++) {
-          const score = Math.abs(wOf(cue.slice(0, i)) - wOf(cue.slice(i))) + (ORPHAN_PT.test(cue[i - 1]) ? 200 : 0);
+          const score = Math.abs(wOf(cue.slice(0, i)) - wOf(cue.slice(i))) + (ORPHAN.test(cue[i - 1]) ? 200 : 0);
           if (score < bestScore) { bestScore = score; best = i; }
         }
         lines = [cue.slice(0, best), cue.slice(best)];
@@ -629,7 +630,7 @@
 
   window.CutMindEstilos = Object.freeze({
     STYLE_CATALOG, ACCENT_USERS, ACCENT_DEFAULT,
-    CAP_TEXT, FPS_REF, HEADLINE_TEXT, HL_MIN, HL_STYLES, SCAT, STATIC_VARIANTS, ORPHAN_PT,
+    CAP_TEXT, FPS_REF, HEADLINE_TEXT, HL_MIN, HL_STYLES, SCAT, STATIC_VARIANTS, ORPHAN,
     bez, easeOutCubic, easeStack, clamp01,
     measureType, hlTwoLines, hlFit,
     buildKaraokeDemo, buildStackedDemo, buildHeadlineDemo, buildScatterDemo, buildStaticDemo,

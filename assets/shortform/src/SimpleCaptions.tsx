@@ -137,7 +137,10 @@ function buildCues(words: Word[], V: Variant): Word[][] {
 // width balance happily ends a line on "o" or "de", which is the one thing a
 // classic subtitle never does. Breaking after a short function word carries a
 // penalty worth ~200px of imbalance, so it only wins when nothing else is close.
-const ORPHAN = /^(o|a|os|as|e|é|de|do|da|em|no|na|um|uma|que|se|ao|à|por|com)$/i;
+// a linha evita terminar em artigo, preposição ou conjunção, em português e em inglês (o vídeo pode ser
+// falado em qualquer um dos dois). "no" e "do" entram pelo português; num vídeo em inglês isso só
+// empurra o corte da linha, nunca some palavra.
+const ORPHAN = /^(o|a|os|as|e|é|de|do|da|em|no|na|um|uma|que|se|ao|à|por|com|an|the|of|to|in|on|at|by|for|and|or|but|with|from|my|your|our|their|its)$/i;
 
 function splitTwo(words: Word[], V: Variant): Word[][] {
   if (V.lines === 1 || words.length < 2) return [words];
