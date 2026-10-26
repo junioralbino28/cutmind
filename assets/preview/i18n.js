@@ -20,8 +20,10 @@
   const EN = window.I18N_EN || {};
   document.documentElement.lang = IDIOMA === 'pt' ? 'pt-BR' : 'en';
 
+  // Uma palavra com dois sentidos ganha contexto depois do §: t('Ajustar§cor') é "Adjust" e o botão de zoom
+  // "Ajustar" é "Fit". Em português a tela mostra só o que vem antes do §.
   function t(texto, valores) {
-    let s = IDIOMA === 'en' && Object.prototype.hasOwnProperty.call(EN, texto) ? EN[texto] : texto;
+    let s = IDIOMA === 'en' && Object.prototype.hasOwnProperty.call(EN, texto) ? EN[texto] : texto.split('§')[0];
     if (valores) s = s.replace(/\{(\w+)\}/g, (m, k) => (k in valores ? String(valores[k]) : m));
     return s;
   }

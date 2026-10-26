@@ -2348,7 +2348,7 @@ function renderToolbar() {
   if (fsel) { // um efeito escolhido na linha do tempo
     tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
     if (fsel.tipo === 'filtro') tool(ctx, 'intensidade', `${Math.round(fxIntensidade(fsel) * 100)}%`);
-    if (fsel.tipo === 'ajuste') tool(ctx, 'ajustar', t('Ajustar'));
+    if (fsel.tipo === 'ajuste') tool(ctx, 'ajustar', t('Ajustar§cor'));
     tool(ctx, 'excluir', t('Excluir'), { icon: ICON.remover });
     return;
   }
@@ -2429,7 +2429,7 @@ function renderToolbar() {
     tool(ctx, 'duplicar', t('Duplicar'));
     tool(ctx, 'volume', `${Math.round(sel.vol * 100)}%`);
     tool(ctx, 'velocidade', sel.curva ? nomeCurva(sel.curva.nome) : fmtVel(sel.vel));
-    tool(ctx, 'ajustar', t('Ajustar'));
+    tool(ctx, 'ajustar', t('Ajustar§cor'));
     tool(ctx, 'excluir', t('Excluir'), { icon: ICON.remover, disabled: S.draft.length < 2 });
     tool(ctx, 'ouvir', t('Ouvir'));
     // "Original" volta às bordas que o agente cortou; pedaço novo não tem

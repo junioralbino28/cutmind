@@ -51,7 +51,7 @@ def rodar_no_idioma(home: Path, idioma: str):
 def test_em_ingles_a_saida_inteira_sai_em_ingles(tmp_path):
     en = rodar_no_idioma(tmp_path / "en", "en")
     assert en.returncode == 0, en.stdout + en.stderr
-    assert "check:" in en.stdout and "installed in:" in en.stdout and "verificação" not in en.stdout
+    assert "checks:" in en.stdout and "installed to:" in en.stdout and "verificação" not in en.stdout
     import re
     pt = [linha for linha in en.stdout.splitlines()
           if re.search(r"[ãõçáéíóúâê]|\b(não|para|instalando|rode|pasta)\b", linha, re.I)
