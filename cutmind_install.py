@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -440,10 +441,19 @@ def _rmtree(path: Path) -> None:
         shutil.rmtree(path, onerror=handler)
 
 
+def _python_do_sync() -> list[str]:
+    """No Mac Intel o kit fica numa pilha anterior (o pyproject.toml explica por quê): a
+    última roda Intel do torch (2.2.2) não existe para Python 3.13, e sem pedir o 3.12 o
+    uv escolheria o 3.13 e pararia no meio. Nas outras máquinas nada muda."""
+    if sys.platform == "darwin" and platform.machine() == "x86_64":
+        return ["--python", "3.12"]
+    return []
+
+
 def run_uv_sync(dest: Path) -> str | None:
     """Install the Python dependencies. Returns None on success, else the end of the error."""
     log("  instalando dependências (torch + whisperx, alguns GB na primeira vez)…")
-    r = subprocess.run(["uv", "sync", "--directory", str(dest)],
+    r = subprocess.run(["uv", "sync", "--directory", str(dest), *_python_do_sync()],
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     if r.returncode != 0:
         erro = (r.stderr or "").strip()[-600:]

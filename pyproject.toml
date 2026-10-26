@@ -9,7 +9,7 @@ requires-python = ">=3.10,<3.14"
 dependencies = [
     "requests",
     "pillow",
-    "numpy",
+    "numpy; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     # Face/eye tracking for the Phase-2 dynamic camera (face_track.py). Pinned:
     # opencv-python-headless 5.0.0.93 ships without CascadeClassifier and breaks
     # Haar detection — stay on the 4.10 line. Headless = no GUI/Qt deps.
@@ -19,7 +19,7 @@ dependencies = [
     # thing to install. It pulls torch + faster-whisper (~2GB of wheels), and
     # downloads a Whisper model plus a per-language wav2vec2 alignment model on
     # first run. That weight is the price of a keyless install.
-    "whisperx",
+    "whisperx; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     # Editing from a URL (ingest_url.py). A dependency and not a system package
     # on purpose: as an "optional" brew/winget install nobody had it, so the
     # feature looked broken to anyone who pasted a link. In the venv it is always
@@ -33,13 +33,24 @@ dependencies = [
     # características dele vem do transformers. Os dois já chegam pelo whisperx;
     # ficam aqui porque o kit os importa direto. Os modelos (~1 GB) baixam no
     # primeiro uso, não na instalação.
-    "onnxruntime",
+    "onnxruntime; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     "transformers",
     # Grade de batida da música (batida.py), para cortar na batida e para o Modelo
     # de montagem. Roda no CPU sobre o torch que o whisperx já traz e acrescenta só
     # pacotes pequenos (einops, rotary-embedding-torch, soxr); o modelo (8 MB o
     # pequeno, 78 MB o completo) baixa no primeiro uso. MIT no código e nos pesos.
     "beat-this>=1.1.0",
+    # Mac Intel (x86_64): o PyTorch publicou a última roda Intel na 2.2.2 e o
+    # onnxruntime na 1.19.2, e as duas não têm roda para Python 3.13. Ali o kit
+    # fica numa pilha anterior que ainda instala: whisperx 3.3.2 (a última que
+    # aceita torch 2.2), numpy 1.x (o torch 2.2 foi compilado contra ele) e
+    # Python 3.12, que o instalador pede ao uv sync só nessa máquina. Os
+    # marcadores mantêm Windows, Linux e Mac Apple Silicon exatamente como eram.
+    "whisperx==3.3.2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "torch==2.2.2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "torchaudio==2.2.2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "numpy<2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "onnxruntime<1.20; sys_platform == 'darwin' and platform_machine == 'x86_64'",
 ]
 
 [project.optional-dependencies]

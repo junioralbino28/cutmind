@@ -34,6 +34,7 @@ def maquina(tmp_path, monkeypatch):
     def run(cmd, **kw):
         if cmd[:2] == ["uv", "sync"]:
             m.syncs += 1
+            m.cmd_sync = cmd
             return subprocess.CompletedProcess(cmd, m.sync[0], "", m.sync[1])
         if cmd[:3] == ["uv", "cache", "dir"]:
             return subprocess.CompletedProcess(cmd, 0, str(tmp_path / "cache-uv") + "\n", "")
@@ -140,3 +141,19 @@ def test_erro_112_no_linux_nao_e_disco_cheio(monkeypatch):
     assert inst._disco_cheio("  Caused by: No space left on device (os error 28)")
     monkeypatch.setattr(sys, "platform", "win32")
     assert inst._disco_cheio("  Caused by: Espaço insuficiente no disco. (os error 112)")
+
+
+@pytest.mark.parametrize("plataforma, maquina_cpu, pede_312", [
+    ("darwin", "x86_64", True),     # Mac Intel: torch 2.2.2 não tem roda para Python 3.13
+    ("darwin", "arm64", False),
+    ("win32", "AMD64", False),
+    ("linux", "x86_64", False),
+])
+def test_mac_intel_pede_python_312_ao_uv_sync(maquina, capsys, monkeypatch, plataforma,
+                                               maquina_cpu, pede_312):
+    monkeypatch.setattr(sys, "platform", plataforma)
+    monkeypatch.setattr(inst.platform, "machine", lambda: maquina_cpu)
+    codigo, _ = instalar(capsys)
+    assert codigo == 0
+    assert (maquina.cmd_sync[-2:] == ["--python", "3.12"]) is pede_312
+    assert maquina.cmd_sync[:4] == ["uv", "sync", "--directory", maquina.cmd_sync[3]]

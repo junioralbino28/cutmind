@@ -139,6 +139,46 @@ winget install Gyan.FFmpeg
 If a package manager needs sudo/admin, tell the user the exact command and wait.
 Do not invent a password.
 
+### Mac without Homebrew (no admin password)
+
+Homebrew's own installer asks for the admin password. When the user can't type it
+(or would rather not), everything the kit needs installs inside their home folder,
+no password at all:
+
+```bash
+mkdir -p ~/.local/bin ~/.local/opt
+if [ "$(uname -m)" = arm64 ]; then ff=arm64; nd=arm64; else ff=amd64; nd=x64; fi
+# uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# ffmpeg + ffprobe, static builds
+for p in ffmpeg ffprobe; do
+  curl -fsSL -o /tmp/$p.zip "https://ffmpeg.martin-riedl.de/redirect/latest/macos/$ff/release/$p.zip"
+  unzip -oq /tmp/$p.zip -d ~/.local/bin && chmod +x ~/.local/bin/$p && rm /tmp/$p.zip
+done
+# Node.js 22 LTS, checked against the official checksum list
+base=https://nodejs.org/dist/latest-v22.x
+curl -fsSL -o /tmp/SHASUMS256.txt $base/SHASUMS256.txt
+v=$(grep -o "node-v[0-9.]*-darwin-$nd.tar.gz" /tmp/SHASUMS256.txt | head -1)
+curl -fsSL -o /tmp/$v $base/$v
+(cd /tmp && grep " $v\$" SHASUMS256.txt | shasum -a 256 -c -) || echo "CHECKSUM FAILED: stop here"
+tar -xzf /tmp/$v -C ~/.local/opt && rm /tmp/$v /tmp/SHASUMS256.txt
+for b in node npm npx; do ln -sf ~/.local/opt/${v%.tar.gz}/bin/$b ~/.local/bin/$b; done
+grep -q '.local/bin' ~/.zshrc 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+```
+
+Then open a new terminal (or `export PATH="$HOME/.local/bin:$PATH"`) and run the
+installer. Node 22 runs on macOS 11 and later; newer Node lines need a newer macOS.
+
+**Don't call `python3` or `git` on a Mac without the Command Line Tools**: they are
+stubs that open an "install developer tools" window on the user's screen. The kit
+needs neither (uv brings its own Python; the installer downloads with Python's own
+HTTP).
+
+**Intel Macs** get an older, pinned stack (the comment in `pyproject.toml` has the
+versions): PyTorch stopped publishing Intel Mac builds at 2.2.2. The installer asks
+`uv sync` for Python 3.12 on those machines by itself; a manual sync there is
+`uv sync --python 3.12`.
+
 ### Node.js + the Remotion skill (Phase 2)
 
 The installer handles both. Node.js: when `node` is absent it runs
