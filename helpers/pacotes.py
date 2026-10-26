@@ -1,4 +1,8 @@
-"""Pacotes do kit (trilhas, filtros e transições; depois, efeitos e textos): baixar só quando usar.
+"""Pacotes do kit (trilhas, filtros, transições e modelos de montagem; depois, efeitos e textos):
+baixar só quando usar.
+
+O modelo de montagem é o único que vem escrito no próprio catálogo (`modelo`, até 20 KB): o painel
+Modelos de montagem lista sem baixar nada, e a `previa` é o vídeo de exemplo.
 
 O catálogo diz o que existe e de onde vem. Cada pacote é um arquivo de uma Release do
 repositório de pacotes, no endereço `<base>/<release>/<arquivo>`. `obter` baixa para o
@@ -47,7 +51,8 @@ import camadas as cam  # mesma pasta deste arquivo
 
 KIT = Path(__file__).resolve().parent.parent
 CATALOGO_KIT = KIT / "assets" / "pacotes" / "catalogo.json"
-TIPOS = ("trilha", "efeito", "transicao", "filtro", "texto")
+TIPOS = ("trilha", "efeito", "transicao", "filtro", "texto", "montagem")
+MAX_MODELO = 20_000  # o modelo de montagem vem escrito no catálogo (o painel lista sem baixar nada)
 TRILHA_VOLUME = 0.15  # trilha normalizada em -14 LUFS, embaixo da voz: ~16 dB abaixo
 LIMITE_PADRAO_GB = 2.0
 MAX_ARQUIVO = 2 * 1024 ** 3  # o teto de um arquivo de Release
@@ -126,6 +131,11 @@ def validar(cat: object) -> dict:
                 "duracao": float(dur), "release": rel, **_arquivo(p, pid)}
         if p.get("previa") is not None:
             item["previa"] = _arquivo(p["previa"], f"{pid} (prévia)")
+        if p["tipo"] == "montagem":  # o modelo; quem confere o conteúdo é o montagens.py, ao listar
+            modelo = p.get("modelo")
+            if not isinstance(modelo, dict) or len(json.dumps(modelo, ensure_ascii=False).encode()) > MAX_MODELO:
+                raise CatalogoInvalido(f"{pid}: montagem sem o modelo (ou maior que {MAX_MODELO // 1000} KB)")
+            item["modelo"] = json.loads(json.dumps(modelo))
         pacotes.append(item)
     return {"versao": 1, "gerado": str(cat.get("gerado") or ""), "repo": repo,
             "base": base.rstrip("/"), "pacotes": pacotes}

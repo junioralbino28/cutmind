@@ -3,9 +3,11 @@
 textos trocáveis e as transições, guardados com nome para usar com outra música e outras mídias.
 
 Os da pessoa ficam em `~/.cutmind/montagens/<id>.json` (a pasta de `CUTMIND_HOME`), fora de
-qualquer projeto; os que vêm com o kit, em `assets/montagens/`, só para ler. Um modelo da pessoa
-com o id de um do kit vale no lugar dele. O formato é o do `montagem.py` (a conferência é a dele),
-gravado com os lugares iguais seguidos juntos em `repetir`:
+qualquer projeto; os que vêm com o kit, em `assets/montagens/` e na biblioteca de pacotes (tipo
+`montagem`, o modelo escrito no catálogo e um vídeo de exemplo como prévia), só para ler. Um modelo
+da pessoa com o id de um do kit vale no lugar dele; um de `assets/montagens/` vale no lugar de um da
+biblioteca. O formato é o do `montagem.py` (a conferência é a dele), gravado com os lugares iguais
+seguidos juntos em `repetir`:
 
     {"versao": 1, "id": "drop-cedo", "nome": "Drop cedo", "criado": <epoch>, "comeca": "forte",
      "drop_na_vaga": 3, "golpe": true,
@@ -29,6 +31,7 @@ from pathlib import Path
 
 import modelos  # mesma pasta deste arquivo
 import montagem as mt  # mesma pasta deste arquivo
+import pacotes as pk  # mesma pasta deste arquivo
 import projetos as pj  # mesma pasta deste arquivo
 
 VERSAO = 1
@@ -79,7 +82,8 @@ def resumo(m: dict) -> dict:
             "lugares": len(ritmo), "batidas": sum(ritmo), "ritmo": ritmo, "drop_na_vaga": m["drop_na_vaga"],
             "formato": m.get("formato") or mt.FORMATO_PADRAO,
             "textos": [{"nome": t["nome"], "vaga": t["vaga"], "batidas": t["batidas"]} for t in m["textos"]],
-            "transicoes": len(m["transicoes"])}
+            "transicoes": len(m["transicoes"]),
+            "previa": m.get("pacote") if m.get("previa") else None}  # o pacote do vídeo de exemplo
 
 
 def _ler(p: Path, do_kit: bool = False) -> dict | None:
@@ -98,7 +102,27 @@ def _da_pessoa() -> dict[str, dict]:
 
 
 def _do_kit() -> dict[str, dict]:
-    return {m["id"]: m for m in (_ler(x, True) for x in sorted(KIT.glob("*.json"))) if m} if KIT.is_dir() else {}
+    kit = {m["id"]: m for m in (_ler(x, True) for x in sorted(KIT.glob("*.json"))) if m} if KIT.is_dir() else {}
+    return {**_da_biblioteca(), **kit}
+
+
+def _da_biblioteca() -> dict[str, dict]:
+    """Os da biblioteca de pacotes: o modelo vem escrito no catálogo e passa pela mesma conferência;
+    o vídeo de exemplo é a prévia do pacote, baixada só quando a pessoa pede para ver."""
+    try:
+        cat = pk.Pacotes.do_ambiente().cat
+    except (pk.PacoteErro, OSError):
+        return {}
+    out: dict[str, dict] = {}
+    for p in cat["pacotes"]:
+        if p["tipo"] != "montagem":
+            continue
+        try:
+            m = normalize({**p["modelo"], "nome": p["nome"][:modelos.NOME_MAX], "criado": 0})
+        except MontagemInvalida:
+            continue  # um modelo que o kit recusaria não aparece
+        out[m["id"]] = {**m, "doKit": True, "pacote": p["id"], "previa": "previa" in p}
+    return out
 
 
 def listar() -> list[dict]:
@@ -111,7 +135,7 @@ def listar() -> list[dict]:
 def obter(mid: object) -> dict | None:
     if not isinstance(mid, str) or not modelos._ID.fullmatch(mid):
         return None
-    return _ler(pasta() / f"{mid}.json") or _ler(KIT / f"{mid}.json", True)
+    return _ler(pasta() / f"{mid}.json") or _ler(KIT / f"{mid}.json", True) or _da_biblioteca().get(mid)
 
 
 def salvar(obj: dict) -> dict:

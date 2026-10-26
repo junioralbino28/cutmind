@@ -82,7 +82,9 @@ middle leaves the project as it was, the beat is checked again) and
 `tests/test_preview_montagem.py` (what the editor may open and send).
 
 Montage templates are files (`helpers/montagens.py`): the user's in `~/.cutmind/montagens/`, the
-kit's in `assets/montagens/` (read-only). "Guarda esta montagem como modelo" is
+kit's in `assets/montagens/` and in the package library (read-only; type `montagem`, each with an
+example video the editor shows on the card's play button). How to make a montage from scratch is in
+`references/montagem.md`. "Guarda esta montagem como modelo" is
 `montagem.py capturar <edit> --nome "Nome"` (slots in beats, the texts with their names, the
 transitions on the cuts; filters do not go in). "Faz uma montagem com o modelo X, a música Y e
 estas fotos" is `montagem.py usar <template id or JSON file> --musica <file> --midias <files>

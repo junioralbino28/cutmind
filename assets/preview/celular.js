@@ -2848,6 +2848,13 @@ function renderMontModelos(body) {
     card.dataset.mtModelo = m.id;
     const face = el('div', 'face mt-face', card);
     capaRitmo(face, m);
+    if (m.previa) { // o da biblioteca tem um vídeo de exemplo (baixado só ao tocar)
+      const ver = el('span', 'c-ver', face);
+      ver.dataset.mtPrevia = m.previa;
+      ver.dataset.nome = m.nome;
+      ver.innerHTML = ICON.play;
+      ver.title = 'Ver o exemplo';
+    }
     if (!m.doKit) {
       const del = el('span', 'c-del', face);
       del.dataset.mtApagar = m.id;
@@ -2863,6 +2870,35 @@ function renderMontModelos(body) {
     el('div', 'c-name', card).textContent = m.nome;
     el('div', 'c-sub', card).textContent = resumoMontagem(m);
   }
+}
+// o exemplo de um modelo da biblioteca: clipes grátis no lugar das fotos de quem usa, numa batida do kit
+function verExemplo(pid, nome) {
+  MT_PREV.pause();
+  let d = $('mtExemplo');
+  if (!d) {
+    d = el('dialog', 'mt-exemplo', document.body);
+    d.id = 'mtExemplo';
+    d.addEventListener('click', (e) => { if (e.target === d) d.close(); }); // tocar fora fecha
+    d.addEventListener('close', () => {
+      const v = d.querySelector('video');
+      if (v) { v.pause(); v.removeAttribute('src'); v.load(); } // para de baixar
+    });
+  }
+  d.innerHTML = '';
+  const topo = el('div', 'mt-exemplo-topo', d);
+  el('b', null, topo).textContent = nome;
+  const x = el('button', 'sh-close', topo);
+  x.type = 'button';
+  x.innerHTML = ICON.fechar;
+  x.setAttribute('aria-label', 'Fechar o exemplo');
+  x.addEventListener('click', () => d.close());
+  const v = el('video', 'mt-exemplo-video', d);
+  v.controls = true; v.playsInline = true; v.autoplay = true; v.muted = !!S.mudoUsuario;
+  const aviso = el('p', 'sheet-hint', d);
+  aviso.textContent = 'No seu vídeo, as suas fotos e vídeos entram no lugar destas imagens. A batida é do kit.';
+  v.addEventListener('error', () => { aviso.textContent = 'O exemplo não baixou agora. Confira a internet e tente de novo.'; });
+  v.src = `/gen/pacote-previa?id=${encodeURIComponent(pid)}`;
+  d.showModal();
 }
 function linkExterno(host, href, texto) {
   const a = el('a', null, host);
@@ -3192,6 +3228,8 @@ $('montCorpo').addEventListener('click', (e) => {
   const t = e.target;
   const apagar = t.closest('[data-mt-apagar]');
   if (apagar) { apagaMontagem(apagar.dataset.mtApagar); return; }
+  const ver = t.closest('[data-mt-previa]');
+  if (ver) { verExemplo(ver.dataset.mtPrevia, ver.dataset.nome); return; }
   // o Compartilhar abre o mural em outra aba já no gesto (sem fetch antes: nada de bloqueio de janela)
   const share = t.closest('[data-mt-compartilhar]');
   if (share) { window.open(`/api/mural/compartilhar?id=${encodeURIComponent(share.dataset.mtCompartilhar)}`, '_blank', 'noopener'); return; }
