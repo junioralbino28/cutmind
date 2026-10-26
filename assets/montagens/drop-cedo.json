@@ -2,6 +2,7 @@
   "versao": 1,
   "id": "drop-cedo",
   "nome": "Drop cedo",
+  "nome_en": "Early drop",
   "comeca": "forte",
   "drop_na_vaga": 3,
   "golpe": true,

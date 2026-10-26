@@ -890,8 +890,8 @@ async function applyState(data) {
   document.title = S.state.project ? `${S.state.project} · CutMind` : 'CutMind';
   // o que o agente está fazendo, como no editor de PC antigo (no celular fica escondido)
   $('projectName').textContent = S.state.project || '';
-  $('agentMsg').textContent = S.state.message || '';
-  $('agent').title = [S.state.project, S.state.message].filter(Boolean).join(' — ');
+  $('agentMsg').textContent = avisoNoIdioma(S.state.message, S.state.messageKey, S.state.messageVals);
+  $('agent').title = [S.state.project, $('agentMsg').textContent].filter(Boolean).join(' — ');
 
   const ranges = (data.edl && data.edl.ranges) || [];
   S.jcut = (data.edl && data.edl.jcut_timeline) || null;
@@ -942,7 +942,7 @@ async function applyState(data) {
     $('emptyIco').innerHTML = agente ? ICON.corte : ICON.enviar;
     if (!agente) { $('emptyTitle').textContent = EMPTY_TEXTS.title; $('emptyText').textContent = EMPTY_TEXTS.text; }
   }
-  if (agente) { $('emptyTitle').textContent = t('O agente está editando'); $('emptyText').textContent = S.state.message; }
+  if (agente) { $('emptyTitle').textContent = t('O agente está editando'); $('emptyText').textContent = avisoNoIdioma(S.state.message, S.state.messageKey, S.state.messageVals); }
   S.montagemNova = data.montagemNova || null; // o Montar do painel, salvo e ainda não feito pelo agente
   vazioDaMontagem();
   if (!hasFinal() && S.view === 'final') S.view = 'corte';
@@ -2113,7 +2113,7 @@ function desenhaProjetos(lista) {
       <div class="pj-nome">${escSvg(p.nome)}</div><div class="pj-meta">${faseDoProjeto(p)}${dur} · ${quandoFoi(p.mudou)}</div>`;
     // a capa por URL (com o id), sem montar CSS com texto do projeto
     if (p.temCapa) b.querySelector('.pj-capa').style.backgroundImage = `url("/gen/projeto-capa?id=${encodeURIComponent(p.id)}&v=${Math.round(p.mudou)}")`;
-    b.title = p.mensagem || p.nome;
+    b.title = avisoNoIdioma(p.mensagem, p.messageKey, p.messageVals) || p.nome;
     g.appendChild(b);
   }
 }
@@ -2760,6 +2760,18 @@ function fechaMontagem() {
   showSheet($('montSheet'), false);
   renderToolbar();
 }
+/* O aviso que um script gravou no state.json (helpers/idioma.py `mensagem`): no idioma da tela pela
+ * chave, mas só se a chave ainda monta a mesma frase; se o agente escreveu outra por cima, vale a dele. */
+function avisoNoIdioma(mensagem, chave, valores) {
+  const msg = typeof mensagem === 'string' ? mensagem : '';
+  if (typeof chave !== 'string' || !chave) return msg;
+  const v = valores && typeof valores === 'object' ? valores : {};
+  const emPortugues = chave.replace(/\{(\w+)\}/g, (m, k) => (k in v ? String(v[k]) : m));
+  return emPortugues === msg ? t(chave, v) : msg;
+}
+// o que vem do kit e da biblioteca (modelos, filtros, transições, trilhas) traz o nome em inglês;
+// o que a pessoa criou fica com o nome que ela deu
+const nomeNoIdioma = (m) => (IDIOMA === 'en' && m.nomeEn) || m.nome;
 function resumoMontagem(m) {
   const b = [m.lugares === 1 ? t('1 lugar') : t('{lugares} lugares', { lugares: m.lugares }), t('{batidas} batidas', { batidas: m.batidas })];
   if (m.textos.length) b.push(m.textos.length === 1 ? t('1 texto') : t('{length} textos', { length: m.textos.length }));
@@ -2806,7 +2818,7 @@ function renderMontagem() {
     seguir.textContent = t('Próximo');
     seguir.disabled = true;
   } else if (passo === 'modelos') {
-    $('montConta').textContent = m ? m.nome : t('Escolha um modelo');
+    $('montConta').textContent = m ? nomeNoIdioma(m) : t('Escolha um modelo');
     seguir.textContent = t('Próximo');
     seguir.disabled = !m;
   } else if (passo === 'musica') {
@@ -2862,7 +2874,7 @@ function renderMontModelos(body) {
     if (m.previa) { // o da biblioteca tem um vídeo de exemplo (baixado só ao tocar)
       const ver = el('span', 'c-ver', face);
       ver.dataset.mtPrevia = m.previa;
-      ver.dataset.nome = m.nome;
+      ver.dataset.nome = nomeNoIdioma(m);
       ver.innerHTML = ICON.play;
       ver.title = t('Ver o exemplo');
     }
@@ -2878,7 +2890,7 @@ function renderMontModelos(body) {
         sh.title = t('Compartilhar no mural');
       }
     }
-    el('div', 'c-name', card).textContent = m.nome;
+    el('div', 'c-name', card).textContent = nomeNoIdioma(m);
     el('div', 'c-sub', card).textContent = resumoMontagem(m);
   }
 }
@@ -3119,7 +3131,7 @@ async function guardaMontagem(nome) {
 }
 async function apagaMontagem(id) {
   const m = (MT.modelos || []).find((x) => x.id === id);
-  if (!m || !confirm(t('Apagar o modelo de montagem "{nome}"? As montagens já feitas com ele não mudam.', { nome: m.nome }))) return;
+  if (!m || !confirm(t('Apagar o modelo de montagem "{nome}"? As montagens já feitas com ele não mudam.', { nome: nomeNoIdioma(m) }))) return;
   try {
     const d = await (await fetch('/api/montagens/apagar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }) })).json();
@@ -3135,7 +3147,7 @@ async function pedeMontagem() {
   if (!m || !MT.musica || !MT.midias.length || MT.enviando) return;
   const n = dirtyCount();
   if (n) { toast(t('Salve ou descarte {p0} antes: a montagem nova refaz o projeto inteiro.', { p0: n === 1 ? t('o ajuste') : t('os {n} ajustes', { n }) }), 4500); return; }
-  if (S.montagem && !confirm(t('Montar de novo com o modelo "{nome}"? A montagem de agora é refeita inteira, ', { nome: m.nome })
+  if (S.montagem && !confirm(t('Montar de novo com o modelo "{nome}"? A montagem de agora é refeita inteira, ', { nome: nomeNoIdioma(m) })
     + t('com os textos e as transições do modelo.'))) return;
   MT.enviando = true;
   renderMontagem();
@@ -4037,7 +4049,7 @@ function renderModelos(body) {
     del.dataset.apagar = m.id;
     del.innerHTML = ICON.remover;
     del.title = t('Apagar o modelo');
-    el('div', 'c-name', card).textContent = m.nome;
+    el('div', 'c-name', card).textContent = nomeNoIdioma(m);
     el('div', 'c-sub', card).textContent = resumoModelo(m);
   }
   // a montagem na batida tem os modelos dela, num projeto próprio (o painel Modelos de montagem)
@@ -4084,7 +4096,7 @@ async function salvaModelo(nome) {
 }
 async function apagaModelo(id) {
   const m = (S.modelos || []).find((x) => x.id === id);
-  if (!m || !confirm(t('Apagar o modelo "{nome}"? Os vídeos que já usaram ele não mudam.', { nome: m.nome }))) return;
+  if (!m || !confirm(t('Apagar o modelo "{nome}"? Os vídeos que já usaram ele não mudam.', { nome: nomeNoIdioma(m) }))) return;
   try {
     const d = await (await fetch('/api/modelos/apagar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }) })).json();
@@ -7399,7 +7411,7 @@ async function loadTrilhas() {
   } catch (e) {
     S.trilhas = S.trilhas || [];
   }
-  for (const p of S.trilhas) S.trilhaNomes[p.id] = p.nome;
+  for (const p of S.trilhas) S.trilhaNomes[p.id] = nomeNoIdioma(p);
 }
 async function openTrilhas() {
   video.pause();
@@ -7473,9 +7485,9 @@ function renderTrilhas() {
     play.dataset.act = 'ouvir';
     play.disabled = !p.previa;
     play.innerHTML = tocando === p.id ? ICON.pause : ICON.play;
-    play.setAttribute('aria-label', `${tocando === p.id ? t('Parar') : t('Ouvir')} ${p.nome}`);
+    play.setAttribute('aria-label', `${tocando === p.id ? t('Parar') : t('Ouvir')} ${nomeNoIdioma(p)}`);
     const txt = el('div', 'tr-txt', row);
-    el('b', null, txt).textContent = p.nome;
+    el('b', null, txt).textContent = nomeNoIdioma(p);
     const info = [p.clima, fmtDur(p.duracao)];
     if (p.baixado) info.push(t('no computador'));
     el('span', null, txt).textContent = info.filter(Boolean).join(' · ');
@@ -7535,7 +7547,7 @@ async function usarTrilha(id) {
     if (!r.ok) throw new Error(d.error || t('erro {status}', { status: r.status }));
     const p = S.trilhas.find((x) => x.id === id);
     if (p) p.baixado = true;
-    S.trilhaNomes[id] = d.nome;
+    S.trilhaNomes[id] = nomeNoIdioma(d);
     trBaixando = null;
     closeTrilhas();
     await addLayer('audio', d.arquivo, { volume: TRILHA_VOLUME, trilha: id });
@@ -7627,7 +7639,7 @@ async function loadFxLista(tipo) {
   } catch (e) {
     S.fxLista[tipo] = S.fxLista[tipo] || [];
   }
-  for (const p of S.fxLista[tipo]) S.fxNomes[p.id] = p.nome;
+  for (const p of S.fxLista[tipo]) S.fxNomes[p.id] = nomeNoIdioma(p);
 }
 const loadFxListas = () => Promise.all([loadFxLista('filtro'), loadFxLista('transicao')]);
 
@@ -8078,7 +8090,7 @@ function renderFxLista() {
     const pronta = filtro && miniQuadro() && MINI.feitas.get(`${p.id}|${MINI.chave}`);
     if (pronta) miniPintar(ico, pronta); // redesenhar a lista não pisca: a miniatura já existe
     const txt = el('div', 'tr-txt', row);
-    el('b', null, txt).textContent = p.nome;
+    el('b', null, txt).textContent = nomeNoIdioma(p);
     const info = [];
     if (!filtro && p.duracao) info.push(`${p.duracao.toFixed(1).replace('.', ',')} s`);
     if (fxBaixando === p.id) info.push(t('baixando…'));

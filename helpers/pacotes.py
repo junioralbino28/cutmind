@@ -129,6 +129,8 @@ def validar(cat: object) -> dict:
         item = {"id": pid, "tipo": p["tipo"], "nome": str(p.get("nome") or pid)[:80],
                 "clima": str(p.get("clima") or "")[:40], "tags": [t[:40] for t in tags][:20],
                 "duracao": float(dur), "release": rel, **_arquivo(p, pid)}
+        if isinstance(p.get("nome_en"), str) and p["nome_en"].strip():  # o nome na tela em inglês
+            item["nome_en"] = p["nome_en"].strip()[:80]
         if p.get("previa") is not None:
             item["previa"] = _arquivo(p["previa"], f"{pid} (prévia)")
         if p["tipo"] == "montagem":  # o modelo; quem confere o conteúdo é o montagens.py, ao listar
@@ -229,11 +231,11 @@ class Pacotes:
         for p in self.cat["pacotes"]:
             if tipo and p["tipo"] != tipo:
                 continue
-            texto = _sem_acento(" ".join([p["id"], p["nome"], p["clima"], *p["tags"]]))
+            texto = _sem_acento(" ".join([p["id"], p["nome"], p.get("nome_en", ""), p["clima"], *p["tags"]]))
             if q and not all(w in texto for w in q):
                 continue
             out.append({k: p[k] for k in ("id", "tipo", "nome", "clima", "tags", "duracao", "tamanho")}
-                       | {"previa": "previa" in p, "baixado": self._local(p).is_file(),
+                       | {"nomeEn": p.get("nome_en"), "previa": "previa" in p, "baixado": self._local(p).is_file(),
                           "favorito": p["id"] in est["favoritos"]})
         return out
 

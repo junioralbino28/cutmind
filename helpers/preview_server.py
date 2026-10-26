@@ -122,6 +122,7 @@ import modelos as md  # mesma pasta deste arquivo
 import melhorar_voz as mv  # mesma pasta deste arquivo
 import batida as bt  # mesma pasta deste arquivo
 import montagem as mt  # mesma pasta deste arquivo
+import idioma as idm  # mesma pasta deste arquivo
 import montagens as mg  # mesma pasta deste arquivo
 import mural as mu  # mesma pasta deste arquivo
 
@@ -861,10 +862,15 @@ class Handler(BaseHTTPRequestHandler):
                         "que aparece no computador.", path)
         return False
 
+    def _idioma(self) -> str:
+        """O da tela: o editor manda em cada pedido; a página aberta direto vai pelo do navegador."""
+        return idm.do_pedido(self.headers.get("X-CutMind-Idioma"), self.headers.get("Accept-Language"))
+
     def _deny(self, code: int, msg: str, path: str) -> None:
         sys.stderr.write(f"[{time.strftime('%H:%M:%S')}] negado {code} "
                          f"{self.client_address[0]} {self.command} {path}\n")
         self.close_connection = True  # um POST negado deixa o corpo sem ler
+        msg = idm.traduzir(msg, self._idioma())
         if path.startswith(("/api/", "/gen/", "/media/")):
             body = json.dumps({"error": msg}, ensure_ascii=False).encode()
             self._hdr(code, "application/json; charset=utf-8", len(body), {"Connection": "close"})
@@ -879,7 +885,7 @@ class Handler(BaseHTTPRequestHandler):
     def _fail(self, code: int, msg: str) -> None:
         """Erro num POST cujo corpo não foi lido: fecha a conexão depois."""
         self.close_connection = True
-        body = json.dumps({"error": msg}, ensure_ascii=False).encode()
+        body = json.dumps({"error": idm.traduzir(msg, self._idioma())}, ensure_ascii=False).encode()
         self._hdr(code, "application/json; charset=utf-8", len(body), {"Connection": "close"})
         self.wfile.write(body)
 
@@ -897,6 +903,8 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _json(self, obj: object, code: int = 200) -> None:
+        if isinstance(obj, dict) and isinstance(obj.get("error"), str):  # o erro sai no idioma da tela
+            obj = {**obj, "error": idm.traduzir(obj["error"], self._idioma())}
         body = json.dumps(obj, ensure_ascii=False).encode()
         self._hdr(code, "application/json; charset=utf-8", len(body))
         self.wfile.write(body)
@@ -1549,7 +1557,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": str(e)}, 404)
             return
         self._json({"arquivo": f"{cam.MIDIA_DIR}/{dest.name}", "id": p["id"], "nome": p["nome"],
-                    "duracao": p["duracao"]})
+                    "nomeEn": p.get("nome_en"), "duracao": p["duracao"]})
 
     # ---- dynamic bits ----
     # ---- projetos (a tela Projetos do editor) ----

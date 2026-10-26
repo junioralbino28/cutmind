@@ -51,7 +51,8 @@ def maquina(tmp_path, monkeypatch):
                         lambda p: Uso(500 * GB, 500 * GB - m.livre, m.livre))
     monkeypatch.setattr(inst, "_copy_payload", copia)
     monkeypatch.setattr(sys, "argv", ["cutmind_install.py", "--source", str(RAIZ),
-                                      "--target", str(m.skills), "--no-remotion", "--no-node"])
+                                      "--target", str(m.skills), "--no-remotion", "--no-node",
+                                      "--idioma", "pt"])
     return m
 
 

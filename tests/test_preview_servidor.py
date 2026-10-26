@@ -55,10 +55,10 @@ def srv(tmp_path):
     server.server_close()
 
 
-def pedir(port, metodo, caminho, *, remoto=False, cookie=None, host=None, corpo=None):
+def pedir(port, metodo, caminho, *, remoto=False, cookie=None, host=None, corpo=None, cabecalhos=None):
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=15,
                                       source_address=("127.0.0.2", 0) if remoto else None)
-    headers = {}
+    headers = dict(cabecalhos or {})
     if cookie:
         headers["Cookie"] = f"{ps.TOKEN_COOKIE}={cookie}"
     if host:
@@ -455,7 +455,8 @@ def test_usar_trilha_poe_o_arquivo_na_midia_do_projeto(srv, trilhas):
     r, corpo = _post_json(srv, "/api/pacotes/usar", {"id": "calma-01"}, remoto=True, cookie=CODIGO)
     dados = json.loads(corpo)
     assert r.status == 200, corpo
-    assert dados == {"arquivo": "midia/calma-01.m4a", "id": "calma-01", "nome": "Manhã leve", "duracao": 61.0}
+    assert dados == {"arquivo": "midia/calma-01.m4a", "id": "calma-01", "nome": "Manhã leve", "nomeEn": None,
+                     "duracao": 61.0}
     assert (srv.edit / "midia" / "calma-01.m4a").read_bytes() == trilhas.musica
     r, corpo = pedir(srv.port, "GET", "/api/pacotes?tipo=trilha", remoto=True, cookie=CODIGO)
     assert json.loads(corpo)["pacotes"][0]["baixado"] is True
@@ -641,3 +642,27 @@ def test_juntar_soma_os_destaques_pelo_alvo():
                               {"editData": {"destaques": [numero_de_novo], "legenda": {"acompanhar": True}}})
     assert d["editData"]["destaques"] == [gancho, numero_de_novo]
     assert d["editData"]["legenda"] == {"acompanhar": True}
+
+
+# ---- o idioma da tela: o erro sai no idioma do editor (cabeçalho) ou, sem ele, no do navegador ----
+def test_o_erro_sai_no_idioma_do_editor(srv):
+    _, en = pedir(srv.port, "GET", "/gen/recorte?t=1", cabecalhos={"X-CutMind-Idioma": "en"})
+    _, pt = pedir(srv.port, "GET", "/gen/recorte?t=1", cabecalhos={"X-CutMind-Idioma": "pt"})
+    _, nav = pedir(srv.port, "GET", "/gen/recorte?t=1", cabecalhos={"Accept-Language": "en-US,en;q=0.9"})
+    assert json.loads(en)["error"] == "the project has no cut yet"
+    assert json.loads(pt)["error"] == "o projeto ainda não tem o corte"
+    assert json.loads(nav)["error"] == "the project has no cut yet"
+    # o botão PT do editor vale mais que o navegador em inglês
+    _, botao = pedir(srv.port, "GET", "/gen/recorte?t=1",
+                     cabecalhos={"X-CutMind-Idioma": "pt", "Accept-Language": "en-US"})
+    assert json.loads(botao)["error"] == "o projeto ainda não tem o corte"
+
+
+def test_a_recusa_sem_o_editor_no_meio_sai_no_idioma_do_navegador(srv):
+    """O celular sem código e o endereço estranho não passam pelo editor: vale o Accept-Language."""
+    r, en = pedir(srv.port, "GET", "/api/state", remoto=True, cabecalhos={"Accept-Language": "en-US,en;q=0.8"})
+    assert r.status == 403 and json.loads(en)["error"].startswith("This phone doesn't have the code yet")
+    r, pt = pedir(srv.port, "GET", "/api/state", remoto=True, cabecalhos={"Accept-Language": "pt-BR,pt;q=0.9"})
+    assert r.status == 403 and json.loads(pt)["error"].startswith("Este celular ainda não tem o código")
+    r, pagina = pedir(srv.port, "GET", "/", host="exemplo.invalid", cabecalhos={"Accept-Language": "en"})
+    assert r.status == 403 and "Address not allowed." in pagina.decode("utf-8")

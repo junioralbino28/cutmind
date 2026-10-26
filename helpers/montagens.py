@@ -65,7 +65,7 @@ def normalize(obj: object) -> dict:
             vagas[-1]["repetir"] = vagas[-1].get("repetir", 1) + 1
         else:
             vagas.append(dict(chave))
-    out = {"versao": VERSAO, "id": ident, "nome": nome,
+    out = {"versao": VERSAO, "id": ident, "nome": nome, **_nome_en(obj),
            "criado": float(obj["criado"]) if isinstance(obj.get("criado"), (int, float)) else time.time(),
            "comeca": m["comeca"], "drop_na_vaga": m["drop_na_vaga"], "golpe": m["golpe"], "formato": m["formato"],
            "vagas": vagas,
@@ -75,10 +75,18 @@ def normalize(obj: object) -> dict:
     return out
 
 
+def _nome_en(obj: dict) -> dict:
+    """O nome na tela em inglês, que só os modelos do kit e da biblioteca trazem; inválido, fica sem."""
+    try:
+        return {"nome_en": modelos._nome(obj["nome_en"])} if obj.get("nome_en") is not None else {}
+    except modelos.ModeloInvalido:
+        return {}
+
+
 def resumo(m: dict) -> dict:
     """O que o cartão do painel mostra: o ritmo (as batidas de cada lugar), os textos e o drop."""
     ritmo = [v["batidas"] for v in m["vagas"] for _ in range(v.get("repetir", 1))]
-    return {"id": m["id"], "nome": m["nome"], "doKit": bool(m.get("doKit")), "criado": m["criado"],
+    return {"id": m["id"], "nome": m["nome"], "nomeEn": m.get("nome_en"), "doKit": bool(m.get("doKit")), "criado": m["criado"],
             "lugares": len(ritmo), "batidas": sum(ritmo), "ritmo": ritmo, "drop_na_vaga": m["drop_na_vaga"],
             "formato": m.get("formato") or mt.FORMATO_PADRAO,
             "textos": [{"nome": t["nome"], "vaga": t["vaga"], "batidas": t["batidas"]} for t in m["textos"]],
@@ -118,7 +126,8 @@ def _da_biblioteca() -> dict[str, dict]:
         if p["tipo"] != "montagem":
             continue
         try:
-            m = normalize({**p["modelo"], "nome": p["nome"][:modelos.NOME_MAX], "criado": 0})
+            m = normalize({**p["modelo"], "nome": p["nome"][:modelos.NOME_MAX], "criado": 0,
+                           **({"nome_en": p["nome_en"][:modelos.NOME_MAX]} if p.get("nome_en") else {})})
         except MontagemInvalida:
             continue  # um modelo que o kit recusaria não aparece
         out[m["id"]] = {**m, "doKit": True, "pacote": p["id"], "previa": "previa" in p}

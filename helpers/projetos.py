@@ -32,6 +32,8 @@ import threading
 import time
 from pathlib import Path
 
+import idioma as idm  # mesma pasta deste arquivo
+
 VERSAO = 1
 MAX_PROJETOS = 500
 # o que conta como "mexeram no projeto": a última mudança de qualquer um destes
@@ -169,9 +171,9 @@ def criar(base: Path, nome: str, montagem: bool = False) -> Path:
     edit = pasta / "edit"
     edit.mkdir(parents=True)
     estado = {"project": nome.strip()[:NOME_MAX], "phase": 0, "video": "cut.mp4", "edl": "edl.json",
-              "message": "Projeto novo: escolha o vídeo e o agente começa o corte.", "novo": True}
+              **idm.mensagem("Projeto novo: escolha o vídeo e o agente começa o corte."), "novo": True}
     if montagem:
-        estado.update(message="Montagem nova: escolha um modelo, a música e as fotos e clipes.", montagem=True)
+        estado.update(idm.mensagem("Montagem nova: escolha um modelo, a música e as fotos e clipes."), montagem=True)
     _gravar(edit / "state.json", estado)
     registrar(edit)
     return edit
@@ -235,6 +237,7 @@ def resumo(edit: Path) -> dict:
         "novo": bool(estado.get("novo")) and not (edit / "edl.json").exists(),
         "montagem": bool(estado.get("montagem")),  # a Nova montagem: o cartão diz "Montagem nova"
         "mensagem": str(estado.get("message") or "")[:300],
+        **{k: estado[k] for k in ("messageKey", "messageVals") if k in estado},  # o editor traduz pela chave
         "duracao": round(dur, 2),
         "mudou": mudou,
         "temCapa": video is not None,

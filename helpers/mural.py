@@ -151,7 +151,7 @@ def lista(antes: str | None = None) -> dict:
             "seguinte": seguinte if isinstance(seguinte, str) and CURSOR.fullmatch(seguinte) else None}
 
 
-_SEM = ("id", "nome", "criado", "doKit")
+_SEM = ("id", "nome", "nome_en", "criado", "doKit")
 
 
 def _mesmo(a: dict, b: dict) -> bool:
@@ -203,7 +203,7 @@ def link_publicar(mid: object) -> str:
         raise MuralRecusou("modelo não encontrado")
     if m.get("doKit"):
         raise MuralRecusou("os modelos que vêm com o kit já estão no kit de todo mundo")
-    dados = {k: v for k, v in m.items() if k not in ("id", "criado", "doKit")}
+    dados = {k: v for k, v in m.items() if k not in ("id", "nome_en", "criado", "doKit")}
     texto = json.dumps(dados, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     return f"{base}/publicar#m={base64.urlsafe_b64encode(texto).decode('ascii').rstrip('=')}"
 

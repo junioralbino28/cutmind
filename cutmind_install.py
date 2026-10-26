@@ -100,8 +100,130 @@ SKILL_PAYLOAD = (
 )
 
 
+# ---- idioma: o instalador fala no idioma de quem instala (--idioma, ou o do sistema) ----
+# O português é a chave; uma linha com valor ("  ! falhou para Codex: ...") casa pelo padrão da chave
+# ("  ! falhou para {name}: {e}") e o valor de dentro também passa pela tradução. Este arquivo roda
+# sozinho (baixado da internet), então leva a própria cópia do que o helpers/idioma.py faz.
+IDIOMA = "pt"
+EN = {
+    "  baixando {repo}@{ref}…": "  downloading {repo}@{ref}…",
+    "  ! não consegui baixar {repo}@{ref}: {last}": "  ! couldn't download {repo}@{ref}: {last}",
+    "  ! o tarball de {repo} veio vazio": "  ! the {repo} tarball came empty",
+    "  ! {dest}": "  ! {dest}",
+    "    é um link para {p0} — NÃO foi tocado.": "    is a link to {p0} — NOT touched.",
+    "    Atualize o clone com: git -C <caminho> pull --ff-only": "    Update the clone with: git -C <path> pull --ff-only",
+    "    Ou apague o link e rode de novo para instalar uma cópia normal.": "    Or delete the link and run again to install a normal copy.",
+    "    é um clone git — NÃO foi atualizado.": "    is a git clone — NOT updated.",
+    "    clone git limpo — substituído pela versão publicada": "    clean git clone — replaced with the published version",
+    "    ! o clone tem alterações locais ou arquivos ignorados": "    ! the clone has local changes or ignored files",
+    "    guardado em {name} — apague quando tiver conferido": "    kept in {name} — delete it once you've checked",
+    "    ! não consegui remover {name}: {e}": "    ! couldn't remove {name}: {e}",
+    "  instalando dependências (torch + whisperx, alguns GB na primeira vez)…": "  installing dependencies (torch + whisperx, a few GB the first time)…",
+    "  ! uv sync falhou:": "  ! uv sync failed:",
+    "  Node.js não encontrado: instalando a versão LTS pelo winget (Fase 2).": "  Node.js not found: installing the LTS version with winget (Phase 2).",
+    "  O Windows pode pedir permissão: é o instalador oficial do Node.js.": "  Windows may ask for permission: it's the official Node.js installer.",
+    "  Node.js não encontrado: instalando pelo Homebrew (Fase 2)…": "  Node.js not found: installing with Homebrew (Phase 2)…",
+    "  ! a instalação do Node.js não rodou: {e}": "  ! the Node.js install didn't run: {e}",
+    "  ! a instalação do Node.js falhou:": "  ! the Node.js install failed:",
+    "cutmind — instalação": "cutmind — install",
+    "  instalando para {name}: {p1}": "  installing for {name}: {p1}",
+    "  ! falhou para {name}: {e}": "  ! failed for {name}: {e}",
+    "  instalando skill do Remotion (Fase 2): {p0}": "  installing the Remotion skill (Phase 2): {p0}",
+    "  ! Remotion falhou em {skills_dir}: {e}": "  ! Remotion failed in {skills_dir}: {e}",
+    "  ! skill do Remotion não instalada (a Fase 1 não depende dela)": "  ! Remotion skill not installed (Phase 1 doesn't depend on it)",
+    "verificação:": "check:",
+    "  x uv         — necessário: {p0}": "  x uv         — required: {p0}",
+    "  x dependências — {motivo}. Sem elas a transcrição não funciona.": "  x dependencies — {motivo}. Without them transcription doesn't work.",
+    "  ok dependências": "  ok dependencies",
+    "  · espaço     — sobram {p0} em {p1}: a primeira transcrição ainda baixa uns 5 GB de modelos, e um vídeo editado ocupa uns 3 GB. Deixe pelo menos {ESPACO_TRABALHO_GB} GB livres.": "  · space      — {p0} left on {p1}: the first transcription still downloads about 5 GB of models, and an edited video takes about 3 GB. Keep at least {ESPACO_TRABALHO_GB} GB free.",
+    "  ok ffmpeg": "  ok ffmpeg",
+    "  x ffmpeg     — corte e render (Fase 1). Instale com: {p0}": "  x ffmpeg     — cutting and rendering (Phase 1). Install with: {p0}",
+    "  ok node": "  ok node",
+    "  ok node       — instalado agora ({info}).": "  ok node       — installed just now ({info}).",
+    "                 Abra um terminal novo para ele entrar no PATH.": "                 Open a new terminal for it to be on the PATH.",
+    "  x node       — {info} é antigo: o Remotion (Fase 2) pede {NODE_MIN}+. Atualize com: {p2}": "  x node       — {info} is old: Remotion (Phase 2) needs {NODE_MIN}+. Update with: {p2}",
+    "  x node       — Remotion (Fase 2). Instale com: {p0}": "  x node       — Remotion (Phase 2). Install with: {p0}",
+    "  · git        — o CutMind não usa, mas o Claude Code sim. {p0}": "  · git        — CutMind doesn't use it, but Claude Code does. {p0}",
+    "instalado em:": "installed in:",
+    "ATENÇÃO — estas pastas NÃO foram atualizadas:": "WARNING — these folders were NOT updated:",
+    "    É um link para {alvo}.": "    It's a link to {alvo}.",
+    "    Instalação de desenvolvedor — o instalador nunca escreve": "    Developer install — the installer never writes",
+    "    através de um link, para não apagar o seu clone.": "    through a link, so it doesn't wipe your clone.",
+    "    Para atualizar:  git -C {alvo} pull --ff-only": "    To update:  git -C {alvo} pull --ff-only",
+    "    Se você não desenvolve a skill, apague o link e rode de novo": "    If you don't develop the skill, delete the link and run again",
+    "    para receber uma cópia normal.": "    to get a normal copy.",
+    "    É um clone git. Um clone limpo é substituído pela versão": "    It's a git clone. A clean clone is replaced with the published",
+    "    publicada; se tiver alterações suas, ele é guardado ao lado.": "    version; if it has your own changes, it's kept alongside.",
+    "    Rode de novo com --force:": "    Run again with --force:",
+    "NÃO instalado em:": "NOT installed in:",
+    "  {name}: {e}": "  {name}: {e}",
+    "  Se for 'já está sendo usado por outro processo', feche esse agente": "  If it says 'being used by another process', close that agent",
+    "  e rode este comando de novo — o que já instalou permanece.": "  and run this command again — what's already installed stays.",
+    "NÃO terminou: falta espaço no disco. Libere até ter uns {p0} GB livres (Lixeira, arquivos temporários, vídeos e instaladores velhos) e rode este comando de novo.": "NOT finished: the disk is out of space. Free up about {p0} GB (Recycle Bin, temporary files, old videos and installers) and run this command again.",
+    "NÃO terminou: as dependências do Python não instalaram (o erro está acima). Resolva e rode este comando de novo.": "NOT finished: the Python dependencies didn't install (the error is above). Fix it and run this command again.",
+    "Falta instalar: {p0}. Rode os comandos acima e depois este comando de novo.": "Still to install: {p0}. Run the commands above and then this command again.",
+    "Instalação parcial — veja o aviso acima antes de usar.": "Partial install — read the warning above before using it.",
+    "CutMind atualizado! Você está na última versão publicada.": "CutMind updated! You're on the latest published version.",
+    "Reinicie o agente para ele carregar a nova versão.": "Restart the agent so it loads the new version.",
+    "Tudo pronto! O CutMind está instalado e pronto para usar no {onde}.": "All set! CutMind is installed and ready to use in {onde}.",
+    "Ele fica na pasta geral de skills e vale para todos os seus projetos, não só para esta pasta.": "It lives in the shared skills folder and works for all your projects, not just this folder.",
+    "Reinicie o agente e abra uma nova sessão chamando a skill CutMind.": "Restart the agent and open a new session calling the CutMind skill.",
+    "Abra a sessão DENTRO da pasta onde estão os seus vídeos.": "Open the session INSIDE the folder where your videos are.",
+    "falta espaço no disco ({p0})": "the disk is out of space ({p0})",
+    "o uv sync falhou (o erro está acima)": "uv sync failed (the error is above)",
+    "{p0} livres em {p1}": "{p0} free on {p1}",
+    "o disco encheu": "the disk filled up",
+}
+_MARCADOR = re.compile(r"\{(\w+)\}")
+
+
+def _padroes() -> list:
+    out = []
+    for k, v in EN.items():
+        partes = _MARCADOR.split(k)
+        if len(partes) == 1 or len(set(partes[1::2])) < len(partes[1::2]):
+            continue
+        rx = "".join(re.escape(p) if i % 2 == 0 else f"(?P<{p}>.+?)" for i, p in enumerate(partes))
+        out.append((sum(len(p) for p in partes[::2]), re.compile(f"^{rx}$", re.S), v))
+    return [(rx, v) for _, rx, v in sorted(out, key=lambda x: -x[0])]
+
+
+_PADROES: list = []
+
+
+def traduzir(msg: str) -> str:
+    if IDIOMA != "en" or not msg:
+        return msg
+    if msg in EN:
+        return EN[msg]
+    if not _PADROES:
+        _PADROES.extend(_padroes())
+    for rx, modelo in _PADROES:
+        m = rx.match(msg)
+        if m:
+            valores = {k: traduzir(x) for k, x in m.groupdict().items()}
+            return _MARCADOR.sub(lambda mm: valores.get(mm.group(1), mm.group(0)), modelo)
+    return msg
+
+
+def idioma_do_sistema() -> str:
+    """pt ou en pelo idioma do sistema; sem pista nenhuma, pt (o que o instalador sempre falou)."""
+    if os.name == "nt":  # o LANG do Git Bash diz en_US até num Windows em português: vale o do Windows
+        try:
+            import ctypes
+            return "pt" if ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3FF == 0x16 else "en"
+        except (AttributeError, OSError):
+            pass
+    import locale
+    for v in (os.environ.get("LC_ALL"), os.environ.get("LC_MESSAGES"), os.environ.get("LANG"),
+              locale.getlocale()[0]):
+        if v and v.split(".")[0] not in ("C", "POSIX"):
+            return "pt" if v.lower().startswith(("pt", "portuguese")) else "en"
+    return "pt"
+
+
 def log(msg: str = "") -> None:
-    print(msg, flush=True)
+    print(traduzir(msg), flush=True)
 
 
 def detect_targets(explicit: str | None) -> list[tuple[str, Path]]:
@@ -391,7 +513,8 @@ def espaco_livre(pastas: list[Path]) -> tuple[float, str] | None:
 
 
 def _gb(valor: float) -> str:
-    return f"{valor:.1f}".replace(".", ",") + " GB"
+    n = f"{valor:.1f}"
+    return (n.replace(".", ",") if IDIOMA == "pt" else n) + " GB"
 
 
 def hint(tool: str) -> str:
@@ -495,7 +618,11 @@ def main() -> None:
                     help="não rodar o uv sync nem instalar o Node.js (usado nos testes)")
     ap.add_argument("--no-node", action="store_true",
                     help="não instalar o Node.js sozinho quando faltar (só avisar)")
+    ap.add_argument("--idioma", choices=("pt", "en"), default=None,
+                    help="idioma das mensagens (padrão: o do sistema)")
     args = ap.parse_args()
+    global IDIOMA
+    IDIOMA = args.idioma or idioma_do_sistema()
     # quem lê esta saída costuma ser o agente, por um pipe: no Windows o pipe sai na página de
     # código antiga e os acentos chegam como "�"
     for fluxo in (sys.stdout, sys.stderr):
@@ -676,7 +803,7 @@ def main() -> None:
     # someone to use the skill in Codex when they only run Claude Code sends
     # them looking for something that is not there.
     onde = instalados[0] if len(instalados) == 1 else \
-        ", ".join(instalados[:-1]) + " e " + instalados[-1]
+        ", ".join(instalados[:-1]) + (" e " if IDIOMA == "pt" else " and ") + instalados[-1]
 
     if ja_existia:
         log("CutMind atualizado! Você está na última versão publicada.")

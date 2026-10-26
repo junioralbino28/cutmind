@@ -176,11 +176,31 @@ def test_todo_texto_do_html_tem_traducao():
     assert not faltam, "texto do HTML sem inglês no i18n-en.js:\n  " + "\n  ".join(faltam)
 
 
+HELPERS = PREVIEW.parents[1] / "helpers"
+AVISO = re.compile(r'idm\.mensagem\(\s*"((?:\\.|[^"\\])*)"')
+
+
+def avisos_dos_scripts() -> list[tuple[str, str]]:
+    """(arquivo, chave) de cada aviso que um script grava no state.json para a barra do editor."""
+    return [(f.name, m.group(1)) for f in sorted(HELPERS.glob("*.py"))
+            for m in AVISO.finditer(f.read_text(encoding="utf-8"))]
+
+
+def test_todo_aviso_que_um_script_grava_tem_ingles_no_editor():
+    """O editor mostra pela chave (avisoNoIdioma): sem ela no dicionário, a barra fica em português."""
+    avisos = avisos_dos_scripts()
+    assert {a for a, _ in avisos} >= {"montagem.py", "projetos.py"}  # o leitor acha os avisos
+    en = dicionario()
+    faltam = [f"{a}  {k!r}" for a, k in avisos if k not in en]
+    assert not faltam, "aviso de script sem inglês no i18n-en.js:\n  " + "\n  ".join(faltam)
+
+
 def test_o_dicionario_nao_guarda_texto_que_a_tela_nao_usa_mais():
     """Texto trocado no código deixa a chave antiga no dicionário, e ninguém percebe."""
     p = _Html()
     p.feed((PREVIEW / "celular.html").read_text(encoding="utf-8"))
-    usados = {s for nome in SCRIPTS for _, _, s in chamadas(nome)} | {s for _, s in p.textos}
+    usados = ({s for nome in SCRIPTS for _, _, s in chamadas(nome)} | {s for _, s in p.textos}
+              | {s for _, s in avisos_dos_scripts()})
     assert "Desfazer" in usados  # o leitor acha os textos do HTML e dos scripts
     sobrando = [k for k in dicionario() if k not in usados]
     assert not sobrando, "chave do i18n-en.js que nenhum t() nem o HTML usa:\n  " + "\n  ".join(map(repr, sobrando))

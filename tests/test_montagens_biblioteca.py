@@ -116,3 +116,18 @@ def test_catalogo_do_kit_soma_os_modelos_da_biblioteca_aos_de_sempre(monkeypatch
     assert sorted(m["id"] for m in mg.listar() if m.get("pacote")) == [
         "antes-e-depois", "drop-rapido", "fotos-com-zoom", "lancamento"]
     assert mg.obter("drop-cedo") is not None
+
+
+def test_o_nome_em_ingles_vem_do_catalogo_e_o_invalido_cai(monkeypatch, tmp_path):
+    bom, _, _ = _pacote("m-drop-rapido", "Drop rápido", MODELO)
+    ruim, _, _ = _pacote("m-outro", "Outro", MODELO)
+    cat = {"versao": 1, "gerado": "2099-01-01T00:00:00Z", "repo": "", "base": "https://exemplo.invalid",
+           "pacotes": [{**bom, "nome_en": "Fast drop"}, {**ruim, "nome_en": "com\x01controle"}]}
+    cat_p = tmp_path / "catalogo.json"
+    cat_p.write_bytes(json.dumps(cat).encode("utf-8"))
+    monkeypatch.setenv("CUTMIND_PACOTES_CATALOGO", str(cat_p))
+    monkeypatch.setenv("CUTMIND_PACOTES_DIR", str(tmp_path / "cache"))
+    por_id = {m["id"]: mg.resumo(m) for m in mg.listar()}
+    assert por_id["drop-rapido"]["nomeEn"] == "Fast drop"
+    assert por_id["outro"]["nomeEn"] is None  # com caractere de controle: fica só o nome
+    assert por_id["drop-cedo"]["nomeEn"] == "Early drop"  # o modelo de assets/montagens traz o dele

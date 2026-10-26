@@ -312,3 +312,15 @@ def test_so_trilha_vai_para_a_linha_do_tempo(rel):
     p = pk.Pacotes(pk.validar(c), rel.cache, 10**9)
     with pytest.raises(pk.PacoteErro):
         pk.por_na_linha(p, rel.tmp, "calma-01", duracao_video=10.0)
+
+
+# ---- o nome em inglês (a tela do editor em inglês) ----
+def test_todo_item_do_catalogo_do_kit_tem_nome_em_ingles_e_a_busca_acha_por_ele(tmp_path):
+    cat = pk.ler_catalogo(pk.CATALOGO_KIT)
+    sem = [p["id"] for p in cat["pacotes"] if not p.get("nome_en")]
+    assert not sem, f"sem nome_en no catálogo do kit: {sem[:10]}"
+    p = pk.Pacotes(cat, tmp_path / "cache", 10 ** 9)
+    ambar = next(x for x in p.listar(tipo="filtro") if x["id"] == "f-ambar")
+    assert ambar["nome"] == "Âmbar" and ambar["nomeEn"] == "Amber"
+    assert "f-ambar" in [x["id"] for x in p.listar(tipo="filtro", busca="amber")]
+    assert "f-ambar" in [x["id"] for x in p.listar(tipo="filtro", busca="ambar")]  # e pelo português, sem acento

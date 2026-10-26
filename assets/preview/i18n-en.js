@@ -674,5 +674,8 @@ window.I18N_EN = {
   "dura {p0} s": "lasts {p0} s",
   "{nome} (desligado)": "{nome} (off)",
   " (encostou na frase vizinha)": " (touching the next line)",
-  "{p0}: {p1} viram {p2}": "{p0}: {p1} becomes {p2}"
+  "{p0}: {p1} viram {p2}": "{p0}: {p1} becomes {p2}",
+  "Montagem na batida: {lugares} lugares, {s} s, {bpm} BPM": "Montage on the beat: {lugares} slots, {s} s, {bpm} BPM",
+  "Projeto novo: escolha o vídeo e o agente começa o corte.": "New project: choose the video and the agent starts the cut.",
+  "Montagem nova: escolha um modelo, a música e as fotos e clipes.": "New montage: choose a template, the music and the photos and clips."
 };

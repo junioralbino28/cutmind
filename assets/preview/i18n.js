@@ -52,6 +52,28 @@
     }
   }
 
+  // O servidor do editor responde no idioma da tela (os erros, helpers/idioma.py): todo pedido para ele
+  // leva o idioma num cabeçalho. Pedido para outro endereço (mural, fontes) sai como está.
+  const CABECALHO = 'X-CutMind-Idioma';
+  const doEditor = (url) => { try { return new URL(url, location.href).origin === location.origin; } catch (e) { return false; } };
+  const fetchOriginal = window.fetch.bind(window);
+  window.fetch = (entrada, opcoes) => {
+    if (!doEditor(entrada instanceof Request ? entrada.url : String(entrada))) return fetchOriginal(entrada, opcoes);
+    const cab = new Headers((opcoes && opcoes.headers) || (entrada instanceof Request ? entrada.headers : undefined));
+    cab.set(CABECALHO, IDIOMA);
+    return fetchOriginal(entrada, { ...(opcoes || {}), headers: cab });
+  };
+  const abrir = XMLHttpRequest.prototype.open;
+  const enviar = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function (metodo, url, ...resto) {
+    this.cutmindDoEditor = doEditor(url);
+    return abrir.call(this, metodo, url, ...resto);
+  };
+  XMLHttpRequest.prototype.send = function (corpo) {
+    if (this.cutmindDoEditor) this.setRequestHeader(CABECALHO, IDIOMA);
+    return enviar.call(this, corpo);
+  };
+
   window.t = t;
   window.IDIOMA = IDIOMA;
   window.trocarIdioma = trocarIdioma;

@@ -248,7 +248,7 @@ def test_o_mural_aceita_inteiro_o_que_o_kit_aceita():
     kit = sorted((mg.KIT).glob("*.json"))
     assert kit
     modelos = [mg.normalize(json.loads(p.read_text(encoding="utf-8"))) for p in kit] + [mg.normalize(cheio)]
-    dados = [{k: v for k, v in m.items() if k not in ("id", "nome", "criado")} for m in modelos]
+    dados = [{k: v for k, v in m.items() if k not in ("id", "nome", "nome_en", "criado")} for m in modelos]
     script = (f"import {{ conferirModelo }} from {json.dumps(MURAL_MODELO.as_uri())};"
               "let s='';process.stdin.on('data',(d)=>{s+=d});"
               "process.stdin.on('end',()=>{process.stdout.write(JSON.stringify(JSON.parse(s).map(conferirModelo)))});")

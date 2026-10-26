@@ -97,6 +97,7 @@ import atualizar_template
 import batida  # mesma pasta deste arquivo
 import camadas as cam
 import efeitos
+import idioma as idm
 import render
 import tempo
 
@@ -777,7 +778,8 @@ def usar(modelo_arq: Path | dict, musica: Path, midias: list[str], edit: Path,
     _grava_json(st_p, {
         "project": nome_projeto or f"{modelo['nome']} (montagem)", "phase": 1, "video": "cut.mp4", "edl": "edl.json",
         "finalVideo": "final.mp4", "fps": FPS, "sourceDurations": duracoes,
-        "message": f"Montagem na batida: {len(ranges)} lugares, {vd:.1f} s, {grade.get('bpm')} BPM"})
+        **idm.mensagem("Montagem na batida: {lugares} lugares, {s} s, {bpm} BPM",
+                       lugares=len(ranges), s=f"{vd:.1f}", bpm=grade.get("bpm"))})
 
     resumo = {"edit": str(edit), "formato": formato, "lugares": len(ranges), "duracao": vd, "bpm": grade.get("bpm"),
               "confianca": grade.get("confianca"), "inicio_musica": plano["inicio_musica"],
