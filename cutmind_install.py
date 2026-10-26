@@ -122,6 +122,8 @@ EN = {
     "    ! não consegui remover {name}: {e}": "    ! couldn't remove {name}: {e}",
     "  instalando dependências (torch + whisperx, alguns GB na primeira vez)…": "  installing dependencies (torch + whisperx, a few GB the first time)…",
     "  ! uv sync falhou:": "  ! uv sync failed:",
+    "  Mac Intel: {trocadas} cópia(s) a mais do OpenMP trocadas por atalho (sem isso a transcrição cai)":
+        "  Intel Mac: {trocadas} extra OpenMP copies replaced with a link (otherwise transcription crashes)",
     "  Node.js não encontrado: instalando a versão LTS pelo winget (Fase 2).": "  Node.js not found: installing the LTS version with winget (Phase 2).",
     "  O Windows pode pedir permissão: é o instalador oficial do Node.js.": "  Windows may ask for permission: it's the official Node.js installer.",
     "  Node.js não encontrado: instalando pelo Homebrew (Fase 2)…": "  Node.js not found: installing with Homebrew (Phase 2)…",
@@ -463,6 +465,29 @@ def run_uv_sync(dest: Path) -> str | None:
     return None
 
 
+def um_so_openmp(dest: Path) -> int:
+    """No Mac Intel o torch 2.2.2 e o ctranslate2 (o motor do Whisper) trazem cada um a sua cópia do
+    libiomp5.dylib, o OpenMP da Intel, e com as duas no mesmo processo a transcrição cai com SIGSEGV
+    (faster-whisper #137 e #541; o KMP_DUPLICATE_LIB_OK não resolve, medido). Fica uma cópia só: as
+    outras viram atalho para a do ctranslate2. Devolve quantas trocou; nas outras máquinas, 0."""
+    if not (sys.platform == "darwin" and platform.machine() == "x86_64"):
+        return 0
+    trocadas = 0
+    for site in (dest / ".venv" / "lib").glob("python3*/site-packages"):
+        alvo = site / "ctranslate2" / ".dylibs" / "libiomp5.dylib"
+        if not alvo.is_file() or alvo.is_symlink():
+            continue
+        for outro in sorted(site.rglob("libiomp5.dylib")):
+            if outro == alvo or (outro.is_symlink() and outro.resolve() == alvo.resolve()):
+                continue
+            outro.unlink()
+            outro.symlink_to(alvo)
+            trocadas += 1
+    if trocadas:
+        log(f"  Mac Intel: {trocadas} cópia(s) a mais do OpenMP trocadas por atalho (sem isso a transcrição cai)")
+    return trocadas
+
+
 def instalar_dependencias(dests: list[Path]) -> tuple[str, str] | None:
     """uv sync em cada destino. None quando deu certo; senão (tipo, detalhe), com o
     tipo "espaco" (o disco não comporta, ou encheu no meio) ou "falhou".
@@ -478,6 +503,8 @@ def instalar_dependencias(dests: list[Path]) -> tuple[str, str] | None:
             return "espaco", f"{_gb(livre[0])} livres em {livre[1]}"
     for d in dests:
         erro = run_uv_sync(d)
+        if not erro:
+            um_so_openmp(d)
         if erro:
             if not _disco_cheio(erro):
                 return "falhou", erro

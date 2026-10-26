@@ -93,6 +93,7 @@ from pathlib import Path
 
 import numpy as np
 
+import aquecer_navegador  # mesma pasta deste arquivo
 import atualizar_template
 import batida  # mesma pasta deste arquivo
 import camadas as cam
@@ -870,6 +871,7 @@ def preparar_remotion(edit: Path) -> Path:
         print("instalando as dependências do Remotion (só na primeira vez; leva alguns minutos)", flush=True)
         if subprocess.run([npm, "install", "--no-audit", "--no-fund"], cwd=rem).returncode != 0:
             raise ErroMontagem("o npm install do projeto do Remotion falhou (a saída dele está acima)")
+    print(aquecer_navegador.aquecer(rem), flush=True)
     shutil.copyfile(edit / "cut.mp4", pub / "cut.mp4")
     if efeitos.load(edit / "efeitos.json")["itens"]:  # filtro, transição, ajuste: um public/cut.mp4 com eles
         _passo([str(AQUI / "efeitos_render.py"), str(edit), "--remotion", str(rem)])

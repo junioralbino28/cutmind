@@ -70,7 +70,13 @@ when the user reopens Posição), clear `awaitingStyle`, delete `preview_style.j
 1. **Scaffold (one command, never read the TSX):**
    ```bash
    cp -R <skill>/assets/shortform/. <edit>/remotion/ && cd <edit>/remotion && npm install
+   uv run python -X utf8 <skill>/helpers/aquecer_navegador.py <edit>/remotion
    ```
+   The second line opens the Chrome that Remotion renders with once, with no deadline. Remotion
+   gives it a fixed 25 s; on a Mac the first launch of a freshly downloaded Chrome goes through
+   the macOS malware scan and took 26 s on a 2015 MacBook Air, failing the render with "Timed out
+   after 25000 ms while trying to connect to the browser". If you ever see that error, run this
+   line and render again.
    Only for a NEW `remotion/`: run over an existing one, it overwrites the video's data in
    `public/` and the project's `CustomGraphics.tsx`. A project scaffolded with an older kit
    keeps that kit's template code, and what the kit gained since (the `cenas[]` effects, for

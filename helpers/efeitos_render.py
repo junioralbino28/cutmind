@@ -40,6 +40,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+import aquecer_navegador  # mesma pasta deste arquivo
 import efeitos as ef  # mesma pasta deste arquivo
 import pacotes as pk  # mesma pasta deste arquivo
 
@@ -212,6 +213,7 @@ def aplicar(edit: Path, remotion: Path, pac: pk.Pacotes | None = None, bloco: in
         tmp = Path(t)
         montar_public(tmp / "public", ids, pac)
         bundle = tmp / "bundle"
+        print(aquecer_navegador.aquecer(remotion), flush=True)
         _node("bundle", str(remotion), str(tmp / "public"), str(bundle), projeto=remotion)
         quadros_dir = bundle / "public" / "efeitos" / "quadros"
         if not quadros_dir.is_dir():

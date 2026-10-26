@@ -157,3 +157,46 @@ def test_mac_intel_pede_python_312_ao_uv_sync(maquina, capsys, monkeypatch, plat
     assert codigo == 0
     assert (maquina.cmd_sync[-2:] == ["--python", "3.12"]) is pede_312
     assert maquina.cmd_sync[:4] == ["uv", "sync", "--directory", maquina.cmd_sync[3]]
+
+
+def _venv_mac_intel(raiz: Path) -> Path:
+    site = raiz / ".venv" / "lib" / "python3.12" / "site-packages"
+    for rel in ("ctranslate2/.dylibs", "torch/lib", "functorch/.dylibs"):
+        (site / rel).mkdir(parents=True)
+        (site / rel / "libiomp5.dylib").write_bytes(rel.encode())
+    return site
+
+
+def _atalho_possivel(tmp_path: Path) -> bool:
+    try:
+        (tmp_path / "_lk").symlink_to(tmp_path)
+        (tmp_path / "_lk").unlink()
+        return True
+    except OSError:
+        return False
+
+
+def test_mac_intel_fica_com_um_so_openmp(tmp_path, monkeypatch):
+    """torch 2.2.2 e ctranslate2 trazem cada um o seu libiomp5: com os dois no processo a transcrição
+    cai (SIGSEGV, medido no MacBook Air). Fica a cópia do ctranslate2; as outras viram atalho."""
+    if not _atalho_possivel(tmp_path):
+        pytest.skip("este Windows não cria atalho sem permissão de administrador")
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(inst.platform, "machine", lambda: "x86_64")
+    site = _venv_mac_intel(tmp_path / "skill")
+    alvo = site / "ctranslate2" / ".dylibs" / "libiomp5.dylib"
+    assert inst.um_so_openmp(tmp_path / "skill") == 2
+    for rel in ("torch/lib", "functorch/.dylibs"):
+        p = site / rel / "libiomp5.dylib"
+        assert p.is_symlink() and p.resolve() == alvo.resolve()
+    assert alvo.read_bytes() == b"ctranslate2/.dylibs" and not alvo.is_symlink()
+    assert inst.um_so_openmp(tmp_path / "skill") == 0      # rodar de novo não mexe em nada
+
+
+@pytest.mark.parametrize("plataforma, maquina_cpu", [("darwin", "arm64"), ("win32", "AMD64"), ("linux", "x86_64")])
+def test_openmp_so_mexe_no_mac_intel(tmp_path, monkeypatch, plataforma, maquina_cpu):
+    monkeypatch.setattr(sys, "platform", plataforma)
+    monkeypatch.setattr(inst.platform, "machine", lambda: maquina_cpu)
+    site = _venv_mac_intel(tmp_path / "skill")
+    assert inst.um_so_openmp(tmp_path / "skill") == 0
+    assert (site / "torch/lib/libiomp5.dylib").read_bytes() == b"torch/lib"
