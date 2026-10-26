@@ -12,7 +12,8 @@ editing, read `SKILL.md`. Always read `helpers/` — that's where the scripts li
 > this repository, a folder they downloaded — run the installer yourself and finish
 > the job: install what is missing, verify, hand off. Do not give them a command to
 > type; not having to is the point of asking you. The only thing that goes back to
-> them is a password or an admin prompt you cannot answer.
+> them is a password or an admin prompt you cannot answer. Talk to them in their
+> language (the one they write in) the whole way through.
 >
 > 0. **The install is global, not per project.** The session you install from can be
 >    open in any folder; the skill goes to the agent's general skills directory and

@@ -88,6 +88,7 @@ ESPACO_TRABALHO_GB = 12
 
 SKILL_PAYLOAD = (
     "README.md",
+    "README.pt-BR.md",
     "SKILL.md",
     "agents",
     "assets",
@@ -618,8 +619,8 @@ def main() -> None:
                     help="não rodar o uv sync nem instalar o Node.js (usado nos testes)")
     ap.add_argument("--no-node", action="store_true",
                     help="não instalar o Node.js sozinho quando faltar (só avisar)")
-    ap.add_argument("--idioma", choices=("pt", "en"), default=None,
-                    help="idioma das mensagens (padrão: o do sistema)")
+    ap.add_argument("--idioma", "--lang", dest="idioma", choices=("pt", "en"), default=None,
+                    help="idioma das mensagens / message language (padrão: o do sistema)")
     args = ap.parse_args()
     global IDIOMA
     IDIOMA = args.idioma or idioma_do_sistema()

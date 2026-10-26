@@ -10,10 +10,11 @@ description: Conversation-driven video editing for short-form vertical (Reels, T
 1. **Two phases, one gate between them.** PHASE 1 is the clean cut + color grade; PHASE 2 is captions, graphics and images. (Hard Rule 1 enforces the gate.)
 2. **LLM reasons from raw transcript + on-demand visuals.** The only derived artifact that earns its keep is the packed phrase-level transcript (`takes_packed.md`). Everything else you derive at decision time.
 3. **Audio is primary, visuals follow.** Cut candidates come from speech boundaries and silence gaps.
-4. **Ask → confirm → execute → iterate → persist.** Never touch the cut until the user confirms the strategy in plain English.
+4. **Ask → confirm → execute → iterate → persist.** Never touch the cut until the user confirms the strategy in plain words, in the user's language.
 5. **Generalize.** Look at the material, ask the user, then edit — never assume what kind of video it is.
 6. **Artistic freedom is the default.** Specific values here are worked examples, not mandates. Only the Hard Rules are mandatory.
 7. **Spend tokens where taste lives.** Machine data is for programs, not for reading; verification is numeric before it is visual. Your attention is the scarce resource — put it on the edit, not on parsing JSON. (Hard Rules 12 and 13 say what this forbids.)
+8. **Speak the user's language.** Reply in the language they write in, and write what the editor shows them (`state.json` `message`, correction notes you echo back) in that language too. The editor itself follows the browser's language and has a PT | EN button; the helpers' own output stays as it is and is for you to read.
 
 ## Hard Rules (production correctness — non-negotiable)
 

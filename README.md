@@ -3,44 +3,51 @@
   <img src="assets/preview/cutmind-logo.png" alt="CutMind" height="44">
 </picture></h1>
 
-Edição de vídeo por conversa, no Claude Code e no Codex. Você coloca o vídeo
-bruto numa pasta, abre o agente ali e pede a edição: ele transcreve, escolhe as
-melhores tomadas, corta pela fala, legenda, anima e entrega o arquivo final.
+English · [Português](README.pt-BR.md)
 
-Vertical (Reels, TikTok, Shorts) e horizontal (YouTube). A transcrição roda na
-sua máquina.
+Video editing by conversation, in Claude Code and Codex. Put your raw footage in a
+folder, open the agent there and ask for the edit: it transcribes, picks the best
+takes, cuts on the speech, adds captions and motion, and hands you the final file.
 
-> Em construção.
+Vertical (Reels, TikTok, Shorts) and horizontal (YouTube). Transcription runs on
+your own computer.
 
-## Editar pelo celular
+> Under construction.
 
-O mesmo editor abre no navegador do celular, no jeito do CapCut: linha do tempo
-com o dedo, estilo de legenda visto sobre o seu próprio vídeo, envio de vídeo da
-galeria e baixar o final. Peça ao agente "abre o editor no celular" e escaneie o
-QR que aparece no botão **Abrir no celular** do editor do computador. Pela rede,
-só entra quem abriu pelo link ou QR, que levam um código deste computador.
+## Edit from your phone
 
-## Instalar
+The same editor opens in your phone's browser, CapCut style: a timeline you work
+with your finger, caption styles previewed on your own video, uploads from your
+gallery and a download of the final cut. Ask the agent to "open the editor on my
+phone" and scan the QR code behind the **Open on phone** button in the editor on
+your computer. Over the network, only someone who opened the link or the QR code
+gets in, because both carry a code from this computer.
 
-Peça ao seu agente (Claude Code ou Codex): **"instala o CutMind pra mim, na pasta
-geral de skills, para usar em todos os projetos: https://github.com/junioralbino28/cutmind"**.
-Ele roda o instalador, instala o que faltar (uv, ffmpeg, Node.js) e confere se tudo
-funciona. O passo a passo dele está em [install.md](install.md).
+The editor follows your browser's language, and the **PT | EN** button at the top
+switches it.
 
-A instalação é do seu agente, não de um projeto: abra a conversa da instalação em
-qualquer pasta. O CutMind vai para a pasta geral de skills (`~/.claude/skills/cutmind`
-no Claude Code) e aparece em toda conversa nova. Para editar, abra depois uma conversa
-nova DENTRO da pasta dos vídeos: o kit cria ali a pasta `edit/` daquele projeto.
+## Install
 
-Recebeu o kit num zip? Extraia e peça: **"instala o CutMind a partir da pasta
-<onde você extraiu>, na pasta geral de skills"**.
+Ask your agent (Claude Code or Codex): **"install CutMind for me, in the shared skills
+folder, so I can use it in every project: https://github.com/junioralbino28/cutmind"**.
+It runs the installer, installs whatever is missing (uv, ffmpeg, Node.js) and checks
+that everything works. Its step-by-step guide is in [install.md](install.md).
 
-À mão, é um comando só:
+The install belongs to your agent, not to a project: you can have the install
+conversation in any folder. CutMind goes to the shared skills folder
+(`~/.claude/skills/cutmind` in Claude Code) and shows up in every new conversation. To
+edit, open a new conversation INSIDE the folder with your videos: the kit creates that
+project's `edit/` folder there.
 
-    uv run https://raw.githubusercontent.com/junioralbino28/cutmind/main/cutmind_install.py
+Got the kit as a zip? Extract it and ask: **"install CutMind from the folder
+<where you extracted it>, in the shared skills folder"**.
 
-Já baixou esta pasta? De dentro dela:
+By hand, it's a single command:
 
-    uv run --no-project cutmind_install.py --source .
+    uv run https://raw.githubusercontent.com/junioralbino28/cutmind/main/cutmind_install.py --lang en
 
-Precisa do [`uv`](https://docs.astral.sh/uv/) e do `ffmpeg`. O Node.js (Fase 2) o instalador põe sozinho quando falta: pelo winget no Windows e pelo Homebrew no Mac. No Linux ele mostra o comando.
+Already downloaded this folder? From inside it:
+
+    uv run --no-project cutmind_install.py --source . --lang en
+
+You need [`uv`](https://docs.astral.sh/uv/) and `ffmpeg`. The installer adds Node.js (Phase 2) by itself when it's missing: with winget on Windows and Homebrew on a Mac. On Linux it shows you the command.
