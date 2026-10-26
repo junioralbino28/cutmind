@@ -34,7 +34,7 @@ dependencies = [
     # ficam aqui porque o kit os importa direto. Os modelos (~1 GB) baixam no
     # primeiro uso, não na instalação.
     "onnxruntime; sys_platform != 'darwin' or platform_machine != 'x86_64'",
-    "transformers",
+    "transformers; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     # Grade de batida da música (batida.py), para cortar na batida e para o Modelo
     # de montagem. Roda no CPU sobre o torch que o whisperx já traz e acrescenta só
     # pacotes pequenos (einops, rotary-embedding-torch, soxr); o modelo (8 MB o
@@ -51,6 +51,9 @@ dependencies = [
     "torchaudio==2.2.2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     "numpy<2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     "onnxruntime<1.20; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    # transformers 4.52+ recusa o torch.load com torch abaixo de 2.6 (CVE-2025-32434), e o
+    # alinhador de português só existe em .bin: no Mac Intel o alinhamento sumia em silêncio.
+    "transformers<4.52; sys_platform == 'darwin' and platform_machine == 'x86_64'",
 ]
 
 [project.optional-dependencies]
