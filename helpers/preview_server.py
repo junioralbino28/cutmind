@@ -5,9 +5,14 @@ per-session it is fed by data only:
   - <edit>/state.json          written by the skill (phase, files, message)
   - <edit>/edl.json            the cut (segments shown/trimmed on the timeline)
   - <edit>/cut.mp4             current render (played + scrubbed)
-  - <edit>/preview_edits.json  WRITTEN BY THE UI when the user saves timeline
-                               adjustments — the skill reads, validates, applies
-                               and re-renders. The UI never touches edl.json.
+  - the Salvar is applied HERE, without the agent: takes → aplicar_corte.py (a job),
+    layers/effects/speed → their files, Phase 2 data → edit-data.json
+    (editdata_aplicar.py); markers and requests → <edit>/pedidos.json; montage and
+    Melhorar voz → <edit>/.cutmind/pendente.json, for the Baixar (gerar.py)
+  - <edit>/pronto.json         WRITTEN BY THE UI when the user presses Pronto: the
+                               requests plus what the editor already applied; the
+                               watcher (watch_edits.py) wakes the agent once.
+                               A preview_edits.json is from an older editor.
   - <edit>/preview_style.json  WRITTEN BY THE UI at the Fase 1 → Fase 2 gate:
                                editing style, caption style, edit elements.
 
@@ -33,12 +38,12 @@ Routes:
   /api/state    GET     state.json + mtimes (UI polls this to hot-reload)
   /api/celular  GET     só no computador: links + QR code para abrir no celular
   /api/midia    GET     imagens e áudios do projeto (<edit>/midia/)
-  /api/save     POST    body → <edit>/preview_edits.json (atomic), or
+  /api/save     POST    applied by the server (see above), or
                         <edit>/preview_style.json when body.type=="style-setup";
                         com `camadas`, grava também <edit>/camadas.json (camadas.py);
                         com `efeitos`, <edit>/efeitos.json (efeitos.py); com
                         `velocidade`, <edit>/velocidade.json (velocidade.py); com
-                        `melhorar`, a Voz e o Fundo escolhidos (o agente aplica);
+                        `melhorar`, a Voz e o Fundo escolhidos (o Baixar aplica);
                         os efeitos (`editData.cenas`) conferidos: o editor só cria
                         o Fundo (conferir_cenas)
   /api/upload   POST    ?name=<arquivo>, corpo = o arquivo. Vídeo → pasta dos
@@ -129,6 +134,7 @@ import aplicar_corte as ac  # mesma pasta deste arquivo
 import trabalhos as tb  # mesma pasta deste arquivo
 import gerar as gr  # mesma pasta deste arquivo
 import editdata_aplicar as eda  # mesma pasta deste arquivo
+import pendente as pend  # mesma pasta deste arquivo
 
 APP_DIR = Path(__file__).resolve().parent.parent / "assets" / "preview"
 EFEITOS_DIR = APP_DIR.parent / "efeitos"
@@ -209,6 +215,32 @@ def trabalho_recente(edit: Path) -> dict | None:
     except OSError:
         return None
     return a if idade < TRABALHO_RECENTE_S else None
+
+
+AGENTE_PARADO_S = 30 * 60  # "trabalhando" há mais que isso: o agente caiu, a trava não vale
+
+
+def agente_trabalhando(root: Path) -> bool:
+    """O agente gravou `"agente": {"trabalhando": true, "desde": <segundos>}` no state.json ao pegar um
+    Pronto, e tira ao terminar. Enquanto isso, o corte e o Baixar esperam: os dois mexeriam nos mesmos
+    arquivos que ele."""
+    try:
+        st = json.loads((Path(root) / "state.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    a = st.get("agente") if isinstance(st, dict) else None
+    if not isinstance(a, dict) or not a.get("trabalhando"):
+        return False
+    try:
+        return time.time() - float(a.get("desde") or 0) < AGENTE_PARADO_S
+    except (TypeError, ValueError):
+        return False
+
+
+def comando_montar(edit: Path) -> list[str]:
+    """A montagem nova pedida no editor (o Usar do painel Modelos de montagem), num processo à parte.
+    Os testes trocam por um falso."""
+    return [sys.executable, "-X", "utf8", str(Path(__file__).resolve().parent / "montagem.py"), "montar", str(edit)]
 
 
 def comando_gerar(edit: Path, andamento: Path) -> list[str]:
@@ -1138,6 +1170,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/gerar":
             self._gerar()
             return
+        if path == "/api/pronto":
+            self._pronto()
+            return
         if path != "/api/save":
             self._fail(404, "unknown route")
             return
@@ -1165,15 +1200,13 @@ class Handler(BaseHTTPRequestHandler):
                         "aberto": pj.id_de(self.root)}, 409)
             return
         body["savedAt"] = time.strftime("%Y-%m-%d %H:%M:%S")
-        # The style pick goes to its own file. It is a one-time setup decision,
-        # not a correction, and sharing preview_edits.json would make one save
-        # clobber the other (they are written at different moments, by different
-        # screens, and the skill consumes+deletes them independently).
+        # The style pick goes to its own file (it still wakes the agent). Every other
+        # save is a timeline edit, applied here without the agent; the name below is
+        # only the switch between the two (nothing writes preview_edits.json any more).
         name = "preview_style.json" if body.get("type") == "style-setup" else "preview_edits.json"
         if name == "preview_edits.json":
-            # camadas e efeitos são arquivos do projeto (como num editor): os dois são
-            # conferidos antes de gravar qualquer um, e o agente é avisado pelo
-            # preview_edits.json como sempre
+            # camadas e efeitos são arquivos do projeto (como num editor): tudo é
+            # conferido antes de gravar qualquer coisa
             try:
                 if "camadas" in body:
                     body["camadas"] = cam.normalize(body["camadas"])
@@ -1217,6 +1250,9 @@ class Handler(BaseHTTPRequestHandler):
         if name == "preview_edits.json" and tb.vivo(self.root):
             self._ocupado(tb.vivo(self.root))
             return
+        if corte and agente_trabalhando(self.root):
+            self._json({"error": "o agente está trabalhando neste projeto: espere ele terminar para mexer no corte"}, 409)
+            return
         if corte:
             if not confirmado:
                 try:
@@ -1258,26 +1294,32 @@ class Handler(BaseHTTPRequestHandler):
             resposta["trabalho"] = "corte"
         if fase2 is not None:
             resposta["avisos"] = fase2["avisos"]
-        if (corte or fase2 is not None) and not any(k not in ("type", "savedAt") for k in body):
-            self._json(resposta)  # o corte e a Fase 2 o servidor já aplicou: nada para o agente
+        if name == "preview_style.json":  # a escolha do Estilo continua acordando o agente
+            out = self.root / name
+            tmp = out.with_suffix(".tmp")
+            tmp.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
+            tmp.replace(out)
+            resposta["file"] = str(out)
+            self._json(resposta)
             return
-        out = self.root / name
-        if name == "preview_edits.json" and out.exists():
-            # o agente ainda não aplicou o Salvar anterior: o novo SOMA a ele, não o apaga
-            try:
-                velho = json.loads(out.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                velho = None
-            if isinstance(velho, dict):
-                body = juntar_salvamentos(velho, body)
-        if corte:
-            body.pop("edl", None)  # um corte pendente de antes: o que o servidor acabou de refazer vale
-        if name == "preview_edits.json" and isinstance(body.get("montagem"), dict):
-            sem_formato_novo(self.root, body)
-        tmp = out.with_suffix(".tmp")
-        tmp.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(out)
-        resposta["file"] = str(out)
+        # o que espera o Baixar (a montagem, a voz) e o que espera o Pronto (marcações e pedidos):
+        # nada disso acorda o agente
+        guardar = {k: body[k] for k in ("montagem", "melhorar") if k in body}
+        if guardar:
+            # soma ao que já estava guardado e SÓ ENTÃO tira o formato igual ao de agora: voltar ao
+            # formato da montagem desfaz um pedido de formato salvo antes
+            junto = juntar_salvamentos(pend.ler(self.root), guardar)
+            if isinstance(junto.get("montagem"), dict):
+                sem_formato_novo(self.root, junto)
+            pend.gravar(self.root, junto)
+        if body.get("notes"):
+            resposta["pedidos"] = pend.somar_pedidos(self.root, body["notes"])
+        usar = (guardar.get("montagem") or {}).get("usar") if isinstance(guardar.get("montagem"), dict) else None
+        if usar and not corte:  # a montagem nova: o servidor monta, sem o agente
+            if not tb.iniciar(self.root, "montar", comando_montar(self.root)):
+                self._ocupado(tb.vivo(self.root))
+                return
+            resposta["trabalho"] = "montar"
         self._json(resposta)
 
     # ---- celular ----
@@ -1742,12 +1784,9 @@ class Handler(BaseHTTPRequestHandler):
             s["andamento"] = {k: a.get(k) for k in ("etapa", "n", "de", "texto", "fracao", "erro", "vivo")}
             if a.get("vivo"):
                 s["preparo"] = "preparando"
-        try:
-            salvo = json.loads((self.root / "preview_edits.json").read_text(encoding="utf-8")).get("melhorar")
-        except (OSError, ValueError, AttributeError):
-            salvo = None
+        salvo = pend.ler(self.root).get("melhorar")
         if isinstance(salvo, dict):
-            s["pendente"] = salvo  # salvo no editor e ainda não aplicado pelo agente
+            s["pendente"] = salvo  # salvo no editor; o Baixar aplica
         self._json(s)
 
     def _conferir(self) -> None:
@@ -1796,6 +1835,9 @@ class Handler(BaseHTTPRequestHandler):
         if tb.vivo(self.root):
             self._ocupado(tb.vivo(self.root))
             return
+        if agente_trabalhando(self.root):
+            self._json({"error": "o agente está trabalhando neste projeto: espere ele terminar para gerar o vídeo"}, 409)
+            return
         try:
             falta = gr.o_que_falta(self.root)
         except (OSError, ValueError) as e:
@@ -1810,6 +1852,37 @@ class Handler(BaseHTTPRequestHandler):
             self._ocupado(tb.vivo(self.root))
             return
         self._json({"ok": True, "trabalho": "gerar", "falta": falta})
+
+    def _pronto(self) -> None:
+        """O "Pronto, Claude segue": junta os pedidos que esperavam, o que o editor já aplicou sozinho
+        (ajustes_feitos.json) e a fase num pronto.json, que acorda o agente (watch_edits.py) uma vez só."""
+        if self._corpo_pequeno() is None:
+            return
+        if agente_trabalhando(self.root):
+            self._json({"error": "o agente já está trabalhando neste projeto: espere ele terminar"}, 409)
+            return
+        try:
+            st = json.loads((self.root / "state.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            st = {}
+        out = self.root / "pronto.json"
+        try:  # um Pronto que o agente ainda não pegou: os pedidos somam
+            antes = json.loads(out.read_text(encoding="utf-8")).get("pedidos") or []
+        except (OSError, ValueError, AttributeError):
+            antes = []
+        try:
+            feitos = json.loads((self.root / "ajustes_feitos.json").read_text(encoding="utf-8")).get("feitos") or []
+        except (OSError, ValueError, AttributeError):
+            feitos = []
+        pedidos = [*antes, *pend.levar_pedidos(self.root)]
+        pronto = {"quando": time.strftime("%Y-%m-%d %H:%M:%S"), "fase": int(st.get("phase") or 1),
+                  "pedidos": pedidos, "feitos": feitos}
+        if (self.root / "preview_edits.json").exists():
+            pronto["legado"] = True
+        tmp = out.with_suffix(".tmp")
+        tmp.write_bytes(json.dumps(pronto, ensure_ascii=False, indent=2).encode("utf-8"))
+        tmp.replace(out)
+        self._json({"ok": True, "pedidos": len(pedidos), "vigia": bool(st.get("vigia"))})
 
     def _melhorar_preparar(self) -> None:
         if self._corpo_pequeno() is None:
@@ -1985,17 +2058,14 @@ class Handler(BaseHTTPRequestHandler):
                 edl = json.loads(p.read_text())
             except json.JSONDecodeError:
                 pass
+        # um preview_edits.json é de um editor anterior: espera o Pronto (o agente o aplica como antes)
         edits_p = self.root / "preview_edits.json"
-        # os lugares da montagem salvos e ainda não refeitos: o editor os mostra trocados até o agente refazer;
-        # e a montagem nova pedida (Usar um modelo), que o editor mostra como "o agente está montando"
-        pendente = nova = formato_pendente = None
-        if edits_p.exists():
-            try:
-                mont = json.loads(edits_p.read_text(encoding="utf-8")).get("montagem") or {}
-                pendente, nova = mont.get("lugares") or None, mont.get("usar") or None
-                formato_pendente = mont.get("formato") or None
-            except (OSError, ValueError, AttributeError):
-                pass
+        # os lugares da montagem salvos e ainda não refeitos: o editor os mostra trocados até o Baixar refazer;
+        # e a montagem nova pedida (Usar um modelo), que o editor mostra como "montando"
+        mont = pend.ler(self.root).get("montagem")
+        mont = mont if isinstance(mont, dict) else {}
+        pendente, nova = mont.get("lugares") or None, mont.get("usar") or None
+        formato_pendente = mont.get("formato") or None
         video = self._current_video()
         self._json({
             "state": state,
@@ -2005,6 +2075,8 @@ class Handler(BaseHTTPRequestHandler):
             "mtimes": mtimes,
             "videoDuration": probe_duration(video) if video else 0,
             "hasPendingEdits": edits_p.exists(),
+            "pedidos": len(pend.pedidos(self.root)),
+            "agenteTrabalhando": agente_trabalhando(self.root),
             "montagemPendente": pendente,
             "montagemNova": nova,
             "formatoPendente": formato_pendente,

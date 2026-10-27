@@ -1,24 +1,30 @@
 #!/usr/bin/env python3
-"""Emit one event per save from the preview UI.
+"""Emit one event each time the editor asks for the agent.
 
-Three files, all written by the UI and none able to reach the chat on its own:
-  - preview_edits.json — timeline adjustments and correction markers
+Three files, all written by the editor and none able to reach the chat on its own:
+  - pronto.json — the user pressed "Pronto, Claude segue" (or sent the request box): the
+    written requests and markers, plus what the editor already applied by itself
   - preview_style.json — the Fase 1 → Fase 2 gate: editing style, caption style,
     edit elements
   - preview_upload.json — vídeos que o usuário mandou pelo botão Enviar (o
     servidor grava o arquivo na pasta dos vídeos e lista aqui)
 
-Run this under the Monitor tool so every save notifies the session automatically:
+The Salvar does NOT wake the agent any more: the editor's server applies takes, layers,
+effects, speed and the Phase 2 data by itself (aplicar_corte.py, editdata_aplicar.py) and
+the Baixar builds the final video (gerar.py). A preview_edits.json is from an editor older
+than that; the Pronto carries it along (`legado`).
+
+Run this under the Monitor tool so every request notifies the session automatically:
 
     Monitor(command="python3 <skill>/helpers/watch_edits.py '<edit>'",
-            description="marcações do preview", persistent=True)
+            description="pedidos do editor", persistent=True)
 
 Each stdout line is one notification. Stays quiet while nothing changes.
 
 Where the Monitor expires (Claude Code 2.1.309 caps it at 30 min and has no `persistent`),
 run it with `--uma-vez` as a background task instead (Bash `run_in_background`): it waits
-as long as the session lives, prints the first save (or what is already pending) and exits,
-which notifies the session. Apply it, delete the file, and start it again.
+as long as the session lives, prints the first request (or what is already pending) and
+exits, which notifies the session. Apply it, delete the file, and start it again.
 
 It also watches `~/.cutmind/aberto.json` (projetos.py): when the user opens ANOTHER project
 in the editor's Projetos screen (or creates a new one), it says which and where. With
@@ -36,6 +42,47 @@ import modelos as md  # mesma pasta deste arquivo
 import projetos as pj  # mesma pasta deste arquivo
 
 
+def linhas_pedidos(notes: list[dict]) -> list[str]:
+    """Uma linha por marcação (trecho do vídeo) ou pedido escrito (a caixa "O que você quer mudar?")."""
+    out = []
+    for i, n in enumerate(notes, 1):
+        start, end = n.get("start", 0), n.get("end", 0)
+        fase = n.get("phase", 1)
+        if n.get("geral"):  # a caixa "O que você quer mudar?": pedido sem trecho, a agulha só situa
+            out.append(f'  {i}. PEDIDO (agulha em {fmt(start)}, fase {fase}) {n.get("text", "").strip()}')
+        else:
+            out.append(f'  {i}. [{fmt(start)} → {fmt(end)}] (fase {fase}) {n.get("text", "").strip()}')
+    return out
+
+
+def pronto_digest(p: Path) -> str:
+    """O Pronto do editor: o que ele já aplicou sozinho (não refazer) e os pedidos, uma vez só."""
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        return f"pronto.json ilegível ({e.__class__.__name__}) — peça ao usuário para apertar Pronto de novo"
+    pedidos = d.get("pedidos") or []
+    fase = d.get("fase") or 1
+    out = [f"PRONTO DO EDITOR ({d.get('quando', '')}) — fase {fase}, {_plural(len(pedidos), 'pedido', 'pedidos')}."]
+    feitos = [str(f.get("oque", "")).strip() for f in d.get("feitos") or [] if isinstance(f, dict)]
+    if feitos:
+        out.append("  Já aplicado pelo editor, NÃO refaça: " + "; ".join(x for x in feitos if x) + ".")
+    if pedidos:
+        out.append("  Pedidos:")
+        out += ["  " + x for x in linhas_pedidos(pedidos)]
+    elif fase == 1:
+        out.append("  Sem pedido na fase 1 = o corte está aprovado: siga para o Estilo (awaitingStyle).")
+    else:
+        out.append("  Sem pedido: a pessoa terminou o que queria à mão. O Baixar do editor já gera o vídeo final "
+                   "com isso; pergunte se falta algo.")
+    if d.get("legado") and (p.parent / "preview_edits.json").exists():
+        out.append("  Há um preview_edits.json de um editor anterior: aplique-o como antes e apague:")
+        out += ["  " + x for x in digest(p.parent / "preview_edits.json").splitlines()]
+    out.append('  Ao começar, grave "agente": {"trabalhando": true, "desde": <agora, segundos>} no state.json; '
+               "ao terminar, tire, apague pronto.json e ajustes_feitos.json.")
+    return "\n".join(out)
+
+
 def digest(p: Path) -> str:
     try:
         d = json.loads(p.read_text(encoding="utf-8"))
@@ -44,13 +91,7 @@ def digest(p: Path) -> str:
 
     parts: list[str] = []
     notes = d.get("notes") or []
-    for i, n in enumerate(notes, 1):
-        start, end = n.get("start", 0), n.get("end", 0)
-        fase = n.get("phase", 1)
-        if n.get("geral"):  # a caixa "O que você quer mudar?": pedido sem trecho, a agulha só situa
-            parts.append(f'  {i}. PEDIDO (agulha em {fmt(start)}, fase {fase}) {n.get("text", "").strip()}')
-        else:
-            parts.append(f'  {i}. [{fmt(start)} → {fmt(end)}] (fase {fase}) {n.get("text", "").strip()}')
+    parts += linhas_pedidos(notes)
 
     edl = d.get("edl") or {}
     n_ch = len(edl.get("changes") or [])
@@ -501,17 +542,17 @@ def style_digest(p: Path) -> str:
         f'  · legenda: {d.get("captionsName") or d.get("captions")}',
     ]
     # modelo de estilo (aba Modelos): o visual inteiro de outro vídeo. Filtro, transição, ajuste
-    # e trilha dele chegam pelo preview_edits.json do mesmo Aplicar (efeitos/camadas); o que ele
-    # leva de fato está no arquivo do modelo
+    # e trilha dele o mesmo Aplicar já gravou no efeitos.json e no camadas.json; o que ele leva de
+    # fato está no arquivo do modelo
     modelo = d.get("modelo") or {}
     if modelo.get("nome"):
         m = md.obter(str(modelo.get("id") or "")) or {}
         leva = [nome for k, nome in (("filtro", "filtro"), ("transicao", "transição"), ("ajuste", "ajuste"),
                                      ("trilha", "trilha")) if m.get(k)]
         if not m:
-            extra = "filtro, transição, ajuste e trilha dele, se tiver, vêm no preview_edits.json"
+            extra = "filtro, transição, ajuste e trilha dele, se tiver, já estão no efeitos.json e no camadas.json"
         elif leva:
-            extra = f'{", ".join(leva)} dele vêm no preview_edits.json'
+            extra = f'{", ".join(leva)} dele já estão no efeitos.json e no camadas.json'
         else:
             extra = "ele não tem filtro, transição, ajuste nem trilha: é só o Estilo"
         out.insert(1, f'  · MODELO "{modelo["nome"]}" aplicado (modelos.py mostrar {modelo.get("id", "?")}); {extra}')
@@ -578,7 +619,8 @@ def troca_digest(edit: Path) -> str:
                    "(preview_upload.json); com eles, siga a Fase 1 nessa pasta.")
     else:
         out.append(f"  · fase {st.get('phase')}: {st.get('message') or ''}".rstrip())
-    pend = [n for n in ("preview_edits.json", "preview_style.json", "preview_upload.json") if (edit / n).exists()]
+    pend = [n for n in ("pronto.json", "preview_style.json", "preview_upload.json", "preview_edits.json")
+            if (edit / n).exists()]
     if pend:
         out.append(f"  · pendente lá: {', '.join(pend)}")
     out.append(f"  Daqui em diante o trabalho é nessa pasta: ligue o vigia nela ({edit}).")
@@ -595,17 +637,19 @@ def fmt(t: float) -> str:
     return f"{int(m)}:{s:05.2f}"
 
 
+def vigiar(pasta: Path) -> dict:
+    """O que acorda o agente nesta pasta: o Pronto, a escolha do Estilo e o vídeo enviado."""
+    return {
+        pasta / "pronto.json": pronto_digest,
+        pasta / "preview_style.json": style_digest,
+        pasta / "preview_upload.json": upload_digest,
+    }
+
+
 def main() -> int:
     uma_vez = "--uma-vez" in sys.argv[1:]  # sai no primeiro aviso: tarefa em segundo plano, sem prazo
     args = [a for a in sys.argv[1:] if a != "--uma-vez"]
     root = Path(args[0] if args else ".").expanduser().resolve()
-
-    def vigiar(pasta: Path) -> dict:
-        return {
-            pasta / "preview_edits.json": digest,
-            pasta / "preview_style.json": style_digest,
-            pasta / "preview_upload.json": upload_digest,
-        }
 
     watched = vigiar(root)
     # só a TROCA conta: o projeto que já estava aberto quando o vigia ligou não é aviso

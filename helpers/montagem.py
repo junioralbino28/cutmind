@@ -99,6 +99,7 @@ import batida  # mesma pasta deste arquivo
 import camadas as cam
 import efeitos
 import idioma as idm
+import pendente as pend
 import render
 import tempo
 
@@ -977,6 +978,11 @@ def conferir_o_render(edit: Path, modelo_batida: str = batida.MODELO_PADRAO) -> 
 
 
 def _salvo(edit: Path) -> dict:
+    """A montagem que o Salvar do editor guardou (pendente.json); num projeto de um editor anterior,
+    a do preview_edits.json."""
+    m = pend.ler(edit).get("montagem")
+    if isinstance(m, dict) and m:
+        return m
     try:
         pe = json.loads((Path(edit) / "preview_edits.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -985,12 +991,12 @@ def _salvo(edit: Path) -> dict:
 
 
 def mudancas_salvas(edit: Path) -> list[dict]:
-    """O que o Salvar do editor pediu para a montagem (`montagem.lugares` do preview_edits.json)."""
+    """O que o Salvar do editor pediu para a montagem (`montagem.lugares` do pendente.json)."""
     return list(_salvo(edit).get("lugares") or [])
 
 
 def formato_salvo(edit: Path) -> str | None:
-    """O formato que o Salvar do editor pediu (`montagem.formato` do preview_edits.json)."""
+    """O formato que o Salvar do editor pediu (`montagem.formato` do pendente.json)."""
     return _salvo(edit).get("formato") or None
 
 
@@ -1220,11 +1226,7 @@ def capturar(edit: Path, nome: str) -> dict:
 
 def pedido_de_montar(edit: Path) -> dict | None:
     """O "Usar" do painel Modelos de montagem, gravado pelo Salvar do editor: {modelo, musica, midias}."""
-    try:
-        pe = json.loads((Path(edit) / "preview_edits.json").read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    p = (pe.get("montagem") or {}).get("usar") if isinstance(pe, dict) else None
+    p = _salvo(edit).get("usar")
     return p if isinstance(p, dict) else None
 
 
@@ -1238,7 +1240,7 @@ def montar(edit: Path, modelo_batida: str = batida.MODELO_PADRAO, so_dados: bool
     edit = Path(edit).resolve()
     p = pedido_de_montar(edit)
     if not p:
-        raise ErroMontagem("o Salvar do editor não pediu montagem (preview_edits.json sem montagem.usar)")
+        raise ErroMontagem("o Salvar do editor não pediu montagem (nada guardado em montagem.usar)")
     modelo = montagens.obter(p.get("modelo"))
     if not modelo:
         raise ErroMontagem(f'o modelo de montagem "{p.get("modelo")}" não existe mais')
@@ -1262,7 +1264,9 @@ def montar(edit: Path, modelo_batida: str = batida.MODELO_PADRAO, so_dados: bool
     midias = [str(do_projeto(x, da_montagem=True)) for x in p.get("midias") or []]
     if not midias:
         raise ErroMontagem("o pedido não tem foto nem clipe")
-    return usar(modelo, musica, midias, edit, modelo_batida, so_dados, formato=p.get("formato") or None)
+    r = usar(modelo, musica, midias, edit, modelo_batida, so_dados, formato=p.get("formato") or None)
+    pend.tirar(edit, "montagem", "usar")  # montada: o pedido sai do que o editor guardou
+    return r
 
 
 def quadros_dos_lugares(edl: dict, fps: int = FPS) -> tuple[list[int], int]:

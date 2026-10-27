@@ -217,7 +217,7 @@
  "este edl.json não é de uma montagem do montagem.py (falta a lista de lugares)": "this edl.json isn't from a montage.py montage (the slot list is missing)",
  "nenhum lugar para refazer": "no slot to redo",
  "este edl.json não é de uma montagem do montagem.py": "this edl.json isn't from a montage.py montage",
- "o Salvar do editor não pediu montagem (preview_edits.json sem montagem.usar)": "the editor's Save didn't request a montage (preview_edits.json has no montagem.usar)",
+ "o Salvar do editor não pediu montagem (nada guardado em montagem.usar)": "the editor's Save didn't ask for a montage (nothing saved in montagem.usar)",
  "o modelo de montagem \"{p0}\" não existe mais": "the montage template \"{p0}\" doesn't exist anymore",
  "o pedido não tem foto nem clipe": "the request has no photo or clip",
  "não consegui ler os quadros de {name}: {msg}": "couldn't read the frames of {name}: {msg}",
@@ -285,5 +285,8 @@
  "não consegui ver o que falta no vídeo: {e}": "couldn't check what the video still needs: {e}",
  "vídeo final: {e}": "final video: {e}",
  "o projeto ainda não tem o vídeo final da Fase 2 (state.json sem editData)": "the project doesn't have the Phase 2 final video yet (state.json without editData)",
- "número inválido: {v}": "invalid number: {v}"
+ "número inválido: {v}": "invalid number: {v}",
+ "o agente está trabalhando neste projeto: espere ele terminar para mexer no corte": "the agent is working on this project: wait for it to finish before changing the cut",
+ "o agente está trabalhando neste projeto: espere ele terminar para gerar o vídeo": "the agent is working on this project: wait for it to finish before generating the video",
+ "o agente já está trabalhando neste projeto: espere ele terminar": "the agent is already working on this project: wait for it to finish"
 }

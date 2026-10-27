@@ -141,10 +141,10 @@ def test_outro_salvar_enquanto_o_corte_e_refeito_espera(srv):
     esperar_trabalho(srv.port)
 
 
-def test_o_resto_do_salvar_ainda_vai_para_o_agente_sem_o_corte(srv):
+def test_a_marcacao_junto_do_corte_espera_o_pronto(srv):
     nota = {"start": 1.0, "end": 2.0, "text": "tira isso", "phase": 1}
     r, d = pedir(srv.port, "POST", "/api/save", {"type": "timeline-edits", "edl": PEDIDO, "notes": [nota]})
-    assert r.status == 200 and d["trabalho"] == "corte"
-    salvo = json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))
-    assert salvo["notes"][0]["text"] == "tira isso" and "edl" not in salvo
+    assert r.status == 200 and d["trabalho"] == "corte" and d["pedidos"] == 1
+    assert ps.pend.pedidos(srv.edit)[0]["text"] == "tira isso"
+    assert not (srv.edit / "preview_edits.json").exists()  # nada para o agente até o Pronto
     esperar_trabalho(srv.port)

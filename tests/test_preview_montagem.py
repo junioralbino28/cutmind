@@ -7,6 +7,7 @@ import json
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import quote
@@ -22,7 +23,9 @@ def _ffmpeg(*args):
 
 
 @pytest.fixture
-def srv(tmp_path):
+def srv(tmp_path, monkeypatch):
+    # a montagem nova (Usar) vira um trabalho do servidor na hora: aqui, um que termina sem fazer nada
+    monkeypatch.setattr(ps, "comando_montar", lambda e: [sys.executable, "-c", "pass"])
     videos = tmp_path / "videos"
     edit = videos / "edit"
     (edit / "midia").mkdir(parents=True)
@@ -55,6 +58,9 @@ def srv(tmp_path):
     yield SimpleNamespace(port=server.server_address[1], edit=edit, foto=foto, clipe=clipe, fora=fora)
     server.shutdown()
     server.server_close()
+    fim = time.time() + 10
+    while ps.tb.vivo(edit) and time.time() < fim:  # a montagem falsa termina antes de a pasta sumir
+        time.sleep(0.05)
 
 
 def pedir(port, caminho, metodo="GET", corpo=None, cabecalhos=None):
@@ -81,13 +87,20 @@ def test_trocar_oferece_as_midias_da_montagem_e_as_de_midia(srv):
     assert op[1]["duracao"] == pytest.approx(2.0, abs=0.1) and op[0]["duracao"] == 0
 
 
+def _espera_trabalho(srv, prazo: float = 10.0) -> None:
+    fim = time.time() + prazo
+    while ps.tb.vivo(srv.edit) and time.time() < fim:
+        time.sleep(0.05)
+
+
 def test_estado_leva_os_lugares_salvos_ate_o_agente_refazer(srv):
     """O editor recarrega depois do Salvar; com isto, o lugar segue marcado com a mídia nova."""
     assert json.loads(pedir(srv.port, "/api/state")[1])["montagemPendente"] is None
-    (srv.edit / "preview_edits.json").write_text(json.dumps(
-        {"type": "timeline-edits", "montagem": {"lugares": [{"vaga": 2, "de": 1.0}]}}), encoding="utf-8")
+    pendente = srv.edit / ".cutmind" / "pendente.json"
+    pendente.parent.mkdir(exist_ok=True)
+    pendente.write_text(json.dumps({"montagem": {"lugares": [{"vaga": 2, "de": 1.0}]}}), encoding="utf-8")
     assert json.loads(pedir(srv.port, "/api/state")[1])["montagemPendente"] == [{"vaga": 2, "de": 1.0}]
-    (srv.edit / "preview_edits.json").write_text(json.dumps({"notes": []}), encoding="utf-8")  # Salvar sem lugares
+    pendente.write_text(json.dumps({"melhorar": {"voz": 50, "fundo": 20}}), encoding="utf-8")  # sem lugares
     assert json.loads(pedir(srv.port, "/api/state")[1])["montagemPendente"] is None
 
 
@@ -168,10 +181,11 @@ def test_salvar_o_usar_de_um_modelo(srv):
     pedido = {"modelo": "drop-cedo", "musica": "midia/musica.m4a", "midias": ["midia/nova.png"]}
     r, dados = _post(srv.port, "/api/save", {"montagem": {"usar": pedido}})
     assert r.status == 200, dados
-    assert json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))["montagem"] == {"usar": pedido}
-    # um Salvar de lugares antes de o agente montar não desfaz o pedido da montagem nova
+    assert json.loads((srv.edit / ".cutmind" / "pendente.json").read_text(encoding="utf-8"))["montagem"] == {"usar": pedido}
+    _espera_trabalho(srv)
+    # um Salvar de lugares antes de a montagem terminar não desfaz o pedido da montagem nova
     assert _post(srv.port, "/api/save", {"montagem": {"lugares": [{"vaga": 1, "midia": "midia/nova.png"}]}})[0].status == 200
-    assert json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))["montagem"] == {"usar": pedido}
+    assert json.loads((srv.edit / ".cutmind" / "pendente.json").read_text(encoding="utf-8"))["montagem"] == {"usar": pedido}
     for ruim in ({**pedido, "modelo": "nao-existe"}, {**pedido, "musica": "midia/nova.png"},
                  {**pedido, "musica": str(srv.fora)}, {**pedido, "midias": []}, {**pedido, "midias": [str(srv.fora)]},
                  {**pedido, "midias": ["midia/../../segredo.png"]}, {**pedido, "midias": ["midia/musica.m4a"]}):
@@ -183,7 +197,7 @@ def test_usar_aceita_as_fotos_e_clipes_da_montagem_aberta(srv):
     pedido = {"modelo": "drop-cedo", "musica": "midia/musica.m4a", "midias": [str(srv.clipe), "midia/nova.png", str(srv.foto)]}
     r, dados = _post(srv.port, "/api/save", {"montagem": {"usar": pedido}})
     assert r.status == 200, dados
-    assert json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))["montagem"]["usar"]["midias"] == [
+    assert json.loads((srv.edit / ".cutmind" / "pendente.json").read_text(encoding="utf-8"))["montagem"]["usar"]["midias"] == [
         str(srv.clipe), "midia/nova.png", str(srv.foto)]
     assert _post(srv.port, "/api/save", {"montagem": {"usar": {**pedido, "midias": [str(srv.fora)]}}})[0].status == 400
 
@@ -217,7 +231,7 @@ def test_usar_vale_num_projeto_novo_e_nao_num_corte_de_fala(srv):
 
 def test_salvar_o_formato_da_montagem(srv):
     """O formato vai no Salvar; voltar ao de agora antes de o agente refazer desfaz o pedido."""
-    ler = lambda: json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))  # noqa: E731
+    ler = lambda: json.loads((srv.edit / ".cutmind" / "pendente.json").read_text(encoding="utf-8"))  # noqa: E731
     r, dados = _post(srv.port, "/api/save", {"montagem": {"lugares": [], "formato": "16:9"}})
     assert r.status == 200, dados
     assert ler()["montagem"] == {"lugares": [], "formato": "16:9"}
@@ -236,7 +250,7 @@ def test_salvar_o_formato_da_montagem(srv):
 def test_usar_leva_o_formato_escolhido(srv):
     pedido = {"modelo": "drop-cedo", "musica": "midia/musica.m4a", "midias": ["midia/nova.png"], "formato": "1:1"}
     assert _post(srv.port, "/api/save", {"montagem": {"usar": pedido}})[0].status == 200
-    assert json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))["montagem"]["usar"]["formato"] == "1:1"
+    assert json.loads((srv.edit / ".cutmind" / "pendente.json").read_text(encoding="utf-8"))["montagem"]["usar"]["formato"] == "1:1"
     assert _post(srv.port, "/api/save", {"montagem": {"usar": {**pedido, "formato": "21:9"}}})[0].status == 400
 
 
@@ -261,7 +275,7 @@ def test_miniatura_da_foto_sem_o_marcador_de_fim(srv):
 
 
 def test_salvar_o_enquadre_de_um_lugar(srv):
-    ler = lambda: json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))["montagem"]  # noqa: E731
+    ler = lambda: json.loads((srv.edit / ".cutmind" / "pendente.json").read_text(encoding="utf-8"))["montagem"]  # noqa: E731
     e = {"escala": 1.5, "x": 0.4, "y": 0.6}
     r, dados = _post(srv.port, "/api/save", {"montagem": {"lugares": [{"vaga": 1, "enquadre": e}]}})
     assert r.status == 200, dados

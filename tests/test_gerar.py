@@ -141,7 +141,7 @@ def test_montagem_com_lugar_salvo(edit):
     _grava(edit / "edl.json", {"montagem": {"lugares": [{"vaga": 1}]}, "ranges": []}, T0)
     _grava(edit / "final.mp4", b"f", T0 + 2)
     assert gerar.o_que_falta(edit) == []
-    _grava(edit / "preview_edits.json", {"montagem": {"lugares": [{"vaga": 1, "midia": "midia/b.jpg"}]}}, T0 + 3)
+    _grava(edit / ".cutmind" / "pendente.json", {"montagem": {"lugares": [{"vaga": 1, "midia": "midia/b.jpg"}]}}, T0 + 3)
     assert gerar.o_que_falta(edit) == ["montagem"]
     assert gerar.entrega(edit) == "final.mp4"
 

@@ -111,16 +111,16 @@ def test_aviso_separa_o_pedido_escrito_das_marcacoes(tmp_path):
 
 def test_uma_vez_sai_no_primeiro_aviso(tmp_path):
     """`--uma-vez` roda como tarefa em segundo plano (sem o prazo do Monitor): o que já estava
-    pendente sai na hora, e sem nada pendente ele espera o próximo Salvar e termina com o aviso."""
+    pendente sai na hora, e sem nada pendente ele espera o próximo Pronto e termina com o aviso."""
     import subprocess
     vigia = Path(__file__).resolve().parents[1] / "helpers" / "watch_edits.py"
-    nota = {"type": "timeline-edits", "notes": [{"start": 1, "end": 1, "text": "pedido", "geral": True}]}
+    nota = {"quando": "agora", "fase": 1, "pedidos": [{"start": 1, "end": 1, "text": "pedido", "geral": True}]}
     pend = tmp_path / "pendente"
     pend.mkdir()
-    (pend / "preview_edits.json").write_text(json.dumps(nota), encoding="utf-8")
+    (pend / "pronto.json").write_text(json.dumps(nota), encoding="utf-8")
     r = subprocess.run([sys.executable, "-X", "utf8", str(vigia), str(pend), "--uma-vez"],
                        capture_output=True, text=True, encoding="utf-8", timeout=20)
-    assert r.returncode == 0 and "1 pedido escrito" in r.stdout
+    assert r.returncode == 0 and "PRONTO DO EDITOR" in r.stdout and "1 pedido." in r.stdout
 
     vazio = tmp_path / "vazio"
     vazio.mkdir()
@@ -129,7 +129,7 @@ def test_uma_vez_sai_no_primeiro_aviso(tmp_path):
     try:
         time.sleep(1.0)
         assert p.poll() is None  # sem nada pendente, fica esperando
-        (vazio / "preview_edits.json").write_text(json.dumps(nota), encoding="utf-8")
+        (vazio / "pronto.json").write_text(json.dumps(nota), encoding="utf-8")
         out, _ = p.communicate(timeout=20)
     finally:
         if p.poll() is None:
@@ -423,13 +423,13 @@ def test_aberto_antigo_ao_ligar_nao_e_aviso(tmp_path):
     try:
         time.sleep(2.5)
         assert p.poll() is None
-        (a / "preview_edits.json").write_text(json.dumps({"type": "timeline-edits", "notes": [
+        (a / "pronto.json").write_text(json.dumps({"quando": "agora", "fase": 1, "pedidos": [
             {"start": 1, "end": 1, "text": "pedido", "geral": True}]}), encoding="utf-8")
         out, _ = p.communicate(timeout=20)
     finally:
         if p.poll() is None:
             p.kill()
-    assert "1 pedido escrito" in out and "OUTRO PROJETO" not in out
+    assert "PRONTO DO EDITOR" in out and "OUTRO PROJETO" not in out
 
 
 def test_sem_uma_vez_passa_a_vigiar_a_pasta_nova(tmp_path):
@@ -441,7 +441,7 @@ def test_sem_uma_vez_passa_a_vigiar_a_pasta_nova(tmp_path):
         time.sleep(1.0)
         pj.marcar_aberto(b)
         time.sleep(3.0)
-        (b / "preview_edits.json").write_text(json.dumps({"type": "timeline-edits", "notes": [
+        (b / "pronto.json").write_text(json.dumps({"quando": "agora", "fase": 1, "pedidos": [
             {"start": 2, "end": 2, "text": "no projeto B", "geral": True}]}), encoding="utf-8")
         time.sleep(3.0)
     finally:
@@ -494,8 +494,8 @@ def test_aviso_do_modelo_diz_o_que_ele_leva(tmp_path):
     md.salvar({"nome": "Só estilo", "estilo": {"captions": "karaoke"}})
     md.salvar({"nome": "Com filtro", "estilo": {}, "filtro": {"pacote": "f-ambar"}, "trilha": {"pacote": "lofi-01"}})
     assert "é só o Estilo" in aviso("so-estilo", "Só estilo")
-    assert "filtro, trilha dele vêm no preview_edits.json" in aviso("com-filtro", "Com filtro")
-    assert "se tiver, vêm no preview_edits.json" in aviso("apagado", "Apagado")  # modelo que já não existe
+    assert "filtro, trilha dele já estão no efeitos.json e no camadas.json" in aviso("com-filtro", "Com filtro")
+    assert "se tiver, já estão no efeitos.json e no camadas.json" in aviso("apagado", "Apagado")  # modelo que já não existe
 
 
 def test_aviso_de_estilo_conta_o_modelo_aplicado(tmp_path):

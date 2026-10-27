@@ -352,8 +352,7 @@ def test_salvar_camadas_grava_o_arquivo_do_projeto(srv):
     assert salvo["faixas"][0]["itens"][0] == {"id": "a1-1", "arquivo": "midia/Gravação.m4a", "inicio": 1.235,
                                               "duracao": 4.0, "corte": 0.0, "volume": 0.8, "melhorar": False}
     assert salvo["faixas"][1]["oculto"] is True
-    aviso = json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))
-    assert aviso["camadas"] == salvo
+    assert not (srv.edit / "preview_edits.json").exists()  # o Baixar põe no vídeo, sem o agente
 
 
 def test_camadas_com_arquivo_de_fora_sao_recusadas(srv):
@@ -375,7 +374,7 @@ def test_salvar_efeitos_grava_o_arquivo_do_projeto(srv):
     salvo = json.loads((srv.edit / "efeitos.json").read_text(encoding="utf-8"))
     assert salvo["itens"][1] == {"id": "t1", "tipo": "transicao", "pacote": "zoom-central", "corte": 3.333,
                                  "duracao": 1.1}
-    assert json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))["efeitos"] == salvo
+    assert not (srv.edit / "preview_edits.json").exists()  # o Baixar desenha, sem o agente
 
 
 def test_efeitos_tortos_nao_gravam_nada(srv):
@@ -393,7 +392,7 @@ def test_salvar_velocidade_grava_o_arquivo_do_projeto(srv):
     assert r.status == 200, corpo
     salvo = json.loads((srv.edit / "velocidade.json").read_text(encoding="utf-8"))
     assert salvo == {"versao": 1, "duracao": 82.567, "trechos": [{"inicio": 10.0, "fim": 25.0, "fator": 2.0}]}
-    assert json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))["velocidade"] == salvo
+    assert not (srv.edit / "preview_edits.json").exists()  # o Baixar aplica, sem o agente
 
 
 def test_velocidade_torta_nao_grava_nada(srv):
@@ -574,20 +573,19 @@ def test_dois_salvar_antes_do_agente_somam_e_nao_se_apagam(srv):
     r, _ = _salvar(srv, {"type": "timeline-edits", "notes": [{"start": 3, "end": 4, "text": "dois"}],
                          "editData": {"cenas": [cena(5, "capa", 500), cena(6, "grafico", 360)],
                                       "camera": {"zooms": [1.1, 1.3], "mudou": [1]}}})
-    assert r.status == 200
-    d = json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))
-    assert [n["text"] for n in d["notes"]] == ["um", "dois"] and "editData" not in d
+    assert r.status == 200 and not (srv.edit / "preview_edits.json").exists()
+    assert [n["text"] for n in ps.pend.pedidos(srv.edit)] == ["um", "dois"]  # esperam o Pronto, somadas
     ed = json.loads(ed_p.read_text(encoding="utf-8"))
     assert [(i, c["texto"]["y"]) for i, c in enumerate(ed["cenas"]) if "texto" in c] == [(2, 300), (5, 500), (6, 360)]
     assert ed["camera"]["zooms"] == [1.1, 1.3]
 
 
-def test_salvar_depois_que_o_agente_aplicou_comeca_do_zero(srv):
+def test_marcacoes_depois_do_pronto_comecam_do_zero(srv):
     _salvar(srv, {"type": "timeline-edits", "notes": [{"start": 1, "end": 2, "text": "um"}]})
-    (srv.edit / "preview_edits.json").unlink()  # o agente aplicou e apagou
+    assert pedir(srv.port, "POST", "/api/pronto", remoto=True, cookie=CODIGO, corpo=b"{}")[0].status == 200
     _salvar(srv, {"type": "timeline-edits", "notes": [{"start": 3, "end": 4, "text": "dois"}]})
-    d = json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))
-    assert [n["text"] for n in d["notes"]] == ["dois"]
+    assert [n["text"] for n in ps.pend.pedidos(srv.edit)] == ["dois"]
+    assert [n["text"] for n in json.loads((srv.edit / "pronto.json").read_text(encoding="utf-8"))["pedidos"]] == ["um"]
 
 
 def test_juntar_troca_o_que_vem_inteiro():

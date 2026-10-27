@@ -152,12 +152,12 @@ def test_salvar_com_dados_da_fase2_grava_o_edit_data_sem_o_agente(srv):
     assert not (srv.edit / "preview_edits.json").exists()  # nada para o agente
     feitos = json.loads((srv.edit / "ajustes_feitos.json").read_text(encoding="utf-8"))["feitos"]
     assert feitos[-1]["oque"].startswith("vídeo final:")
-    # com uma marcação junto, só a marcação vai para o agente
+    # com uma marcação junto: ela espera o Pronto (pedidos.json), e nada vai para o agente agora
     nota = {"start": 1.0, "end": 2.0, "text": "troca a imagem", "phase": 2}
     r, d = pedir(srv.port, "POST", "/api/save", {"type": "timeline-edits", "notes": [nota],
                                                  "editData": {"hook": {"endSec": 2.0}}})
-    salvo = json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))
-    assert r.status == 200 and "editData" not in salvo and salvo["notes"][0]["text"] == "troca a imagem"
+    assert r.status == 200 and d["pedidos"] == 1 and not (srv.edit / "preview_edits.json").exists()
+    assert ps.pend.pedidos(srv.edit)[0]["text"] == "troca a imagem"
 
 
 def test_salvar_fase2_sem_o_projeto_da_fase2_recusa(srv):

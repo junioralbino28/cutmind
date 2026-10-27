@@ -113,13 +113,14 @@ def test_preparar_pelo_editor_ate_a_previa(srv):
 def test_salvar_confere_a_escolha_e_o_editor_ve_o_que_falta_aplicar(srv):
     r, _ = pedir(srv.port, "POST", "/api/save", {"melhorar": {"voz": 60.4, "fundo": 10}})
     assert r.status == 200
-    assert json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))["melhorar"] == {"voz": 60, "fundo": 10}
+    assert ps.pend.ler(srv.edit)["melhorar"] == {"voz": 60, "fundo": 10}  # o Baixar aplica
     assert json.loads(pedir(srv.port, "GET", "/api/melhorar")[1])["pendente"] == {"voz": 60, "fundo": 10}
     r, dados = pedir(srv.port, "POST", "/api/save", {"melhorar": {"voz": 150, "fundo": 0}})
     assert r.status == 400 and "0 a 100" in json.loads(dados)["error"]
     r, _ = pedir(srv.port, "POST", "/api/save", {"melhorar": {"desligar": True}})
     assert r.status == 200
-    assert json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))["melhorar"] == {"desligar": True}
+    assert ps.pend.ler(srv.edit)["melhorar"] == {"desligar": True}
+    assert not (srv.edit / "preview_edits.json").exists()
 
 
 def test_preparo_que_morre_aparece_como_falha(srv, monkeypatch):

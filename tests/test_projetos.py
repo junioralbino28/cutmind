@@ -256,13 +256,14 @@ def test_main_registra_e_marca_aberto(tmp_path, monkeypatch):
 def test_salvar_de_outro_projeto_e_recusado(srv):
     """O PC tinha o projeto A; o celular abriu o B. O Salvar do PC (com o id do A) não grava no B."""
     pedir(srv.port, "POST", "/api/projetos/abrir", {"id": pj.id_de(srv.b)})
-    r, out = pedir(srv.port, "POST", "/api/save", {"type": "timeline-edits", "projeto": pj.id_de(srv.a), "notes": []})
+    nota = [{"start": 1, "end": 2, "text": "troca isso"}]
+    r, out = pedir(srv.port, "POST", "/api/save", {"type": "timeline-edits", "projeto": pj.id_de(srv.a), "notes": nota})
     assert r.status == 409 and "outro projeto" in json.loads(out)["error"]
-    assert not (srv.b / "preview_edits.json").exists() and not (srv.a / "preview_edits.json").exists()
-    # com o id certo, grava, e o id não vai para o arquivo do agente
-    r, _ = pedir(srv.port, "POST", "/api/save", {"type": "timeline-edits", "projeto": pj.id_de(srv.b), "notes": []})
+    assert not (srv.b / "pedidos.json").exists() and not (srv.a / "pedidos.json").exists()
+    # com o id certo, grava no projeto aberto, e o id não vai junto
+    r, _ = pedir(srv.port, "POST", "/api/save", {"type": "timeline-edits", "projeto": pj.id_de(srv.b), "notes": nota})
     assert r.status == 200
-    assert "projeto" not in json.loads((srv.b / "preview_edits.json").read_text(encoding="utf-8"))
+    assert "projeto" not in (srv.b / "pedidos.json").read_text(encoding="utf-8") and not (srv.a / "pedidos.json").exists()
     # editor antigo, sem o id: continua gravando como antes
     r, _ = pedir(srv.port, "POST", "/api/save", {"type": "style-setup"})
     assert r.status == 200 and (srv.b / "preview_style.json").exists()

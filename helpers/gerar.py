@@ -37,6 +37,7 @@ import efeitos_render  # mesma pasta deste arquivo
 import melhorar_voz as mv  # mesma pasta deste arquivo
 import montagem as mt  # mesma pasta deste arquivo
 import pacotes as pk  # mesma pasta deste arquivo
+import pendente as pend  # mesma pasta deste arquivo
 import tempo  # mesma pasta deste arquivo
 import trabalhos  # mesma pasta deste arquivo
 import velocidade as vel  # mesma pasta deste arquivo
@@ -102,6 +103,18 @@ def _trechos(edit: Path) -> list:
     return vel.load(Path(edit) / "velocidade.json").get("trechos") or []
 
 
+def _montagem_salva(edit: Path) -> dict:
+    """Os lugares e o formato que o Salvar guardou para a montagem (pendente.json)."""
+    m = pend.ler(edit).get("montagem")
+    return {k: m[k] for k in ("lugares", "formato") if m.get(k)} if isinstance(m, dict) else {}
+
+
+def _voz_pedida(edit: Path) -> dict | None:
+    """A escolha do Melhorar voz salva no editor e ainda não aplicada: {voz, fundo} ou {desligar}."""
+    v = pend.ler(edit).get("melhorar")
+    return v if isinstance(v, dict) and v else None
+
+
 def _voz_velha(edit: Path) -> bool:
     """A voz melhorada foi aplicada um dia e o cut.mp4 de agora (refeito depois) não a tem. Sem nunca
     ter aplicado, nem mede o som do corte."""
@@ -117,11 +130,11 @@ def o_que_falta(edit: Path) -> list[str]:
     edit = Path(edit)
     final = edit / FINAL
     if eh_montagem(edit):
-        salvo = mt.mudancas_salvas(edit) or mt.formato_salvo(edit)
+        salvo = _montagem_salva(edit)
         entradas = [edit / "edl.json", _video(edit), edit / "camadas.json", edit / "efeitos.json"]
         velho = not final.exists() or max(map(_mtime, entradas)) > _mtime(final)
         return ["montagem"] if salvo or velho else []
-    falta = ["voz"] if _voz_velha(edit) else []
+    falta = ["voz"] if _voz_pedida(edit) or _voz_velha(edit) else []
     if precisa_remotion(edit):
         pub = edit / "remotion" / "public"
         entradas = [_video(edit), edit / "camadas.json", edit / "efeitos.json",
@@ -290,19 +303,6 @@ def _gravar_state(edit: Path, **campos) -> None:
     mt._grava_json(p, st)
 
 
-def _tirar_montagem_salva(edit: Path) -> None:
-    """Os lugares salvos já entraram: saem do preview_edits.json (o resto dele fica para o agente)."""
-    p = Path(edit) / "preview_edits.json"
-    pe = _ler(p)
-    if "montagem" not in pe:
-        return
-    pe.pop("montagem")
-    if set(pe) - {"type", "savedAt", "projeto"}:
-        mt._grava_json(p, pe)
-    else:
-        p.unlink(missing_ok=True)
-
-
 def gerar(edit: Path, andamento=_sem_andamento) -> dict:
     """Roda o que o_que_falta() pede e devolve {"falta": [...], "entrega": <arquivo>}."""
     edit = Path(edit).resolve()
@@ -316,17 +316,26 @@ def gerar(edit: Path, andamento=_sem_andamento) -> dict:
     try:
         if "montagem" in falta:
             andamento("montagem", "Montando o vídeo", 0.05)
-            if mt.mudancas_salvas(edit) or mt.formato_salvo(edit):
-                mt.aplicar(edit)
-                _tirar_montagem_salva(edit)
+            salvo = _montagem_salva(edit)
+            if salvo:
+                mt.aplicar(edit, list(salvo.get("lugares") or []), formato=salvo.get("formato"))
+                pend.tirar(edit, "montagem", "lugares", "formato")  # entrou: sai do que o editor guardou
             else:
                 mt.renderizar(edit)
             andamento("conferindo", "Conferindo as trocas na batida", 0.9)
             mt.conferir_o_render(edit)
         if "voz" in falta:
             andamento("voz", "Pondo a voz melhorada de volta", 0.05)
-            if _passo([AQUI / "melhorar_voz.py", "aplicar", edit]) != 0:
+            pedida = _voz_pedida(edit)
+            if pedida and pedida.get("desligar"):
+                cmd = [AQUI / "melhorar_voz.py", "restaurar", edit]
+            elif pedida:
+                cmd = [AQUI / "melhorar_voz.py", "aplicar", edit, "--voz", pedida["voz"], "--fundo", pedida["fundo"]]
+            else:  # o corte foi refeito depois: a última escolha
+                cmd = [AQUI / "melhorar_voz.py", "aplicar", edit]
+            if _passo(cmd) != 0:
                 raise ErroGerar("a voz melhorada não voltou ao corte (a saída está no registro do trabalho)")
+            pend.tirar(edit, "melhorar")
         if "remotion" in falta:
             v = aquecer_navegador.macos_antigo()
             if v:
