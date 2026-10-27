@@ -727,6 +727,7 @@ function refreshHeader() {
   const entregue = S.view === 'final' && S.vel.trechos.length ? duracaoEntregue() : null;
   $('projectSub').textContent = !hasVideo ? '' : entregue != null ? `${fmtShort(totalT())} → ${fmtShort(entregue)}` : fmtShort(totalT());
   $('btnMode').disabled = !hasFinal(); // sem vídeo final, a prévia só tem o corte
+  mostraFinalVelho();
 }
 
 // ---------- desfazer / refazer ----------
@@ -986,6 +987,7 @@ async function applyState(data) {
   renderTimeline();
   renderToolbar();
   refreshHeader();
+  if (hasVideo) atualizaPendente();
   // a Nova montagem abre já no painel (uma vez por carga da página)
   if (S.state.montagem && !hasVideo && !S.montagemNova && !S.locked && !MT.autoAberto) {
     MT.autoAberto = true;
@@ -3502,17 +3504,59 @@ function entregaPronta() {
     && m.entregaVideo >= (m.velocidade || 0) && m.entregaVideo >= (m.finalVideo || 0));
 }
 function download() {
+  if (S.trabalhoVivo) return;
+  gerarEBaixar();
+}
+// o arquivo que o servidor diz (cut.mp4, final.mp4 ou final-entrega.mp4); sem ele, pelo que o editor sabe
+function baixar(entregaRel) {
   const entrega = hasFinal() && entregaPronta();
-  const rel = entrega ? S.state.entregaVideo : hasFinal() ? S.state.finalVideo : (S.state.video || 'cut.mp4');
+  const rel = entregaRel || (entrega ? S.state.entregaVideo : hasFinal() ? S.state.finalVideo : (S.state.video || 'cut.mp4'));
   const a = document.createElement('a');
-  a.href = `/media/${rel}`;
+  a.href = `/media/${rel}?v=${Date.now()}`;
   a.download = `${(S.state.project || 'cutmind').replace(/[\\/:*?"<>|]+/g, '-')}.mp4`;
   document.body.appendChild(a);
   a.click();
   a.remove();
+  if (entregaRel) {
+    toast(entregaRel === 'final-entrega.mp4' ? t('Baixando o vídeo final, com a velocidade')
+      : entregaRel === (S.state.video || 'cut.mp4') ? t('Baixando o vídeo') : t('Baixando o vídeo final'), 3200);
+    return;
+  }
   toast(entrega ? t('Baixando o vídeo final, com a velocidade')
     : hasFinal() && S.vel.trechos.length ? t('Baixando o final SEM a velocidade: a versão acelerada ainda não ficou pronta')
       : hasFinal() ? t('Baixando o vídeo final') : t('Baixando o corte (o final ainda não existe)'), 3200);
+}
+/* O Baixar: com algo feito à mão ainda fora do vídeo (camada, filtro, voz, velocidade), o servidor monta
+ * o vídeo final pelos programas do kit, sem o agente, e o editor baixa quando fica pronto. */
+async function gerarEBaixar() {
+  let out;
+  try {
+    const res = await fetch('/api/gerar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    out = await res.json();
+  } catch (e) {
+    baixar(); // servidor sem a rota (kit anterior) ou fora do ar: o que o editor sabe
+    return;
+  }
+  if (!out.ok) { toast(t('Não gerei o vídeo: {error}', { error: out.error || '' }), 4500); return; }
+  if (out.pronto) { baixar(out.entrega); return; }
+  S.baixarAoTerminar = true;
+  mostraTrabalho({ tipo: 'gerar', etapa: 'comecando', vivo: true, fracao: 0 });
+  toast(t('Gerando o vídeo final. Ele baixa sozinho quando ficar pronto.'), 3600);
+}
+// o rótulo do Baixar: "Gerar e baixar" quando há algo feito à mão que o vídeo ainda não tem
+async function atualizaPendente() {
+  try {
+    const out = await (await fetch('/api/pendente')).json();
+    S.pendente = Array.isArray(out.falta) && out.falta.length > 0;
+  } catch (e) {
+    S.pendente = false;
+  }
+  $('downloadTxt').textContent = S.pendente ? t('Gerar e baixar') : t('Baixar');
+  mostraFinalVelho();
+}
+// na vista Final, o vídeo é o da última geração: o selo diz que os ajustes salvos depois saem no Baixar
+function mostraFinalVelho() {
+  $('finalVelho').classList.toggle('hidden', !(S.view === 'final' && S.pendente && !S.trabalhoVivo));
 }
 
 // ---------- enviar vídeo: vai em pedaços para a pasta dos vídeos no computador ----------
@@ -3595,6 +3639,7 @@ $('upIco').innerHTML = ICON.enviar;
 $('downloadIco').innerHTML = ICON.baixar;
 $('phoneIco').innerHTML = ICON.celular;
 $('btnDownload').addEventListener('click', download);
+$('finalVelho').addEventListener('click', download);
 
 /* ---------- abrir no celular (computador) ----------
  * O servidor só entrega os links a este computador: eles levam o código que libera o
@@ -4720,6 +4765,7 @@ async function salvar(aviso, confirmado) {
     }
     // só as tomadas: o editor refaz o corte e não há nada esperando o agente
     S.savedPending = !!out.file;
+    atualizaPendente(); // o que foi salvo pode ter deixado o vídeo final para gerar
     if (out.trabalho) mostraTrabalho({ tipo: out.trabalho, etapa: 'comecando', vivo: true, fracao: 0 });
     S.notes = [];
     S.pendingIn = null;
@@ -4859,40 +4905,64 @@ $('conferirVoltar').addEventListener('click', () => {
 });
 
 // ---------- o que o editor faz sozinho, sem o agente ----------
-/* Refazer o corte depois do Salvar (aplicar_corte.py, num processo à parte). O andamento vem no
- * /api/state, a cada 2 s: a barra aparece também se a página recarregar no meio ou se o Salvar veio
- * do celular. O fim fica um minuto no servidor; aqui some em 4 s, ou no Fechar quando falhou. */
+/* Refazer o corte depois do Salvar (aplicar_corte.py) e gerar o vídeo final no Baixar (gerar.py), cada
+ * um num processo à parte. O andamento vem no /api/state, a cada 2 s: a barra aparece também se a
+ * página recarregar no meio ou se o pedido veio do celular. O fim fica um minuto no servidor; aqui some
+ * em 4 s, ou no Fechar quando falhou. */
 const TRAB_TEXTO = { comecando: () => t('Começando'), conferindo: () => t('Conferindo o corte'),
-  corte: () => t('Refazendo o corte'), conferencia: () => t('Conferindo o vídeo novo') };
+  corte: () => t('Refazendo o corte'), conferencia: () => t('Conferindo o vídeo novo'),
+  voz: () => t('Pondo a voz melhorada de volta'), preparando: () => t('Preparando o vídeo'),
+  som: () => t('Montando o som'), velocidade: () => t('Aplicando a velocidade'),
+  montagem: () => t('Montando o vídeo'), batida: () => t('Conferindo as trocas na batida') };
+const TRAB = {
+  corte: { ico: 'corte', nome: () => t('Refazendo o corte'), feito: () => t('Corte refeito'),
+    falhou: () => t('O corte não foi refeito; o de antes continua.') },
+  gerar: { ico: 'baixar', nome: () => t('Gerando o vídeo'), feito: () => t('Vídeo pronto'),
+    falhou: () => t('O vídeo não foi gerado.') },
+};
 const chaveTrab = (tr) => `${tr.tipo}|${tr.etapa}|${tr.pid || ''}`;
+function textoTrab(tr) {
+  if (tr.etapa === 'desenhando') {
+    return tr.quadros ? t('Desenhando o vídeo: quadro {quadro} de {quadros}', { quadro: tr.quadro || 0, quadros: tr.quadros })
+      : t('Desenhando o vídeo');
+  }
+  return (TRAB_TEXTO[tr.etapa] || (() => ''))();
+}
 function mostraTrabalho(tr) {
   const card = $('trabalho');
   const vivoAntes = !!S.trabalhoVivo;
   S.trabalhoVivo = !!(tr && tr.vivo);
   if (vivoAntes !== S.trabalhoVivo) refreshHeader();
-  if (!tr || !tr.etapa || tr.tipo !== 'corte') { card.classList.add('hidden'); return; }
-  if (!tr.vivo && S.trabalhoFechado === chaveTrab(tr)) return;
+  const tipo = tr && TRAB[tr.tipo];
+  if (!tr || !tr.etapa || !tipo) { card.classList.add('hidden'); return; }
+  const chave = chaveTrab(tr);
+  if (!tr.vivo && tr.tipo === 'gerar' && S.baixarAoTerminar) { // o Baixar que esperou o vídeo ficar pronto
+    S.baixarAoTerminar = false;
+    if (tr.etapa === 'pronto') baixar(tr.entrega);
+  }
+  if (!tr.vivo && S.trabalhoFechado === chave) return;
   card.classList.remove('hidden', 'done', 'bad');
-  $('trabIco').innerHTML = ICON.corte;
-  $('trabNome').textContent = t('Refazendo o corte');
+  $('trabIco').innerHTML = ICON[tipo.ico];
+  $('trabNome').textContent = tipo.nome();
   $('trabBar').style.width = `${Math.round((tr.fracao || 0) * 100)}%`;
   $('trabFechar').classList.toggle('hidden', tr.etapa !== 'falhou');
   if (tr.vivo) {
-    $('trabTexto').textContent = (TRAB_TEXTO[tr.etapa] || (() => ''))();
+    $('trabTexto').textContent = textoTrab(tr);
     return;
   }
   if (tr.etapa === 'falhou') {
     card.classList.add('bad');
-    $('trabTexto').textContent = t('O corte não foi refeito; o de antes continua.');
+    // o motivo do vídeo final (o corte mudou depois da legenda, a velocidade de outro vídeo...) diz o que fazer
+    $('trabTexto').textContent = tr.tipo === 'gerar' && tr.erro ? tr.erro : tipo.falhou();
     return;
   }
   card.classList.add('done');
   $('trabBar').style.width = '100%';
-  $('trabNome').textContent = t('Corte refeito');
+  $('trabNome').textContent = tipo.feito();
   $('trabTexto').textContent = tr.voz === 'velha' ? t('A voz melhorada volta quando você baixar o vídeo.') : t('Sem gastar o agente.');
-  const chave = chaveTrab(tr);
   if (S.trabalhoSome !== chave) {
     S.trabalhoSome = chave;
+    atualizaPendente();
     setTimeout(() => { if (S.trabalhoSome === chave) { S.trabalhoFechado = chave; card.classList.add('hidden'); } }, 4000);
   }
 }

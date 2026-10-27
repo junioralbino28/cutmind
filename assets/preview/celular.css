@@ -358,6 +358,18 @@ button { font-family: inherit; cursor: pointer; }
   pointer-events: none; opacity: 0; transition: opacity 0.2s;
 }
 .swipe-name.on { opacity: 1; }
+/* a vista Final mostra o vídeo da última geração: o que foi salvo depois só entra no Baixar */
+.final-velho {
+  position: absolute; left: 50%; top: 10px; translate: -50% 0; z-index: 4;
+  display: flex; align-items: center; gap: 8px;
+  max-width: calc(100% - 16px);
+  padding: 6px 10px; border: 0; border-radius: 999px;
+  background: rgba(10, 10, 10, 0.78);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  color: #fff; font: 600 11.5px var(--font); cursor: pointer;
+}
+.final-velho span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.final-velho b { color: var(--brand); white-space: nowrap; }
 .swipe-name svg { width: 13px; height: 13px; flex: none; opacity: 0.7; }
 .swipe-name small { font-size: 11px; font-weight: 600; color: rgba(255, 255, 255, 0.6); }
 /* o estilo novo entra pelo lado de onde o dedo veio */

@@ -705,5 +705,21 @@ window.I18N_EN = {
   "Corte refeito": "Cut rebuilt",
   "A voz melhorada volta quando você baixar o vídeo.": "The enhanced voice comes back when you download the video.",
   "Sem gastar o agente.": "Without using the agent.",
-  "Refazendo o corte. Leva alguns segundos.": "Rebuilding the cut. It takes a few seconds."
+  "Refazendo o corte. Leva alguns segundos.": "Rebuilding the cut. It takes a few seconds.",
+  "Pondo a voz melhorada de volta": "Putting the enhanced voice back",
+  "Preparando o vídeo": "Preparing the video",
+  "Montando o som": "Mixing the sound",
+  "Aplicando a velocidade": "Applying the speed",
+  "Montando o vídeo": "Assembling the video",
+  "Conferindo as trocas na batida": "Checking the cuts on the beat",
+  "Gerando o vídeo": "Generating the video",
+  "Vídeo pronto": "Video ready",
+  "O vídeo não foi gerado.": "The video wasn't generated.",
+  "Desenhando o vídeo: quadro {quadro} de {quadros}": "Drawing the video: frame {quadro} of {quadros}",
+  "Desenhando o vídeo": "Drawing the video",
+  "Baixando o vídeo": "Downloading the video",
+  "Não gerei o vídeo: {error}": "Didn't generate the video: {error}",
+  "Gerando o vídeo final. Ele baixa sozinho quando ficar pronto.": "Generating the final video. It downloads by itself when it's ready.",
+  "Gerar e baixar": "Generate and download",
+  "O vídeo final ainda não tem seus últimos ajustes": "The final video doesn't have your latest edits yet"
 };

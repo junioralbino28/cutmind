@@ -47,7 +47,7 @@
     <button class="tb-btn ghost desk-only hidden" id="btnDiscard" type="button" title="Voltar ao último vídeo do agente">Descartar</button>
     <!-- um botão principal no canto de cima: Salvar quando há ajuste, Baixar quando não há -->
     <button class="tb-btn primary hidden" id="btnSave" type="button">Salvar <b id="dirtyCount">0</b></button>
-    <button class="tb-btn primary hidden" id="btnDownload" type="button"><span class="tb-ico" id="downloadIco"></span>Baixar</button>
+    <button class="tb-btn primary hidden" id="btnDownload" type="button"><span class="tb-ico" id="downloadIco"></span><span id="downloadTxt">Baixar</span></button>
   </header>
 
   <section class="stage" id="stage">
@@ -76,6 +76,8 @@
       <!-- ao aparar: o quadro do vídeo de ORIGEM na alça (o corte não tem o que foi cortado) -->
       <img class="peek hidden" id="peek" alt="">
       <button class="tap-play" id="tapPlay" type="button" aria-label="Reproduzir ou pausar"></button>
+      <!-- vista Final com ajuste salvo que o vídeo final ainda não tem: ele sai no Baixar, sem o agente -->
+      <button class="final-velho hidden" id="finalVelho" type="button"><span>O vídeo final ainda não tem seus últimos ajustes</span><b>Gerar e baixar</b></button>
       <!-- com o Estilo aberto, deslizar no vídeo troca o estilo: o nome aparece aqui por um instante -->
       <div class="swipe-name" id="swipeName" aria-live="polite"></div>
     </div>
