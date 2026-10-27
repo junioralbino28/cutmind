@@ -127,6 +127,8 @@ import montagens as mg  # mesma pasta deste arquivo
 import mural as mu  # mesma pasta deste arquivo
 import aplicar_corte as ac  # mesma pasta deste arquivo
 import trabalhos as tb  # mesma pasta deste arquivo
+import gerar as gr  # mesma pasta deste arquivo
+import editdata_aplicar as eda  # mesma pasta deste arquivo
 
 APP_DIR = Path(__file__).resolve().parent.parent / "assets" / "preview"
 EFEITOS_DIR = APP_DIR.parent / "efeitos"
@@ -207,6 +209,13 @@ def trabalho_recente(edit: Path) -> dict | None:
     except OSError:
         return None
     return a if idade < TRABALHO_RECENTE_S else None
+
+
+def comando_gerar(edit: Path, andamento: Path) -> list[str]:
+    """O Baixar com algo por refazer monta o vídeo final num processo à parte (gerar.py), sem o agente.
+    Os testes trocam por um falso."""
+    return [sys.executable, "-X", "utf8", str(Path(__file__).resolve().parent / "gerar.py"), str(edit),
+            "--andamento", str(andamento)]
 
 
 def comando_corte(edit: Path, pedido: Path, andamento: Path) -> list[str]:
@@ -1073,7 +1082,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/melhorar/andamento":
             self._json(andamento_preparo(self.root) or {"etapa": None})
         elif path == "/api/trabalho":
-            self._json(tb.andamento(self.root) or {"etapa": None})
+            self._json(self._trabalho(tb.andamento(self.root)) or {"etapa": None})
+        elif path == "/api/pendente":
+            self._pendente()
         elif path == "/api/midia":
             self._midia()
         elif path == "/api/batida":
@@ -1123,6 +1134,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/conferir":
             self._conferir()
+            return
+        if path == "/api/gerar":
+            self._gerar()
             return
         if path != "/api/save":
             self._fail(404, "unknown route")
@@ -1199,10 +1213,11 @@ class Handler(BaseHTTPRequestHandler):
         # (aplicar_corte.py), depois de perguntar o que ficaria desalinhado
         confirmado = bool(body.pop("confirmado", False))
         corte = name == "preview_edits.json" and isinstance(body.get("edl"), dict)
+        # um trabalho rodando lê o projeto (o corte refeito, o vídeo final desenhado): nada muda no meio dele
+        if name == "preview_edits.json" and tb.vivo(self.root):
+            self._ocupado(tb.vivo(self.root))
+            return
         if corte:
-            if tb.vivo(self.root):
-                self._json({"error": "o corte ainda está sendo refeito: espere terminar para salvar de novo"}, 409)
-                return
             if not confirmado:
                 try:
                     avisos = ac.conferir_projeto(self.root, body["edl"])
@@ -1212,6 +1227,18 @@ class Handler(BaseHTTPRequestHandler):
                 if avisos:
                     self._json({"error": "antes de aplicar, confira o que fica desalinhado", "avisos": avisos}, 409)
                     return
+        # os dados da Fase 2 (blocos, efeitos, gancho, zoom, legenda) vão direto para o edit-data.json:
+        # o vídeo final com eles sai no Baixar (gerar.py), sem o agente
+        fase2 = None
+        if name == "preview_edits.json" and isinstance(body.get("editData"), dict):
+            try:
+                fase2 = eda.gravar(self.root, body["editData"])
+            except (OSError, ValueError, KeyError, TypeError) as e:
+                self._json({"error": f"vídeo final: {e}"}, 400)
+                return
+            body.pop("editData")
+            for aviso in fase2["avisos"]:
+                print(f"vídeo final: {aviso}", file=sys.stderr, flush=True)
         if name == "preview_edits.json":
             if "camadas" in body:
                 cam.save(self.root / "camadas.json", body["camadas"])
@@ -1226,12 +1253,14 @@ class Handler(BaseHTTPRequestHandler):
             pedido_p = pasta / "pedido-corte.json"
             pedido_p.write_bytes(json.dumps(body.pop("edl"), ensure_ascii=False).encode("utf-8"))
             if not tb.iniciar(self.root, "corte", comando_corte(self.root, pedido_p, pasta / "andamento.json")):
-                self._json({"error": "o corte ainda está sendo refeito: espere terminar para salvar de novo"}, 409)
+                self._ocupado(tb.vivo(self.root))
                 return
             resposta["trabalho"] = "corte"
-            if not any(k not in ("type", "savedAt") for k in body):
-                self._json(resposta)  # só o corte: nada para o agente
-                return
+        if fase2 is not None:
+            resposta["avisos"] = fase2["avisos"]
+        if (corte or fase2 is not None) and not any(k not in ("type", "savedAt") for k in body):
+            self._json(resposta)  # o corte e a Fase 2 o servidor já aplicou: nada para o agente
+            return
         out = self.root / name
         if name == "preview_edits.json" and out.exists():
             # o agente ainda não aplicou o Salvar anterior: o novo SOMA a ele, não o apaga
@@ -1737,6 +1766,51 @@ class Handler(BaseHTTPRequestHandler):
             print(f"conferência do corte não rodou: {e}", file=sys.stderr, flush=True)
             self._json({"avisos": []})
 
+    def _ocupado(self, tipo: str | None) -> None:
+        """A resposta a um pedido que mexeria no projeto com um trabalho rodando nele."""
+        if tipo == "gerar":
+            self._json({"error": "o vídeo final está sendo gerado: espere terminar"}, 409)
+        else:
+            self._json({"error": "o corte ainda está sendo refeito: espere terminar para salvar de novo"}, 409)
+
+    def _trabalho(self, a: dict | None) -> dict | None:
+        """O andamento do trabalho com o erro (a mensagem do programa, em português) no idioma do editor."""
+        if a and a.get("erro"):
+            return {**a, "erro": idm.traduzir(a["erro"], self._idioma())}
+        return a
+
+    def _pendente(self) -> None:
+        """O que o Baixar ainda tem de refazer (gerar.o_que_falta) e o arquivo que ele entrega."""
+        try:
+            self._json({"falta": gr.o_que_falta(self.root), "entrega": gr.entrega(self.root)})
+        except (OSError, ValueError) as e:
+            self._json({"error": f"não consegui ver o que falta no vídeo: {e}"}, 500)
+
+    def _gerar(self) -> None:
+        """O Baixar: sem nada por refazer, diz o arquivo; senão monta o vídeo final num processo à parte."""
+        if self._corpo_pequeno() is None:
+            return
+        if not gr._video(self.root).is_file():
+            self._json({"error": "o projeto ainda não tem o corte"}, 409)
+            return
+        if tb.vivo(self.root):
+            self._ocupado(tb.vivo(self.root))
+            return
+        try:
+            falta = gr.o_que_falta(self.root)
+        except (OSError, ValueError) as e:
+            self._json({"error": f"não consegui ver o que falta no vídeo: {e}"}, 500)
+            return
+        if not falta:
+            self._json({"ok": True, "pronto": True, "entrega": gr.entrega(self.root)})
+            return
+        pasta = tb.pasta(self.root)
+        pasta.mkdir(parents=True, exist_ok=True)
+        if not tb.iniciar(self.root, "gerar", comando_gerar(self.root, pasta / "andamento.json")):
+            self._ocupado(tb.vivo(self.root))
+            return
+        self._json({"ok": True, "trabalho": "gerar", "falta": falta})
+
     def _melhorar_preparar(self) -> None:
         if self._corpo_pequeno() is None:
             return
@@ -1934,7 +2008,7 @@ class Handler(BaseHTTPRequestHandler):
             "montagemPendente": pendente,
             "montagemNova": nova,
             "formatoPendente": formato_pendente,
-            "trabalho": trabalho_recente(self.root),
+            "trabalho": self._trabalho(trabalho_recente(self.root)),
             "now": time.time(),
         })
 

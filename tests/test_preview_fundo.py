@@ -91,10 +91,18 @@ def _salvar(srv, cenas):
 
 
 def test_salvar_aceita_o_fundo_novo_e_a_imagem_do_projeto(srv):
+    """O Fundo novo entra direto no edit-data.json (o vídeo final com ele sai no Baixar, sem o agente)."""
+    ed_p = srv.edit / "remotion" / "public" / "edit-data.json"
+    ed_p.parent.mkdir(parents=True)
+    ed_p.write_text(json.dumps({"cenas": [{"tipo": "capa", "start": 0.0, "end": 2.0}]}), encoding="utf-8")
+    st = json.loads((srv.edit / "state.json").read_text(encoding="utf-8"))
+    (srv.edit / "state.json").write_text(json.dumps({**st, "editData": "remotion/public/edit-data.json"}),
+                                         encoding="utf-8")
     st, _, dados = _salvar(srv, [_fundo(), _fundo(start=9.0, end=12.0, campos={"fundo": "midia/Cenário 1.jpg"})])
     assert st == 200 and json.loads(dados)["ok"]
-    salvo = json.loads((srv.edit / "preview_edits.json").read_text(encoding="utf-8"))
-    assert [c["campos"]["fundo"] for c in salvo["editData"]["cenas"]] == ["fundos/lousa", "midia/Cenário 1.jpg"]
+    cenas = json.loads(ed_p.read_text(encoding="utf-8"))["cenas"]
+    assert [c.get("fundo") for c in cenas] == [None, "fundos/lousa", "midia/Cenário 1.jpg"]
+    assert not (srv.edit / "preview_edits.json").exists()  # nada para o agente
 
 
 @pytest.mark.parametrize("ruim, motivo", [

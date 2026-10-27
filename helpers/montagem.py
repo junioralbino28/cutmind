@@ -850,14 +850,12 @@ def _template_do_kit(edit: Path) -> None:
         print(f"o código do Remotion da montagem veio do kit de agora ({n} arquivo(s))", flush=True)
 
 
-def preparar_remotion(edit: Path) -> Path:
-    """O projeto do Remotion da montagem (o modelo de Reels da Fase 2) pronto para o cut.mp4 de agora:
-    os arquivos de public/ que o modelo pede, um edit-data.json sem legenda, sem gancho e sem zoom (o
-    `editData` do state.json passa a apontar para ele) e as camadas por cima (camadas_edit_data.py).
-    Na primeira vez, copia o modelo e roda o npm install. Devolve a pasta do projeto."""
+def projeto_remotion(edit: Path) -> Path:
+    """O projeto do Remotion do kit (o modelo de Reels da Fase 2) em <edit>/remotion, pronto para
+    desenhar: na primeira vez copia o modelo e roda o npm install; depois, o código dele acompanha o
+    kit de agora. Serve à montagem e ao vídeo final do editor sem a Fase 2 (gerar.py)."""
     edit = Path(edit).resolve()
     rem = edit / "remotion"
-    pub = rem / "public"
     if not (rem / "package.json").is_file():
         print(f"montando o projeto do Remotion em {rem}", flush=True)
         shutil.copytree(TEMPLATE, rem, dirs_exist_ok=True)
@@ -866,24 +864,24 @@ def preparar_remotion(edit: Path) -> Path:
     if not (rem / "node_modules" / "@remotion" / "cli").is_dir():
         npm = shutil.which("npm")
         if not npm:
-            raise ErroMontagem("o que vai por cima da montagem (texto, imagem, filtro) é desenhado pelo Remotion, "
+            raise ErroMontagem("o que vai por cima do vídeo (texto, imagem, filtro) é desenhado pelo Remotion, "
                                "que precisa do Node.js: instale o Node 18 ou mais novo")
         print("instalando as dependências do Remotion (só na primeira vez; leva alguns minutos)", flush=True)
         if subprocess.run([npm, "install", "--no-audit", "--no-fund"], cwd=rem).returncode != 0:
             raise ErroMontagem("o npm install do projeto do Remotion falhou (a saída dele está acima)")
     print(aquecer_navegador.aquecer(rem), flush=True)
-    shutil.copyfile(edit / "cut.mp4", pub / "cut.mp4")
-    if efeitos.load(edit / "efeitos.json")["itens"]:  # filtro, transição, ajuste: um public/cut.mp4 com eles
-        _passo([str(AQUI / "efeitos_render.py"), str(edit), "--remotion", str(rem)])
-    imagem_do_zero(pub / "cut.mp4")
-    lag = atraso_da_imagem(pub / "cut.mp4")
-    edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
-    largura, altura = quadro_do_formato((edl.get("montagem") or {}).get("formato"))
-    inicios, total = quadros_dos_lugares(edl)
-    _grava_json(pub / "segments.json", {"segments": [  # cada lugar é um trecho
-        {"start": round(q / FPS, 4), "dur": round(((inicios + [total])[k + 1] - q) / FPS, 4)}
-        for k, q in enumerate(inicios)], "videoLag": lag})
-    _grava_json(pub / "track.json", {"fps": FPS, "width": largura, "height": altura, "count": total,
+    return rem
+
+
+def dados_sem_fase2(edit: Path, rem: Path, fps: float, largura: int, altura: int, segmentos: list[dict],
+                    lag: int, total: int) -> Path:
+    """O public/ de um vídeo sem legenda, sem gancho e sem zoom, só com o que a pessoa pôs por cima:
+    segments.json (`segmentos`, um por tomada ou lugar), track.json e captions.json neutros, um
+    edit-data.json com só as camadas (camadas_edit_data.py) e o `editData` do state.json apontando para
+    ele. `total` é o número de quadros do vídeo. Devolve o edit-data.json."""
+    edit, pub = Path(edit).resolve(), Path(rem) / "public"
+    _grava_json(pub / "segments.json", {"segments": segmentos, "videoLag": lag})
+    _grava_json(pub / "track.json", {"fps": fps, "width": largura, "height": altura, "count": total,
                                      "points": [[0.5, 0.4]] * total, "neutral": True})
     _grava_json(pub / "captions.json", [])
     ed_p = pub / "edit-data.json"
@@ -892,10 +890,10 @@ def preparar_remotion(edit: Path) -> Path:
     except (OSError, ValueError):
         ed = json.loads((TEMPLATE / "public" / "edit-data.json").read_text(encoding="utf-8"))
     ed.pop("_readme", None)
-    ed.update({"fps": FPS, "width": largura, "height": altura, "durationSec": round(total / FPS, 4),
+    ed.update({"fps": fps, "width": largura, "height": altura, "durationSec": round(total / fps, 4),
                "videoLag": lag, "inserts": [i for i in ed.get("inserts") or [] if "camada" in i],
                "behind": [b for b in ed.get("behind") or [] if "camada" in b]})
-    for chave in ("hook", "captions", "camera", "soundtrack"):  # a montagem não tem fala, gancho nem zoom
+    for chave in ("hook", "captions", "camera", "soundtrack"):  # sem fala na tela, gancho nem zoom
         ed[chave] = {**(ed.get(chave) or {}), "enabled": False}
     _grava_json(ed_p, ed)
     st_p = edit / "state.json"
@@ -904,6 +902,28 @@ def preparar_remotion(edit: Path) -> Path:
         st["editData"] = "remotion/public/edit-data.json"
         _grava_json(st_p, st)
     _passo([str(AQUI / "camadas_edit_data.py"), str(edit), "--edit-data", str(ed_p)])
+    return ed_p
+
+
+def preparar_remotion(edit: Path) -> Path:
+    """O projeto do Remotion da montagem (o modelo de Reels da Fase 2) pronto para o cut.mp4 de agora:
+    os arquivos de public/ que o modelo pede, um edit-data.json sem legenda, sem gancho e sem zoom (o
+    `editData` do state.json passa a apontar para ele) e as camadas por cima (camadas_edit_data.py).
+    Na primeira vez, copia o modelo e roda o npm install. Devolve a pasta do projeto."""
+    edit = Path(edit).resolve()
+    rem = projeto_remotion(edit)
+    pub = rem / "public"
+    shutil.copyfile(edit / "cut.mp4", pub / "cut.mp4")
+    if efeitos.load(edit / "efeitos.json")["itens"]:  # filtro, transição, ajuste: um public/cut.mp4 com eles
+        _passo([str(AQUI / "efeitos_render.py"), str(edit), "--remotion", str(rem)])
+    imagem_do_zero(pub / "cut.mp4")
+    lag = atraso_da_imagem(pub / "cut.mp4")
+    edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    largura, altura = quadro_do_formato((edl.get("montagem") or {}).get("formato"))
+    inicios, total = quadros_dos_lugares(edl)
+    segmentos = [{"start": round(q / FPS, 4), "dur": round(((inicios + [total])[k + 1] - q) / FPS, 4)}
+                 for k, q in enumerate(inicios)]  # cada lugar é um trecho
+    dados_sem_fase2(edit, rem, FPS, largura, altura, segmentos, lag, total)
     return rem
 
 
