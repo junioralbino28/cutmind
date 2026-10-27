@@ -28,6 +28,9 @@ from render import JCUT_LEAD_FRAMES, JCUT_TAIL_TRIM_FRAMES, resolve_path  # mesm
 AQUI = Path(__file__).resolve().parent
 
 FOLGA_FALA = 0.03     # a margem do SKILL ao cortar: 30 ms antes ou depois da fala não é "no meio"
+# o editor manda as pontas arredondadas no milésimo, e o edl.json guarda pontas alinhadas ao quadro
+# (80,2333…): até 2 ms de diferença é a mesma ponta, não uma ponta que a pessoa mexeu
+FOLGA_IGUAL = 0.002
 SILENCIO_MAX = 1.2    # o --min-silence do verify_cut: mais que isso numa emenda é ar morto
 NOMES_ITEM = {"imagem": "imagem", "texto": "texto", "audio": "áudio", "filtro": "filtro", "ajuste": "ajuste de cor",
               "transicao": "transição", "velocidade": "trecho de velocidade"}
@@ -73,7 +76,7 @@ def _juntar_divisoes(ranges: list[dict], origem: list[int | None]) -> tuple[list
     for r, o in zip(ranges, origem):
         if out_r and o is not None and out_o[-1] == o:
             a = out_r[-1]
-            if a["source"] == r["source"] and abs(a["end"] - r["start"]) < 1e-6 and \
+            if a["source"] == r["source"] and abs(a["end"] - r["start"]) < FOLGA_IGUAL and \
                     all(a.get(c) == r.get(c) for c in DA_PESSOA):
                 a["end"] = r["end"]
                 continue
@@ -171,7 +174,7 @@ def conferir(edl: dict, pedido: dict, regioes: dict, palavras: dict, camadas: di
         for ponta, chave, em in (("começo", "start", spans[j]["out"]),
                                  ("fim", "end", spans[j]["out"] + spans[j]["dur"])):
             t = float(r[chave])
-            if v is not None and abs(float(v[chave]) - t) < 1e-6:
+            if v is not None and abs(float(v[chave]) - t) < FOLGA_IGUAL:
                 continue  # a ponta é a que o agente escolheu
             if _fala_em(fala, t):
                 avisos.append({"tipo": "ponta_na_fala", "em": round(max(0.0, em - (0.04 if ponta == "fim" else 0)), 3),
@@ -183,8 +186,8 @@ def conferir(edl: dict, pedido: dict, regioes: dict, palavras: dict, camadas: di
         if not regioes.get(a["source"]) or not regioes.get(b["source"]):
             continue  # uma das gravações não tem fala nenhuma: o silêncio dela não é defeito
         seguidas = ka is not None and kb == ka + 1
-        if seguidas and abs(float(velhas[ka]["end"]) - float(a["end"])) < 1e-6 and \
-                abs(float(velhas[kb]["start"]) - float(b["start"])) < 1e-6:
+        if seguidas and abs(float(velhas[ka]["end"]) - float(a["end"])) < FOLGA_IGUAL and \
+                abs(float(velhas[kb]["start"]) - float(b["start"])) < FOLGA_IGUAL:
             continue  # a emenda que já existia
         mudo = _silencio_no_fim(regioes.get(a["source"]) or [], a) + \
             _silencio_no_comeco(regioes.get(b["source"]) or [], b) - desconto

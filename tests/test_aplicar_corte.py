@@ -90,6 +90,13 @@ def test_emenda_com_silencio_longo_pergunta():
     assert avisos[0]["tomadas"] == [1, 2] and abs(avisos[0]["em"] - 12.0) < 1e-6 and avisos[0]["segundos"] > 3.5
 
 
+def test_ponta_alinhada_ao_quadro_e_a_mesma_ponta_arredondada():
+    """O editor manda 9,233 para a ponta que o edl.json guarda como 9,233333 (o quadro): não é ponta nova."""
+    edl = {**EDL, "ranges": [{**EDL["ranges"][0], "end": 9.233333}, {**EDL["ranges"][1], "start": 20.966667}]}
+    pedido = {"ranges": [{"source": "A", "start": 0.0, "end": 9.233, "take": 0}, {"source": "A", "start": 20.967, "end": 30.0, "take": 1}]}
+    assert ac.conferir(edl, pedido, REGIOES, PALAVRAS) == []
+
+
 def test_emenda_que_ja_existia_nao_pergunta_de_novo():
     so_volume = {"ranges": [{**APARA["ranges"][0], "start": 0.0, "volume": 1.2}, APARA["ranges"][1]]}
     assert ac.conferir(EDL, so_volume, REGIOES, PALAVRAS) == []

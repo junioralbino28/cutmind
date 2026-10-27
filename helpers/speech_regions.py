@@ -24,8 +24,10 @@ from pathlib import Path
 
 
 def detect_silences(video: Path, noise: str, min_silence: float) -> list[tuple[float, float]]:
+    # -vn: só o som é decodificado. Mesmas marcas, e numa gravação 1080p de 5 min cai de 24,5 s para
+    # 0,3 s (medido em 27/10/2026); é o que deixa o editor perguntar antes de aplicar sem fazer esperar.
     cmd = [
-        "ffmpeg", "-hide_banner", "-i", str(video),
+        "ffmpeg", "-hide_banner", "-vn", "-i", str(video),
         "-af", f"silencedetect=noise={noise}:d={min_silence}",
         "-f", "null", "-",
     ]
