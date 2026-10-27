@@ -272,6 +272,8 @@
  "não consegui gravar {name}: o arquivo está aberto em outro programa": "couldn't write {name}: the file is open in another program",
  "o corte não foi refeito; o de antes continua. {p0}": "the cut wasn't rebuilt; the previous one stays. {p0}",
  "o corte mudou depois da legenda e dos efeitos do vídeo final: aperte Pronto para o Claude refazer essa parte": "the cut changed after the captions and effects of the final video: press Done so Claude redoes that part",
+ "o rastreio do rosto não foi refeito (a saída está no registro do trabalho)": "the face tracking was not redone (its output is in the job log)",
+ "o recorte da pessoa não foi refeito (a saída está no registro do trabalho)": "the person cut-out was not redone (its output is in the job log)",
  "os trechos do corte não batem com o cut.mp4: salve as tomadas de novo para refazer o corte": "the cut's pieces don't match cut.mp4: save the takes again to rebuild the cut",
  "o projeto do vídeo final é de um kit anterior e não desenha os efeitos de agora: aperte Pronto para o Claude atualizar": "the final video's project is from an older kit and can't draw the current effects: press Done so Claude updates it",
  "um efeito do vídeo final ficou inválido: aperte Pronto para o Claude corrigir": "an effect in the final video became invalid: press Done so Claude fixes it",

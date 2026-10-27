@@ -12,8 +12,9 @@ mesma sequência, só quando ela pede o vídeo:
      um projeto do kit só com as camadas e os efeitos, sem legenda, gancho nem zoom;
   5. o render, o som final (mixar_final.py) e a velocidade do vídeo final (velocidade_final.py).
 
-Com a Fase 2 feita para um corte que mudou depois, ele para: a legenda e os efeitos estão no relógio
-do corte antigo, e levar tudo para o novo é trabalho do agente (o Pronto).
+O Salvar que refaz o corte leva a Fase 2 junto (aplicar_corte.py); o rastreio do rosto e os recortes
+da pessoa que mudaram de começo saem daqui. Com a Fase 2 ainda no relógio de um corte mais velho (um
+corte refeito por outro caminho), ele para: levar tudo para o novo é trabalho do agente (o Pronto).
 
     uv run python -X utf8 helpers/gerar.py <edit> [--andamento <arquivo>]
     uv run python -X utf8 helpers/gerar.py <edit> --falta     # só diz o que falta e o que o Baixar entrega
@@ -257,6 +258,8 @@ def preparar_remotion_fase2(edit: Path) -> Path:
     # o public/cut.mp4 só é refeito quando o corte ou os efeitos mudaram: desenhar os filtros leva minutos
     if _mtime(pub / "cut.mp4") < max(_mtime(_video(edit)), _mtime(edit / "efeitos.json")):
         efeitos_render.aplicar(edit, rem)
+    _refazer_rastreio(edit, pub)
+    _refazer_recortes(edit, pub)
     r = cenas_edit_data.aplicar(edit)
     if r["template"]:
         raise ErroGerar("o projeto do vídeo final é de um kit anterior e não desenha os efeitos de agora: aperte "
@@ -265,6 +268,39 @@ def preparar_remotion_fase2(edit: Path) -> Path:
         raise ErroGerar("um efeito do vídeo final ficou inválido: aperte Pronto para o Claude corrigir")
     camadas_edit_data.aplicar(edit)
     return rem
+
+
+def _refazer_rastreio(edit: Path, pub: Path) -> None:
+    """O rastreio do rosto (track.json, `elements.tracking`) feito antes do corte de agora: os pontos
+    são por quadro do corte velho. O neutro o Salvar já ajustou."""
+    arq = pub / "track.json"
+    if not arq.is_file() or _ler(arq).get("neutral") or _mtime(arq) >= _mtime(_video(edit)):
+        return
+    if _passo([AQUI / "face_track.py", _video(edit), "-o", arq]) != 0:
+        raise ErroGerar("o rastreio do rosto não foi refeito (a saída está no registro do trabalho)")
+
+
+def _refazer_recortes(edit: Path, pub: Path) -> None:
+    """Os recortes da pessoa dos destaques atrás dela (`behind`) que o re-corte deixou com outro
+    começo (`_refazerMatte`, remapear.fase2), feitos de novo na janela de agora, no mesmo arquivo."""
+    ed_p = pub / "edit-data.json"
+    ed = _ler(ed_p)
+    itens = [b for b in ed.get("behind") or [] if isinstance(b, dict) and b.get("_refazerMatte") and b.get("matte")]
+    if not itens:
+        return
+    fps = float(ed.get("fps") or 30)
+    for b in itens:
+        ini_f = round(float(b["start"]) * fps)
+        n_f = max(1, round((float(b["start"]) + float(b["dur"])) * fps) - ini_f)
+        final = pub / b["matte"]
+        tmp = final.with_name(final.stem + ".refazendo" + final.suffix)
+        cmd = camadas_edit_data._cmd_recorte(pub / "cut.mp4", tmp, ini_f, n_f, fps)
+        if subprocess.run(cmd).returncode != 0 or not tmp.is_file():
+            tmp.unlink(missing_ok=True)
+            raise ErroGerar("o recorte da pessoa não foi refeito (a saída está no registro do trabalho)")
+        tmp.replace(final)
+        b.pop("_refazerMatte", None)
+        mt._grava_json(ed_p, ed)  # um por vez: parou no meio, o próximo Baixar faz só o que falta
 
 
 def renderizar(rem: Path, andamento, de: float, ate: float) -> Path:

@@ -186,3 +186,81 @@ def test_render_que_falha_devolve_o_edl_de_antes(projeto, monkeypatch):
     with pytest.raises(ac.ErroCorte):
         ac.aplicar(edit, pedido, confirmado=True)
     assert json.loads((edit / "edl.json").read_text(encoding="utf-8")) == antes
+
+
+def _grava(p: Path, dados) -> None:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(json.dumps(dados, ensure_ascii=False).encode("utf-8"))
+
+
+def test_aplicar_leva_a_fase2_para_o_corte_novo(projeto):
+    """Com a Fase 2 pronta, aparar o começo da 2ª tomada leva a legenda, os blocos, a transcrição, o
+    segments.json e o rastreio neutro para o corte novo, e o Baixar não para mais (fase2_do_corte)."""
+    import gerar as gr
+    import tempo
+    edit = projeto
+    pub = edit / "remotion" / "public"
+    _grava(edit / "state.json", {"project": "t", "phase": 2, "video": "cut.mp4", "fps": 30, "style": {"captions": "karaoke"},
+                                 "editData": "remotion/public/edit-data.json", "captions": "remotion/public/captions.json"})
+    segs, quadros = gr.segmentos_do_corte(edit, 30)
+    _grava(pub / "segments.json", {"segments": segs, "videoLag": 0})
+    velhas = tempo.tomadas_no_corte(json.loads((edit / "edl.json").read_text(encoding="utf-8")))
+    o2 = velhas[1]["out"]  # onde a 2ª tomada (fonte 2,5 s) começa no corte velho
+    _grava(pub / "edit-data.json", {
+        "fps": 30, "width": 180, "height": 320, "durationSec": round(quadros / 30, 4), "camera": {"zooms": [1.1, 1.3]},
+        "inserts": [{"src": "a.png", "start": round(o2 + 0.1, 3), "end": round(o2 + 0.3, 3)},      # some com o aparo
+                    {"src": "b.png", "start": round(o2 + 0.7, 3), "end": round(o2 + 0.9, 3)}],
+        "behind": [{"kind": "image", "src": "x.jpg", "matte": "fg.mov", "start": round(o2 + 0.1, 3), "dur": 1.0}]})
+    _grava(pub / "captions.json", [{"text": "um", "startMs": 500, "endMs": 800, "timestampMs": 600},
+                                   {"text": "dois", "startMs": round(o2 * 1000), "endMs": round((o2 + 0.15) * 1000)},
+                                   {"text": "três", "startMs": round((o2 + 1.0) * 1000), "endMs": round((o2 + 1.2) * 1000)}])
+    _grava(edit / "transcripts" / "cut.json", {"language": "pt", "text": "um dois três", "words": [
+        {"text": "um", "start": 0.5, "end": 0.8, "type": "word"},
+        {"text": "dois", "start": o2, "end": o2 + 0.15, "type": "word"},
+        {"text": "três", "start": o2 + 1.0, "end": o2 + 1.2, "type": "word"}]})
+    _grava(pub / "track.json", {"fps": 30, "width": 180, "height": 320, "count": quadros,
+                                "points": [[90, 160]] * quadros, "neutral": True})
+    assert gr.fase2_do_corte(edit)
+    pedido = {"ranges": [{"source": "A", "start": 0.0, "end": 1.5, "take": 0},
+                         {"source": "A", "start": 3.0, "end": 4.0, "take": 1}],
+              "changes": [{"source": "A", "take": 1, "from": {"start": 2.5, "end": 4.0}, "to": {"start": 3.0, "end": 4.0}}]}
+
+    with pytest.raises(ac.PrecisaConfirmar) as e:  # pergunta, e diz o que da Fase 2 sairia
+        ac.aplicar(edit, pedido)
+    sai = [a for a in e.value.avisos if a["tipo"] == "item_sai"]
+    assert [(a["item"], a["nome"]) for a in sai] == [("insert", "a.png")]
+    assert sai[0]["texto"].startswith("A imagem do vídeo final «a.png» estava num trecho")
+
+    res = ac.aplicar(edit, pedido, confirmado=True)
+    assert [(f["item"], f["nome"]) for f in res["fora"]] == [("insert", "a.png")]
+    assert gr.fase2_do_corte(edit)                       # o Baixar não para mais
+    novas = tempo.tomadas_no_corte(json.loads((edit / "edl.json").read_text(encoding="utf-8")))
+    n2 = novas[1]["out"]                                 # a 2ª tomada (agora da fonte 3,0 s) no corte novo
+    q = gr._sondar(edit / "cut.mp4")[3]
+    ed = json.loads((pub / "edit-data.json").read_text(encoding="utf-8"))
+    assert ed["durationSec"] == round(q / 30, 4)
+    assert [i["src"] for i in ed["inserts"]] == ["b.png"] and abs(ed["inserts"][0]["start"] - (n2 + 0.2)) < 0.05
+    behind = ed["behind"][0]
+    assert abs(behind["start"] - n2) < 0.05 and behind["_refazerMatte"] is True   # o começo foi aparado
+    caps = json.loads((pub / "captions.json").read_text(encoding="utf-8"))
+    assert [c["text"] for c in caps] == ["um", "três"] and abs(caps[1]["startMs"] - (n2 + 0.5) * 1000) < 50
+    tr = json.loads((edit / "transcripts" / "cut.json").read_text(encoding="utf-8"))
+    assert tr["text"] == "um três" and abs(tr["words"][1]["start"] - (n2 + 0.5)) < 0.05
+    track = json.loads((pub / "track.json").read_text(encoding="utf-8"))
+    assert track["count"] == q and len(track["points"]) == q
+
+
+def test_transcricao_de_um_corte_mais_velho_sai(projeto):
+    """A transcrição feita antes do cut.mp4 de agora é de outro corte: o re-corte apaga, para o
+    transcribe.py não devolver do cache as palavras erradas."""
+    import os
+    edit = projeto
+    tr = edit / "transcripts" / "cut.json"
+    _grava(tr, {"language": "pt", "text": "velho", "words": [{"text": "velho", "start": 0.5, "end": 0.8}]})
+    velho = (edit / "cut.mp4").stat().st_mtime - 60
+    os.utime(tr, (velho, velho))
+    pedido = {"ranges": [{"source": "A", "start": 0.0, "end": 1.4, "take": 0},
+                         {"source": "A", "start": 2.5, "end": 4.0, "take": 1}],
+              "changes": [{"source": "A", "take": 0, "from": {"start": 0.0, "end": 1.5}, "to": {"start": 0.0, "end": 1.4}}]}
+    ac.aplicar(edit, pedido, confirmado=True)
+    assert not tr.exists()

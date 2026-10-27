@@ -744,6 +744,21 @@ the cut. Frames outside the windows only change by the re-encode.
 them to the new cut before running it, and drop (and tell) an effect whose moment
 was cut out.
 
+**The editor's re-cut and your Phase 2.** When the Salvar re-cuts (`aplicar_corte.py`) and
+your Phase 2 is on the cut that was on screen (`gerar.fase2_do_corte`), it is carried in the
+same save, with nothing for you to redo: `remapear.fase2` moves every block and scene
+(a window keeps what is left of it; an instant inside one, `at` or any `*At`, goes to the
+nearest edge of its take; `saiEm`, `inicio`, `entrada`, `cada`, `passo`, `fraseInicio` are
+relative and stay), the hook's `endSec`, `captions.windows` and `positions`, and each take's
+`camera.zooms` by the take it came from. `captions.json` and `transcripts/cut.json` keep
+their words in the new places (a word on a stretch that left goes), `caption-cues.json` is
+rebuilt from that transcript, `segments.json` is measured again, `durationSec` follows the
+new `cut.mp4`, and a neutral `track.json` gets the new frame count. The Baixar redoes the
+face track when `track.json` is older than `cut.mp4`, and a `behind` cut-out marked
+`_refazerMatte` (its start was trimmed, so the old matte would show frames that left).
+A transcript older than `cut.mp4` is deleted on a re-cut, so `transcribe.py` does not
+answer from cache with another cut's words.
+
 ---
 
 ## Melhorar voz (the video's own voice)

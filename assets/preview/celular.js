@@ -4908,7 +4908,11 @@ $('pedidoTexto').addEventListener('input', crescePedido);
  * ajustar" não muda nada e leva a agulha ao primeiro ponto. */
 const ITEM_AVISO = { imagem: () => t('A imagem'), texto: () => t('O texto'), audio: () => t('O áudio'),
   filtro: () => t('O filtro'), ajuste: () => t('O ajuste de cor'), transicao: () => t('A transição'),
-  velocidade: () => t('O trecho de velocidade') };
+  velocidade: () => t('O trecho de velocidade'),
+  // os blocos e efeitos da Fase 2 (remapear.fase2)
+  insert: () => t('A imagem do vídeo final'), split: () => t('A tela dividida'),
+  splitvideo: () => t('O vídeo da tela dividida'), word: () => t('A palavra em destaque'),
+  behind: () => t('O destaque atrás da pessoa'), numero: () => t('O número'), cena: () => t('O efeito do vídeo final') };
 const numLocal = (v) => String(v).replace('.', IDIOMA === 'pt' ? ',' : '.');
 function textoDoAviso(a) {
   if (a.tipo === 'ponta_na_fala') {
@@ -4971,6 +4975,7 @@ $('conferirVoltar').addEventListener('click', () => {
  * em 4 s, ou no Fechar quando falhou. */
 const TRAB_TEXTO = { comecando: () => t('Começando'), conferindo: () => t('Conferindo o corte'),
   corte: () => t('Refazendo o corte'), conferencia: () => t('Conferindo o vídeo novo'),
+  fase2: () => t('Levando a legenda e os efeitos do vídeo final'),
   voz: () => t('Pondo a voz melhorada de volta'), preparando: () => t('Preparando o vídeo'),
   som: () => t('Montando o som'), velocidade: () => t('Aplicando a velocidade'),
   montagem: () => t('Montando o vídeo'), batida: () => t('Conferindo as trocas na batida') };

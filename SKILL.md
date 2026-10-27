@@ -202,6 +202,11 @@ own, so a small fix costs no tokens:
   answers **Manter assim** or **Voltar e ajustar**. Then `edl.json` by the rules of the
   `edl.ranges` key below, `render.py --como-antes`, `verify_cut.py`, and
   `camadas.json`, `efeitos.json` and `velocidade.json` carried to the new cut (`remapear.py`).
+  With your Phase 2 on the cut that was on screen, it goes along too: `edit-data.json` (blocks,
+  effects with their `at`/`*At` instants, hook, caption windows and phrase spots, each take's
+  zoom by the take it came from, `durationSec`), `captions.json` and `transcripts/cut.json`
+  (same words, new places), `caption-cues.json` redone, `segments.json` by frames and a
+  neutral `track.json` resized. A Phase 2 item on a stretch that left is in the question.
 - **Salvar** with layers, effects or speed: the files. With Phase 2 data (`editData`:
   blocks, effects, hook, numbers, zoom, captions): `edit-data.json` and `captions.json`
   (`editdata_aplicar.py`).
@@ -212,8 +217,10 @@ own, so a small fix costs no tokens:
   `camadas_edit_data.py`, the render, `mixar_final.py` and `velocidade_final.py`. A
   montage's saved slots and format and the Melhorar voz choice wait for it in
   `.cutmind/pendente.json`; a new montage (**Usar** in Modelos de montagem) runs
-  `montagem.py montar` right away. With a Phase 2 built for a cut that changed since, it
-  stops and asks for Pronto.
+  `montagem.py montar` right away. It redoes what a re-cut left stale: the face track
+  (`track.json` older than `cut.mp4`) and a `behind` cut-out whose start was trimmed
+  (`_refazerMatte`, same file). With a Phase 2 still on the clock of an older cut (re-cut some
+  other way), it stops and asks for Pronto.
 - Every Salvar it applies adds a line to `<edit>/ajustes_feitos.json`. Markers (`M`) and
   the request box wait in `<edit>/pedidos.json`.
 

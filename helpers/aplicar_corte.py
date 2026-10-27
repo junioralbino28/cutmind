@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """O Salvar do editor que mexe nas tomadas, aplicado sem o agente: o edl.json novo pelas regras do
 SKILL.md ("When the user saves timeline edits"), o render.py com as opções de antes, a conferência e as
-camadas, efeitos e trechos de velocidade levados para o corte novo (remapear.py).
+camadas, efeitos e trechos de velocidade levados para o corte novo (remapear.py), e, com a Fase 2
+feita, o edit-data.json, a legenda, a transcrição do corte e o segments.json junto.
 
     uv run python -X utf8 helpers/aplicar_corte.py <edit> --pedido <arquivo.json>
 """
@@ -18,6 +19,7 @@ from pathlib import Path
 
 import camadas as cam  # mesma pasta deste arquivo
 import efeitos as ef  # mesma pasta deste arquivo
+import gerar as gr  # mesma pasta deste arquivo
 import remapear  # mesma pasta deste arquivo
 import speech_regions as sr  # mesma pasta deste arquivo
 import tempo  # mesma pasta deste arquivo
@@ -32,8 +34,12 @@ FOLGA_FALA = 0.03     # a margem do SKILL ao cortar: 30 ms antes ou depois da fa
 # (80,2333…): até 2 ms de diferença é a mesma ponta, não uma ponta que a pessoa mexeu
 FOLGA_IGUAL = 0.002
 SILENCIO_MAX = 1.2    # o --min-silence do verify_cut: mais que isso numa emenda é ar morto
-NOMES_ITEM = {"imagem": "imagem", "texto": "texto", "audio": "áudio", "filtro": "filtro", "ajuste": "ajuste de cor",
-              "transicao": "transição", "velocidade": "trecho de velocidade"}
+NOMES_ITEM = {"imagem": "A imagem", "texto": "O texto", "audio": "O áudio", "filtro": "O filtro",
+              "ajuste": "O ajuste de cor", "transicao": "A transição", "velocidade": "O trecho de velocidade",
+              # os blocos e efeitos da Fase 2 (remapear.fase2)
+              "insert": "A imagem do vídeo final", "split": "A tela dividida", "splitvideo": "O vídeo da tela dividida",
+              "word": "A palavra em destaque", "behind": "O destaque atrás da pessoa", "numero": "O número",
+              "cena": "O efeito do vídeo final"}
 
 # o que vem da pessoa (a régua de volume, a velocidade, a curva, o lugar da montagem): o Salvar manda
 # quando não é o padrão; sem ele, a tomada volta ao padrão, e não herda o do edl.json velho
@@ -149,14 +155,15 @@ def _texto(a: dict) -> str:
     if a["tipo"] == "silencio_longo":
         return f"Entre as tomadas {a['tomadas'][0]} e {a['tomadas'][1]} ficam {a['segundos']:.1f} s sem fala."
     nome = f" «{a['nome']}»" if a.get("nome") else ""
-    return f"O {NOMES_ITEM.get(a['item'], a['item'])}{nome} estava num trecho que saiu do corte e vai sair do vídeo."
+    return f"{NOMES_ITEM.get(a['item'], a['item'])}{nome} estava num trecho que saiu do corte e vai sair do vídeo."
 
 
 def conferir(edl: dict, pedido: dict, regioes: dict, palavras: dict, camadas: dict | None = None,
-             efeitos: dict | None = None, velocidade: dict | None = None) -> list[dict]:
+             efeitos: dict | None = None, velocidade: dict | None = None, fase2: dict | None = None) -> list[dict]:
     """O que o Salvar deixaria desalinhado: ponta nova no meio da fala, emenda com silêncio longo e
-    item (camada, efeito, trecho de velocidade) que cairia fora do corte. `regioes` e `palavras` vêm
-    por fonte (speech_regions.py e a transcrição de cada gravação). Vazio = pode aplicar sem perguntar."""
+    item (camada, efeito, trecho de velocidade, bloco ou efeito da Fase 2 no `fase2`, o edit-data.json)
+    que cairia fora do corte. `regioes` e `palavras` vêm por fonte (speech_regions.py e a transcrição de
+    cada gravação). Vazio = pode aplicar sem perguntar."""
     novo, origem = novo_edl(edl, pedido)
     velhas = edl.get("ranges") or []
     rs = novo["ranges"]
@@ -197,7 +204,7 @@ def conferir(edl: dict, pedido: dict, regioes: dict, palavras: dict, camadas: di
             avisos.append({"tipo": "silencio_longo", "em": round(spans[j + 1]["out"], 3), "segundos": round(mudo, 1),
                            "tomadas": [j + 1, j + 2]})
 
-    if camadas or efeitos or velocidade:
+    if camadas or efeitos or velocidade or fase2:
         levar = remapear.mapa(edl, {"ranges": rs}, origem)
         total = sum(s["dur"] for s in spans)
         total_velho = float(edl.get("total_duration_s") or sum(s["dur"] for s in tempo.tomadas_no_corte(edl)))
@@ -208,6 +215,8 @@ def conferir(edl: dict, pedido: dict, regioes: dict, palavras: dict, camadas: di
             fora += remapear.efeitos(efeitos, levar, [s["out"] for s in spans[1:]], total)[1]
         if velocidade:
             fora += remapear.velocidade(velocidade, levar, total)[1]
+        if fase2:
+            fora += remapear.fase2(fase2, levar, total, origem, len(velhas))[1]
         for f in fora:
             avisos.append({"tipo": "item_sai", "em": _onde_ficou(levar, f["inicio"], total_velho),
                            "item": f["item"], "nome": f["nome"]})
@@ -286,22 +295,50 @@ def conferir_projeto(edit: Path, pedido: dict) -> list[dict]:
     e = ef.load(edit / "efeitos.json")
     v = vel.load(edit / "velocidade.json")
     return conferir(edl, pedido, regioes, palavras, camadas=c if any(f["itens"] for f in c["faixas"]) else None,
-                    efeitos=e if e["itens"] else None, velocidade=v if v.get("trechos") else None)
+                    efeitos=e if e["itens"] else None, velocidade=v if v.get("trechos") else None,
+                    fase2=_ler(_edit_data(edit)) if _fase2_valida(edit) else None)
 
 
-def _tolerante(levar):
-    """A conta exata (com o J-cut) às vezes acha fora um item que a aproximada, a da pergunta, deixava
-    dentro: a voz da tomada entra uns quadros antes da imagem. Nesse caso o item fica no instante mais
-    perto, em vez de sumir sem a pessoa ter visto."""
+def _ler(p: Path) -> dict:
+    try:
+        d = json.loads(Path(p).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def _edit_data(edit: Path) -> Path:
+    return Path(edit) / (_ler(Path(edit) / "state.json").get("editData") or "remotion/public/edit-data.json")
+
+
+def _fase2_valida(edit: Path) -> bool:
+    """A Fase 2 do agente existe e está no relógio do corte de agora (o segments.json bate): só aí
+    ela vai junto para o corte novo. Fora do relógio, quem refaz é o agente (gerar.py avisa)."""
+    return gr.tem_estilo(edit) and _edit_data(edit).is_file() and gr.fase2_do_corte(edit)
+
+
+def _tolerante(levar, aprox=None):
+    """A conta exata (com o J-cut) às vezes acha fora um item que a aproximada, a da pergunta (`aprox`),
+    deixava dentro: a voz da tomada entra uns quadros antes da imagem. Nesse caso o item fica no instante
+    mais perto, em vez de sumir sem a pessoa ter visto. O que a pergunta já disse que sai, sai."""
     def f(t: float):
         v = levar(t)
-        if v is not None:
+        if v is not None or (aprox is not None and aprox(t) is None):
             return v
         for d in (0.05, -0.05, 0.1, -0.1, 0.15, -0.15, 0.2, -0.2, 0.25, -0.25):
             v = levar(t + d)
             if v is not None:
                 return v
         return None
+    if hasattr(levar, "janela"):  # o que ficou de uma janela (remapear.mapa), pela mesma regra
+        def janela(ini: float, fim: float):
+            r = levar.janela(ini, fim)
+            if r is not None or aprox is None:
+                return r
+            return aprox.janela(ini, fim)
+        f.janela = janela
+    if hasattr(levar, "perto"):
+        f.perto = levar.perto
     return f
 
 
@@ -333,6 +370,41 @@ def _sem_andamento(etapa: str, texto: str, fracao: float, **extra) -> None:
     pass
 
 
+def _levar_fase2(edit: Path, levar, origem: list[int | None], n_velhas: int, transcricao_ok: bool) -> list[dict]:
+    """A Fase 2 do agente no corte novo, sem ele: o edit-data.json (blocos, efeitos, gancho, zoom de
+    cada tomada) com a duração do cut.mp4 novo, a legenda (captions.json) e a transcrição do corte com
+    as mesmas palavras nos lugares novos, as pilhas da legenda empilhada de novo, o segments.json pelos
+    quadros e o track.json neutro com o número de quadros novo. O rastreio do rosto e os recortes da
+    pessoa que mudaram de começo o Baixar refaz (gerar.py)."""
+    st = _ler(edit / "state.json")
+    ed_p = _edit_data(edit)
+    pub = ed_p.parent
+    fps, _, _, quadros = gr._sondar(edit / "cut.mp4")
+    total = quadros / fps
+    novo, fora = remapear.fase2(_ler(ed_p), levar, total, origem, n_velhas)
+    novo["durationSec"] = round(total, 4)
+    segs, _ = gr.segmentos_do_corte(edit, fps)
+    lag = gr._atraso(edit / "cut.mp4", fps)
+    if novo.get("videoLag") is not None:
+        novo["videoLag"] = lag
+    _grava_json(pub / "segments.json", {"segments": segs, "videoLag": lag})
+    _grava_json(ed_p, novo)
+    caps_p = edit / (st.get("captions") or "remotion/public/captions.json")
+    if caps_p.is_file():
+        caps = json.loads(caps_p.read_text(encoding="utf-8"))
+        if isinstance(caps, list):
+            _grava_json(caps_p, remapear.legenda(caps, levar)[0])
+    cues = pub / "caption-cues.json"
+    tr_p = edit / "transcripts" / "cut.json"
+    if transcricao_ok and cues.is_file() and cues.stat().st_size > 2:
+        subprocess.run([sys.executable, "-X", "utf8", str(AQUI / "caption_style.py"), "--transcript", str(tr_p),
+                        "-o", str(cues)], capture_output=True, text=True, encoding="utf-8", errors="replace")
+    track = _ler(pub / "track.json")
+    if track.get("neutral") and track.get("points"):
+        _grava_json(pub / "track.json", {**track, "count": quadros, "points": [track["points"][0]] * quadros})
+    return fora
+
+
 def aplicar(edit: Path, pedido: dict, confirmado: bool = False, andamento=_sem_andamento) -> dict:
     """O Salvar das tomadas: confere (sem `confirmado`, o que fica desalinhado vira PrecisaConfirmar e
     nada muda), grava o edl.json, refaz o cut.mp4 com as opções de antes e leva camadas, efeitos e trechos
@@ -340,6 +412,11 @@ def aplicar(edit: Path, pedido: dict, confirmado: bool = False, andamento=_sem_a
     edit = Path(edit).resolve()
     edl_p = edit / "edl.json"
     edl_velho = json.loads(edl_p.read_text(encoding="utf-8"))
+    fase2 = _fase2_valida(edit)  # antes do edl.json novo: a conta é contra o corte de agora
+    # a transcrição do corte vale quando é deste cut.mp4 (feita ou levada depois dele); a de um corte
+    # mais velho sai, para o transcribe.py não devolver do cache as palavras de outro corte
+    tr_p = edit / "transcripts" / "cut.json"
+    transcricao_ok = tr_p.is_file() and tr_p.stat().st_mtime >= gr._mtime(edit / "cut.mp4")
     if not confirmado:
         andamento("conferindo", "Conferindo o corte", 0.02)
         avisos = conferir_projeto(edit, pedido)
@@ -362,7 +439,7 @@ def aplicar(edit: Path, pedido: dict, confirmado: bool = False, andamento=_sem_a
     edl_novo = json.loads(edl_p.read_text(encoding="utf-8"))
     spans = tempo.tomadas_no_corte(edl_novo)
     total = float(edl_novo.get("total_duration_s") or sum(s["dur"] for s in spans))
-    levar = _tolerante(remapear.mapa(edl_velho, edl_novo, origem))
+    levar = _tolerante(remapear.mapa(edl_velho, edl_novo, origem), remapear.mapa(edl_velho, {"ranges": novo["ranges"]}, origem))
     fora: list[dict] = []
     if (edit / "camadas.json").exists():
         c, f = remapear.camadas(cam.load(edit / "camadas.json"), levar, total)
@@ -376,6 +453,16 @@ def aplicar(edit: Path, pedido: dict, confirmado: bool = False, andamento=_sem_a
         vv, f = remapear.velocidade(vel.load(edit / "velocidade.json"), levar, total)
         vel.save(edit / "velocidade.json", vv)
         fora += f
+    if transcricao_ok:
+        _grava_json(tr_p, remapear.transcricao(json.loads(tr_p.read_text(encoding="utf-8")), levar))
+    elif tr_p.is_file():
+        tr_p.unlink()
+    if fase2:
+        andamento("fase2", "Levando a legenda e os efeitos do vídeo final", 0.9)
+        try:
+            fora += _levar_fase2(edit, levar, origem, len(edl_velho.get("ranges") or []), transcricao_ok)
+        except gr.ErroGerar:  # os trechos não batem: o Baixar avisa e o Pronto leva para o agente
+            pass
     voz = None
     try:  # a voz melhorada não vem junto num corte refeito: o Baixar a refaz (leva minutos)
         import melhorar_voz as mv  # mesma pasta deste arquivo

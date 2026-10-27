@@ -294,3 +294,44 @@ def test_fase1_com_imagem_e_filtro_pelo_remotion(corte):
         assert gerar.o_que_falta(corte) == []
     finally:
         shutil.rmtree(rem / "node_modules", ignore_errors=True)
+
+
+# ---- o que o re-corte deixou para o Baixar refazer ----
+
+def test_rastreio_do_rosto_mais_velho_que_o_corte_e_refeito(edit, monkeypatch):
+    pub = edit / "remotion" / "public"
+    feitos = []
+    monkeypatch.setattr(gerar, "_passo", lambda args: feitos.append([str(a) for a in args]) or 0)
+    _grava(pub / "track.json", {"neutral": True, "points": [[1, 2]]}, T0 - 60)
+    gerar._refazer_rastreio(edit, pub)           # o neutro o Salvar já ajustou
+    _grava(pub / "track.json", {"points": [[1, 2]]}, T0 + 60)
+    gerar._refazer_rastreio(edit, pub)           # feito depois do corte: serve
+    assert feitos == []
+    _grava(pub / "track.json", {"points": [[1, 2]]}, T0 - 60)
+    gerar._refazer_rastreio(edit, pub)
+    assert len(feitos) == 1 and feitos[0][0].endswith("face_track.py") and feitos[0][-1] == str(pub / "track.json")
+    monkeypatch.setattr(gerar, "_passo", lambda args: 1)
+    with pytest.raises(gerar.ErroGerar):
+        gerar._refazer_rastreio(edit, pub)
+
+
+def test_recorte_da_pessoa_marcado_e_refeito_no_mesmo_arquivo(edit, monkeypatch):
+    pub = edit / "remotion" / "public"
+    _grava(pub / "fg.mov", b"velho", T0)
+    _grava(pub / "edit-data.json", {"fps": 30, "behind": [
+        {"src": "x.jpg", "matte": "fg.mov", "start": 1.5, "dur": 1.0, "_refazerMatte": True},
+        {"src": "y.jpg", "matte": "outro.mov", "start": 4.0, "dur": 1.0}]}, T0)
+    pedidos = []
+
+    def falso(cmd, *a, **k):
+        pedidos.append(cmd)
+        Path(cmd[cmd.index("-o") + 1]).write_bytes(b"novo")
+        return subprocess.CompletedProcess(cmd, 0)
+    monkeypatch.setattr(gerar.subprocess, "run", falso)
+    gerar._refazer_recortes(edit, pub)
+    assert len(pedidos) == 1
+    cmd = pedidos[0]
+    assert cmd[cmd.index("--start") + 1] == "1.500000" and cmd[cmd.index("--duration") + 1] == "1.000000"
+    assert (pub / "fg.mov").read_bytes() == b"novo" and not list(pub.glob("*.refazendo.*"))
+    ed = json.loads((pub / "edit-data.json").read_text(encoding="utf-8"))
+    assert all("_refazerMatte" not in b for b in ed["behind"])
