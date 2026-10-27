@@ -1304,6 +1304,29 @@ def aplicar_volume_das_tomadas(path: Path, janelas: list[tuple[float, float, flo
 
 # -------- Main ---------------------------------------------------------------
 
+# As opções que mudam o corte. O edl.json guarda com quais o render rodou (`render`), para o editor
+# refazer o corte do mesmo jeito sem o agente (--como-antes).
+OPCOES = ("keep_resolution", "voice_master", "no_jcut", "jcut_lead", "jcut_tail_trim", "no_loudnorm")
+
+
+def opcoes_da_linha(args) -> dict:
+    return {k: getattr(args, k) for k in OPCOES if getattr(args, k, None) not in (None, False)}
+
+
+def opcoes_como_antes(edl: dict, cut: Path) -> dict:
+    """Com que rodar de novo: o que o edl.json guardou. Num projeto de antes desta gravação, o formato
+    do corte de agora diz se era o --keep-resolution (deitado ou quadrado: longform ou montagem)."""
+    if isinstance(edl.get("render"), dict):
+        return {k: v for k, v in edl["render"].items() if k in OPCOES}
+    if Path(cut).exists() and not is_portrait_source(Path(cut)):
+        return {"keep_resolution": True}
+    return {}
+
+
+def aplicar_como_antes(args, edl: dict, cut: Path) -> None:
+    for k, v in opcoes_como_antes(edl, cut).items():
+        setattr(args, k, v)
+
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Render a video from an EDL")
@@ -1362,6 +1385,12 @@ def main() -> None:
              'disabled by EDL field "jcut": false.',
     )
     ap.add_argument(
+        "--como-antes",
+        action="store_true",
+        help='The options of the last render (EDL field "render"): how the editor re-renders the cut '
+             "without the agent.",
+    )
+    ap.add_argument(
         "--jcut-lead",
         type=int,
         default=None,
@@ -1383,6 +1412,12 @@ def main() -> None:
     edl = json.loads(edl_path.read_text())
     edit_dir = edl_path.parent
     out_path = args.output.resolve()
+    if args.como_antes:
+        aplicar_como_antes(args, edl, out_path)
+    opcoes = opcoes_da_linha(args)
+    if edl.get("render") != opcoes:
+        edl["render"] = opcoes
+        edl_path.write_bytes(json.dumps(edl, ensure_ascii=False, indent=2).encode("utf-8"))
     try:  # volume ou velocidade errados param antes de qualquer extração, não depois de minutos de render
         volumes = [volume_da_tomada(r) for r in edl.get("ranges", [])]
         for r in edl.get("ranges", []):
