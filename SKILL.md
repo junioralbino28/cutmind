@@ -307,7 +307,9 @@ Goal: best take of every beat, cut on silence, graded image, clean `cut.mp4` for
 5. **Propose the cut strategy** (4–8 sentences: shape, takes, cut direction, grade direction, length estimate). **Wait for confirmation.**
 6. **Execute.** Produce `edl.json` (schema below; editor sub-agent brief for multi-take). Set cut edges from `speech_regions.py`, not raw Whisper times. Render: `render.py edl.json -o cut.mp4 --no-subtitles` (+`--voice-master` if wanted; longform: `--keep-resolution`). **The J-cut runs by default** — see below; you do not ask for it and you do not configure it per project.
 7. **Self-eval (numeric first).** `verify_cut.py edl.json cut.mp4` (longform: `--min-silence 1.2`). Clean → done. Flags → `timeline_view` ONLY the flagged junctions, fix, re-render. Cap 3 loops, then surface remaining flags to the user.
-8. **Show `cut.mp4` and wait for approval.** The phase gate.
+8. **Show `cut.mp4` and wait for approval.** The phase gate. With this first cut, say ONCE,
+   in one line, that small fixes in the editor cost no tokens (Salvar and Baixar run without
+   you) and that, in the chat, several requests in one message cost less than one by one.
 9. **Open the Estilo panel** — `"awaitingStyle": true` in `state.json`, and let the
    user pick the editing style, the caption style and the edit elements in the UI
    (see "The Estilo panel"). Do NOT ask this in chat. Only then read the track

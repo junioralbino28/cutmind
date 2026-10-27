@@ -26,6 +26,30 @@ can get in, since both carry an access code from your computer.
 The editor follows your browser's language, and the **PT | EN** button at the top
 switches it.
 
+## Edit only by chatting
+
+Small fixes in the editor are free. Save applies them on the spot and Download builds
+the final video, all without the agent. In the chat, every request puts the agent to
+work, and that uses your Claude or Codex limit. You can edit only by chatting, and it
+costs less like this:
+
+- put several requests in one message, one per line;
+- give the time ("from 0:12 to 0:15") so the agent finds the spot right away;
+- ask for the result you want, not for how to do it.
+
+Requests that work well:
+
+- "Cut 0:12 to 0:15, that's where I'm reading the script."
+- "Cut the breath at 0:41."
+- "Move the opening text up and make it bigger."
+- "Bigger captions."
+- "Lower the volume from 1:02 to 1:10."
+- "Make the whole video black and white."
+
+In the editor, what you do by hand costs nothing. Markers (the M key) and written
+requests wait for the **Done, Claude takes over** button, which wakes the agent just
+once, with everything together.
+
 ## Install
 
 Ask your agent (Claude Code or Codex): **"install CutMind for me, in the shared skills

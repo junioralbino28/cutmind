@@ -22,6 +22,30 @@ galeria e baixar o final. Peça ao agente "abre o editor no celular" e escaneie 
 QR que aparece no botão **Abrir no celular** do editor do computador. Pela rede,
 só entra quem abriu pelo link ou QR, que levam um código deste computador.
 
+## Editar só pela conversa
+
+Ajuste pequeno no editor sai de graça. O Salvar aplica na hora e o Baixar monta o
+vídeo final, tudo sem o agente. Pela conversa, cada pedido põe o agente para
+trabalhar, e isso gasta o seu limite do Claude ou do Codex. Dá para editar só
+conversando, e fica mais barato assim:
+
+- junte vários pedidos numa mensagem só, um por linha;
+- diga o tempo ("de 0:12 a 0:15"), e o agente acha o trecho na hora;
+- peça o resultado que você quer, não o jeito de fazer.
+
+Pedidos que funcionam bem:
+
+- "Tira de 0:12 a 0:15, é a parte em que eu leio o roteiro."
+- "Corta o respiro em 0:41."
+- "Sobe o texto do começo e deixa ele maior."
+- "Legenda maior."
+- "Abaixa o volume de 1:02 a 1:10."
+- "Põe um preto e branco no vídeo todo."
+
+No editor, o que você faz à mão não gasta nada. As marcações (tecla M) e os pedidos
+escritos esperam o botão **Pronto, Claude segue**, que acorda o agente uma vez só,
+com tudo junto.
+
 ## Instalar
 
 Peça ao seu agente (Claude Code ou Codex): **"instala o CutMind pra mim, na pasta

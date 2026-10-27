@@ -731,5 +731,11 @@ window.I18N_EN = {
   "Volte à conversa e mande qualquer mensagem: o Claude lê o seu Pronto.": "Go back to the chat and send any message: Claude reads your Done.",
   "O agente está trabalhando: espere ele terminar para mexer no corte.": "The agent is working: wait for it to finish before changing the cut.",
   "Pronto, Claude segue": "Done, Claude takes over",
-  "Avisa o Claude: ele lê o que você fez à mão e os seus pedidos, uma vez só": "Tells Claude: it reads what you did by hand and your requests, just once"
+  "Avisa o Claude: ele lê o que você fez à mão e os seus pedidos, uma vez só": "Tells Claude: it reads what you did by hand and your requests, just once",
+  "Gastar menos do Claude": "Spending less of Claude",
+  "Salvar e Baixar": "Save and Download",
+  "aplicam o que você fez à mão sem o Claude e não gastam nada": "apply what you did by hand without Claude and cost nothing",
+  "acorda o Claude uma vez só, com as marcações e os pedidos juntos": "wakes Claude just once, with your markers and requests together",
+  "pela conversa": "in the chat",
+  "junte os pedidos numa mensagem e diga o tempo (\"de 0:12 a 0:15\")": "put your requests in one message and give the time (\"from 0:12 to 0:15\")"
 };
