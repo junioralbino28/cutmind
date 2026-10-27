@@ -121,10 +121,10 @@ Every edit session gets the same interactive editor in the user's browser: ONE a
    (`captions`/`editData`/`finalVideo` only when they exist; the **Final** view plays `finalVideo` — the render WITH captions/inserts — while **Corte** plays the clean cut; `sourceDurations` lets the UI clamp take extensions; `awaitingStyle`/`style` drive the Estilo panel below.)
 2. Select the runtime adapter; never invoke another host's tools.
 
-   - **Claude Code:** ensure `.claude/launch.json` has the config (adjust `--root` per session). The server takes the port by flag only, so pass the harness-assigned `$PORT` and set `autoPort`: `{"name": "cutmind-preview", "runtimeExecutable": "sh", "runtimeArgs": ["-c", "exec python3 <skill>/helpers/preview_server.py --root '<edit>' --port \"$PORT\""], "autoPort": true, "port": 4820}`. Run `preview_start` with name `cutmind-preview`, then arm `Monitor(command="python3 <skill>/helpers/watch_edits.py '<edit>'", description="escolhas e marcações salvas no preview", persistent=true)` **in the same turn**. **If this host has no `preview_start` tool (e.g. Claude Code in the VS Code extension on Windows — check before assuming), fall back to the Codex path below:** `uv run python -X utf8 helpers/start_preview.py --root '<edit>' --port 4820`, print the URL for the user to open, and arm the same `Monitor` with `uv run python -X utf8 <skill>/helpers/watch_edits.py '<edit>'` — a bare `python3` misses the `.venv` and does not exist on Windows. **If the Monitor has no `persistent` and expires (Claude Code 2.1.309: 30 min at most), run the watcher with `--uma-vez` through Bash `run_in_background` instead:** it waits as long as the session lives, exits on the first save (or what was already pending), and that exit notifies you. Apply, delete the file, start it again.
-   - **Codex desktop / CLI:** start `uv run python -X utf8 helpers/start_preview.py --root '<edit>' --port 4820`. It detaches safely on Windows and Unix, preserves paths with spaces/non-ASCII characters, and leaves logs in the edit directory. Once it responds, use the `control-in-app-browser` skill to open `http://127.0.0.1:4820` in the in-app Browser automatically and leave that tab on the preview. Do not assume `preview_start`, `Monitor`, or `.claude/launch.json` exists. If the Browser capability or a persistent local process is unavailable, give the user the command and local URL instead. After showing the preview, tell the user to save and reply in this task. On every subsequent user message, before any other work, check for `preview_edits.json`, `preview_style.json` and `preview_upload.json` (videos sent with the editor's Enviar button); read, validate, apply, then remove `preview_edits.json` and `preview_upload.json`.
+   - **Claude Code:** ensure `.claude/launch.json` has the config (adjust `--root` per session). The server takes the port by flag only, so pass the harness-assigned `$PORT` and set `autoPort`: `{"name": "cutmind-preview", "runtimeExecutable": "sh", "runtimeArgs": ["-c", "exec python3 <skill>/helpers/preview_server.py --root '<edit>' --port \"$PORT\""], "autoPort": true, "port": 4820}`. Run `preview_start` with name `cutmind-preview`, then arm `Monitor(command="python3 <skill>/helpers/watch_edits.py '<edit>'", description="escolhas e marcações salvas no preview", persistent=true)` **in the same turn**. **If this host has no `preview_start` tool (e.g. Claude Code in the VS Code extension on Windows — check before assuming), fall back to the Codex path below:** `uv run python -X utf8 helpers/start_preview.py --root '<edit>' --port 4820`, print the URL for the user to open, and arm the same `Monitor` with `uv run python -X utf8 <skill>/helpers/watch_edits.py '<edit>'` — a bare `python3` misses the `.venv` and does not exist on Windows. **If the Monitor has no `persistent` and expires (Claude Code 2.1.309: 30 min at most), run the watcher with `--uma-vez` through Bash `run_in_background` instead:** it waits as long as the session lives, exits on the first Pronto, style pick or upload (or what was already pending), and that exit notifies you. Apply, delete the file, start it again. With the watcher armed, write `"vigia": true` into `state.json`: after a Pronto the editor tells the user you were already told.
+   - **Codex desktop / CLI:** start `uv run python -X utf8 helpers/start_preview.py --root '<edit>' --port 4820`. It detaches safely on Windows and Unix, preserves paths with spaces/non-ASCII characters, and leaves logs in the edit directory. Once it responds, use the `control-in-app-browser` skill to open `http://127.0.0.1:4820` in the in-app Browser automatically and leave that tab on the preview. Do not assume `preview_start`, `Monitor`, or `.claude/launch.json` exists. If the Browser capability or a persistent local process is unavailable, give the user the command and local URL instead. Write `"vigia": false` into `state.json`: after a Pronto the editor tells the user to come back here and send any message. On every subsequent user message, before any other work, check for `pronto.json`, `preview_style.json` and `preview_upload.json` (videos sent with the editor's Enviar button); read them (`uv run python -X utf8 helpers/watch_edits.py '<edit>' --uma-vez` prints what is pending and exits), apply, then remove `pronto.json` and `preview_upload.json`.
 
-   A preview save must always lead to an agent-visible action: Claude Code uses the persistent watcher; Codex uses the user's next task message as the notification boundary.
+   A Pronto must always lead to an agent-visible action: Claude Code uses the persistent watcher; Codex uses the user's next task message as the notification boundary.
 
    **Phone:** it is the same editor; nothing changes but how the phone reaches the server. When the user wants to edit on the phone, read `references/celular.md`: Wi-Fi or Tailscale with `--host 0.0.0.0` and a code in the link (**Abrir no celular**, at the top of the editor on the computer, shows the QR), or by USB cable with `adb reverse`.
 
@@ -190,22 +190,59 @@ the layer questions in chat.
 
 The panel's last tab, **Modelos**, keeps the look of this video under a name and
 applies a saved one (a client's brand, say). Applying it sends the save with `modelo`
-and `legenda`, and the filter, transition, colour and soundtrack in the same Salvar's
-`preview_edits.json`. When the user names a template in the chat ("edita com o modelo
+and `legenda`, and the same Salvar writes its filter, transition, colour and soundtrack
+straight into `efeitos.json` and `camadas.json`. When the user names a template in the chat ("edita com o modelo
 da marca X"), apply it yourself and skip `awaitingStyle`: `references/pelo-chat.md`.
 
-**When the user saves timeline edits**, the UI writes `<edit>/preview_edits.json`
-(never touches edl.json) and `watch_edits.py` notifies you automatically. To apply:
-- `notes[]` — free-text correction requests, each with `start`/`end` on the draft
-  timeline plus `renderedStart`/`renderedEnd` on the current `cut.mp4`, and the
-  `phase` view the user was on (1 = Corte, 2 = Final). Use the RENDERED pair to find the moment in the
-  existing render. These are instructions in the user's words — read them, then do
-  the edit they describe (re-cut, re-grade, swap an insert, fix a caption…). A note
-  with `geral: true` came from the request box: a request about the whole video,
-  with `start` = `end` = where the needle was only to place "here". The watcher
-  announces it as PEDIDO. Answer it in `state.json` `message` too: the editor shows
-  that line at the top, and the box exists so the user does not have to come back to
-  the chat.
+**What the editor does without you.** Nothing the user does by hand reaches you on its
+own, so a small fix costs no tokens:
+- **Salvar** with takes changed: the editor's server re-cuts (`aplicar_corte.py`, a job with
+  a progress card). First it checks what would misalign (an edge inside a word, a long
+  silence at a join, a layer, effect or speed span on a stretch that left) and the user
+  answers **Manter assim** or **Voltar e ajustar**. Then `edl.json` by the rules of the
+  `edl.ranges` key below, `render.py --como-antes`, `verify_cut.py`, and
+  `camadas.json`, `efeitos.json` and `velocidade.json` carried to the new cut (`remapear.py`).
+- **Salvar** with layers, effects or speed: the files. With Phase 2 data (`editData`:
+  blocks, effects, hook, numbers, zoom, captions): `edit-data.json` and `captions.json`
+  (`editdata_aplicar.py`).
+- **Baixar**: `gerar.py` builds the final video the way you did. Melhorar voz back on a
+  re-cut (or the new choice), the Remotion project (yours, with the Phase 2; without it, a
+  kit project with only the layers and effects, its `edit-data.json` marked
+  `"_gerar": "editor"`, which is NOT a Phase 2: scaffold over it), `cenas_edit_data.py`,
+  `camadas_edit_data.py`, the render, `mixar_final.py` and `velocidade_final.py`. A
+  montage's saved slots and format and the Melhorar voz choice wait for it in
+  `.cutmind/pendente.json`; a new montage (**Usar** in Modelos de montagem) runs
+  `montagem.py montar` right away. With a Phase 2 built for a cut that changed since, it
+  stops and asks for Pronto.
+- Every Salvar it applies adds a line to `<edit>/ajustes_feitos.json`. Markers (`M`) and
+  the request box wait in `<edit>/pedidos.json`.
+
+**When the user presses Pronto** ("Pronto, Claude segue", or sends the request box), the
+editor writes `<edit>/pronto.json` and `watch_edits.py` prints **PRONTO DO EDITOR**: what
+the editor already applied ("Já aplicado pelo editor, NÃO refaça") and the requests.
+Each request has `start`/`end` on the draft timeline, `renderedStart`/`renderedEnd` on the
+current `cut.mp4` (use these to find the moment), the `phase` view the user was on
+(1 = Corte, 2 = Final), and `geral: true` when it came from the request box (`start` =
+`end` = where the needle was, only to place "here").
+1. Write `"agente": {"trabalhando": true, "desde": <unix seconds>}` into `state.json`. While
+   it is there (up to 30 min) the editor holds the cut's Salvar and the Baixar.
+2. Do the requests: they are instructions in the user's words (re-cut, re-grade, swap an
+   insert, fix a caption…). Never redo what the editor already applied.
+3. Before a change that cuts a word in the middle, leaves a long silence at a join, or
+   drops a layer, an effect or a Phase 2 block, say what would misalign and ask: it may
+   be on purpose. It is the editor's own rule, and the chat follows it too.
+4. No request in phase 1 means the cut is approved: go to the Estilo (`awaitingStyle`).
+5. When your changes need a new final video, `uv run python -X utf8 helpers/gerar.py <edit>`
+   builds it the way the Baixar does. Answer in `state.json` `message` (the editor shows
+   that line at the top), remove `agente`, delete `pronto.json` and `ajustes_feitos.json`.
+
+`legado: true` in the Pronto means a `preview_edits.json` from an older editor is waiting:
+the digest prints it after the requests. Apply it with the keys below and delete it.
+
+**The keys of a Salvar** (what the editor applies by itself; and what a
+`preview_edits.json` from an older editor carries, applied the same way by you):
+- `notes[]` — the requests and markers, as in the Pronto above (an older editor sent
+  them in every Salvar). The watcher announces a request-box note as PEDIDO.
 - `edl.ranges` — the FULL new list of takes, in the user's order: trims, splits
   (two ranges from the same take), duplicates (the same span twice), deletions and
   a new order are already applied. Rebuild `edl.json` `ranges` from it. `take`
@@ -498,7 +535,9 @@ On startup, read it if it exists and summarize the last session in one sentence 
 - Re-transcribing cached sources; re-rendering Phase 1 when only Phase 2 changed.
 - Launching the preview without arming `watch_edits.py` in the same turn. This
   is the one failure mode where the user reasonably believes they handed you a
-  decision and you never got it — the toast says saved, the file is written, and
+  decision and you never got it — they pressed Pronto, the file is written, and
   no one is reading it.
-- Applying `preview_edits.json` blindly — validate new edges against `speech_regions.py` first (flag clipped words to the user).
+- Redoing what the Pronto lists as already applied by the editor: it re-renders for
+  nothing and can undo a choice the user made by hand.
+- Applying a request blindly — validate new edges against `speech_regions.py` first (flag clipped words to the user).
 - Asking "NORMAL ou LOG?", or assuming the profile without running `detect_color.py`. It reads the answer off the file; ask only on `confidence: low`.

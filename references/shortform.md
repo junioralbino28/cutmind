@@ -59,7 +59,7 @@ the Estilo panel at the end of Fase 1; every key maps to something here:
 | `elements.zoomCuts` | the hard zoom change ON each cut (~1.10–1.22, cycles) |
 | `elements.flashCut` | `transitions[]` in edit-data.json — see "Flash na transição" |
 | `elements.musicAI` | Phase 3 via `treblo_music.py`; OFF → deliver with voice only |
-| `modelo` (`{id, nome}`) | the user applied a saved style template (Estilo → Modelos). The picks above already ARE the template's. Its filter, transition, colour and soundtrack came in the `preview_edits.json` of the same Salvar (`efeitos`, `camadas`): apply that file too. `modelos.py mostrar <id>` shows the template |
+| `modelo` (`{id, nome}`) | the user applied a saved style template (Estilo → Modelos). The picks above already ARE the template's. Its filter, transition, colour and soundtrack the same Salvar already wrote into `efeitos.json` and `camadas.json`: build the Phase 2 with them. `modelos.py mostrar <id>` shows the template |
 | `legenda` (`{estilo, acompanhar}`) | the template's caption look → `captions.estilo` / `captions.acompanhar` in edit-data.json, the same as `editData.legenda` from a Salvar |
 | `note` | free text — read it, it overrides the defaults above |
 
@@ -650,8 +650,9 @@ Verify `max_volume ≤ -1 dB` (`-af volumedetect`). Copy to `edit/final.mp4`.
 The user can put images, audio and texts on the timeline (editor: **Áudio** /
 **Imagem** / **Texto**, with **Modelos** for two or three texts in mixed fonts at once;
 `references/celular.md`). The project file is `<edit>/camadas.json`, times in
-cut.mp4 seconds, schema in `helpers/camadas.py`; every save also carries it in
-`preview_edits.json`, and `watch_edits.py` lists each item.
+cut.mp4 seconds, schema in `helpers/camadas.py`. The editor's Salvar writes it and the
+Baixar runs the steps below by itself (`gerar.py`); you run them when you build a
+final video (or run `gerar.py <edit>`, which does the same).
 
 1. **Images and texts** → `uv run python -X utf8 helpers/camadas_edit_data.py <edit>`.
    Each visible image becomes an `inserts[]` card (the upper-zone card above, marked
@@ -688,11 +689,13 @@ cut.mp4 seconds, schema in `helpers/camadas.py`; every save also carries it in
    audible in its window, a silenced layer and a hidden image or text absent, and a
    text behind the person actually cut by the head.
 
-**Same save re-cuts?** The layer times belong to the cut that was on screen. When
-`preview_edits.json` also carries `edl`, map every `inicio` before step 1: find the
-old range it falls in (old `edl.json`), its source time, and where that source time
-lands in the new ranges; rewrite `camadas.json` with the new times. A layer whose
-moment was cut out has nowhere to go — leave it out and tell the user.
+**The cut changes?** The layer times belong to the cut that was on screen. The
+editor's re-cut carries them by itself (`aplicar_corte.py` with `remapear.py`), asking
+first when one would leave the video. When YOU re-cut (a request, or an older editor's
+`preview_edits.json` with `edl`), map every `inicio` before step 1: find the old range it
+falls in (old `edl.json`), its source time, and where that source time lands in the new
+ranges; rewrite `camadas.json` with the new times (`remapear.camadas` does exactly this).
+A layer whose moment was cut out has nowhere to go — leave it out and tell the user.
 
 The image card's whoosh is a Remotion `<Sfx>`: with the default `--base cut` it is
 not in the delivery. Pass `--sfx <public>/sfx/whoosh.mp3@<start>:0.09` per image
@@ -708,7 +711,7 @@ when absent); a transition is centred on `corte`, the frame where two takes meet
 for `duracao`; an `ajuste` (the take's **Ajustar**: brilho, contraste, saturacao,
 exposicao, temperatura, matiz, realces, sombras, vinheta, each −100…100) covers its
 take like a filter, has no package (it is a shader inside `motor.js`), and one take
-holds one. Every save also carries it in `preview_edits.json`.
+holds one. The editor's Salvar writes it; the Baixar draws it (`gerar.py`).
 
 ```bash
 uv run python -X utf8 helpers/efeitos_render.py <edit> [--remotion <edit>/remotion]

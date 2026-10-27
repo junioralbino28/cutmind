@@ -2,7 +2,7 @@
 
 The phone uses the same editor as the computer (`/` or `/celular`; the layout follows
 the screen): same `state.json`, same
-`preview_edits.json` / `preview_style.json`, same watcher. Nothing about the edit
+`pronto.json` / `preview_style.json`, same watcher. Nothing about the edit
 changes — only how the user reaches the server.
 
 ## Three ways in
