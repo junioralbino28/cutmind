@@ -55,19 +55,30 @@ def _janela(levar: Levar, ini: float, dur: float, total: float) -> tuple[float, 
         return None
     b = levar(ini + dur - FOLGA)
     nova = b + FOLGA - a if b is not None and b > a else dur
-    return a, max(0.0, min(nova, total - a))
+    nova = min(nova, total - a)
+    return (a, nova) if nova >= MINIMO else None
 
 
-def camadas(cam: dict, levar: Levar, total: float) -> tuple[dict, list[str]]:
-    """camadas.json no corte novo, e o que caiu fora (uma linha por item, para avisar)."""
+MINIMO = 0.05  # o menor item que camadas.py e efeitos.py aceitam: menos que isso, o item saiu
+
+
+def _fora(item: str, nome: str, inicio: float) -> dict:
+    """O que caiu num trecho que saiu do corte: o tipo, o nome que a pessoa reconhece e onde estava
+    (no corte velho). Quem avisa monta a frase no idioma dela."""
+    return {"item": item, "nome": nome, "inicio": round(float(inicio), 3)}
+
+
+def camadas(cam: dict, levar: Levar, total: float) -> tuple[dict, list[dict]]:
+    """camadas.json no corte novo, e o que caiu fora."""
     novo, fora = copy.deepcopy(cam), []
     for f in novo.get("faixas") or []:
         manter = []
         for it in f.get("itens") or []:
             j = _janela(levar, float(it.get("inicio", 0)), float(it.get("duracao", 0)), total)
             if j is None:
-                nome = it.get("texto") or str(it.get("arquivo", "")).removeprefix("midia/")
-                fora.append(f'{f.get("tipo")} "{nome}" em {float(it.get("inicio", 0)):.2f} s')
+                nome = " / ".join(str(it.get("texto")).split("\n")) if it.get("texto") else \
+                    str(it.get("trilha") or it.get("arquivo", "")).removeprefix("midia/")
+                fora.append(_fora(str(f.get("tipo")), nome, it.get("inicio", 0)))
                 continue
             it["inicio"], it["duracao"] = round(j[0], 3), round(j[1], 3)
             manter.append(it)
@@ -75,7 +86,7 @@ def camadas(cam: dict, levar: Levar, total: float) -> tuple[dict, list[str]]:
     return novo, fora
 
 
-def efeitos(ef: dict, levar: Levar, emendas: list[float], total: float, fps: float = 30.0) -> tuple[dict, list[str]]:
+def efeitos(ef: dict, levar: Levar, emendas: list[float], total: float, fps: float = 30.0) -> tuple[dict, list[dict]]:
     """efeitos.json no corte novo. `emendas`: os instantes do corte novo em que uma tomada encontra a
     seguinte; a transição vai para a emenda nova mais perto, ou sai se a emenda dela sumiu."""
     novo, fora, manter = copy.deepcopy(ef), [], []
@@ -84,13 +95,13 @@ def efeitos(ef: dict, levar: Levar, emendas: list[float], total: float, fps: flo
             c = levar(float(it.get("corte", 0)))
             perto = min(emendas, key=lambda e: abs(e - c)) if c is not None and emendas else None
             if perto is None or abs(perto - c) > 2.0 / fps:
-                fora.append(f'transição "{it.get("pacote")}" no corte de {float(it.get("corte", 0)):.2f} s')
+                fora.append(_fora("transicao", str(it.get("pacote")), it.get("corte", 0)))
                 continue
             it["corte"] = round(perto, 3)
         else:
             j = _janela(levar, float(it.get("inicio", 0)), float(it.get("duracao", 0)), total)
             if j is None:
-                fora.append(f'{it.get("tipo")} "{it.get("pacote", "ajuste")}" em {float(it.get("inicio", 0)):.2f} s')
+                fora.append(_fora(str(it.get("tipo")), str(it.get("pacote") or ""), it.get("inicio", 0)))
                 continue
             it["inicio"], it["duracao"] = round(j[0], 3), round(j[1], 3)
         manter.append(it)
@@ -98,14 +109,14 @@ def efeitos(ef: dict, levar: Levar, emendas: list[float], total: float, fps: flo
     return novo, fora
 
 
-def velocidade(vel: dict, levar: Levar, total: float) -> tuple[dict, list[str]]:
+def velocidade(vel: dict, levar: Levar, total: float) -> tuple[dict, list[dict]]:
     """velocidade.json no corte novo. Os trechos ficam no relógio do final, que é o do corte (o final é
     desenhado sobre ele); a duração passa a ser a do corte novo."""
     novo, fora, manter = copy.deepcopy(vel), [], []
     for t in novo.get("trechos") or []:
         a, b = levar(float(t["inicio"])), levar(float(t["fim"]) - FOLGA)
         if a is None or b is None or b <= a:
-            fora.append(f'trecho de velocidade {float(t["inicio"]):.2f}–{float(t["fim"]):.2f} s')
+            fora.append(_fora("velocidade", f'{float(t["fator"]):g}×', t["inicio"]))
             continue
         t["inicio"], t["fim"] = round(a, 3), round(b + FOLGA, 3)
         manter.append(t)

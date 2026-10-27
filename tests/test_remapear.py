@@ -47,7 +47,7 @@ def test_camadas_levadas_e_a_que_sumiu_avisada():
     itens = novo["faixas"][0]["itens"]
     assert [i["id"] for i in itens] == ["a"] and abs(itens[0]["inicio"] - 2.0) < 1e-6
     assert abs(itens[0]["duracao"] - 2.0) < 1e-3
-    assert len(fora) == 1 and "y.png" in fora[0]
+    assert fora == [{"item": "imagem", "nome": "y.png", "inicio": 0.5}]
     assert cam["faixas"][0]["itens"][0]["inicio"] == 4.0   # o original não muda
 
 
@@ -58,12 +58,18 @@ def test_camada_que_passa_do_fim_e_encurtada():
     assert not fora and abs(it["inicio"] - 15.0) < 1e-6 and it["duracao"] <= 3.0 + 1e-6
 
 
+def test_item_que_sobra_com_quase_nada_no_fim_saiu():
+    cam = {"versao": 1, "faixas": [{"tipo": "imagem", "itens": [{"id": "z", "arquivo": "midia/z.png", "inicio": 19.99, "duracao": 2.0}]}]}
+    novo, fora = rm.camadas(cam, rm.mapa(VELHO, NOVO, [0, 1]), total=18.0)
+    assert novo["faixas"][0]["itens"] == [] and fora[0]["nome"] == "z.png"
+
+
 def test_transicao_vai_para_a_emenda_nova_ou_sai():
     ef = {"versao": 1, "itens": [{"tipo": "transicao", "pacote": "t-x", "corte": 10.0, "duracao": 0.4}]}
     novo, fora = rm.efeitos(ef, rm.mapa(VELHO, NOVO, [0, 1]), emendas=[8.0], total=18.0)
     assert abs(novo["itens"][0]["corte"] - 8.0) < 1e-6 and not fora
     _, fora = rm.efeitos(ef, rm.mapa(VELHO, NOVO, [0, 1]), emendas=[], total=18.0)
-    assert fora
+    assert fora == [{"item": "transicao", "nome": "t-x", "inicio": 10.0}]
 
 
 def test_filtro_levado_e_o_que_sumiu_avisado():
@@ -71,12 +77,13 @@ def test_filtro_levado_e_o_que_sumiu_avisado():
                                  {"tipo": "ajuste", "ajustes": {"brilho": 10}, "inicio": 0.0, "duracao": 1.5}]}
     novo, fora = rm.efeitos(ef, rm.mapa(VELHO, NOVO, [0, 1]), emendas=[8.0], total=18.0)
     assert [it["tipo"] for it in novo["itens"]] == ["filtro"] and abs(novo["itens"][0]["inicio"] - 1.0) < 1e-6
-    assert len(fora) == 1 and "ajuste" in fora[0]
+    assert fora == [{"item": "ajuste", "nome": "", "inicio": 0.0}]
 
 
 def test_velocidade_ganha_a_duracao_nova():
     vel = {"versao": 1, "duracao": 20.0, "trechos": [{"inicio": 12.0, "fim": 14.0, "fator": 2.0},
                                                     {"inicio": 0.2, "fim": 1.0, "fator": 1.5}]}
     novo, fora = rm.velocidade(vel, rm.mapa(VELHO, NOVO, [0, 1]), total=18.0)
-    assert novo["duracao"] == 18.0 and len(novo["trechos"]) == 1 and len(fora) == 1
+    assert novo["duracao"] == 18.0 and len(novo["trechos"]) == 1
+    assert fora == [{"item": "velocidade", "nome": "1.5×", "inicio": 0.2}]
     assert abs(novo["trechos"][0]["inicio"] - 10.0) < 1e-6 and abs(novo["trechos"][0]["fim"] - 12.0) < 1e-3
