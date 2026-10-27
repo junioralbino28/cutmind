@@ -717,9 +717,16 @@ function refreshHeader() {
   $('btnSave').classList.toggle('hidden', n === 0);
   $('btnDiscard').classList.toggle('hidden', n === 0);
   $('btnDownload').classList.toggle('hidden', n > 0 || !hasVideo);
-  // enquanto o editor refaz o corte sozinho, nada de salvar outro nem baixar o de antes
-  $('btnSave').disabled = !!S.trabalhoVivo;
-  $('btnDownload').disabled = !!S.trabalhoVivo;
+  // enquanto o editor refaz o corte sozinho, nada de salvar outro nem baixar o de antes; com o agente
+  // trabalhando num Pronto, o corte e o Baixar esperam por ele (o servidor recusa também)
+  const agente = !!S.agenteTrabalhando;
+  $('btnSave').disabled = !!S.trabalhoVivo || (agente && edlDirty());
+  $('btnDownload').disabled = !!S.trabalhoVivo || agente;
+  const esperando = (S.pedidosServidor || 0) + S.notes.filter((x) => x.text).length;
+  $('btnPronto').classList.toggle('hidden', !hasVideo);
+  $('btnPronto').disabled = !!S.trabalhoVivo || agente;
+  $('prontoCount').textContent = esperando;
+  $('prontoCount').classList.toggle('hidden', esperando === 0);
   $('dirtyCount').textContent = n;
   $('sentPill').classList.toggle('hidden', !(S.savedPending && n === 0));
   $('modeLabel').textContent = S.view === 'final' ? t('Final') : t('Corte');
@@ -861,6 +868,14 @@ async function poll() {
     }
     if (pid) S.projetoId = pid;
     S.lastData = data; // o Descartar volta a ela
+    const agenteAntes = !!S.agenteTrabalhando;
+    S.pedidosServidor = data.pedidos || 0;
+    S.agenteTrabalhando = !!data.agenteTrabalhando;
+    if (agenteAntes !== S.agenteTrabalhando) mostraAgente();
+    if (data.hasPendingEdits && !S.avisouLegado) { // ajustes de um editor anterior, esperando o agente
+      S.avisouLegado = true;
+      toast(t('Há ajustes de antes esperando o Claude: aperte Pronto.'), 5000);
+    }
     mostraTrabalho(data.trabalho);
     const sig = assinatura(data);
     // com o corte sendo refeito, o edl.json novo chega antes do cut.mp4 novo: espera os dois
@@ -4797,16 +4812,15 @@ async function salvar(aviso, confirmado) {
     const oque = comEfeitos ? (comCamadas ? t('Camadas e efeitos salvos') : t('Efeitos salvos')) : t('Camadas salvas');
     const soVoz = comVoz && soCamadas && !comF2 && !comVel && !comCamadas && !comEfeitos;
     const soLugares = lugares.length > 0 && soCamadas && !comF2 && !comVel && !comCamadas && !comEfeitos && !comVoz;
-    toast(aviso || (out.trabalho && !out.file ? t('Refazendo o corte. Leva alguns segundos.')
-      : soVoz ? t('Melhorar voz enviado. O agente aplica a voz no vídeo.')
+    const soNotas = !!payload.notes && Object.keys(payload).every((k) => ['type', 'projeto', 'confirmado', 'notes'].includes(k));
+    toast(aviso || (out.trabalho === 'corte' ? t('Refazendo o corte. Leva alguns segundos.')
+      : out.trabalho === 'montar' ? t('Montando o vídeo. Leva alguns minutos.')
+      : soNotas ? t('Guardado. Vai para o Claude quando você apertar Pronto.')
+      : soVoz ? t('Melhorar voz salvo. Entra no vídeo quando você baixar.')
       : soLugares ? (lugares.length > 1
-        ? t('{length} lugares enviados. O agente refaz só eles, na batida.', { length: lugares.length })
-        : t('Lugar enviado. O agente refaz só ele, na batida.'))
-      : lugares.length && soCamadas && !comF2 && !comVel ? t('Lugares e camadas enviados. O agente refaz a montagem na batida.')
-      : !soCamadas ? t('Ajustes enviados. O agente refaz o corte.')
-      : comF2 ? t('Ajustes enviados. O agente refaz só os trechos do vídeo final que mudaram.')
-        : comVel && !comCamadas && !comEfeitos ? t('Velocidade salva. O agente faz o vídeo de entrega com ela.')
-          : t('{oque}. O agente põe no vídeo final.', { oque })), 3000);
+        ? t('{length} lugares salvos. Entram no vídeo quando você baixar.', { length: lugares.length })
+        : t('Lugar salvo. Entra no vídeo quando você baixar.'))
+      : t('{oque}. Entra no vídeo quando você baixar.', { oque: comF2 || comVel || lugares.length || comVoz ? t('Salvo') : oque })), 3000);
     return true;
   } catch (err) {
     toast(t('Não consegui salvar — o editor ainda está ligado no computador?'), 4000);
@@ -4814,20 +4828,66 @@ async function salvar(aviso, confirmado) {
   }
 }
 
+// ---------- o Pronto: o agente acorda uma vez, com tudo o que foi feito à mão e os pedidos ----------
+/* O Salvar não chega ao agente: o editor aplica sozinho e o Baixar gera o vídeo. O Pronto junta, no
+ * servidor, os pedidos e marcações que esperavam e o resumo do que foi feito à mão (pronto.json), e o
+ * vigia acorda o agente. Sem pedido, na Fase 1, vale como "corte aprovado". Com ajuste por salvar,
+ * salva antes; com o corte sendo refeito, espera ele terminar. `quieto`: a caixa de pedido tem o aviso
+ * dela. Devolve se o servidor aceitou. */
+async function pronto(quieto) {
+  if (S.agenteTrabalhando) { toast(t('O agente está trabalhando: espere ele terminar.'), 3200); return false; }
+  if (dirtyCount() > 0 && !(await salvar(t('Salvo. Avisando o Claude...')))) return false;
+  if (S.trabalhoVivo) { // o corte que o Salvar acabou de começar: o Pronto vai quando ele terminar
+    S.prontoAoTerminar = true;
+    if (!quieto) toast(t('O Claude será avisado quando o corte terminar.'), 3200);
+    return true;
+  }
+  let out;
+  try {
+    out = await (await fetch('/api/pronto', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+  } catch (e) {
+    toast(t('Não consegui avisar o Claude — o editor ainda está ligado no computador?'), 4000);
+    return false;
+  }
+  if (!out.ok) { toast(t('Não avisei o Claude: {error}', { error: out.error || '' }), 4500); return false; }
+  S.pedidosServidor = 0;
+  refreshHeader();
+  if (!quieto) {
+    toast(out.vigia ? t('O Claude já foi avisado. Ele responde na barra de cima.')
+      : t('Volte à conversa e mande qualquer mensagem: o Claude lê o seu Pronto.'), 5200);
+  }
+  return true;
+}
+$('btnPronto').addEventListener('click', () => pronto());
+// com o agente trabalhando num Pronto, a barra de cima diz isso no lugar da mensagem dele
+function mostraAgente() {
+  if (S.agenteTrabalhando) {
+    $('agentMsg').textContent = t('O agente está trabalhando: espere ele terminar para mexer no corte.');
+  } else if (S.state) {
+    $('agentMsg').textContent = avisoNoIdioma(S.state.message, S.state.messageKey, S.state.messageVals);
+  }
+  refreshHeader();
+}
+
 // ---------- pedido ao agente: a caixa "O que você quer mudar?" (computador) ----------
 /* Um pedido em texto livre, sem trecho marcado. Vai como uma marcação `geral` na posição da
- * agulha, junto com o que estiver por salvar: o mesmo caminho do Salvar, que o agente já lê. */
+ * agulha, junto com o que estiver por salvar, e o Pronto acorda o agente com ele. Sem vigia (o
+ * Codex), o agente só lê quando a pessoa manda uma mensagem na conversa: o aviso diz isso. */
 $('pedido').addEventListener('submit', async (e) => {
   e.preventDefault();
   const campo = $('pedidoTexto'), txt = campo.value.trim();
   if (!txt) { toast(t('Escreva o que mudar'), 1800); campo.focus(); return; }
   const id = `p${Date.now()}`;
+  const semVigia = !!S.state && S.state.vigia === false;
   S.notes.push({ id, start: S.t, end: S.t, text: txt, geral: true });
-  if (await salvar(t('Pedido enviado. O agente responde na barra de cima.'))) {
+  const aviso = semVigia ? t('Volte à conversa e mande qualquer mensagem: o Claude lê o seu Pronto.')
+    : t('Pedido enviado. O agente responde na barra de cima.');
+  if (await salvar(aviso) && await pronto(true)) {
     campo.value = '';
     crescePedido();
     const h = new Date();
-    $('pedidoInfo').textContent = t('Enviado às {p0}:{p1}. A resposta aparece na barra de cima.', { p0: h.getHours(), p1: String(h.getMinutes()).padStart(2, '0') });
+    $('pedidoInfo').textContent = semVigia ? aviso
+      : t('Enviado às {p0}:{p1}. A resposta aparece na barra de cima.', { p0: h.getHours(), p1: String(h.getMinutes()).padStart(2, '0') });
   } else S.notes = S.notes.filter((n) => n.id !== id); // não foi: o texto fica na caixa para tentar de novo
 });
 $('pedidoTexto').addEventListener('keydown', (e) => {
@@ -4939,6 +4999,10 @@ function mostraTrabalho(tr) {
   if (!tr.vivo && tr.tipo === 'gerar' && S.baixarAoTerminar) { // o Baixar que esperou o vídeo ficar pronto
     S.baixarAoTerminar = false;
     if (tr.etapa === 'pronto') baixar(tr.entrega);
+  }
+  if (!tr.vivo && tr.tipo === 'corte' && S.prontoAoTerminar) { // o Pronto que esperava o corte (deu certo ou não)
+    S.prontoAoTerminar = false;
+    pronto();
   }
   if (!tr.vivo && S.trabalhoFechado === chave) return;
   card.classList.remove('hidden', 'done', 'bad');

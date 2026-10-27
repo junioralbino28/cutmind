@@ -370,6 +370,16 @@ button { font-family: inherit; cursor: pointer; }
 }
 .final-velho span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .final-velho b { color: var(--brand); white-space: nowrap; }
+/* o Pronto: o único botão que acorda o agente; o número é o de pedidos e marcações esperando */
+.pronto-btn .pronto-n {
+  margin-left: 4px; padding: 0 6px; border-radius: 999px;
+  background: var(--brand); color: var(--brand-ink); font-size: 11px;
+}
+.topbar .pronto-btn:disabled { opacity: .45; cursor: default; filter: none; }
+/* no celular cabe só "Pronto"; no computador, o nome inteiro */
+.pronto-btn .pronto-longo { display: none; }
+.desk .pronto-btn .pronto-longo { display: inline; }
+.desk .pronto-btn .pronto-curto { display: none; }
 .swipe-name svg { width: 13px; height: 13px; flex: none; opacity: 0.7; }
 .swipe-name small { font-size: 11px; font-weight: 600; color: rgba(255, 255, 255, 0.6); }
 /* o estilo novo entra pelo lado de onde o dedo veio */

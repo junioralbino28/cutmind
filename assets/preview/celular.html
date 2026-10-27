@@ -46,6 +46,8 @@
     <!-- no computador: jogar fora os ajustes e voltar ao último vídeo do agente -->
     <button class="tb-btn ghost desk-only hidden" id="btnDiscard" type="button" title="Voltar ao último vídeo do agente">Descartar</button>
     <!-- um botão principal no canto de cima: Salvar quando há ajuste, Baixar quando não há -->
+    <!-- o agente acorda só aqui, uma vez, com o que foi feito à mão e os pedidos que esperam -->
+    <button class="tb-btn pronto-btn hidden" id="btnPronto" type="button" title="Avisa o Claude: ele lê o que você fez à mão e os seus pedidos, uma vez só"><span class="pronto-curto">Pronto</span><span class="pronto-longo">Pronto, Claude segue</span><b class="pronto-n hidden" id="prontoCount">0</b></button>
     <button class="tb-btn primary hidden" id="btnSave" type="button">Salvar <b id="dirtyCount">0</b></button>
     <button class="tb-btn primary hidden" id="btnDownload" type="button"><span class="tb-ico" id="downloadIco"></span><span id="downloadTxt">Baixar</span></button>
   </header>
