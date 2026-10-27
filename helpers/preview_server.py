@@ -125,6 +125,8 @@ import montagem as mt  # mesma pasta deste arquivo
 import idioma as idm  # mesma pasta deste arquivo
 import montagens as mg  # mesma pasta deste arquivo
 import mural as mu  # mesma pasta deste arquivo
+import aplicar_corte as ac  # mesma pasta deste arquivo
+import trabalhos as tb  # mesma pasta deste arquivo
 
 APP_DIR = Path(__file__).resolve().parent.parent / "assets" / "preview"
 EFEITOS_DIR = APP_DIR.parent / "efeitos"
@@ -186,6 +188,33 @@ _voz_jobs: dict[str, subprocess.Popen] = {}  # pasta edit → o processo do prep
 _batida_lock = threading.Lock()
 _batida_jobs: dict[str, subprocess.Popen] = {}  # música → o processo que analisa a batida dela
 _sha_musicas: dict[tuple[str, int, int], str] = {}
+
+
+TRABALHO_RECENTE_S = 60  # o fim de um trabalho aparece no editor por um minuto; depois, sai
+
+
+def trabalho_recente(edit: Path) -> dict | None:
+    """O trabalho do editor que roda agora, ou o que terminou há pouco (o editor mostra o fim dele: o
+    "corte refeito", ou o erro). O editor não recarrega o corte enquanto um roda: o edl.json novo chega
+    antes do cut.mp4 novo."""
+    a = tb.andamento(edit)
+    if not a:
+        return None
+    if a.get("vivo"):
+        return a
+    try:
+        idade = time.time() - (tb.pasta(edit) / "andamento.json").stat().st_mtime
+    except OSError:
+        return None
+    return a if idade < TRABALHO_RECENTE_S else None
+
+
+def comando_corte(edit: Path, pedido: Path, andamento: Path) -> list[str]:
+    """O Salvar que mexe nas tomadas refaz o corte num processo à parte (aplicar_corte.py), sem o agente.
+    A conferência já foi feita aqui (e a pessoa respondeu), por isso o --confirmado. Os testes trocam
+    por um falso."""
+    return [sys.executable, "-X", "utf8", str(Path(__file__).resolve().parent / "aplicar_corte.py"), str(edit),
+            "--pedido", str(pedido), "--confirmado", "--andamento", str(andamento)]
 
 
 def comando_preparo(edit: Path) -> list[str]:
@@ -1043,6 +1072,8 @@ class Handler(BaseHTTPRequestHandler):
             self._melhorar()
         elif path == "/api/melhorar/andamento":
             self._json(andamento_preparo(self.root) or {"etapa": None})
+        elif path == "/api/trabalho":
+            self._json(tb.andamento(self.root) or {"etapa": None})
         elif path == "/api/midia":
             self._midia()
         elif path == "/api/batida":
@@ -1089,6 +1120,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/melhorar/preparar":
             self._melhorar_preparar()
+            return
+        if path == "/api/conferir":
+            self._conferir()
             return
         if path != "/api/save":
             self._fail(404, "unknown route")
@@ -1161,12 +1195,43 @@ class Handler(BaseHTTPRequestHandler):
             except mv.VozErro as e:
                 self._json({"error": f"melhorar voz: {e}"}, 400)
                 return
+        # o Salvar que mexe nas tomadas: o servidor refaz o corte sozinho, sem acordar o agente
+        # (aplicar_corte.py), depois de perguntar o que ficaria desalinhado
+        confirmado = bool(body.pop("confirmado", False))
+        corte = name == "preview_edits.json" and isinstance(body.get("edl"), dict)
+        if corte:
+            if tb.vivo(self.root):
+                self._json({"error": "o corte ainda está sendo refeito: espere terminar para salvar de novo"}, 409)
+                return
+            if not confirmado:
+                try:
+                    avisos = ac.conferir_projeto(self.root, body["edl"])
+                except (OSError, ValueError, KeyError, TypeError) as e:
+                    print(f"conferência do corte não rodou: {e}", file=sys.stderr, flush=True)
+                    avisos = []
+                if avisos:
+                    self._json({"error": "antes de aplicar, confira o que fica desalinhado", "avisos": avisos}, 409)
+                    return
+        if name == "preview_edits.json":
             if "camadas" in body:
                 cam.save(self.root / "camadas.json", body["camadas"])
             if "efeitos" in body:
                 ef.save(self.root / "efeitos.json", body["efeitos"])
             if "velocidade" in body:
                 vel.save(self.root / "velocidade.json", body["velocidade"])
+        resposta: dict = {"ok": True}
+        if corte:
+            pasta = tb.pasta(self.root)
+            pasta.mkdir(parents=True, exist_ok=True)
+            pedido_p = pasta / "pedido-corte.json"
+            pedido_p.write_bytes(json.dumps(body.pop("edl"), ensure_ascii=False).encode("utf-8"))
+            if not tb.iniciar(self.root, "corte", comando_corte(self.root, pedido_p, pasta / "andamento.json")):
+                self._json({"error": "o corte ainda está sendo refeito: espere terminar para salvar de novo"}, 409)
+                return
+            resposta["trabalho"] = "corte"
+            if not any(k not in ("type", "savedAt") for k in body):
+                self._json(resposta)  # só o corte: nada para o agente
+                return
         out = self.root / name
         if name == "preview_edits.json" and out.exists():
             # o agente ainda não aplicou o Salvar anterior: o novo SOMA a ele, não o apaga
@@ -1176,12 +1241,15 @@ class Handler(BaseHTTPRequestHandler):
                 velho = None
             if isinstance(velho, dict):
                 body = juntar_salvamentos(velho, body)
+        if corte:
+            body.pop("edl", None)  # um corte pendente de antes: o que o servidor acabou de refazer vale
         if name == "preview_edits.json" and isinstance(body.get("montagem"), dict):
             sem_formato_novo(self.root, body)
         tmp = out.with_suffix(".tmp")
         tmp.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(out)
-        self._json({"ok": True, "file": str(out)})
+        resposta["file"] = str(out)
+        self._json(resposta)
 
     # ---- celular ----
     def _enter(self, query: str) -> None:
@@ -1653,6 +1721,22 @@ class Handler(BaseHTTPRequestHandler):
             s["pendente"] = salvo  # salvo no editor e ainda não aplicado pelo agente
         self._json(s)
 
+    def _conferir(self) -> None:
+        """A pergunta antes do Salvar das tomadas: o que ficaria desalinhado (aplicar_corte.conferir).
+        Não grava nada; o editor mostra os avisos e manda o Salvar com `confirmado` se a pessoa mantiver."""
+        body = self._corpo_pequeno(MAX_JSON_BYTES)
+        if body is None:
+            return
+        pedido = body.get("edl")
+        if not isinstance(pedido, dict) or not isinstance(pedido.get("ranges"), list):
+            self._json({"error": "pedido sem as tomadas"}, 400)
+            return
+        try:
+            self._json({"avisos": ac.conferir_projeto(self.root, pedido)})
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            print(f"conferência do corte não rodou: {e}", file=sys.stderr, flush=True)
+            self._json({"avisos": []})
+
     def _melhorar_preparar(self) -> None:
         if self._corpo_pequeno() is None:
             return
@@ -1850,6 +1934,7 @@ class Handler(BaseHTTPRequestHandler):
             "montagemPendente": pendente,
             "montagemNova": nova,
             "formatoPendente": formato_pendente,
+            "trabalho": trabalho_recente(self.root),
             "now": time.time(),
         })
 

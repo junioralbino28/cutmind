@@ -265,5 +265,10 @@
  "não consegui falar com o mural ({p0})": "couldn't reach the board ({p0})",
  "o mural respondeu algo que não é JSON": "the board returned a non-JSON response",
  "esse modelo não está no mural (pode ter sido tirado)": "this template isn't on the board (it may have been taken down)",
- "o que vai por cima da montagem (texto, imagem, filtro, transição) é desenhado pelo Remotion, que precisa do macOS 13 ou mais novo, e este Mac está no {v}. Sem nada por cima a montagem sai: esconda as camadas de texto e imagem e tire os efeitos": "anything on top of the montage (text, images, filters, transitions) is drawn by Remotion, which needs macOS 13 or newer, and this Mac is on {v}. Without anything on top the montage renders: hide the text and image layers and remove the effects"
+ "o que vai por cima da montagem (texto, imagem, filtro, transição) é desenhado pelo Remotion, que precisa do macOS 13 ou mais novo, e este Mac está no {v}. Sem nada por cima a montagem sai: esconda as camadas de texto e imagem e tire os efeitos": "anything on top of the montage (text, images, filters, transitions) is drawn by Remotion, which needs macOS 13 or newer, and this Mac is on {v}. Without anything on top the montage renders: hide the text and image layers and remove the effects",
+ "pedido sem as tomadas": "request without the takes",
+ "o corte ainda está sendo refeito: espere terminar para salvar de novo": "the cut is still being rebuilt: wait for it to finish before saving again",
+ "antes de aplicar, confira o que fica desalinhado": "before applying, check what ends up out of line",
+ "não consegui gravar {name}: o arquivo está aberto em outro programa": "couldn't write {name}: the file is open in another program",
+ "o corte não foi refeito; o de antes continua. {p0}": "the cut wasn't rebuilt; the previous one stays. {p0}"
 }
