@@ -390,6 +390,16 @@
   <div class="up-track"><div class="up-bar" id="upBar"></div></div>
   <div class="up-pct" id="upPct"></div>
 </section>
+<!-- o que o editor faz sozinho, sem o agente: refazer o corte depois do Salvar, gerar o vídeo final -->
+<section class="upload hidden" id="trabalho" role="status" aria-live="polite">
+  <div class="up-row">
+    <span class="up-ico" id="trabIco"></span>
+    <b class="up-name" id="trabNome"></b>
+    <button class="tb-btn ghost hidden" id="trabFechar" type="button">Fechar</button>
+  </div>
+  <div class="up-track"><div class="up-bar" id="trabBar"></div></div>
+  <div class="up-pct" id="trabTexto"></div>
+</section>
 <div class="toast hidden" id="toast" role="status"></div>
 
 <!-- abrir no celular: o servidor entrega os links (com o código) só a este computador -->
@@ -428,6 +438,19 @@
     <div class="troca-acoes">
       <button class="tb-btn ghost" id="trocaDescartar" type="button">Descartar e abrir o outro</button>
       <button class="tb-btn primary" id="trocaVoltar" type="button">Voltar para este</button>
+    </div>
+  </div>
+</div>
+
+<!-- a pergunta antes de aplicar um Salvar que deixa algo desalinhado (pode ter sido de propósito) -->
+<div class="modal hidden" id="conferirModal" role="dialog" aria-modal="true" aria-labelledby="conferirTitle">
+  <div class="modal-card">
+    <div class="modal-head"><h3 id="conferirTitle">Antes de aplicar</h3></div>
+    <ul class="conferir-lista" id="conferirLista"></ul>
+    <p class="troca-txt">Pode ter sido de propósito. Se foi, mantenha.</p>
+    <div class="troca-acoes">
+      <button class="tb-btn ghost" id="conferirVoltar" type="button">Voltar e ajustar</button>
+      <button class="tb-btn primary" id="conferirManter" type="button">Manter assim</button>
     </div>
   </div>
 </div>

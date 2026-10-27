@@ -717,6 +717,9 @@ function refreshHeader() {
   $('btnSave').classList.toggle('hidden', n === 0);
   $('btnDiscard').classList.toggle('hidden', n === 0);
   $('btnDownload').classList.toggle('hidden', n > 0 || !hasVideo);
+  // enquanto o editor refaz o corte sozinho, nada de salvar outro nem baixar o de antes
+  $('btnSave').disabled = !!S.trabalhoVivo;
+  $('btnDownload').disabled = !!S.trabalhoVivo;
   $('dirtyCount').textContent = n;
   $('sentPill').classList.toggle('hidden', !(S.savedPending && n === 0));
   $('modeLabel').textContent = S.view === 'final' ? t('Final') : t('Corte');
@@ -857,8 +860,10 @@ async function poll() {
     }
     if (pid) S.projetoId = pid;
     S.lastData = data; // o Descartar volta a ela
+    mostraTrabalho(data.trabalho);
     const sig = assinatura(data);
-    if (sig !== S.lastSig) {
+    // com o corte sendo refeito, o edl.json novo chega antes do cut.mp4 novo: espera os dois
+    if (sig !== S.lastSig && !S.trabalhoVivo) {
       // com Filtros/Transições aberto também espera: recarregar apagava a prévia tocando e a
       // escolha, e o "Usar" seguinte não fazia nada (o agente regravando o final a cada 2 s).
       // Com o Fundo aberto, a lista de efeitos nova trocaria o item que o Pronto vai mudar
@@ -1985,6 +1990,10 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (!$('trocaModal').classList.contains('hidden')) return; // a escolha é pelos dois botões
+  if (!$('conferirModal').classList.contains('hidden')) { // Antes de aplicar: Esc é Voltar e ajustar
+    if (k === 'Escape') $('conferirVoltar').click();
+    return;
+  }
   if (!$('projModal').classList.contains('hidden')) {
     if (k === 'Escape') fechaProjetos();
     return;
@@ -4625,11 +4634,13 @@ function edlPayload() {
   };
 }
 $('btnSave').addEventListener('click', () => salvar());
-/* Manda ao agente tudo o que está por salvar (e as marcações). `aviso` troca a mensagem do fim
- * (a caixa de pedido tem a sua). Devolve se o servidor aceitou. */
-async function salvar(aviso) {
+/* Manda tudo o que está por salvar (e as marcações). As tomadas o próprio editor refaz, sem o agente,
+ * depois de perguntar o que ficaria desalinhado; o resto vai para o agente. `aviso` troca a mensagem do
+ * fim (a caixa de pedido tem a sua); `confirmado`, a pessoa já disse que mantém o que a pergunta mostrou.
+ * Devolve se o servidor aceitou. */
+async function salvar(aviso, confirmado) {
   // o id do projeto vai junto: se outro aparelho trocou o projeto, o servidor recusa (409)
-  const payload = { type: 'timeline-edits', projeto: S.projetoId };
+  const payload = { type: 'timeline-edits', projeto: S.projetoId, ...(confirmado ? { confirmado: true } : {}) };
   const soCamadas = !edlDirty() && !S.notes.length;
   if (edlDirty()) payload.edl = edlPayload();
   const comBlocos = insertsDirty();
@@ -4697,12 +4708,19 @@ async function salvar(aviso) {
   try {
     const res = await fetch('/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const out = await res.json();
+    // o Salvar deixa algo desalinhado: a pessoa decide (pode ter sido de propósito), nada mudou ainda
+    if (res.status === 409 && Array.isArray(out.avisos) && out.avisos.length) {
+      abreConferir(out.avisos, () => salvar(aviso, true));
+      return false;
+    }
     if (!out.ok) {
       // camada recusada pelo servidor: o motivo vale mais que o aviso genérico
       if (out.error) { toast(t('Não salvei: {error}', { error: out.error }), 4500); return false; }
       throw new Error('falhou');
     }
-    S.savedPending = true;
+    // só as tomadas: o editor refaz o corte e não há nada esperando o agente
+    S.savedPending = !!out.file;
+    if (out.trabalho) mostraTrabalho({ tipo: out.trabalho, etapa: 'comecando', vivo: true, fracao: 0 });
     S.notes = [];
     S.pendingIn = null;
     // o que foi enviado vira a referência; `orig` segue sendo o edl.json até o agente refazer
@@ -4733,7 +4751,8 @@ async function salvar(aviso) {
     const oque = comEfeitos ? (comCamadas ? t('Camadas e efeitos salvos') : t('Efeitos salvos')) : t('Camadas salvas');
     const soVoz = comVoz && soCamadas && !comF2 && !comVel && !comCamadas && !comEfeitos;
     const soLugares = lugares.length > 0 && soCamadas && !comF2 && !comVel && !comCamadas && !comEfeitos && !comVoz;
-    toast(aviso || (soVoz ? t('Melhorar voz enviado. O agente aplica a voz no vídeo.')
+    toast(aviso || (out.trabalho && !out.file ? t('Refazendo o corte. Leva alguns segundos.')
+      : soVoz ? t('Melhorar voz enviado. O agente aplica a voz no vídeo.')
       : soLugares ? (lugares.length > 1
         ? t('{length} lugares enviados. O agente refaz só eles, na batida.', { length: lugares.length })
         : t('Lugar enviado. O agente refaz só ele, na batida.'))
@@ -4775,6 +4794,113 @@ function crescePedido() {
   if (c.value) c.style.height = `${Math.min(c.scrollHeight + 2, 120)}px`;
 }
 $('pedidoTexto').addEventListener('input', crescePedido);
+
+// ---------- antes de aplicar: o que o Salvar deixaria desalinhado ----------
+/* O servidor confere o Salvar das tomadas (aplicar_corte.conferir) e devolve avisos como dados: uma
+ * ponta no meio da fala, um silêncio longo numa emenda nova, algo que cai num trecho tirado. A pessoa
+ * decide: pode ter sido de propósito. "Manter assim" salva de novo com `confirmado`; "Voltar e
+ * ajustar" não muda nada e leva a agulha ao primeiro ponto. */
+const ITEM_AVISO = { imagem: () => t('A imagem'), texto: () => t('O texto'), audio: () => t('O áudio'),
+  filtro: () => t('O filtro'), ajuste: () => t('O ajuste de cor'), transicao: () => t('A transição'),
+  velocidade: () => t('O trecho de velocidade') };
+const numLocal = (v) => String(v).replace('.', IDIOMA === 'pt' ? ',' : '.');
+function textoDoAviso(a) {
+  if (a.tipo === 'ponta_na_fala') {
+    const v = { n: a.tomada, palavra: a.palavra };
+    if (a.palavra) return a.ponta === 'fim' ? t('A tomada {n} termina no meio da palavra «{palavra}»', v) : t('A tomada {n} começa no meio da palavra «{palavra}»', v);
+    return a.ponta === 'fim' ? t('A tomada {n} termina no meio da fala', v) : t('A tomada {n} começa no meio da fala', v);
+  }
+  if (a.tipo === 'silencio_longo') {
+    return t('Entre as tomadas {a} e {b} ficam {s} s sem fala', { a: a.tomadas[0], b: a.tomadas[1], s: numLocal(a.segundos) });
+  }
+  if (a.tipo === 'item_sai') {
+    const quem = (ITEM_AVISO[a.item] || (() => a.item))();
+    return a.nome ? t('{quem} «{nome}» estava num trecho que saiu do corte e vai sair do vídeo', { quem, nome: a.nome })
+      : t('{quem} estava num trecho que saiu do corte e vai sair do vídeo', { quem });
+  }
+  return a.texto || '';
+}
+function vaiPara(seg) {
+  if (!S.videoDuration) return;
+  video.pause();
+  S.t = clampT(seg);
+  positionTimeline();
+  preciseSeek();
+}
+function abreConferir(avisos, manter) {
+  S.conferir = { avisos, manter };
+  const ul = $('conferirLista');
+  ul.textContent = '';
+  for (const a of avisos) {
+    const li = el('li', '', ul);
+    const b = el('button', 'conferir-tempo', li);
+    b.type = 'button';
+    b.textContent = fmtShort(a.em);
+    b.title = t('Levar a agulha até aqui');
+    b.addEventListener('click', () => { fechaConferir(); vaiPara(a.em); });
+    el('span', '', li).textContent = textoDoAviso(a);
+  }
+  $('conferirModal').classList.remove('hidden');
+  $('conferirManter').focus();
+}
+function fechaConferir() {
+  $('conferirModal').classList.add('hidden');
+  S.conferir = null;
+}
+$('conferirManter').addEventListener('click', () => {
+  const c = S.conferir;
+  fechaConferir();
+  if (c) c.manter();
+});
+$('conferirVoltar').addEventListener('click', () => {
+  const c = S.conferir;
+  fechaConferir();
+  if (c && c.avisos.length) vaiPara(c.avisos[0].em);
+});
+
+// ---------- o que o editor faz sozinho, sem o agente ----------
+/* Refazer o corte depois do Salvar (aplicar_corte.py, num processo à parte). O andamento vem no
+ * /api/state, a cada 2 s: a barra aparece também se a página recarregar no meio ou se o Salvar veio
+ * do celular. O fim fica um minuto no servidor; aqui some em 4 s, ou no Fechar quando falhou. */
+const TRAB_TEXTO = { comecando: () => t('Começando'), conferindo: () => t('Conferindo o corte'),
+  corte: () => t('Refazendo o corte'), conferencia: () => t('Conferindo o vídeo novo') };
+const chaveTrab = (tr) => `${tr.tipo}|${tr.etapa}|${tr.pid || ''}`;
+function mostraTrabalho(tr) {
+  const card = $('trabalho');
+  const vivoAntes = !!S.trabalhoVivo;
+  S.trabalhoVivo = !!(tr && tr.vivo);
+  if (vivoAntes !== S.trabalhoVivo) refreshHeader();
+  if (!tr || !tr.etapa || tr.tipo !== 'corte') { card.classList.add('hidden'); return; }
+  if (!tr.vivo && S.trabalhoFechado === chaveTrab(tr)) return;
+  card.classList.remove('hidden', 'done', 'bad');
+  $('trabIco').innerHTML = ICON.corte;
+  $('trabNome').textContent = t('Refazendo o corte');
+  $('trabBar').style.width = `${Math.round((tr.fracao || 0) * 100)}%`;
+  $('trabFechar').classList.toggle('hidden', tr.etapa !== 'falhou');
+  if (tr.vivo) {
+    $('trabTexto').textContent = (TRAB_TEXTO[tr.etapa] || (() => ''))();
+    return;
+  }
+  if (tr.etapa === 'falhou') {
+    card.classList.add('bad');
+    $('trabTexto').textContent = t('O corte não foi refeito; o de antes continua.');
+    return;
+  }
+  card.classList.add('done');
+  $('trabBar').style.width = '100%';
+  $('trabNome').textContent = t('Corte refeito');
+  $('trabTexto').textContent = tr.voz === 'velha' ? t('A voz melhorada volta quando você baixar o vídeo.') : t('Sem gastar o agente.');
+  const chave = chaveTrab(tr);
+  if (S.trabalhoSome !== chave) {
+    S.trabalhoSome = chave;
+    setTimeout(() => { if (S.trabalhoSome === chave) { S.trabalhoFechado = chave; card.classList.add('hidden'); } }, 4000);
+  }
+}
+$('trabFechar').addEventListener('click', () => {
+  const tr = S.lastData && S.lastData.trabalho;
+  if (tr) S.trabalhoFechado = chaveTrab(tr);
+  $('trabalho').classList.add('hidden');
+});
 
 // ---------- camadas: imagens e áudios na linha do tempo ----------
 /* Como em qualquer editor: cada envio de imagem ou áudio vira uma faixa própria, com
