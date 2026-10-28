@@ -7,6 +7,10 @@ a Fase 2 a pedido da conversa, sem esse aviso, e o Gerar instalou o Remotion na 
 npm perdeu arquivos e o vídeo não saiu. Vale por 30 min (o editor solta depois disso, caso o agente caia);
 rodar `trabalhando` de novo renova.
 
+E o agente aprende o jeito da pessoa (aprender.py): o `livre` guarda o que ele entregou, e o `trabalhando` que
+COMEÇA um trabalho (não o que só renova) mostra o que a pessoa mudou à mão desde então, para ele gravar os hábitos
+na skill dela.
+
     uv run python -X utf8 helpers/agente.py trabalhando <edit>
     uv run python -X utf8 helpers/agente.py livre <edit>
 """
@@ -18,6 +22,8 @@ import os
 import sys
 import time
 from pathlib import Path
+
+PRAZO = 30 * 60  # o mesmo do editor: depois disso a marca não vale mais
 
 
 def _gravar(p: Path, dados: dict) -> None:
@@ -60,8 +66,20 @@ def main() -> int:
     if not (a.edit / "state.json").is_file():
         print(f"não achei o state.json em {a.edit}", file=sys.stderr)
         return 1
+    antes = (json.loads((a.edit / "state.json").read_text(encoding="utf-8")) or {}).get("agente") or {}
+    renovando = bool(antes.get("trabalhando")) and time.time() - float(antes.get("desde") or 0) < PRAZO
     marcar(a.edit, a.acao == "trabalhando")
     print("o editor espera você terminar" if a.acao == "trabalhando" else "o editor está livre de novo")
+    try:
+        import aprender  # mesma pasta deste arquivo
+        if a.acao == "livre":
+            print(f"aprender: entrega {aprender.guardar(a.edit)} guardada (o que a pessoa mudar depois vira aprendizado)")
+        elif not renovando:
+            texto = aprender.texto_diferenca(aprender.diferenca(a.edit))
+            if texto:
+                print(texto)
+    except Exception as e:  # noqa: BLE001 (aprender nunca atrapalha a marca do editor)
+        print(f"aprender: não deu desta vez ({e})", file=sys.stderr)
     return 0
 
 

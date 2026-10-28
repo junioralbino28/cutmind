@@ -225,6 +225,12 @@ def test_envio_largado_e_apagado(srv):
     _, d = _pedaco(srv, b"a" * 1000, 0, 3000)
     parte = ps._ENVIOS[d["id"]]["part"]
     assert parte.exists()
+    # o servidor responde "recebido" antes de soltar a trava do envio (o finally vem depois do _json); com a
+    # máquina ocupada a limpeza achava o envio ainda travado e o pulava, de propósito (não apaga envio em andamento)
+    for _ in range(100):
+        if not ps._ENVIOS[d["id"]]["trava"].locked():
+            break
+        time.sleep(0.02)
     ps._limpar_envios_largados(agora=time.time() + ps.ENVIO_LARGADO_S + 10)
     assert not parte.exists() and d["id"] not in ps._ENVIOS
 

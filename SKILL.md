@@ -234,7 +234,8 @@ current `cut.mp4` (use these to find the moment), the `phase` view the user was 
 (1 = Corte, 2 = Final), and `geral: true` when it came from the request box (`start` =
 `end` = where the needle was, only to place "here").
 1. Mark the project busy (Hard Rule 14): `helpers/agente.py trabalhando <edit>`. While it is
-   marked (up to 30 min) the editor holds the cut's Salvar and the Baixar.
+   marked (up to 30 min) the editor holds the cut's Salvar and the Baixar. When it prints
+   "O QUE A PESSOA MUDOU À MÃO", learn from it first (see "The person's editing habits" below).
 2. Do the requests: they are instructions in the user's words (re-cut, re-grade, swap an
    insert, fix a caption…). Never redo what the editor already applied.
 3. Before a change that cuts a word in the middle, leaves a long silence at a join, or
@@ -518,6 +519,25 @@ The cut is approved and the user picked the style in the UI (`preview_style.json
 - **Horizontal / YouTube / tutorial / vlog → read `references/longform.md`.** Retention cut is there too (read it BEFORE Phase 1 on longform jobs), B-roll, lower-thirds, chapter cards, callouts, .srt + chapters, soundtrack.
 
 Both tracks: scaffold (short-form: `helpers/preparar_remotion.py <edit>`; longform: one `cp -R` of the template), describe the video in `public/edit-data.json`, verify with montage stills, render, loudnorm, deliver `edit/final.mp4`. Load the `remotion-best-practices` skill when writing any Remotion code (CustomGraphics).
+
+## The person's editing habits — `~/.cutmind/jeito/` (learn, don't just obey)
+
+The manual tools exist so YOU learn how this person edits, and over time they use them less. `helpers/aprender.py`
+does the measuring; you do the judging.
+
+- **Start of every edit:** `uv run python -X utf8 helpers/aprender.py regras`. Each **Regra** (seen in 2+ videos) is a
+  default: apply it from the first cut and say in one line which ones you applied. **Visto 1 vez** is only a hint.
+- **`agente.py livre`** saves what you delivered (`<edit>/.cutmind/entregas/`). **`agente.py trabalhando`**, when it
+  starts a new job, prints what the person changed by hand since then, in numbers, by subject (cut edges, speed,
+  framing, filter, transition, text font/colour/place, captions, image, soundtrack, style).
+- **For each HABIT** in that list — a preference that would repeat in the next video, not a content fix of this one
+  ("delete the take where I stumbled" is content; "trimmed 0.25 s before every phrase" is a habit) — record it:
+  `aprender.py regra <assunto> <chave> --texto "<the rule, in the person's terms>" --prova "<the numbers>" --video "<project>"`.
+  **Reuse the existing key when it is the same habit** (read `aprender.py regras` first): the rule is UPDATED (one
+  more video, the new evidence, your adjusted wording), never duplicated. A new key only for a new subject.
+- Evidence is mandatory and must be the measured numbers from the list, never your interpretation alone. When a new
+  change contradicts a rule, update its text to what the person did now and say so.
+- The person can drop a rule: `aprender.py esquecer <chave>`.
 
 ## Memory — `project.md`
 
