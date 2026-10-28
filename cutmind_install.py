@@ -99,6 +99,7 @@ SKILL_PAYLOAD = (
     "pyproject.toml",
     "references",
     "uv.lock",
+    "versao.json",
 )
 
 
