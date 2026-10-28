@@ -31,6 +31,7 @@ description: Conversation-driven video editing for short-form vertical (Reels, T
 11. **PHASE 2 is data-driven.** Scaffold by copying the track template; describe the video in `public/edit-data.json`. **Never read or edit the template TSX** (`src/Main.tsx` etc.) — the only editable code file is `src/CustomGraphics.tsx`, only for bespoke graphics. A project scaffolded with an older kit gets this kit's template code from `helpers/atualizar_template.py <edit>`, never from a second scaffold copy (it would overwrite the video's data).
 12. **Verify numerically first.** Run `verify_cut.py` on every rendered cut; open images only for flagged junctions. Batch any multi-frame look into one `contact_sheet.py` / `grade.py --candidates` montage.
 13. **Never Read machine data into context**: `transcripts/*.json` (raw), `captions.json`, `track.json`, `segments.json`, matte/track binaries. Read `takes_packed.md` and helper stdout instead.
+14. **Mark the project busy while you work on it.** Before touching the project's files for ANY request (from the chat or from a Pronto), run `uv run python -X utf8 helpers/agente.py trabalhando <edit>`; when you finish, `helpers/agente.py livre <edit>`. While it is marked, the editor holds the cut's Salvar and the "Gerar e baixar", which would write the same files: without it, a Gerar during your Phase 2 installs Remotion in the same folder and both break. It lasts 30 min; run `trabalhando` again on a long job.
 
 ## Execution medium — ffmpeg pipeline (default) vs Adobe Premiere (MCP)
 
@@ -232,8 +233,8 @@ Each request has `start`/`end` on the draft timeline, `renderedStart`/`renderedE
 current `cut.mp4` (use these to find the moment), the `phase` view the user was on
 (1 = Corte, 2 = Final), and `geral: true` when it came from the request box (`start` =
 `end` = where the needle was, only to place "here").
-1. Write `"agente": {"trabalhando": true, "desde": <unix seconds>}` into `state.json`. While
-   it is there (up to 30 min) the editor holds the cut's Salvar and the Baixar.
+1. Mark the project busy (Hard Rule 14): `helpers/agente.py trabalhando <edit>`. While it is
+   marked (up to 30 min) the editor holds the cut's Salvar and the Baixar.
 2. Do the requests: they are instructions in the user's words (re-cut, re-grade, swap an
    insert, fix a caption…). Never redo what the editor already applied.
 3. Before a change that cuts a word in the middle, leaves a long silence at a join, or
@@ -242,7 +243,8 @@ current `cut.mp4` (use these to find the moment), the `phase` view the user was 
 4. No request in phase 1 means the cut is approved: go to the Estilo (`awaitingStyle`).
 5. When your changes need a new final video, `uv run python -X utf8 helpers/gerar.py <edit>`
    builds it the way the Baixar does. Answer in `state.json` `message` (the editor shows
-   that line at the top), remove `agente`, delete `pronto.json` and `ajustes_feitos.json`.
+   that line at the top), run `helpers/agente.py livre <edit>`, delete `pronto.json` and
+   `ajustes_feitos.json`.
 
 `legado: true` in the Pronto means a `preview_edits.json` from an older editor is waiting:
 the digest prints it after the requests. Apply it with the keys below and delete it.
@@ -515,7 +517,7 @@ The cut is approved and the user picked the style in the UI (`preview_style.json
 - **Vertical / Reels / TikTok / Shorts → read `references/shortform.md`.** Karaoke captions, static hook headline, dynamic camera, inserts, behind-the-subject, SFX, soundtrack.
 - **Horizontal / YouTube / tutorial / vlog → read `references/longform.md`.** Retention cut is there too (read it BEFORE Phase 1 on longform jobs), B-roll, lower-thirds, chapter cards, callouts, .srt + chapters, soundtrack.
 
-Both tracks: scaffold with one `cp -R` of the template, describe the video in `public/edit-data.json`, verify with montage stills, render, loudnorm, deliver `edit/final.mp4`. Load the `remotion-best-practices` skill when writing any Remotion code (CustomGraphics).
+Both tracks: scaffold (short-form: `helpers/preparar_remotion.py <edit>`; longform: one `cp -R` of the template), describe the video in `public/edit-data.json`, verify with montage stills, render, loudnorm, deliver `edit/final.mp4`. Load the `remotion-best-practices` skill when writing any Remotion code (CustomGraphics).
 
 ## Memory — `project.md`
 

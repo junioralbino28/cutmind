@@ -318,5 +318,7 @@
  "o pacote do cloudflared veio sem o programa": "the cloudflared package came without the program",
  "Pedaço maior que o arquivo.": "Chunk larger than the file.",
  "Envio cancelado": "Upload canceled",
- "não consegui gravar o código do túnel em {arq}": "couldn't save the tunnel code in {arq}"
+ "não consegui gravar o código do túnel em {arq}": "couldn't save the tunnel code in {arq}",
+ "o Remotion deste projeto não carrega nem depois de instalar de novo ({motivo}): apague a pasta remotion/node_modules e tente outra vez": "this project's Remotion doesn't load even after reinstalling ({motivo}): delete the remotion/node_modules folder and try again",
+ "outro processo está montando o Remotion deste projeto há muito tempo: tente de novo daqui a pouco": "another process has been setting up this project's Remotion for a long time: try again in a moment"
 }

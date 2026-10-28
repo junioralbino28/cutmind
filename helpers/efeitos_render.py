@@ -174,7 +174,9 @@ def _node(*args: str, projeto: Path) -> None:
     r = subprocess.run(["node", str(NODE), *args], cwd=projeto, capture_output=True, text=True,
                        encoding="utf-8", errors="replace")
     if r.returncode != 0:
-        raise RuntimeError(f"o Remotion não desenhou: {(r.stderr or r.stdout).strip()[-800:]}")
+        # o motivo inteiro vai para o registro (do trabalho, no Gerar do editor); a tela recebe uma frase
+        print((r.stderr or r.stdout or "").strip()[-4000:], flush=True)
+        raise RuntimeError("o Remotion não desenhou os filtros e transições (o motivo está no registro do trabalho)")
 
 
 def montar_public(pasta: Path, ids: set[str], pac: pk.Pacotes) -> None:

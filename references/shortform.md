@@ -69,16 +69,19 @@ when the user reopens Posição), clear `awaitingStyle`, delete `preview_style.j
 
 1. **Scaffold (one command, never read the TSX):**
    ```bash
-   cp -R <skill>/assets/shortform/. <edit>/remotion/ && cd <edit>/remotion && npm install
-   uv run python -X utf8 <skill>/helpers/aquecer_navegador.py <edit>/remotion
+   uv run python -X utf8 <skill>/helpers/preparar_remotion.py <edit>
    ```
-   The second line opens the Chrome that Remotion renders with once, with no deadline. Remotion
-   gives it a fixed 25 s; on a Mac the first launch of a freshly downloaded Chrome goes through
-   the macOS malware scan and took 26 s on a 2015 MacBook Air, failing the render with "Timed out
-   after 25000 ms while trying to connect to the browser". If you ever see that error, run this
-   line and render again.
-   Only for a NEW `remotion/`: run over an existing one, it overwrites the video's data in
-   `public/` and the project's `CustomGraphics.tsx`. A project scaffolded with an older kit
+   It is the same path the editor's "Gerar e baixar" uses, with a lock, so the two never install
+   in the same folder at once (they did on 28/10/2026: npm lost 787 files and said nothing). It
+   copies the template, runs `npm install`, checks that Remotion loads (and reinstalls from
+   scratch when it does not) and opens the Chrome that Remotion renders with once, with no
+   deadline. Remotion gives that launch a fixed 25 s; on a Mac the first launch of a freshly
+   downloaded Chrome goes through the macOS malware scan and took 26 s on a 2015 MacBook Air,
+   failing the render with "Timed out after 25000 ms while trying to connect to the browser".
+   If you ever see that error, run `helpers/aquecer_navegador.py <edit>/remotion` and render again.
+   Over a project the "Gerar e baixar" made (`"_gerar": "editor"`), it puts the template's data
+   back in `public/`; over your own Phase 2 it never touches `public/` or `CustomGraphics.tsx`,
+   only the immutable code. A project scaffolded with an older kit
    keeps that kit's template code, and what the kit gained since (the `cenas[]` effects, for
    one) silently stays out of the render: `atualizar_template.py <edit>` replaces only the
    immutable code (`src/` minus `CustomGraphics.tsx`, `scripts/`, the configs; `public/` is

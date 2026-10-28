@@ -30,7 +30,8 @@ def test_pronto_lista_o_feito_e_os_pedidos(tmp_path):
     assert "NÃO refaça" in txt and "corte: 1 tomada(s) aparada(s); vídeo final: 1 imagem(s); efeitos: 1 filtro" in txt
     assert "1. [0:12.40 → 0:15.10] (fase 1) tira o trecho em que eu leio o roteiro" in txt
     assert "2. PEDIDO (agulha em 0:03.00, fase 1) aumenta o texto do começo" in txt
-    assert '"agente": {"trabalhando": true' in txt and "apague pronto.json e ajustes_feitos.json" in txt
+    assert "agente.py trabalhando <edit>" in txt and "agente.py livre <edit>" in txt
+    assert "apague pronto.json e ajustes_feitos.json" in txt
 
 
 def test_pronto_sem_pedido_na_fase_1_aprova_o_corte(tmp_path):

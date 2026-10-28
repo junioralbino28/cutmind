@@ -78,8 +78,8 @@ def pronto_digest(p: Path) -> str:
     if d.get("legado") and (p.parent / "preview_edits.json").exists():
         out.append("  Há um preview_edits.json de um editor anterior: aplique-o como antes e apague:")
         out += ["  " + x for x in digest(p.parent / "preview_edits.json").splitlines()]
-    out.append('  Ao começar, grave "agente": {"trabalhando": true, "desde": <agora, segundos>} no state.json; '
-               "ao terminar, tire, apague pronto.json e ajustes_feitos.json.")
+    out.append("  Ao começar, rode helpers/agente.py trabalhando <edit> (o editor segura o Salvar do corte e o "
+               "Gerar); ao terminar, helpers/agente.py livre <edit> e apague pronto.json e ajustes_feitos.json.")
     return "\n".join(out)
 
 

@@ -79,6 +79,7 @@ sozinha deixa passar. `"golpe": false` corta só na grade.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import math
 import os
@@ -851,25 +852,111 @@ def _template_do_kit(edit: Path) -> None:
         print(f"o código do Remotion da montagem veio do kit de agora ({n} arquivo(s))", flush=True)
 
 
-def projeto_remotion(edit: Path) -> Path:
-    """O projeto do Remotion do kit (o modelo de Reels da Fase 2) em <edit>/remotion, pronto para
-    desenhar: na primeira vez copia o modelo e roda o npm install; depois, o código dele acompanha o
-    kit de agora. Serve à montagem e ao vídeo final do editor sem a Fase 2 (gerar.py)."""
-    edit = Path(edit).resolve()
-    rem = edit / "remotion"
-    if not (rem / "package.json").is_file():
-        print(f"montando o projeto do Remotion em {rem}", flush=True)
-        shutil.copytree(TEMPLATE, rem, dirs_exist_ok=True)
-    else:
-        _template_do_kit(edit)
-    if not (rem / "node_modules" / "@remotion" / "cli").is_dir():
-        npm = shutil.which("npm")
-        if not npm:
-            raise ErroMontagem("o que vai por cima do vídeo (texto, imagem, filtro) é desenhado pelo Remotion, "
-                               "que precisa do Node.js: instale o Node 18 ou mais novo")
+TRAVA_REMOTION_S = 15 * 60  # montar e instalar leva minutos; uma trava mais velha que isso é de quem caiu
+
+
+@contextlib.contextmanager
+def trava_remotion(edit: Path, prazo: float = TRAVA_REMOTION_S, pausa: float = 2.0):
+    """Um por vez montando e instalando o Remotion do projeto. O Gerar do editor e o agente montando a Fase 2
+    rodaram o npm install na mesma pasta ao mesmo tempo, e ele perdeu arquivos sem dar erro (teste de 28/10:
+    787 TAR_ENTRY_ERROR e o node_modules quebrado). Quem chega depois espera."""
+    import atualizar as atu  # só aqui: o _vivo pergunta ao sistema sem ler texto
+    trava = Path(edit) / ".cutmind" / "remotion.trava"
+    trava.parent.mkdir(parents=True, exist_ok=True)
+    fim, avisou = time.time() + prazo, False
+    while True:
+        try:
+            fd = os.open(trava, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            try:
+                d = json.loads(trava.read_text(encoding="utf-8") or "{}")
+                criada = trava.stat().st_mtime
+            except (OSError, ValueError):
+                d, criada = {}, time.time()
+            dono = d.get("pid")
+            idade = time.time() - float(d.get("desde") or criada)
+            if not d and time.time() - criada < 10:
+                pass  # acabou de nascer: o dono ainda está escrevendo
+            elif not (isinstance(dono, int) and atu._vivo(dono)) or idade > 2 * prazo:
+                # o dono caiu (ou o número dele já é de outro programa, depois de reiniciar o computador)
+                trava.unlink(missing_ok=True)
+                continue
+            if time.time() > fim:
+                raise ErroMontagem("outro processo está montando o Remotion deste projeto há muito tempo: "
+                                   "tente de novo daqui a pouco")
+            if not avisou:
+                print("esperando outro processo terminar de montar o Remotion deste projeto", flush=True)
+                avisou = True
+            time.sleep(pausa)
+            continue
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"pid": os.getpid(), "desde": time.time()}, f)
+        break
+    try:
+        yield
+    finally:
+        trava.unlink(missing_ok=True)
+
+
+def remotion_carrega(rem: Path) -> str | None:
+    """None quando o Remotion do projeto carrega; senão o motivo, numa linha. O npm install termina "ok"
+    mesmo perdendo arquivos no meio; o render só descobre minutos depois."""
+    node = shutil.which("node")
+    if not node:
+        return "sem o Node.js"
+    cli = Path(rem) / "node_modules" / "@remotion" / "cli" / "remotion-cli.js"
+    if not cli.is_file():  # pelo disco: o "exports" do pacote não deixa o require.resolve chegar nele
+        return f"falta {cli.name}"
+    teste = "require('@remotion/bundler'); require('@remotion/renderer'); require('@remotion/studio-server')"
+    try:
+        r = subprocess.run([node, "-e", teste], cwd=rem, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=180)
+    except subprocess.TimeoutExpired:
+        return "o Node não respondeu em 3 minutos"
+    if r.returncode == 0:
+        return None
+    linhas = [x.strip() for x in (r.stderr or r.stdout or "").splitlines() if x.strip()]
+    return next((x for x in linhas if "Cannot find module" in x or x.startswith("Error")),
+                linhas[0] if linhas else "erro sem mensagem")[:300]
+
+
+def _instalar_remotion(rem: Path) -> None:
+    """npm install quando falta, e de novo (do zero) quando a instalação está quebrada, até 2 vezes."""
+    motivo = remotion_carrega(rem) if (rem / "node_modules" / "@remotion" / "cli").is_dir() else "falta"
+    if motivo is None:
+        return
+    npm = shutil.which("npm")
+    if not npm:
+        raise ErroMontagem("o que vai por cima do vídeo (texto, imagem, filtro) é desenhado pelo Remotion, "
+                           "que precisa do Node.js: instale o Node 18 ou mais novo")
+    for _ in range(2):
+        if motivo != "falta":
+            print(f"a instalação do Remotion deste projeto está quebrada ({motivo}): instalando de novo", flush=True)
+            shutil.rmtree(rem / "node_modules", ignore_errors=True)
         print("instalando as dependências do Remotion (só na primeira vez; leva alguns minutos)", flush=True)
         if subprocess.run([npm, "install", "--no-audit", "--no-fund"], cwd=rem).returncode != 0:
             raise ErroMontagem("o npm install do projeto do Remotion falhou (a saída dele está acima)")
+        motivo = remotion_carrega(rem)
+        if motivo is None:
+            return
+    raise ErroMontagem(f"o Remotion deste projeto não carrega nem depois de instalar de novo ({motivo}): "
+                       "apague a pasta remotion/node_modules e tente outra vez")
+
+
+def projeto_remotion(edit: Path) -> Path:
+    """O projeto do Remotion do kit (o modelo de Reels da Fase 2) em <edit>/remotion, pronto para
+    desenhar: na primeira vez copia o modelo e roda o npm install; depois, o código dele acompanha o
+    kit de agora. Serve à montagem, ao vídeo final do editor sem a Fase 2 (gerar.py) e ao agente montando
+    a Fase 2 (preparar_remotion.py), um de cada vez (trava_remotion)."""
+    edit = Path(edit).resolve()
+    rem = edit / "remotion"
+    with trava_remotion(edit):
+        if not (rem / "package.json").is_file():
+            print(f"montando o projeto do Remotion em {rem}", flush=True)
+            shutil.copytree(TEMPLATE, rem, dirs_exist_ok=True)
+        else:
+            _template_do_kit(edit)
+        _instalar_remotion(rem)
     print(aquecer_navegador.aquecer(rem), flush=True)
     return rem
 

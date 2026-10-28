@@ -304,9 +304,9 @@ AGENTE_PARADO_S = 30 * 60  # "trabalhando" há mais que isso: o agente caiu, a t
 
 
 def agente_trabalhando(root: Path) -> bool:
-    """O agente gravou `"agente": {"trabalhando": true, "desde": <segundos>}` no state.json ao pegar um
-    Pronto, e tira ao terminar. Enquanto isso, o corte e o Baixar esperam: os dois mexeriam nos mesmos
-    arquivos que ele."""
+    """O agente gravou `"agente": {"trabalhando": true, "desde": <segundos>}` no state.json (agente.py) ao
+    começar a mexer no projeto, a pedido de um Pronto ou da conversa, e tira ao terminar. Enquanto isso, o
+    corte e o Baixar esperam: os dois mexeriam nos mesmos arquivos que ele."""
     try:
         st = json.loads((Path(root) / "state.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):

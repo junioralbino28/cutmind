@@ -737,6 +737,7 @@ def test_preparar_remotion_escreve_o_public_da_montagem(tmp_path, monkeypatch):
         "captions": {"enabled": True, "fontSize": 61}}), encoding="utf-8")
     chamados, zerados = [], []
     monkeypatch.setattr(m, "_template_do_kit", lambda e: chamados.append("atualizar_template"))
+    monkeypatch.setattr(m, "remotion_carrega", lambda r: None)  # o node_modules de mentira conta como bom
     monkeypatch.setattr(m, "_passo", lambda args: chamados.append(Path(args[0]).name))
     monkeypatch.setattr(m, "imagem_do_zero", lambda v: zerados.append(Path(v).relative_to(edit).as_posix()))
     monkeypatch.setattr(m, "atraso_da_imagem", lambda v: 0)
