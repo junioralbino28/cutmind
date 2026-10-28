@@ -94,6 +94,19 @@ button { font-family: inherit; cursor: pointer; }
 .tb-btn.idioma-btn { padding: 0 9px; min-width: 38px; font-size: 12px; letter-spacing: 0.04em; color: var(--dim); }
 .tb-btn.danger { color: #ff8a80; border-color: rgba(255, 138, 128, 0.35); }
 .tb-btn.big { height: 46px; border-radius: 10px; padding: 0 26px; font-size: 15px; }
+/* celular: a barra de cima cabe inteira (o Baixar saía da tela em 390 px com o Pronto junto; "Gerar e
+   baixar" em 430). Encolhe a letra e os espaços, nunca as palavras. A duração ao lado de "Corte" sai (a linha
+   do tempo mostra; sem o código, o aviso do meio da tela explica), e abaixo de 412 px o símbolo também */
+html:not(.desk) .topbar { gap: 5px; padding-left: 8px; padding-right: 8px; }
+html:not(.desk) .topbar .tb-btn { padding: 0 9px; font-size: 12px; }
+html:not(.desk) .topbar .tb-btn.idioma-btn, html:not(.desk) .topbar .proj-btn { min-width: 0; padding: 0 7px; }
+html:not(.desk) .mode { gap: 4px; padding: 0 7px 0 9px; font-size: 12px; }
+html:not(.desk) .mode .mode-sub { display: none; }
+@media (max-width: 411px) {
+  html:not(.desk) .topbar .brand { display: none; }
+  html:not(.desk) .topbar .tb-btn { padding: 0 8px; font-size: 11.5px; }
+}
+@media (max-width: 370px) { html:not(.desk) .topbar { gap: 4px; } html:not(.desk) .topbar .tb-btn { padding: 0 6px; } }
 .pill {
   flex: none;
   display: inline-flex; align-items: center; gap: 6px;
