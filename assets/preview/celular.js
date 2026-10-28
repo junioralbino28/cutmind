@@ -1961,6 +1961,7 @@ $('btnFull').addEventListener('click', () => {
 function togglePlay() {
   if (video.paused) {
     if (S.t >= totalT() - 0.05) { S.t = 0; preciseSeek(); }
+    liberaSons();
     video.play().catch(() => {});
   } else video.pause();
 }
@@ -2554,7 +2555,7 @@ document.addEventListener('click', (e) => {
     case 'melhorar': toggleMelhorar(); break;
     case 'ouvir': {
       const d = draftLayout()[S.selected];
-      S.t = d.out; preciseSeek(); positionTimeline(); video.play().catch(() => {});
+      S.t = d.out; preciseSeek(); positionTimeline(); liberaSons(); video.play().catch(() => {});
       break;
     }
     case 'original': remember(); r.start = r.orig.start; r.end = r.orig.end; renderTimeline(); renderToolbar(); refreshHeader(); break;
@@ -7742,17 +7743,104 @@ function applyMute() {
   video.muted = (VOZ.aberto && !!VOZ.buf) || S.mudoUsuario || (S.view === 'corte' && S.camadas.video.mudo);
   vozVolume();
 }
-const AUD = new Map(); // id do item → <audio>
-function audioEl(it) {
-  let a = AUD.get(it.id);
-  if (!a || a.dataset.arq !== it.arquivo) {
-    if (a) a.pause();
-    a = new Audio(`/media/${it.arquivo}`);
-    a.preload = 'auto';
-    a.dataset.arq = it.arquivo;
-    AUD.set(it.id, a);
+/* O som das camadas (as faixas de áudio e o som do vídeo por cima) toca pelo Web Audio: o arquivo decodificado
+ * na memória, cada trecho marcado no relógio do áudio, como a prévia do Melhorar voz. Por <audio> não dava no
+ * iPhone (medido num iPhone com iOS 26): um 2º vídeo com som PAUSA o principal; um <audio> só toca fora
+ * de um toque se já tocou num; o volume é só leitura; e cada salto para alinhar congela o elemento ~1 s, então
+ * o som "gaguejava". Aqui alinhar é recomeçar o trecho, na hora, sem carregar nada. */
+const SOM = { ac: null, bufs: new Map(), tocando: new Map() };
+function somContexto() {
+  if (!SOM.ac) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) SOM.ac = new AC();
   }
-  return a;
+  return SOM.ac;
+}
+// o som decodificado do arquivo, ou null enquanto carrega (ou se o arquivo não tem som)
+function somBuffer(arq) {
+  let p = SOM.bufs.get(arq);
+  if (!p) {
+    p = { buf: null };
+    SOM.bufs.set(arq, p);
+    const ac = somContexto();
+    if (ac) {
+      fetch(`/media/${arq.split('/').map(encodeURIComponent).join('/')}`)
+        .then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.arrayBuffer(); })
+        .then((b) => ac.decodeAudioData(b))
+        .then((buf) => { p.buf = buf; }, () => { /* sem som: fica calado */ });
+    }
+  }
+  return p.buf;
+}
+// o iPhone só deixa o áudio tocar depois de um toque: o toque que dá play liga o contexto e já carrega os sons
+function liberaSons() {
+  const ac = somContexto();
+  if (ac && ac.state !== 'running') ac.resume().catch(() => {});
+  if (!S.camadas) return;
+  for (const f of S.camadas.faixas) {
+    if (f.tipo === 'texto') continue;
+    for (const it of f.itens) if (f.tipo !== 'imagem' || ehVideoArq(it.arquivo)) somBuffer(it.arquivo);
+  }
+}
+function somPara(chave) {
+  const s = SOM.tocando.get(chave);
+  if (!s) return;
+  SOM.tocando.delete(chave);
+  const t = SOM.ac.currentTime;
+  s.g.gain.setTargetAtTime(0, t, 0.004); // sai em ~10 ms, sem estalo
+  try { s.fonte.stop(t + 0.04); } catch (e) { /* já parou */ }
+}
+// toca o trecho do arquivo que cai na agulha. O relógio do áudio e o do vídeo andam juntos, mas não são o
+// mesmo, e no iPhone o tempo do vídeo anda em degraus: só recomeça com desvio acima de 0,25 s, ou acima de
+// 0,08 s se o último recomeço foi há mais de 1 s
+function somToca(chave, arq, alvo, ganho) {
+  const ac = SOM.ac, buf = somBuffer(arq);
+  if (!ac || ac.state !== 'running' || !buf) return;
+  const rate = video.playbackRate || 1;
+  const s = SOM.tocando.get(chave);
+  if (s) {
+    const d = s.off + (ac.currentTime - s.t0) * s.rate - alvo;
+    const ok = s.buf === buf && s.rate === rate && (Math.abs(d) <= 0.08 || (Math.abs(d) <= 0.25 && ac.currentTime - s.t0 < 1));
+    if (ok) { s.g.gain.setTargetAtTime(ganho, ac.currentTime, 0.015); return; }
+    somPara(chave);
+  }
+  if (alvo >= buf.duration) return;
+  // o que sai na caixa de som atrasa a latência do áudio: começa à frente, para cair com a imagem
+  const lat = ac.outputLatency || ac.baseLatency || 0;
+  const quando = ac.currentTime + 0.03;
+  const off = alvo + (quando - ac.currentTime + lat) * rate;
+  const g = ac.createGain();
+  g.gain.value = 0;
+  g.connect(ac.destination);
+  const fonte = ac.createBufferSource();
+  fonte.buffer = buf;
+  fonte.playbackRate.value = rate;
+  fonte.connect(g);
+  fonte.start(quando, Math.max(0, off));
+  g.gain.setTargetAtTime(ganho, quando, 0.004);
+  SOM.tocando.set(chave, { fonte, g, buf, t0: quando + lat, off, rate });
+}
+// a imagem do vídeo por cima segue a agulha sem saltar a cada desvio: no iPhone cada salto congela o vídeo
+// ~1 s (decodifica a partir do quadro-chave) e saltar de novo vira um laço (medido: 20 saltos em 6 s). Até 1 s
+// de desvio se corrige na velocidade; mais que isso, num salto, e depois espera 2 s
+function tocaJunto(el, alvo) {
+  const base = video.playbackRate || 1;
+  if (el.paused) {
+    if (Math.abs(el.currentTime - alvo) > 0.04) el.currentTime = alvo;
+    el.playbackRate = base;
+    el.play().catch(() => {});
+    return;
+  }
+  if (el.seeking || el.readyState < 3) return;
+  const d = el.currentTime - alvo;
+  if (Math.abs(d) > 1 && performance.now() > (el._semSalto || 0)) {
+    el.currentTime = alvo;
+    el._semSalto = performance.now() + 2000;
+    el.playbackRate = base;
+    return;
+  }
+  const r = Math.abs(d) > 0.06 ? base * Math.min(1.25, Math.max(0.8, 1 - d)) : base;
+  if (Math.abs(el.playbackRate - r) > 0.02) el.playbackRate = r;
 }
 let ovShown = '';
 /* Prévia do formato da montagem: o player toma o quadro do formato escolhido e cada lugar é desenhado
@@ -8305,44 +8393,57 @@ function syncLayers() {
   const playing = !video.paused && !video.ended && !G.mode;
   const rt = corte ? draftToRendered(S.t) : 0;
   const vivos = new Set();
-  let img = '', imgAtras = false, imgIt = null, imgTrav = false, imgVid = false;
+  let img = '', imgAtras = false, imgIt = null, imgTrav = false, imgVid = false, prox = null;
   if (corte && S.camadas) {
     for (const f of S.camadas.faixas) {
       for (const it of f.itens) {
         const dentro = rt >= it.inicio && rt < it.inicio + it.duracao;
-        if (!dentro) continue;
+        if (!dentro) {
+          // o que entra logo já carrega: o som em até 5 s, o vídeo por cima em até 3 s
+          const falta = it.inicio - rt;
+          if (falta <= 0 || f.tipo === 'texto') continue;
+          const vid = f.tipo === 'imagem' && ehVideoArq(it.arquivo);
+          if (playing && falta < 5 && (vid || f.tipo !== 'imagem')) somBuffer(it.arquivo);
+          if (vid && !f.oculto && falta < 3 && (!prox || it.inicio < prox.inicio)) prox = it;
+          continue;
+        }
         // a camada mais nova fica por cima, como no vídeo final (os inserts dela entram por último)
         if (f.tipo === 'imagem') { if (!f.oculto) { img = it.arquivo; imgAtras = !!it.atras; imgIt = it; imgTrav = f.travado; imgVid = ehVideoArq(it.arquivo); } continue; }
         if (f.tipo === 'texto') continue; // os textos: desenhaTextos
         if (f.mudo || !playing) continue;
         vivos.add(it.id);
-        const a = audioEl(it);
-        const alvo = it.corte + (rt - it.inicio);
-        a.volume = Math.min(1, it.volume); // acima de 100% a prévia toca a 100%; o vídeo final leva o ganho
-        a.muted = S.mudoUsuario;
-        if (Math.abs(a.currentTime - alvo) > 0.25) a.currentTime = alvo;
-        if (a.paused) a.play().catch(() => {});
+        // acima de 100% a prévia toca a 100%; o vídeo final leva o ganho
+        somToca(it.id, it.arquivo, it.corte + (rt - it.inicio), S.mudoUsuario ? 0 : Math.min(1, it.volume));
       }
     }
   }
-  for (const [id, a] of AUD) if (!vivos.has(id) && !a.paused) a.pause();
+  // o som do vídeo por cima sai pelo Web Audio, e o vídeo fica mudo: no iPhone um 2º vídeo com som PAUSA o principal
+  if (imgVid && playing) {
+    vivos.add('ov:' + imgIt.id);
+    const vol = S.mudoUsuario ? 0 : Math.min(1, Math.max(0, imgIt.volume ?? 1));
+    somToca('ov:' + imgIt.id, imgIt.arquivo, (imgIt.corte || 0) + (rt - imgIt.inicio), vol);
+  }
+  for (const k of [...SOM.tocando.keys()]) if (!vivos.has(k)) somPara(k);
   const ovV = $('ovVid');
+  ovV.muted = true;
   if (imgVid) { // o vídeo por cima: o quadro de corte + (agulha - início), tocando junto quando o vídeo toca
     if (ovV.dataset.src !== img) { ovV.dataset.src = img; ovV.src = `/media/${img}`; }
     ovV.classList.remove('hidden');
     const alvo = (imgIt.corte || 0) + (rt - imgIt.inicio);
-    ovV.volume = Math.min(1, imgIt.volume ?? 1); // acima de 100% a prévia toca a 100%; o vídeo final leva o ganho
-    ovV.muted = S.mudoUsuario || !((imgIt.volume ?? 1) > 0);
-    if (playing) {
-      if (Math.abs(ovV.currentTime - alvo) > 0.25) ovV.currentTime = alvo;
-      if (ovV.paused) ovV.play().catch(() => {});
-    } else {
+    if (playing) tocaJunto(ovV, alvo);
+    else {
       if (!ovV.paused) ovV.pause();
       if (Math.abs(ovV.currentTime - alvo) > 0.04) ovV.currentTime = alvo;
     }
   } else {
     if (!ovV.paused) ovV.pause();
     ovV.classList.add('hidden');
+    // o próximo vídeo por cima já carrega, parado no quadro em que entra: posta só na hora, a fonte levava
+    // ~1,1 s para começar a tocar no iPhone
+    if (prox) {
+      if (ovV.dataset.src !== prox.arquivo) { ovV.dataset.src = prox.arquivo; ovV.src = `/media/${prox.arquivo}`; }
+      if (ovV.readyState >= 1 && !ovV.seeking && Math.abs(ovV.currentTime - (prox.corte || 0)) > 0.04) ovV.currentTime = prox.corte || 0;
+    }
   }
   const soImg = imgVid ? '' : img;
   if (soImg !== ovShown) {
@@ -9217,6 +9318,7 @@ function testarFx(id) {
     positionTimeline();
     preciseSeek();
     FX.pararEm = corte + dur / 2 + 0.4;
+    liberaSons();
     video.play().catch(() => {});
   }
   fxEscolha = id;
