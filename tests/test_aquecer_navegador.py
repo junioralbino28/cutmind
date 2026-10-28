@@ -81,6 +81,76 @@ def test_macos_anterior_ao_13_e_reconhecido(monkeypatch):
     assert aq.macos_antigo() is None
 
 
+def _windows(rem: Path) -> tuple[Path, Path]:
+    """Chrome e compositor como o Remotion deixa no Windows (o executável e uma biblioteca ao lado de cada)."""
+    exe = rem / "node_modules" / ".remotion" / "chrome-headless-shell" / "win64" / "chrome-headless-shell-win64" / "chrome-headless-shell.exe"
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"chrome")
+    (exe.parent / "libGLESv2.dll").write_bytes(b"dll")
+    comp = rem / "node_modules" / "@remotion" / "compositor-win32-x64-msvc"
+    comp.mkdir(parents=True)
+    (comp / "remotion.exe").write_bytes(b"compositor")
+    (comp / "avcodec-61.dll").write_bytes(b"dll")
+    (rem / "node_modules" / "@remotion" / "cli" / "package.json").write_text('{"version": "4.0.482"}', encoding="utf-8")
+    return exe, comp
+
+
+def test_caminho_curto_nao_copia(tmp_path, monkeypatch):
+    rem = _projeto(tmp_path)
+    _windows(rem)
+    monkeypatch.setattr(aq.sys, "platform", "win32")
+    monkeypatch.setenv("CUTMIND_HOME", str(tmp_path / "casa"))
+    monkeypatch.setattr(aq, "LIMITE_CAMINHO", 10_000)
+    assert aq.curtos(rem) == {} and aq.flags(rem) == [] and aq.ambiente(rem) == {}
+    assert not (tmp_path / "casa").exists()
+
+
+def test_pasta_funda_roda_o_chrome_e_o_compositor_de_copias_curtas(tmp_path, monkeypatch):
+    """O spawn do Node falha com ENOENT quando o caminho do executável passa de ~260 caracteres."""
+    rem = _projeto(tmp_path)
+    exe, comp = _windows(rem)
+    monkeypatch.setattr(aq.sys, "platform", "win32")
+    monkeypatch.setenv("CUTMIND_HOME", str(tmp_path / "casa"))
+    monkeypatch.setattr(aq, "LIMITE_CAMINHO", 10)  # a pasta do teste vira "funda"
+    d = aq.curtos(rem)
+    base = tmp_path / "casa" / "remotion-curto" / "4.0.482"
+    assert Path(d["chrome"]) == base / "chrome" / "chrome-headless-shell.exe"
+    assert Path(d["chrome"]).read_bytes() == b"chrome" and (base / "chrome" / "libGLESv2.dll").is_file()
+    assert Path(d["binarios"]) == base / "compositor" and (base / "compositor" / "avcodec-61.dll").is_file()
+    assert aq.flags(rem) == [f"--browser-executable={d['chrome']}", f"--binaries-directory={d['binarios']}"]
+    assert aq.ambiente(rem) == {"CUTMIND_CHROME": d["chrome"], "CUTMIND_BINARIOS": d["binarios"]}
+    # a cópia é uma vez por versão: na seguinte nada é copiado de novo
+    monkeypatch.setattr(aq.shutil, "copytree", lambda *a, **k: (_ for _ in ()).throw(AssertionError("copiou de novo")))
+    assert aq.curtos(rem) == d
+    assert not list(base.glob("*.tmp"))
+
+
+def test_fora_do_windows_nao_copia(tmp_path, monkeypatch):
+    rem = _projeto(tmp_path)
+    _windows(rem)
+    monkeypatch.setattr(aq.sys, "platform", "darwin")
+    monkeypatch.setattr(aq, "LIMITE_CAMINHO", 10)
+    assert aq.curtos(rem) == {} and aq.flags(rem) == []
+
+
+def test_pasta_funda_sem_chrome_baixa_antes_de_copiar(tmp_path, monkeypatch):
+    """Sem o Chrome, o render baixaria para dentro do node_modules, no caminho que não abre."""
+    rem = _projeto(tmp_path)
+    monkeypatch.setattr(aq.sys, "platform", "win32")
+    monkeypatch.setenv("CUTMIND_HOME", str(tmp_path / "casa"))
+    monkeypatch.setattr(aq, "LIMITE_CAMINHO", 10)
+    chamadas = []
+
+    def run(cmd, **kw):
+        chamadas.append(cmd[-2:])
+        _windows(rem)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(aq.subprocess, "run", run)
+    assert "chrome" in aq.curtos(rem)
+    assert chamadas == [["browser", "ensure"]]
+
+
 def test_no_macos_antigo_o_aquecimento_avisa_e_nao_baixa_nada(tmp_path, monkeypatch):
     monkeypatch.setattr(aq, "macos_antigo", lambda: "12.7.6")
     monkeypatch.setattr(aq.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("não devia rodar")))

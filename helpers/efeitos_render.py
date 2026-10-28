@@ -172,7 +172,7 @@ class Leitor:
 
 def _node(*args: str, projeto: Path) -> None:
     r = subprocess.run(["node", str(NODE), *args], cwd=projeto, capture_output=True, text=True,
-                       encoding="utf-8", errors="replace")
+                       encoding="utf-8", errors="replace", env={**os.environ, **aquecer_navegador.ambiente(projeto)})
     if r.returncode != 0:
         # o motivo inteiro vai para o registro (do trabalho, no Gerar do editor); a tela recebe uma frase
         print((r.stderr or r.stdout or "").strip()[-4000:], flush=True)

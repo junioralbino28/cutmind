@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -26,6 +27,7 @@ import sys
 import time
 from pathlib import Path
 
+import aquecer_navegador  # mesma pasta deste arquivo
 from camadas_edit_data import edit_data_do_projeto
 from mixar_final import atraso_da_imagem
 
@@ -132,7 +134,7 @@ def _rodar_partes(remotion: Path, pasta: Path, faixas: list[tuple[int, int]]) ->
     destino.parent.mkdir(exist_ok=True)
     shutil.copy2(PARTES_JS, destino)
     cmd = ["node", str(destino), str(pasta), *(f"{a}-{b}" for a, b in faixas)]
-    if subprocess.run(cmd, cwd=remotion).returncode:
+    if subprocess.run(cmd, cwd=remotion, env={**os.environ, **aquecer_navegador.ambiente(remotion)}).returncode:
         raise JanelaErro("o Remotion falhou renderizando as janelas (a saída dele está acima); o render ficou como estava")
 
 

@@ -314,7 +314,7 @@ def renderizar(rem: Path, andamento, de: float, ate: float) -> Path:
     """O render do Remotion, com o andamento pelas linhas "Rendered N/M" e "Encoded N/M" da saída."""
     cli = rem / "node_modules" / "@remotion" / "cli" / "remotion-cli.js"
     saida = rem / "out" / "render.mp4"
-    cmd = ["node", str(cli), "render", "Reels", "out/render.mp4", f"--timeout={TIMEOUT_MS}"]
+    cmd = ["node", str(cli), "render", "Reels", "out/render.mp4", f"--timeout={TIMEOUT_MS}", *aquecer_navegador.flags(rem)]
     p = subprocess.Popen(cmd, cwd=rem, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     resto = b""
     while True:

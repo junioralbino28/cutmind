@@ -79,6 +79,11 @@ when the user reopens Posição), clear `awaitingStyle`, delete `preview_style.j
    downloaded Chrome goes through the macOS malware scan and took 26 s on a 2015 MacBook Air,
    failing the render with "Timed out after 25000 ms while trying to connect to the browser".
    If you ever see that error, run `helpers/aquecer_navegador.py <edit>/remotion` and render again.
+   **Windows, project in a deep folder:** Node cannot launch Chrome or the compositor once the
+   path passes ~260 characters (`spawn ... chrome-headless-shell.exe ENOENT`, even with long paths
+   on in Windows). The kit's own renders (Gerar, montagem, efeitos, janelas) already run them from
+   short copies in `~/.cutmind/remotion-curto/`; for your own `npx remotion render`/`still`, add
+   what `helpers/aquecer_navegador.py <edit>/remotion --flags` prints (empty when the path fits).
    Over a project the "Gerar e baixar" made (`"_gerar": "editor"`), it puts the template's data
    back in `public/`; over your own Phase 2 it never touches `public/` or `CustomGraphics.tsx`,
    only the immutable code. A project scaffolded with an older kit

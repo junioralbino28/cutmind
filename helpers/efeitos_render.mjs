@@ -33,9 +33,12 @@ async function desenhar([serveUrl, propsFile, de, ate, saida]) {
   const {openBrowser, renderFrames, selectComposition} = await carregar('@remotion/renderer');
   const inputProps = JSON.parse(fs.readFileSync(propsFile, 'utf8'));
   const chromiumOptions = process.env.CUTMIND_GL ? {gl: process.env.CUTMIND_GL} : {};
-  const browser = await openBrowser('chrome', {chromiumOptions});
+  // Windows, projeto em pasta funda: o Chrome e o compositor rodam das cópias curtas (aquecer_navegador.py)
+  const binarios = process.env.CUTMIND_BINARIOS ? {binariesDirectory: process.env.CUTMIND_BINARIOS} : {};
+  const browser = await openBrowser('chrome', {chromiumOptions,
+    ...(process.env.CUTMIND_CHROME ? {browserExecutable: process.env.CUTMIND_CHROME} : {})});
   try {
-    const composition = await selectComposition({serveUrl, id: 'EfeitosBase', inputProps, puppeteerInstance: browser});
+    const composition = await selectComposition({serveUrl, id: 'EfeitosBase', inputProps, puppeteerInstance: browser, ...binarios});
     fs.mkdirSync(saida, {recursive: true});
     await renderFrames({
       composition,
@@ -49,6 +52,7 @@ async function desenhar([serveUrl, propsFile, de, ate, saida]) {
       puppeteerInstance: browser,
       chromiumOptions,
       concurrency: Number(process.env.CUTMIND_EFEITOS_CONCORRENCIA || 2),
+      ...binarios,
     });
   } finally {
     await browser.close({silent: true});

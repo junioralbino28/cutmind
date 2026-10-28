@@ -1041,7 +1041,8 @@ def renderizar(edit: Path, concorrencia: int | None = None, so_remotion: bool = 
                            "montagem sai: esconda as camadas de texto e imagem e tire os efeitos")
     rem = preparar_remotion(edit)
     cli = rem / "node_modules" / "@remotion" / "cli" / "remotion-cli.js"
-    cmd = ["node", str(cli), "render", "Reels", "out/render.mp4"] + ([f"--concurrency={concorrencia}"] if concorrencia else [])
+    cmd = ["node", str(cli), "render", "Reels", "out/render.mp4"] + ([f"--concurrency={concorrencia}"] if concorrencia else []) \
+        + aquecer_navegador.flags(rem)
     if subprocess.run(cmd, cwd=rem).returncode != 0:
         raise ErroMontagem("o render do Remotion falhou (a saída dele está acima)")
     _passo([str(AQUI / "mixar_final.py"), str(edit), "--render", str(rem / "out" / "render.mp4")])
