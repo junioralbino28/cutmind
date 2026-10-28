@@ -39,7 +39,9 @@ body {
 button { font-family: inherit; cursor: pointer; }
 .hidden { display: none !important; }
 
-.app { height: 100dvh; display: flex; flex-direction: column; position: relative; }
+/* overflow-x: clip — se algo não couber, corta ali mesmo: um item mais largo que a tela fazia o navegador do
+   celular afastar a página inteira, que passava a rolar para o lado e para baixo (teste de 28/10, 443 px) */
+.app { height: 100dvh; display: flex; flex-direction: column; position: relative; overflow-x: clip; }
 
 /* ---------- topo ---------- */
 .topbar {
@@ -96,17 +98,24 @@ button { font-family: inherit; cursor: pointer; }
 .tb-btn.big { height: 46px; border-radius: 10px; padding: 0 26px; font-size: 15px; }
 /* celular: a barra de cima cabe inteira (o Baixar saía da tela em 390 px com o Pronto junto; "Gerar e
    baixar" em 430). Encolhe a letra e os espaços, nunca as palavras. A duração ao lado de "Corte" sai (a linha
-   do tempo mostra; sem o código, o aviso do meio da tela explica), e abaixo de 412 px o símbolo também */
+   do tempo mostra; sem o código, o aviso do meio da tela explica), e abaixo de 460 px o símbolo também */
 html:not(.desk) .topbar { gap: 5px; padding-left: 8px; padding-right: 8px; }
 html:not(.desk) .topbar .tb-btn { padding: 0 9px; font-size: 12px; }
 html:not(.desk) .topbar .tb-btn.idioma-btn, html:not(.desk) .topbar .proj-btn { min-width: 0; padding: 0 7px; }
 html:not(.desk) .mode { gap: 4px; padding: 0 7px 0 9px; font-size: 12px; }
 html:not(.desk) .mode .mode-sub { display: none; }
+@media (max-width: 459px) { html:not(.desk) .topbar .brand { display: none; } }
 @media (max-width: 411px) {
-  html:not(.desk) .topbar .brand { display: none; }
   html:not(.desk) .topbar .tb-btn { padding: 0 8px; font-size: 11.5px; }
 }
 @media (max-width: 370px) { html:not(.desk) .topbar { gap: 4px; } html:not(.desk) .topbar .tb-btn { padding: 0 6px; } }
+/* o "enviado" (o Salvar chegou no computador) fica só a bolinha verde no celular: junto do Pronto e do "Gerar e
+   baixar" a barra pedia 456 px. A palavra continua para o leitor de tela */
+html:not(.desk) .topbar .pill.sent { font-size: 0; gap: 0; }
+html:not(.desk) .topbar .pill.sent::before { width: 9px; height: 9px; }
+/* o número de pedidos ao lado do Pronto: mais justo no celular (com "12" o Pronto ia de 63 a 96 px) */
+html:not(.desk) .pronto-btn .pronto-n { margin-left: 3px; padding: 0 4px; font-size: 10px; }
+@media (max-width: 370px) { html:not(.desk) .topbar { gap: 3px; padding-left: 6px; padding-right: 6px; } html:not(.desk) .mode { padding: 0 5px 0 7px; } }
 .pill {
   flex: none;
   display: inline-flex; align-items: center; gap: 6px;
@@ -1486,7 +1495,9 @@ textarea:focus { box-shadow: inset 0 0 0 1px var(--line2); }
 .avaliar-txt { display: flex; flex-direction: column; gap: 2px; }
 .avaliar-txt b { font-size: 13.5px; font-weight: 700; }
 .avaliar-txt span { font-size: 12px; color: var(--dim); }
-html:not(.desk) #baixarModal { place-items: end center; }
+html:not(.desk) #baixarModal { place-items: end center; grid-template-columns: minmax(0, 1fr); }
+/* um erro com caminho comprido (sem espaço para quebrar) alargava a janela e o Fechar saía da tela */
+.baixar-txt { overflow-wrap: anywhere; }
 html:not(.desk) #baixarModal .modal-card { width: 100%; border-radius: 14px 14px 0 0; padding-bottom: calc(18px + var(--safe-b)); }
 /* o trabalho do editor (corte refeito): no computador, um cartão no canto, sem cobrir a caixa de pedido */
 html.desk #trabalho { left: auto; width: min(380px, calc(100% - 24px)); }
