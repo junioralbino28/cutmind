@@ -847,7 +847,7 @@ function setLocked(on) {
   S.locked = on;
   $('emptyTitle').textContent = on ? t('Falta o código deste computador') : EMPTY_TEXTS.title;
   $('emptyText').textContent = on
-    ? t('Por segurança, pela rede o editor só abre com o link ou o QR code que aparece no computador. Abra por ele uma vez: este celular fica liberado.')
+    ? t('Por segurança, pela rede o editor só abre com o link ou o QR code que aparece no computador. Abra por ele uma vez numa aba normal: este celular fica liberado (a aba privada esquece quando fecha).')
     : EMPTY_TEXTS.text;
   $('btnEmptyUpload').classList.toggle('hidden', on);
   $('emptyAlt').classList.toggle('hidden', on);
@@ -3815,10 +3815,15 @@ async function abrirNoCelular() {
     qr.innerHTML = u.qr || '';
     qr.classList.toggle('hidden', !u.qr);
     url.textContent = u.url;
-    hint.innerHTML = /tailscale/i.test(u.label)
-      ? t('Com o <b>Tailscale ligado no celular</b>, funciona de qualquer lugar. Aponte a câmera para o código.')
-      : t('Com o celular <b>no mesmo Wi-Fi</b> deste computador, aponte a câmera para o código. ')
-        + t('Se não abrir, o Windows pode estar pedindo para liberar o Python na rede: aceite para redes privadas.');
+    // o túnel é https; o Wi-Fi e o Tailscale são http, e o Safari do iPhone que só aceita HTTPS (visto numa
+    // aba privada) recusa com "URL HTTP com apenas HTTPS ativado", sem botão para continuar
+    hint.innerHTML = /^https:/i.test(u.url)
+      ? t('Funciona no Wi-Fi ou no 4G, de qualquer lugar. Aponte a câmera do celular para o código.')
+      : (/tailscale/i.test(u.label)
+        ? t('Com o <b>Tailscale ligado no celular</b>, funciona de qualquer lugar. Aponte a câmera para o código.')
+        : t('Com o celular <b>no mesmo Wi-Fi</b> deste computador, aponte a câmera para o código. ')
+          + t('Se não abrir, o Windows pode estar pedindo para liberar o Python na rede: aceite para redes privadas.'))
+        + ' ' + t('No iPhone, se o Safari disser que só aceita HTTPS, abra numa aba normal (não privada) ou peça no chat o link <b>de qualquer lugar</b>.');
     if (tabs) [...tabs.children].forEach((b, k) => b.classList.toggle('on', k === i));
   };
   if (tabs) d.urls.forEach((u, i) => {

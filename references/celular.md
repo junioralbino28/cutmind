@@ -132,6 +132,11 @@ still runs on the PC, which has to stay on and awake. What changes:
    What to tell the user if they ask: the link goes through Cloudflare, which carries the https
    and so sees what passes (the code and the videos), like any https host; and Cloudflare calls
    this free Quick Tunnel a testing service, with no promise of staying up.
+   **iPhone: prefer the tunnel.** Its link is https; the Wi-Fi and Tailscale links are http, and
+   Safari refuses them when it only accepts HTTPS (seen in a private tab: "URL HTTP com apenas
+   HTTPS ativado", with no button to go on). A private tab also forgets the access code when it
+   closes or the phone restarts, so the editor falls back to "Falta o código": they open the
+   link again, in a regular tab.
 3. **On the same Wi-Fi:** stop the running preview and start it again with `--host 0.0.0.0`
    (same port). `start_preview.py` prints one link per network ("Wi-Fi de casa",
    "Tailscale (fora de casa)"). Give the user the link, or tell them to click
