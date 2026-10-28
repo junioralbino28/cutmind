@@ -5041,6 +5041,155 @@ $('trabFechar').addEventListener('click', () => {
   $('trabalho').classList.add('hidden');
 });
 
+// ---------- atualização do CutMind (atualizar.py): o cartão do Papory, numa faixa no topo ----------
+/* O servidor procura a versão nova sozinho (ao subir e a cada 6 h). A faixa só aparece com uma. O clique
+ * pede ao servidor, que espera o trabalho do projeto acabar, baixa, confere, instala e, quando a mudança
+ * pede, fecha e liga de novo: a página volta sozinha. Instruções do agente novas: um aviso depois. */
+const ATU = { info: null, rodando: false, alvo: null, agente: false, notasAbertas: false };
+const ATU_DISPENSADA = 'cutmind-atualizacao-dispensada';
+const ATU_AVISO = 'cutmind-atualizacao-feita';
+function atuGuardado(chave, valor) {
+  try {
+    if (valor === undefined) return localStorage.getItem(chave);
+    localStorage.setItem(chave, valor);
+  } catch (e) { /* sem armazenamento: vale até recarregar */ }
+  return null;
+}
+function atuNotas(info) {
+  const n = info.notas || {};
+  return n[IDIOMA] || n.pt || [];
+}
+// estado: 'oferta' | 'esperando' | 'baixando' | 'instalando' | 'erro'; extra: o motivo, a porcentagem
+function mostraAtualizacao(estado, extra) {
+  const info = ATU.info || {};
+  const barra = $('barraAtualizar');
+  if (!estado) {
+    const dispensada = atuGuardado(ATU_DISPENSADA) === info.versao;
+    if (!info.nova || info.ligado === false || dispensada) { barra.classList.add('hidden'); return; }
+    estado = 'oferta';
+  }
+  barra.classList.remove('hidden');
+  $('atuTitulo').textContent = t('Versão {v} disponível', { v: ATU.alvo || info.versao || '' });
+  const botao = $('atuBotao');
+  const acoesVisiveis = estado === 'oferta' || estado === 'erro' || estado === 'baixando';
+  botao.classList.toggle('hidden', !acoesVisiveis);
+  $('atuDepois').classList.toggle('hidden', estado !== 'oferta' && estado !== 'erro');
+  $('atuMudou').classList.toggle('hidden', estado !== 'oferta' || !atuNotas(info).length);
+  botao.disabled = estado === 'baixando';
+  if (estado === 'oferta') {
+    $('atuTexto').textContent = info.remotion ? `${t('Baixa, instala e volta sozinho.')} ${t('O próximo Baixar instala o Remotion de novo (alguns minutos)')}`
+      : t('Baixa, instala e volta sozinho.');
+    botao.textContent = info.reiniciar ? t('Atualizar e reiniciar') : t('Atualizar');
+  } else if (estado === 'esperando') {
+    $('atuTexto').textContent = extra === 'agente' ? t('O Claude está trabalhando: a atualização começa quando ele terminar')
+      : t('Espere o vídeo terminar: a atualização começa logo depois');
+  } else if (estado === 'baixando') {
+    $('atuTexto').textContent = t('Baixa, instala e volta sozinho.');
+    botao.textContent = extra != null ? t('Baixando… {n}%', { n: extra }) : t('Baixando…');
+  } else if (estado === 'instalando') {
+    $('atuTexto').textContent = ATU.reiniciar ? t('Instalando… o editor fecha e abre de novo sozinho em menos de um minuto')
+      : t('Instalando…');
+  } else if (estado === 'erro') {
+    $('atuTexto').textContent = t('Não deu para atualizar ({motivo})', { motivo: extra || t('confira a internet') });
+    botao.textContent = t('Tentar de novo');
+  }
+  const lista = $('atuNotas');
+  lista.replaceChildren(...atuNotas(info).map((n) => { const li = document.createElement('li'); li.textContent = n; return li; }));
+  lista.classList.toggle('hidden', !(estado === 'oferta' && ATU.notasAbertas));
+}
+async function procuraAtualizacao() {
+  if (ATU.rodando) return;
+  try {
+    ATU.info = await (await fetch('/api/atualizacao')).json();
+  } catch (e) { return; } // o servidor reiniciando: tenta na próxima
+  $('atuLigado').checked = ATU.info.ligado !== false;
+  mostraAtualizacao();
+}
+async function atualizarCutMind() {
+  const info = ATU.info;
+  if (!info || !info.nova || ATU.rodando) return;
+  ATU.rodando = true;
+  ATU.alvo = info.versao;
+  ATU.reiniciar = !!info.reiniciar;
+  ATU.agente = !!info.agente;
+  mostraAtualizacao('baixando', 0);
+  let r, d;
+  try {
+    r = await fetch('/api/atualizar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    d = await r.json();
+  } catch (e) {
+    ATU.rodando = false;
+    mostraAtualizacao('erro', t('confira a internet'));
+    return;
+  }
+  if (!r.ok) {
+    ATU.rodando = false;
+    mostraAtualizacao('erro', d.error);
+    return;
+  }
+  if (d.esperando) mostraAtualizacao('esperando', d.esperando);
+  setTimeout(acompanhaAtualizacao, 1000);
+}
+// o andamento do atualizador; com o servidor fora (reiniciando), espera ele voltar
+async function acompanhaAtualizacao() {
+  let a = null;
+  try { a = await (await fetch('/api/atualizacao/andamento')).json(); } catch (e) { a = null; }
+  if (a === null) {
+    mostraAtualizacao('instalando');
+    setTimeout(acompanhaAtualizacao, 2000);
+    return;
+  }
+  if (a.etapa === 'pronto') {
+    atuGuardado(ATU_AVISO, JSON.stringify({ versao: a.versao || ATU.alvo, agente: !!(a.agente ?? ATU.agente) }));
+    location.reload();
+    return;
+  }
+  if (a.etapa === 'falhou') {
+    ATU.rodando = false;
+    mostraAtualizacao('erro', a.erro);
+    return;
+  }
+  if (!a.etapa) { // o clique esperando o trabalho do projeto acabar
+    try {
+      const info = await (await fetch('/api/atualizacao')).json();
+      if (info.esperando) mostraAtualizacao('esperando', info.esperando);
+    } catch (e) { /* segue */ }
+  } else if (a.etapa === 'baixando') {
+    mostraAtualizacao('baixando', a.total ? Math.round((100 * a.feito) / a.total) : null);
+  } else {
+    mostraAtualizacao('instalando');
+  }
+  setTimeout(acompanhaAtualizacao, 1000);
+}
+// depois de recarregar na versão nova: o que mudou para o agente
+function avisoDepoisDeAtualizar() {
+  const feito = atuGuardado(ATU_AVISO);
+  if (!feito) return;
+  atuGuardado(ATU_AVISO, '');
+  let d = {};
+  try { d = JSON.parse(feito) || {}; } catch (e) { return; }
+  if (!d.versao) return;
+  toast(d.agente ? `${t('CutMind atualizado para a versão {v}', { v: d.versao })}. ${t('Para o Claude usar a versão nova, comece uma conversa nova com ele')}`
+    : t('CutMind atualizado para a versão {v}', { v: d.versao }), d.agente ? 9000 : 4000);
+}
+$('atuBotao').addEventListener('click', atualizarCutMind);
+$('atuDepois').addEventListener('click', () => {
+  if (ATU.info && ATU.info.versao) atuGuardado(ATU_DISPENSADA, ATU.info.versao);
+  $('barraAtualizar').classList.add('hidden');
+});
+$('atuMudou').addEventListener('click', () => {
+  ATU.notasAbertas = !ATU.notasAbertas;
+  mostraAtualizacao();
+});
+$('atuLigado').addEventListener('change', async (ev) => {
+  try {
+    await fetch('/api/atualizacao/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ procurar: ev.target.checked }) });
+  } catch (e) { /* fica para a próxima */ }
+  if (!ev.target.checked) $('barraAtualizar').classList.add('hidden');
+  setTimeout(procuraAtualizacao, 1500);
+});
+
 // ---------- camadas: imagens e áudios na linha do tempo ----------
 /* Como em qualquer editor: cada envio de imagem ou áudio vira uma faixa própria, com
  * cabeçalho à esquerda (silenciar ou esconder, e travar). O vídeo principal ganha o
@@ -8702,6 +8851,9 @@ window.addEventListener('resize', () => {
 });
 poll();
 loop();
+avisoDepoisDeAtualizar();
+procuraAtualizacao();
+setInterval(procuraAtualizacao, 10 * 60 * 1000); // o servidor procura a cada 6 h; a faixa confere a cada 10 min
 if (document.fonts && document.fonts.ready) {
   // as amostras medem o texto: erradas até a Poppins carregar
   document.fonts.ready.then(() => { if (S.styling) renderStyle(); });

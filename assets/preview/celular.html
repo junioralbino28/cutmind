@@ -25,6 +25,19 @@
 </head>
 <body>
 <div class="app" id="app">
+  <!-- versão nova do CutMind (atualizar.py): o cartão do Papory, flutuando; só aparece quando há uma -->
+  <div class="atualizar hidden" id="barraAtualizar" role="status" aria-live="polite">
+    <div class="atu-txt">
+      <b id="atuTitulo"></b>
+      <span id="atuTexto"></span>
+      <button class="atu-link" id="atuMudou" type="button">O que mudou</button>
+      <ul class="atu-notas hidden" id="atuNotas"></ul>
+    </div>
+    <div class="atu-acoes">
+      <button class="tb-btn ghost" id="atuDepois" type="button">Agora não</button>
+      <button class="tb-btn primary" id="atuBotao" type="button">Atualizar</button>
+    </div>
+  </div>
 
   <header class="topbar">
     <div class="brand"><img src="/assets/cutmind-simbolo.svg" alt="CutMind"></div>
@@ -491,6 +504,12 @@
       <li><span>Pronto, Claude segue</span><span>acorda o Claude uma vez só, com as marcações e os pedidos juntos</span></li>
       <li><span>pela conversa</span><span>junte os pedidos numa mensagem e diga o tempo ("de 0:12 a 0:15")</span></li>
     </ul>
+    <!-- o interruptor do Papory: a procura da versão nova (atualizar.py) -->
+    <h4 class="help-sub">Atualizações</h4>
+    <label class="atu-switch">
+      <input type="checkbox" id="atuLigado" checked>
+      <span><b>Procurar atualizações</b><span>Ao abrir e a cada 6 horas pergunta ao GitHub se há versão nova. Não manda nada seu.</span></span>
+    </label>
   </div>
 </div>
 <script src="/assets/i18n-en.js"></script>
