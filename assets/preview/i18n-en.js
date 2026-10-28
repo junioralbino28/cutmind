@@ -361,7 +361,7 @@ window.I18N_EN = {
   "O agente já foi avisado. O corte aparece aqui sozinho quando ficar pronto.": "The agent has been notified. The cut will appear here automatically when it's ready.",
   "Enviar outro": "Upload another",
   "Não consegui enviar (erro {status}).": "Upload failed (error {status}).",
-  "A conexão caiu no meio do envio. O celular e o computador ainda estão na mesma rede?": "The connection dropped during the upload. Are the phone and the computer still on the same network?",
+  "A conexão caiu no meio do envio e não voltou. Confira a internet e envie de novo.": "The connection dropped during the upload and didn't come back. Check the internet and send it again.",
   "Envio cancelado": "Upload canceled",
   "O código para abrir no celular só aparece no computador onde o editor está rodando.": "The code to open on the phone only shows up on the computer where the editor is running.",
   "Agora o editor está aberto só para este computador.": "Right now the editor only works on this computer.",

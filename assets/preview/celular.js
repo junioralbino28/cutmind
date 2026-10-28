@@ -3631,6 +3631,10 @@ const mb = (b) => `${Math.round(b / 1e6)} MB`;
 const PARA_SERVIDOR = { montagem: 'montagem', 'montagem-nova': 'montagem' };
 const CHEGOU = { montagem: t('Chegou. Entra no lugar quando você salvar.'), 'montagem-nova': t('Chegou. Está na lista da montagem.'),
   musica: t('Chegou. Está entre as músicas da montagem.') };
+/* Em pedaços de 8 MB: pelo túnel (o editor aberto de qualquer lugar) um pedido grande passa do limite do
+ * caminho, e no 4G a rede cai. O 1º pedaço recebe um id; se a rede cair, o editor pergunta ao computador até
+ * onde chegou e continua dali (até 5 tentativas, esperando mais a cada uma). */
+const PEDACO = 8 * 1024 * 1024;
 function sendVideo(file, aoChegar, para, aoFalhar) {
   if (upXhr) { toast(t('Já tem um envio indo — espere terminar'), 2400); return; }
   const card = $('upload');
@@ -3639,14 +3643,22 @@ function sendVideo(file, aoChegar, para, aoFalhar) {
   $('upBar').style.width = '0%';
   $('upPct').textContent = t('0% · 0 de {p0}', { p0: mb(file.size) });
   $('upCancel').textContent = t('Cancelar');
-  const xhr = new XMLHttpRequest();
-  upXhr = xhr;
-  xhr.open('POST', `/api/upload?name=${encodeURIComponent(file.name)}${S.projetoId ? `&projeto=${S.projetoId}` : ''}${PARA_SERVIDOR[para] ? `&para=${PARA_SERVIDOR[para]}` : ''}`);
-  xhr.upload.onprogress = (e) => {
-    if (!e.lengthComputable) return;
-    const f = e.loaded / e.total;
+  const base = `/api/upload?name=${encodeURIComponent(file.name)}${S.projetoId ? `&projeto=${S.projetoId}` : ''}${PARA_SERVIDOR[para] ? `&para=${PARA_SERVIDOR[para]}` : ''}&total=${file.size}`;
+  const envio = { id: null, recebido: 0, tentativas: 0, cancelado: false, xhr: null };
+  const cancelou = () => { upXhr = null; card.classList.add('hidden'); toast(t('Envio cancelado'), 2000); if (aoFalhar) aoFalhar(); };
+  upXhr = {
+    abort() {
+      envio.cancelado = true;
+      // o computador apaga o pedaço já recebido (sem isso o arquivo parcial fica na pasta de vídeos)
+      if (envio.id) fetch(`/api/upload/cancelar?id=${encodeURIComponent(envio.id)}`, { method: 'POST' }).catch(() => {});
+      if (envio.xhr) envio.xhr.abort(); else cancelou();
+    },
+  };
+  const progresso = (noPedaco) => {
+    const feito = Math.min(file.size, envio.recebido + noPedaco);
+    const f = feito / file.size;
     $('upBar').style.width = `${(f * 100).toFixed(1)}%`;
-    $('upPct').textContent = t('{p0}% · {p1} de {p2}', { p0: Math.floor(f * 100), p1: mb(e.loaded), p2: mb(e.total) });
+    $('upPct').textContent = t('{p0}% · {p1} de {p2}', { p0: Math.floor(f * 100), p1: mb(feito), p2: mb(file.size) });
   };
   const end = (cls, msg) => {
     upXhr = null;
@@ -3654,36 +3666,76 @@ function sendVideo(file, aoChegar, para, aoFalhar) {
     $('upPct').textContent = msg;
     $('upCancel').textContent = t('Fechar');
   };
-  xhr.onload = () => {
-    let res = {};
-    try { res = JSON.parse(xhr.responseText); } catch (err) { /* resposta sem JSON */ }
-    if (xhr.status === 200 && res.ok) {
-      $('upBar').style.width = '100%';
-      if (CHEGOU[para]) {
-        end('done', CHEGOU[para]);
-        setTimeout(() => { if (!upXhr) card.classList.add('hidden'); }, 5000);
-        if (aoChegar) aoChegar(res);
-        return;
-      }
-      const camada = res.tipo === 'imagem' || res.tipo === 'audio';
-      const fundo = aoChegar && res.tipo === 'imagem';
-      end('done', fundo ? t('Chegou. Está entre os fundos.') : camada ? t('Chegou. Está na linha do tempo, na agulha.') : t('Chegou no computador. O agente já foi avisado.'));
-      setTimeout(() => { if (!upXhr) card.classList.add('hidden'); }, 7000);
-      if (fundo) { aoChegar(res); return; }
-      if (camada) { addLayer(res.tipo, res.arquivo); return; }
-      if (!(S.videoDuration > 0)) {
-        $('emptyTitle').textContent = t('Vídeo recebido');
-        $('emptyText').textContent = t('O agente já foi avisado. O corte aparece aqui sozinho quando ficar pronto.');
-        $('btnEmptyUpload').textContent = t('Enviar outro');
-      }
-    } else {
-      end('bad', res.error || t('Não consegui enviar (erro {status}).', { status: xhr.status }));
-      if (aoFalhar) aoFalhar();
+  const falhou = (msg) => { end('bad', msg); if (aoFalhar) aoFalhar(); };
+  const chegou = (res) => {
+    $('upBar').style.width = '100%';
+    if (CHEGOU[para]) {
+      end('done', CHEGOU[para]);
+      setTimeout(() => { if (!upXhr) card.classList.add('hidden'); }, 5000);
+      if (aoChegar) aoChegar(res);
+      return;
+    }
+    const camada = res.tipo === 'imagem' || res.tipo === 'audio';
+    const fundo = aoChegar && res.tipo === 'imagem';
+    end('done', fundo ? t('Chegou. Está entre os fundos.') : camada ? t('Chegou. Está na linha do tempo, na agulha.') : t('Chegou no computador. O agente já foi avisado.'));
+    setTimeout(() => { if (!upXhr) card.classList.add('hidden'); }, 7000);
+    if (fundo) { aoChegar(res); return; }
+    if (camada) { addLayer(res.tipo, res.arquivo); return; }
+    if (!(S.videoDuration > 0)) {
+      $('emptyTitle').textContent = t('Vídeo recebido');
+      $('emptyText').textContent = t('O agente já foi avisado. O corte aparece aqui sozinho quando ficar pronto.');
+      $('btnEmptyUpload').textContent = t('Enviar outro');
     }
   };
-  xhr.onerror = () => { end('bad', t('A conexão caiu no meio do envio. O celular e o computador ainda estão na mesma rede?')); if (aoFalhar) aoFalhar(); };
-  xhr.onabort = () => { upXhr = null; card.classList.add('hidden'); toast(t('Envio cancelado'), 2000); if (aoFalhar) aoFalhar(); };
-  xhr.send(file);
+  // a rede caiu (ou o computador respondeu fora de ordem): pergunta até onde chegou e continua
+  const retentar = async () => {
+    envio.xhr = null;
+    envio.tentativas += 1;
+    if (envio.cancelado) return;
+    if (envio.tentativas > 5) { falhou(t('A conexão caiu no meio do envio e não voltou. Confira a internet e envie de novo.')); return; }
+    await new Promise((ok) => { setTimeout(ok, 1000 * envio.tentativas); });
+    if (envio.cancelado) { cancelou(); return; }
+    if (envio.id) {
+      try {
+        const r = await fetch(`/api/upload?id=${encodeURIComponent(envio.id)}`);
+        const d = await r.json();
+        if (r.status === 404) { falhou(d.error || t('Não consegui enviar (erro {status}).', { status: 404 })); return; }
+        if (typeof d.recebido === 'number') envio.recebido = d.recebido;
+      } catch (e) { /* ainda sem rede: tenta o pedaço e cai aqui de novo */ }
+    }
+    proximo();
+  };
+  const proximo = () => {
+    const fim = Math.min(envio.recebido + PEDACO, file.size);
+    const xhr = new XMLHttpRequest();
+    envio.xhr = xhr;
+    xhr.open('POST', `${base}&inicio=${envio.recebido}${envio.id ? `&id=${encodeURIComponent(envio.id)}` : ''}`);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) progresso(e.loaded); };
+    xhr.onload = () => {
+      envio.xhr = null;
+      let res = {};
+      try { res = JSON.parse(xhr.responseText); } catch (err) { /* resposta sem JSON */ }
+      if (xhr.status === 200 && res.ok && res.id) { // um pedaço chegou; ainda há mais
+        envio.id = res.id;
+        envio.recebido = res.recebido;
+        envio.tentativas = 0;
+        progresso(0);
+        proximo();
+        return;
+      }
+      if (xhr.status === 200 && res.ok) { chegou(res); return; }
+      if ((xhr.status === 409 || xhr.status === 400) && envio.id && typeof res.recebido === 'number') {
+        envio.recebido = res.recebido;
+        retentar();
+        return;
+      }
+      falhou(res.error || t('Não consegui enviar (erro {status}).', { status: xhr.status }));
+    };
+    xhr.onerror = () => { retentar(); };
+    xhr.onabort = () => { envio.xhr = null; cancelou(); };
+    xhr.send(file.slice(envio.recebido, fim));
+  };
+  proximo();
 }
 $('upCancel').addEventListener('click', () => { if (upXhr) upXhr.abort(); else $('upload').classList.add('hidden'); });
 window.addEventListener('beforeunload', (e) => { if (upXhr) { e.preventDefault(); e.returnValue = ''; } });
