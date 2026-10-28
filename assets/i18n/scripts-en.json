@@ -320,5 +320,6 @@
  "Envio cancelado": "Upload canceled",
  "não consegui gravar o código do túnel em {arq}": "couldn't save the tunnel code in {arq}",
  "o Remotion deste projeto não carrega nem depois de instalar de novo ({motivo}): apague a pasta remotion/node_modules e tente outra vez": "this project's Remotion doesn't load even after reinstalling ({motivo}): delete the remotion/node_modules folder and try again",
- "outro processo está montando o Remotion deste projeto há muito tempo: tente de novo daqui a pouco": "another process has been setting up this project's Remotion for a long time: try again in a moment"
+ "outro processo está montando o Remotion deste projeto há muito tempo: tente de novo daqui a pouco": "another process has been setting up this project's Remotion for a long time: try again in a moment",
+ "o projeto do vídeo final é de um kit anterior e não desenha a imagem no lugar e no tamanho que você pôs: aperte Pronto para o Claude atualizar": "the final video's project is from an older kit and doesn't draw the image where and at the size you set it: press Pronto for Claude to update it"
 }

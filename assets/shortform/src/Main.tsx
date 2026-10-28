@@ -49,7 +49,8 @@ const {fontFamily} = POPPINS;
 
 // ============ TYPES + DATA ====================================================
 type Caption = {text: string; startMs: number; endMs: number};
-type Insert = {src: string; start: number; end: number};
+// x/y/w: a imagem livre das camadas (o centro e a largura em px do quadro, como a pessoa pôs no editor)
+type Insert = {src: string; start: number; end: number; x?: number; y?: number; w?: number};
 type BehindImage = {kind: 'image'; src: string; matte: string; start: number; dur: number};
 type BehindWords = {kind: 'words'; words: {t: string; at: number}[]; matte: string; start: number; dur: number};
 type Behind = BehindImage | BehindWords;
@@ -466,6 +467,20 @@ const InsertCard: React.FC<{src: string; totalFrames: number}> = ({src, totalFra
   );
 };
 
+// INSERT_LIVRE: a imagem que a pessoa moveu ou redimensionou no editor, inteira (sem o recorte do cartão),
+// com o centro em x/y e a largura w, em px do quadro. A prévia do editor desenha igual (celular.css, .ov-img.livre)
+const InsertLivre: React.FC<{src: string; x: number; y: number; w: number; totalFrames: number}> = ({src, x, y, w, totalFrames}) => {
+  const frame = useCurrentFrame();
+  const enter = interpolate(frame, [0, 6], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+  const exit = interpolate(frame, [totalFrames - 6, totalFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+  return (
+    <AbsoluteFill>
+      <Sfx src="whoosh.mp3" />
+      <Img src={staticFile(src)} style={{position: 'absolute', left: x, top: y, width: w, height: 'auto', translate: '-50% -50%', opacity: Math.min(enter, exit)}} />
+    </AbsoluteFill>
+  );
+};
+
 const Inserts: React.FC = () => {
   const {fps} = useVideoConfig();
   return (
@@ -475,7 +490,9 @@ const Inserts: React.FC = () => {
         const duration = Math.round((it.end - it.start) * fps);
         return (
           <Sequence key={i} from={from} durationInFrames={duration} layout="none">
-            <InsertCard src={it.src} totalFrames={duration} />
+            {it.w != null && it.x != null && it.y != null
+              ? <InsertLivre src={it.src} x={it.x} y={it.y} w={it.w} totalFrames={duration} />
+              : <InsertCard src={it.src} totalFrames={duration} />}
           </Sequence>
         );
       })}

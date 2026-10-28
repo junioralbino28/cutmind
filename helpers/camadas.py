@@ -20,6 +20,9 @@ viram `inserts` no edit-data, `camadas_edit_data.py`) e o som do vídeo final
 
 Cada faixa é uma camada: áudio tem "mudo", imagem e texto têm "oculto", todas têm "travado".
 Uma imagem com `"atras": true` vira o cartão grande atrás da pessoa, em vez do cartão de cima.
+Uma imagem com `largura` é livre: inteira (sem o recorte do cartão), com o centro em `x`/`y` e essa
+largura em px do quadro 1080x1920, no lugar e no tamanho que a pessoa pôs no editor. Sem `largura`,
+é o cartão de cima (780x500, 90 px do topo).
 Um texto tem o centro em `x`/`y` (px do quadro 1080x1920, podendo sair um pouco dele), quebra
 de linha com "\n" e o `estilo` do painel de Texto: `fonte` (uma família do catálogo de
 fontes), `peso`, `cor` e `corContorno` (#rrggbb), `tamanho` (× 96 px) e `contorno` (px). Com
@@ -185,6 +188,10 @@ def normalize(obj: object) -> dict:
                     "duracao": _num(it.get("duracao", 0), "duracao", 0.05)}
             if tipo == "imagem" and it.get("atras"):  # o cartão grande, atrás da pessoa
                 item["atras"] = True
+            elif tipo == "imagem" and it.get("largura") is not None:  # a imagem livre: lugar e tamanho da pessoa
+                item["x"] = _num(it.get("x", 540), "x", -1080, 2160)
+                item["y"] = _num(it.get("y", 960), "y", -1920, 3840)
+                item["largura"] = _num(it["largura"], "largura", 40, 3240)
             if tipo == "audio":
                 item["corte"] = _num(it.get("corte", 0), "corte")
                 item["volume"] = _num(it.get("volume", 1), "volume", 0.0, 2.0)

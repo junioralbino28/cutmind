@@ -169,6 +169,14 @@ html:not(.desk) .pronto-btn .pronto-n { margin-left: 3px; padding: 0 4px; font-s
 /* imagem atrás da pessoa: o cartão grande do vídeo final (Main.tsx, BehindImageEl: 1000×1250 px,
    40 do topo, canto 30). Sem o recorte ao vivo, a prévia o mostra transparente sobre a pessoa */
 .ov-img.atras { top: 2.083%; width: 92.593%; height: 65.104%; border-radius: 3% / 2.4%; opacity: 0.72; }
+/* a imagem livre (a pessoa moveu ou mudou o tamanho): inteira, com o centro e a largura que ela pôs. O mesmo
+   desenho do vídeo final (Main.tsx, InsertLivre): left/top/width vêm do JS, em % do quadro */
+.ov-img.livre { translate: -50% -50%; height: auto; border-radius: 0; box-shadow: none; object-fit: fill; }
+/* a caixa de toque da imagem da agulha: por cima dela, debaixo dos textos */
+.ov-img-caixas { position: absolute; inset: 0; container-type: size; overflow: hidden; z-index: 3; pointer-events: none; }
+.ov-img-caixa { position: absolute; translate: -50% -50%; pointer-events: auto; cursor: grab; touch-action: none; }
+.ov-img-caixa.sel { outline: 1.5px dashed rgba(255, 255, 255, 0.9); outline-offset: 0.6cqw; }
+.ov-img-caixa.trav { pointer-events: none; }
 /* camadas de texto, no lugar e no tamanho do vídeo final (src/CamadasTexto.tsx). A caixa é o
    container: 1cqw = 1% da largura da prévia, a mesma conta dos 1080 px do quadro. Só o texto
    pega o toque; o resto do vídeo continua tocando e pausando */

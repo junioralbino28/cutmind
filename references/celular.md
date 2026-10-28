@@ -217,6 +217,12 @@ Each layer is a track, as in any editor:
   grows with the layers up to a ceiling, then the tracks get thinner.
 - Corte plays the audio layers along with the video and shows the image where the
   final card goes (780×500, 90 px from the top). Final plays `final.mp4` as rendered.
+- **On the video, an image moves and resizes like a text.** Tap it to select it (dashed
+  outline and the corner dot), drag it to move it, pull the dot to resize it. The first
+  move takes it out of the card: it becomes the whole image (no 780×500 crop), with its
+  center `x`/`y` and `largura` in frame px in `camadas.json`, and the final video draws it
+  exactly there (`Main.tsx`, `InsertLivre`; measured equal to the preview to the pixel).
+  Near the middle it snaps to the middle. "Atrás da pessoa" still uses the big card.
 - Undo/redo covers all of it. **Salvar** sends `camadas`; the server validates it
   (files only from `midia/`, sane times and volumes) and writes `<edit>/camadas.json`
   — the project file, read back when the editor opens. A refusal shows the reason.

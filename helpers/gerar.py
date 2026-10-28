@@ -266,7 +266,11 @@ def preparar_remotion_fase2(edit: Path) -> Path:
                         "Pronto para o Claude atualizar")
     if r["erros"]:
         raise ErroGerar("um efeito do vídeo final ficou inválido: aperte Pronto para o Claude corrigir")
-    camadas_edit_data.aplicar(edit)
+    try:
+        camadas_edit_data.aplicar(edit)
+    except camadas_edit_data.TemplateVelho:
+        raise ErroGerar("o projeto do vídeo final é de um kit anterior e não desenha a imagem no lugar e no tamanho "
+                        "que você pôs: aperte Pronto para o Claude atualizar") from None
     return rem
 
 

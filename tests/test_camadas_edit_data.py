@@ -203,3 +203,42 @@ def test_legenda_que_acompanha_tambem_pede_o_rastreio(projeto, ferramentas):
     (public / "edit-data.json").write_text(json.dumps(d), encoding="utf-8")
     _camadas(edit, [])  # nenhum texto: só a legenda pede
     assert aplicar(edit)["feitos"] == ["rastreio.json"]
+
+
+# ---- a imagem livre: a pessoa moveu ou redimensionou no editor (teste no celular de 28/10)
+
+def _livre(fid, arquivo, x, y, largura, atras=False):
+    f = _img(fid, arquivo, 5, 3)
+    f["itens"][0].update({"x": x, "y": y, "largura": largura, **({"atras": True} if atras else {})})
+    return f
+
+
+def test_imagem_livre_leva_lugar_e_tamanho_para_o_insert(projeto):
+    edit, public, _ = projeto
+    _camadas(edit, [_livre("i1", "midia/outro.jpg", 300, 1500, 420)])
+    aplicar(edit)
+    assert _inserts(public)[1] == {"src": "midia/camada-i1-1.jpg", "start": 5.0, "end": 8.0, "camada": "i1-1",
+                                   "x": 300, "y": 1500, "w": 420}
+
+
+def test_template_velho_para_em_vez_de_por_no_cartao(projeto):
+    edit, public, _ = projeto
+    src = public.parent / "src"
+    src.mkdir()
+    (src / "Main.tsx").write_text("const InsertCard = () => null;", encoding="utf-8")  # sem INSERT_LIVRE
+    _camadas(edit, [_livre("i1", "midia/outro.jpg", 300, 1500, 420)])
+    import camadas_edit_data as ced
+    with pytest.raises(ced.TemplateVelho, match="atualizar_template"):
+        aplicar(edit)
+    (src / "Main.tsx").write_text("// INSERT_LIVRE\n", encoding="utf-8")
+    aplicar(edit)  # com o template de agora, segue
+    _camadas(edit, [_img("i1", "midia/outro.jpg", 5, 3)])
+    (src / "Main.tsx").write_text("const InsertCard = () => null;", encoding="utf-8")
+    aplicar(edit)  # imagem no cartão: o template velho desenha, nada a conferir
+
+
+def test_o_template_do_kit_desenha_a_imagem_livre():
+    main = Path(__file__).resolve().parents[1] / "assets" / "shortform" / "src" / "Main.tsx"
+    texto = main.read_text(encoding="utf-8")
+    import camadas_edit_data as ced
+    assert ced.MARCA_LIVRE in texto and "<InsertLivre" in texto

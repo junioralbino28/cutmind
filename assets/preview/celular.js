@@ -7894,19 +7894,116 @@ function enqNasOutras() {
   toast(t('O mesmo enquadramento em mais {length} {p1} com esta mídia.', { length: outras.length, p1: outras.length === 1 ? t('lugar') : t('lugares') }), 2600);
   renderTimeline(); renderToolbar(); refreshHeader();
 }
+/* ---------- a imagem livre: mover e mudar o tamanho no vídeo, como o texto ----------
+ * No teste de 28/10 a imagem não saía do cartão de cima. Agora tocar nela a escolhe, arrastar move e a bolinha
+ * do canto muda o tamanho. A primeira mexida a tira do cartão: ela fica inteira (sem o recorte 780x500), no lugar
+ * e na largura do cartão, e daí anda. `x`/`y` (centro) e `largura` em px do quadro, no camadas.json; o vídeo final
+ * desenha igual (Main.tsx, InsertLivre). */
+const CARTAO_IMG = { x: 540, y: 340, w: 780, h: 500 }; // Main.tsx: 780x500, 90 px do topo
+function imagemProporcao() {
+  const ov = $('ovImg');
+  return ov.naturalWidth && ov.naturalHeight ? ov.naturalHeight / ov.naturalWidth : 0;
+}
+function imagemGeometria(it) {
+  if (it.largura == null) return { ...CARTAO_IMG };
+  const p = imagemProporcao();
+  return { x: it.x, y: it.y, w: it.largura, h: p ? it.largura * p : it.largura };
+}
+function imagemLivre(it) {
+  const ov = $('ovImg');
+  const livre = !!(it && it.largura != null);
+  ov.classList.toggle('livre', livre);
+  if (livre) Object.assign(ov.style, { left: pct(it.x / FRAME_W), top: pct(it.y / FRAME_H), width: pct(it.largura / FRAME_W) });
+  else { ov.style.left = ''; ov.style.top = ''; ov.style.width = ''; }
+}
+let imgCaixaSig = '';
+function desenhaImagemCaixa() {
+  const box = $('ovImgCaixa');
+  if (!box) return;
+  const v = S.imgNaTela;
+  const pode = !!v && S.view === 'corte' && !S.styling && !S.posMode && !formatoPrevia();
+  const sig = JSON.stringify(pode ? [v.it.id, v.it.x, v.it.y, v.it.largura, v.trav, v.it.id === S.layerSel, imagemProporcao(),
+    FRAME_W, FRAME_H] : null);
+  if (sig === imgCaixaSig) return;
+  imgCaixaSig = sig;
+  box.innerHTML = '';
+  if (!pode) return;
+  const sel = v.it.id === S.layerSel;
+  const g = imagemGeometria(v.it);
+  const c = el('div', `ov-img-caixa${sel ? ' sel' : ''}${v.trav ? ' trav' : ''}`, box);
+  c.dataset.img = v.it.id;
+  Object.assign(c.style, { left: pct(g.x / FRAME_W), top: pct(g.y / FRAME_H), width: pct(g.w / FRAME_W), height: pct(g.h / FRAME_H) });
+  if (sel && !v.trav) el('span', 'ov-tx-tam', c).dataset.tamimg = v.it.id; // a mesma bolinha do texto
+}
+$('ovImg').addEventListener('load', () => { imgCaixaSig = ''; desenhaImagemCaixa(); }); // a proporção chegou
+const imgDrag = { id: null };
+$('ovImgCaixa').addEventListener('pointerdown', (e) => {
+  const caixa = e.target.closest('[data-img]');
+  const hit = caixa && camItem(caixa.dataset.img);
+  if (!hit || hit.f.travado) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const P = player.getBoundingClientRect();
+  const g = imagemGeometria(hit.it);
+  const cx = P.left + (g.x / FRAME_W) * P.width, cy = P.top + (g.y / FRAME_H) * P.height;
+  Object.assign(imgDrag, { id: e.pointerId, alvo: hit.it.id, x0: e.clientX, y0: e.clientY, g0: g, k: FRAME_W / P.width,
+    tam: !!e.target.closest('[data-tamimg]'), cx, cy, d0: Math.max(6, Math.hypot(e.clientX - cx, e.clientY - cy)),
+    moved: false, before: snap() });
+  video.pause();
+  if (S.layerSel !== hit.it.id) {
+    S.layerSel = hit.it.id;
+    S.selected = -1; S.insSel = -1; S.cenaSel = -1; S.zoomSel = -1; S.fxSel = null; S.legSel = false;
+    renderTimeline(); renderToolbar(); drawCenaBox();
+  }
+  desenhaImagemCaixa();
+  window.addEventListener('pointermove', imgMove);
+  window.addEventListener('pointerup', imgFim);
+  window.addEventListener('pointercancel', imgFim);
+});
+function imgMove(e) {
+  if (e.pointerId !== imgDrag.id) return;
+  const hit = camItem(imgDrag.alvo);
+  if (!hit) return;
+  const dx = e.clientX - imgDrag.x0, dy = e.clientY - imgDrag.y0;
+  if (!imgDrag.moved && Math.hypot(dx, dy) < 4) return;
+  imgDrag.moved = true;
+  const it = hit.it, g = imgDrag.g0;
+  if (it.largura == null) { it.x = g.x; it.y = g.y; it.largura = g.w; } // a primeira mexida: sai do cartão, inteira
+  if (imgDrag.tam) {
+    const k = Math.hypot(e.clientX - imgDrag.cx, e.clientY - imgDrag.cy) / imgDrag.d0;
+    it.largura = Math.round(Math.max(40, Math.min(3240, g.w * k)));
+  } else { // perto do meio, encaixa no meio (como o texto)
+    const nx = Math.round(Math.max(-1080, Math.min(2160, g.x + dx * imgDrag.k)));
+    const ny = Math.round(Math.max(-1920, Math.min(3840, g.y + dy * imgDrag.k)));
+    it.x = Math.abs(nx - FRAME_W / 2) < 12 ? FRAME_W / 2 : nx;
+    it.y = Math.abs(ny - FRAME_H / 2) < 12 ? FRAME_H / 2 : ny;
+  }
+  imagemLivre(it);
+  desenhaImagemCaixa();
+}
+function imgFim(e) {
+  if (e.pointerId !== imgDrag.id) return;
+  window.removeEventListener('pointermove', imgMove);
+  window.removeEventListener('pointerup', imgFim);
+  window.removeEventListener('pointercancel', imgFim);
+  imgDrag.id = null;
+  tapGuard.until = performance.now() + 400; // pegar a imagem não dá play
+  if (imgDrag.moved) { remember(imgDrag.before); renderTimeline(); renderToolbar(); refreshHeader(); }
+}
+
 function syncLayers() {
   const corte = S.view === 'corte';
   const playing = !video.paused && !video.ended && !G.mode;
   const rt = corte ? draftToRendered(S.t) : 0;
   const vivos = new Set();
-  let img = '', imgAtras = false;
+  let img = '', imgAtras = false, imgIt = null, imgTrav = false;
   if (corte && S.camadas) {
     for (const f of S.camadas.faixas) {
       for (const it of f.itens) {
         const dentro = rt >= it.inicio && rt < it.inicio + it.duracao;
         if (!dentro) continue;
         // a camada mais nova fica por cima, como no vídeo final (os inserts dela entram por último)
-        if (f.tipo === 'imagem') { if (!f.oculto) { img = it.arquivo; imgAtras = !!it.atras; } continue; }
+        if (f.tipo === 'imagem') { if (!f.oculto) { img = it.arquivo; imgAtras = !!it.atras; imgIt = it; imgTrav = f.travado; } continue; }
         if (f.tipo === 'texto') continue; // os textos: desenhaTextos
         if (f.mudo || !playing) continue;
         vivos.add(it.id);
@@ -7927,6 +8024,9 @@ function syncLayers() {
     ov.classList.toggle('hidden', !img);
   }
   $('ovImg').classList.toggle('atras', imgAtras); // o cartão grande de trás, no lugar dele no vídeo final
+  imagemLivre(imgIt && !imgAtras ? imgIt : null);
+  S.imgNaTela = imgIt && !imgAtras ? { it: imgIt, trav: imgTrav } : null;
+  desenhaImagemCaixa();
   syncQuadro();
   desenhaTextos();
   desenhaLegendaPrevia(false);

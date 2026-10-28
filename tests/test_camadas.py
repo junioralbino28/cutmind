@@ -118,3 +118,27 @@ def test_trilha_do_catalogo_fica_marcada_no_item():
     c = cam.normalize({"faixas": [_audio(trilha="calma-01"), comum]})
     assert c["faixas"][0]["itens"][0]["trilha"] == "calma-01"
     assert "trilha" not in c["faixas"][1]["itens"][0]  # áudio comum não ganha o campo
+
+
+# ---- a imagem livre (lugar e tamanho da pessoa)
+
+def test_imagem_livre_guarda_lugar_e_tamanho():
+    import camadas as cm
+    base = {"versao": 1, "faixas": [{"id": "i1", "tipo": "imagem", "itens": [
+        {"id": "i1-1", "arquivo": "midia/a.png", "inicio": 1, "duracao": 2, "x": 300.4, "y": 1500, "largura": 420}]}]}
+    it = cm.normalize(base)["faixas"][0]["itens"][0]
+    assert (it["x"], it["y"], it["largura"]) == (300.4, 1500, 420)
+    base["faixas"][0]["itens"][0]["largura"] = 5000
+    import pytest
+    with pytest.raises(cm.CamadasInvalidas, match="largura"):
+        cm.normalize(base)
+
+
+def test_imagem_atras_ou_sem_largura_fica_no_cartao():
+    import camadas as cm
+    item = {"id": "i1-1", "arquivo": "midia/a.png", "inicio": 1, "duracao": 2, "x": 300, "y": 1500}
+    it = cm.normalize({"versao": 1, "faixas": [{"id": "i1", "tipo": "imagem", "itens": [item]}]})["faixas"][0]["itens"][0]
+    assert "x" not in it and "largura" not in it
+    item2 = {**item, "largura": 400, "atras": True}
+    it = cm.normalize({"versao": 1, "faixas": [{"id": "i1", "tipo": "imagem", "itens": [item2]}]})["faixas"][0]["itens"][0]
+    assert it["atras"] is True and "largura" not in it
