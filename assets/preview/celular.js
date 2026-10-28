@@ -1594,6 +1594,7 @@ timeline.addEventListener('pointerdown', (e) => {
   }
   const lh = e.target.closest('.lh');
   if (lh && lh.closest('.chip.f2')) { if (startInsDrag(e.clientX, 'trim', lh.dataset.side)) return; }
+  else if (lh && lh.closest('.chip.fx')) { if (startFxDrag(e.clientX, 'trim', lh.dataset.side)) return; }
   else if (lh && startLayerDrag(e.clientX, 'trim', lh.dataset.side)) return;
   if (agulhaAnda() && G.pts.size === 1 && e.target === rulerCv) {
     G.mode = 'scrub'; // a régua: clicar leva a agulha, arrastar passa o vídeo
@@ -1618,6 +1619,9 @@ timeline.addEventListener('pointerdown', (e) => {
   // segurar um item de camada: ele passa a andar com o dedo
   const lc = e.target.closest('.chip.layer');
   if (lc) G.pega = () => holdLayer(lc.dataset.id, e.clientX);
+  // segurar um filtro: ele anda com o dedo, sem passar dos filtros vizinhos
+  const fi = e.target.closest('.chip.fx.fi');
+  if (fi && S.view === 'corte') G.pega = () => holdFx(fi.dataset.id, e.clientX);
   // segurar um bloco da Fase 2 (vista Final): ele anda com o dedo
   const f2 = e.target.closest('.chip.f2');
   if (f2 && S.view === 'final') G.pega = () => holdIns(+f2.dataset.i, e.clientX);
@@ -1631,11 +1635,12 @@ function arrasteSegue(x) {
   G.ultX = x;
   const rolou = agulhaAnda() && G.v0arraste != null ? (S.v0 - G.v0arraste) * S.pps : 0;
   if (G.mode === 'move') { G.mv.x = x; updateMove(); } else if (G.mode === 'layer') dragLayer(x + rolou);
+  else if (G.mode === 'fx') dragFx(x + rolou);
   else if (G.mode === 'ins') dragIns(x + rolou);
   else if (G.mode === 'cap') dragCap(x + rolou);
   else if (G.mode === 'faixa' || G.mode === 'faixa-borda') puxaFaixa(x); // o tempo debaixo do ponteiro já conta a vista
 }
-const ARRASTES = ['layer', 'ins', 'cap', 'faixa', 'faixa-borda'];
+const ARRASTES = ['layer', 'fx', 'ins', 'cap', 'faixa', 'faixa-borda'];
 /* Computador: levando um item (ou a ponta dele) para perto da borda da linha do tempo, a vista
  * anda sozinha, como no CapCut desktop; sem isso não dava para levar um texto dos 9 s aos 60 s
  * sem antes afastar o zoom. O celular não precisa: lá a linha do tempo corre sob o dedo. */
@@ -1752,6 +1757,7 @@ function endPointer(e) {
   if (G.mode === 'scrub') { G.mode = null; preciseSeek(); return; }
   if (G.mode === 'move') { if (G.pts.size === 0) endMove(e.type === 'pointerup'); return; }
   if (G.mode === 'layer') { if (G.pts.size === 0) endLayerDrag(); return; }
+  if (G.mode === 'fx') { if (G.pts.size === 0) endFxDrag(); return; }
   if (G.mode === 'ins') { if (G.pts.size === 0) endInsDrag(); return; }
   if (G.mode === 'cap') { if (G.pts.size === 0) endCap(); return; }
   if (G.mode === 'faixa' || G.mode === 'faixa-borda') {
@@ -8380,6 +8386,10 @@ function renderFxTrack(lane, ajustes) {
     chip.style.width = `${Math.max((b - a) * S.pps, 12)}px`;
     el('span', 'l-ico', chip).innerHTML = { filtro: ICON.filtro, transicao: ICON.transicao, ajuste: ICON.ajustar }[it.tipo];
     el('span', 'l-name', chip).textContent = it.tipo === 'ajuste' ? t('Ajuste') : S.fxNomes[it.pacote] || it.pacote;
+    if (it.tipo === 'filtro' && it.id === S.fxSel && S.view === 'corte') { // o filtro estica além da tomada
+      el('div', 'lh l', chip).dataset.side = 'l';
+      el('div', 'lh r', chip).dataset.side = 'r';
+    }
   }
 }
 function tapFx(id) {
@@ -8391,6 +8401,89 @@ function tapFx(id) {
   S.cenaSel = -1; S.zoomSel = -1; drawCenaBox();
   renderTimeline();
   renderToolbar();
+}
+/* O filtro estica e anda como um item de camada, e pode passar das tomadas: no teste de 28/10 o Âmbar não
+ * esticava para o vídeo todo. Os tempos são do cut.mp4 (efeitos.json); o render já desenha um filtro que
+ * atravessa tomadas. Continua um filtro por vez: o vizinho é o limite. As pontas grudam no começo, no fim e
+ * nos cortes entre tomadas (sem isso, esticar até o fim pedia acertar o pixel). */
+const MIN_FX = 0.2;
+function fxLimites(id) {
+  const it = fxItem(id), fim = S.videoDuration || totalT();
+  let lo = 0, hi = fim;
+  for (const x of S.efeitos.itens) {
+    if (x.tipo !== 'filtro' || x.id === id) continue;
+    const [a, b] = fxJanela(x);
+    if (b <= it.inicio + FX_ENCOSTA) lo = Math.max(lo, b);
+    else if (a >= it.inicio + it.duracao - FX_ENCOSTA) hi = Math.min(hi, a);
+  }
+  return [lo, hi];
+}
+// a ponta perto (IMA_PX na tela) do começo, do fim ou de um corte entre tomadas gruda nele
+function fxGruda(r) {
+  const d = renderedToDraft(r);
+  const pontos = [0];
+  for (const k of draftLayout()) pontos.push(k.out, k.out + k.dur);
+  let melhor = r, dist = IMA_PX() / S.pps;
+  for (const pd of pontos) {
+    if (Math.abs(pd - d) < dist) { dist = Math.abs(pd - d); melhor = draftToRendered(pd); }
+  }
+  return melhor;
+}
+function startFxDrag(x, kind, side) {
+  const it = fxItem(S.fxSel);
+  if (!it || it.tipo !== 'filtro' || S.view !== 'corte') return false;
+  G.mode = 'fx';
+  G.fx = { id: it.id, kind, side, x0: x, it0: { ...it }, lim: fxLimites(it.id), before: snap() };
+  video.pause();
+  G.ultX = x;
+  bordaRola();
+  return true;
+}
+function holdFx(id, x) {
+  if (G.mode !== 'pan' || G.moved) return;
+  const it = fxItem(id);
+  if (!it || it.tipo !== 'filtro') return;
+  const before = snap();
+  S.fxSel = id; S.layerSel = null; S.selected = -1;
+  if (navigator.vibrate) navigator.vibrate(12);
+  startFxDrag(x, 'move');
+  G.fx.before = before; // desfazer volta também a escolha de antes
+  renderTimeline(); renderToolbar();
+}
+function dragFx(x) {
+  const F = G.fx, it = fxItem(F.id), o = F.it0, [lo, hi] = F.lim;
+  if (!it) return;
+  const dt = (x - F.x0) / S.pps;
+  if (F.kind === 'move') {
+    let ini = Math.max(lo, Math.min(o.inicio + dt, hi - o.duracao));
+    const a = fxGruda(ini), b = fxGruda(ini + o.duracao); // a ponta que chegou perto de um corte leva o bloco
+    if (a !== ini) ini = a; else if (b !== ini + o.duracao) ini = b - o.duracao;
+    it.inicio = +Math.max(lo, Math.min(ini, hi - o.duracao)).toFixed(3);
+  } else if (F.side === 'r') {
+    const fim = Math.min(hi, Math.max(o.inicio + MIN_FX, fxGruda(o.inicio + o.duracao + dt)));
+    it.duracao = +(fim - o.inicio).toFixed(3);
+  } else { // a ponta esquerda anda; a direita fica onde está
+    const fimO = o.inicio + o.duracao;
+    const ini = Math.max(lo, Math.min(fimO - MIN_FX, fxGruda(o.inicio + dt)));
+    it.inicio = +ini.toFixed(3);
+    it.duracao = +(fimO - ini).toFixed(3);
+  }
+  const tip = $('trimTip');
+  tip.textContent = `${fmt(renderedToDraft(it.inicio))} → ${fmt(renderedToDraft(it.inicio + it.duracao))}`;
+  tip.classList.remove('hidden');
+  if (!G.fxQueued) {
+    G.fxQueued = true;
+    requestAnimationFrame(() => { G.fxQueued = false; renderTimeline(); refreshHeader(); fxRedesenhar(); });
+  }
+}
+function endFxDrag() {
+  const F = G.fx;
+  G.mode = null;
+  $('trimTip').classList.add('hidden');
+  const it = fxItem(F.id);
+  if (it && (it.inicio !== F.it0.inicio || it.duracao !== F.it0.duracao)) remember(F.before); // tocar sem arrastar não conta
+  renderTimeline(); renderToolbar(); refreshHeader();
+  fxRedesenhar();
 }
 function deleteFxSel() {
   if (!fxItem(S.fxSel)) return;
@@ -8726,7 +8819,7 @@ function usarFx(id) {
   const nome = S.fxNomes[id] || id;
   closeFx();
   renderTimeline(); renderToolbar(); refreshHeader();
-  toast(t.tipo === 'filtro' ? t('"{nome}" entrou na tomada', { nome }) : t('"{nome}" entrou no corte', { nome }), 2400);
+  toast(t.tipo === 'filtro' ? t('"{nome}" entrou na tomada: puxe as pontas para esticar', { nome }) : t('"{nome}" entrou no corte', { nome }), 2400);
 }
 $('fxClose').innerHTML = ICON.fechar;
 $('fxClose').addEventListener('click', closeFx);

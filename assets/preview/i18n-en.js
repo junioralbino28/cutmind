@@ -598,7 +598,7 @@ window.I18N_EN = {
   "baixando…": "downloading…",
   "A transição vai num corte: este vídeo ainda é uma tomada só": "Transitions go between clips: this video is still a single clip",
   "O efeito não baixou: {message}": "Couldn't download the effect: {message}",
-  "\"{nome}\" entrou na tomada": "\"{nome}\" added to the clip",
+  "\"{nome}\" entrou na tomada: puxe as pontas para esticar": "\"{nome}\" added to the clip: drag the ends to stretch it",
   "\"{nome}\" entrou no corte": "\"{nome}\" added to the cut",
   "Concreto": "Concrete",
   "Parede": "Wall",
