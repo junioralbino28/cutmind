@@ -126,6 +126,12 @@ EN = {
     "  Mac Intel: {trocadas} cópia(s) a mais do OpenMP trocadas por atalho (sem isso a transcrição cai)":
         "  Intel Mac: {trocadas} extra OpenMP copies replaced with a link (otherwise transcription crashes)",
     "  Node.js não encontrado: instalando a versão LTS pelo winget (Fase 2).": "  Node.js not found: installing the LTS version with winget (Phase 2).",
+    "  Liberando o editor para o celular no Wi-Fi de casa: o Windows vai pedir permissão de administrador.":
+        "  Letting the phone reach the editor on your home Wi-Fi: Windows will ask for administrator permission.",
+    "  ok firewall   — o editor abre no celular pelo Wi-Fi de casa (redes privadas)":
+        "  ok firewall   — the editor opens on the phone over your home Wi-Fi (private networks)",
+    "  · firewall   — na primeira vez que o editor abrir no celular, o Windows pergunta na tela do PC: clique em Permitir.":
+        "  · firewall   — the first time the editor opens on the phone, Windows asks on the PC screen: click Allow.",
     "  O Windows pode pedir permissão: é o instalador oficial do Node.js.": "  Windows may ask for permission: it's the official Node.js installer.",
     "  Node.js não encontrado: instalando pelo Homebrew (Fase 2)…": "  Node.js not found: installing with Homebrew (Phase 2)…",
     "  ! a instalação do Node.js não rodou: {e}": "  ! couldn't run the Node.js installer: {e}",
@@ -640,6 +646,71 @@ def install_node() -> str | None:
     return exe
 
 
+# ---- o firewall do Windows: o editor no celular pelo Wi-Fi ----
+# Na primeira vez que o editor abre para a rede, o Windows pergunta NA TELA DO PC se o Python pode receber
+# conexões. Quem usa pelo app do celular (Remote Control do Claude, Remote do Codex) não está na frente do
+# PC para responder, e a página simplesmente não carrega. Na instalação a pessoa está no PC: a regra fica
+# pronta, só para redes privadas, que é o mesmo que o "Permitir" daquela janela. O Windows mostra o aviso
+# de administrador; recusar não quebra nada, só deixa a pergunta para a primeira vez.
+FIREWALL_NOME = "CutMind (editor no celular)"
+
+
+def python_do_editor(dest: Path) -> Path | None:
+    """O python.exe que de fato escuta: no Windows o do .venv é um lançador que abre o Python base, o
+    `home` do pyvenv.cfg. A regra do firewall vale para esse."""
+    try:
+        cfg = (dest / ".venv" / "pyvenv.cfg").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    m = re.search(r"^\s*home\s*=\s*(.+?)\s*$", cfg, re.M)
+    exe = Path(m.group(1)) / "python.exe" if m else None
+    return exe if exe and exe.is_file() else None
+
+
+def _powershell(comando: str, admin: bool = False) -> subprocess.CompletedProcess:
+    """PowerShell com o comando em base64 (o caminho tem espaço e às vezes aspas); `admin` abre outro
+    PowerShell elevado e espera ele terminar."""
+    import base64
+    cod = base64.b64encode(comando.encode("utf-16-le")).decode("ascii")
+    if admin:
+        cod = base64.b64encode(("Start-Process powershell -Verb RunAs -Wait -WindowStyle Hidden "
+                                f"-ArgumentList '-NoProfile','-EncodedCommand','{cod}'").encode("utf-16-le")).decode("ascii")
+    return subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", cod],
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+
+
+def firewall_liberado(programa: Path) -> bool:
+    """Alguma regra ligada deixa este Python receber conexões? Pergunta ao Windows pelo número, sem ler
+    texto traduzido."""
+    alvo = str(programa).replace("'", "''")
+    r = _powershell("@(Get-NetFirewallApplicationFilter | Where-Object { $_.Program -ieq '" + alvo + "' } | "
+                    "Get-NetFirewallRule | Where-Object { $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' "
+                    "-and $_.Enabled -eq 'True' }).Count")
+    return r.returncode == 0 and r.stdout.strip().isdigit() and int(r.stdout.strip()) > 0
+
+
+def garantir_firewall(dests: list[Path], pode_pedir: bool) -> str | None:
+    """No Windows: "ok" com a regra pronta, "falta" sem ela (recusou ou não pôde pedir), None fora do
+    Windows ou sem o Python do editor."""
+    if sys.platform != "win32":
+        return None
+    programa = next((x for x in (python_do_editor(d) for d in dests) if x), None)
+    if programa is None:
+        return None
+    try:
+        if firewall_liberado(programa):
+            return "ok"
+        if not pode_pedir:
+            return "falta"
+        log("  Liberando o editor para o celular no Wi-Fi de casa: o Windows vai pedir permissão de administrador.")
+        alvo = str(programa).replace("'", "''")
+        _powershell(f"New-NetFirewallRule -DisplayName '{FIREWALL_NOME}' -Direction Inbound -Action Allow "
+                    f"-Program '{alvo}' -Profile Private | Out-Null", admin=True)
+        return "ok" if firewall_liberado(programa) else "falta"
+    except (OSError, subprocess.SubprocessError):
+        return "falta"
+
+
 def garantir_node(pode_instalar: bool) -> tuple[str, str]:
     """The state of Node for Phase 2: ("ok", "v24"), ("instalado", path),
     ("velho", "v16") or ("falta", "")."""
@@ -671,6 +742,8 @@ def main() -> None:
                     help="não rodar o uv sync nem instalar o Node.js (usado nos testes)")
     ap.add_argument("--no-node", action="store_true",
                     help="não instalar o Node.js sozinho quando faltar (só avisar)")
+    ap.add_argument("--no-firewall", action="store_true",
+                    help="Windows: não pedir a permissão de rede do editor no celular (só avisar)")
     ap.add_argument("--idioma", "--lang", dest="idioma", choices=("pt", "en"), default=None,
                     help="idioma das mensagens / message language (padrão: o do sistema)")
     args = ap.parse_args()
@@ -785,6 +858,11 @@ def main() -> None:
     else:
         missing.append("node")
         log(f"  x node       — Remotion (Fase 2). Instale com: {hint('node')}")
+    fw = garantir_firewall(dests, pode_pedir=not (args.skip_deps or args.no_firewall))
+    if fw == "ok":
+        log("  ok firewall   — o editor abre no celular pelo Wi-Fi de casa (redes privadas)")
+    elif fw == "falta":
+        log("  · firewall   — na primeira vez que o editor abrir no celular, o Windows pergunta na tela do PC: clique em Permitir.")
     mac = macos_antigo()
     if mac:
         log(f"  · macOS {mac} — a Fase 1 (transcrição, corte, editor) funciona; a Fase 2 (legenda animada, textos e"

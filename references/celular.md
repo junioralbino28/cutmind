@@ -82,6 +82,33 @@ saves at once. The trash on a card deletes the template; the videos that used it
 change. Templates live on the computer (`~/.cutmind/modelos`), so every project shows
 them, on the phone too.
 
+## When the user talks to you from the phone app
+
+The session can be driven from the phone: Claude's app through **Remote Control** (Code tab,
+the PC session with a computer icon; turned on with `/rc` in the VS Code extension or the
+desktop app, or once for good in the settings) and ChatGPT's app through **Codex Remote**
+(only the Codex desktop app pairs; the CLI and the VS Code extension do not). Everything
+still runs on the PC, which has to stay on and awake. What changes:
+
+- **There is no editor on the PC screen to click.** As soon as they say they are on the
+  phone, or ask to edit from it, turn the network on (below) and send the full link
+  (`http://<ip>:<port>/c?t=<code>`) alone on its own line. If the app does not make it
+  tappable, they copy it into the phone's browser. It opens only on the same Wi-Fi as the
+  PC (or with Tailscale): neither Remote Control nor Codex Remote carries the editor's port.
+- **Windows may ask on the PC screen the first time** (the firewall, item 3 below). The
+  installer already asks for it while the user is at the PC (`ok firewall` in its checklist);
+  if they declined, someone at the PC has to allow it once. Say so before sending the link,
+  or the page just never loads.
+- **The raw video from the phone:** the editor's **Enviar** (Wi-Fi) is the sure path. A
+  file attached in the app lands on the PC (Claude keeps photos in `~/.claude/uploads/`;
+  other files arrive as a path): copy it into the videos folder before Phase 1. A large
+  video through the app is untested; offer Enviar first.
+- **The final video to the phone:** **Baixar** in the editor (Wi-Fi). Away from that Wi-Fi,
+  in Claude Code with the phone connected, send `final.mp4` with `SendUserFile`
+  (`display: "attach"`); Codex has no equivalent, so it waits for the PC.
+- **Away from home without Tailscale there is no editor:** edit by chat (README, "Editar só
+  pela conversa") and deliver as above.
+
 ## Turning it on
 
 1. Only when the user asks ("abre no celular", "quero editar pelo celular"). The
@@ -90,8 +117,9 @@ them, on the phone too.
    port). `start_preview.py` prints one link per network ("Wi-Fi de casa",
    "Tailscale (fora de casa)"). Give the user the link, or tell them to click
    **Abrir no celular** at the top of the editor on the computer and scan the QR.
-3. **Windows asks once.** The first time Python listens on the network, Windows
-   Firewall shows a dialog. Tell the user to allow it on **private networks**. If
+3. **Windows asks once** (unless the installer's `ok firewall` already covered it). The
+   first time Python listens on the network, Windows Firewall shows a dialog on the PC.
+   Tell the user to allow it on **private networks**. If
    the phone loads nothing, that dialog (or a network marked as public) is the
    first suspect — not the code.
 4. The link is `/c?t=<code>`: it stores the code in a cookie and redirects to

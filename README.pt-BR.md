@@ -70,3 +70,19 @@ Já baixou esta pasta? De dentro dela:
     uv run --no-project cutmind_install.py --source .
 
 Precisa do [`uv`](https://docs.astral.sh/uv/) e do `ffmpeg`. O Node.js (Fase 2) o instalador põe sozinho quando falta: pelo winget no Windows e pelo Homebrew no Mac. No Linux ele mostra o comando.
+
+## Atualizações
+
+Quando sai versão nova, o editor avisa sozinho num cartão embaixo da barra de cima.
+Um clique em **Atualizar** baixa, confere e instala, e você continua onde estava. Se
+a versão mexe no editor por dentro, o botão vira **Atualizar e reiniciar**, e o editor
+fecha e abre de novo em menos de um minuto. Com o vídeo sendo montado ou o Claude
+trabalhando, a atualização espera eles terminarem. Se algo der errado no meio, o
+CutMind volta sozinho para a versão de antes.
+
+Quando a versão nova traz instruções novas para o agente, o editor avisa para começar
+uma conversa nova, porque é nela que o Claude lê as instruções. Com o editor fechado,
+peça ao agente **"atualiza o CutMind"**.
+
+A procura pergunta ao GitHub ao abrir o editor e a cada 6 horas, e não manda nada seu.
+Para desligar, no computador, abra o botão **?** do editor e tire **Procurar atualizações**.

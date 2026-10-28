@@ -71,6 +71,7 @@ First-time install lives in `install.md`. On cold start just verify:
 - `ffmpeg` + `ffprobe` on PATH; Python deps (`uv sync`); Node 18+ for Phase 2. `yt-dlp` ships with the Python deps, so URL sources need no extra install.
 - The `remotion-best-practices` skill for Phase-2 domain knowledge (install from https://github.com/remotion-dev/skills if missing).
 - Phase 2/3 can use optional API keys (illustrative images, AI soundtrack). They are listed in the track reference, asked for lazily when the feature is first used, and never at install time. **Nothing in Phase 1 needs a key.**
+- **Updates.** The editor offers new CutMind versions by itself (a card under the top bar). If the user asks to update in the chat: with the editor open, tell them to use that card (a dependency update has to stop the editor, and only it can bring itself back); with it closed, run `uv run python -X utf8 helpers/atualizar.py aplicar` from the skill folder and, when its last line asks for a new conversation (the instructions changed), tell them to start one.
 
 Helpers live in `helpers/`, resolved relative to this SKILL.md (usually `~/.claude/skills/cutmind/` or `~/.codex/skills/cutmind/`, or a symlink/junction pointing there). Run them as `uv run python helpers/<name>.py` — a bare `python` misses the `.venv` that `uv sync` builds. **On Windows, run every helper as `uv run python -X utf8 helpers/<name>.py`**; redirected/non-interactive Python otherwise inherits the legacy Windows code page and can crash on Unicode filenames or status messages.
 
@@ -126,7 +127,7 @@ Every edit session gets the same interactive editor in the user's browser: ONE a
 
    A Pronto must always lead to an agent-visible action: Claude Code uses the persistent watcher; Codex uses the user's next task message as the notification boundary.
 
-   **Phone:** it is the same editor; nothing changes but how the phone reaches the server. When the user wants to edit on the phone, read `references/celular.md`: Wi-Fi or Tailscale with `--host 0.0.0.0` and a code in the link (**Abrir no celular**, at the top of the editor on the computer, shows the QR), or by USB cable with `adb reverse`.
+   **Phone:** it is the same editor; nothing changes but how the phone reaches the server. When the user wants to edit on the phone, read `references/celular.md`: Wi-Fi or Tailscale with `--host 0.0.0.0` and a code in the link (**Abrir no celular**, at the top of the editor on the computer, shows the QR), or by USB cable with `adb reverse`. **The user may be talking to you FROM the phone** (Claude's app through Remote Control, ChatGPT's app through Codex Remote): then the link in your reply is the only way in, and the same file says what changes.
 
 **Preview aberto e vazio para sempre = permissão, não render.** On macOS the
 privacy layer guards `~/Documents`, `~/Desktop`, `~/Downloads` and iCloud Drive:

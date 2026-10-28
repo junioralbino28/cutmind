@@ -193,8 +193,10 @@ def baixar(destino: Path, rem: dict, progresso=lambda feito, total: None) -> tup
 
 def comando_instalar(pasta: Path, skill: Path) -> list[str]:
     """O instalador da versão NOVA, a partir da pasta baixada: o mesmo caminho de quem roda o comando do
-    README. Ele atualiza todas as cópias (Claude Code e Codex); `skill` serve só aos testes."""
-    return ["uv", "run", "--no-project", str(Path(pasta) / "cutmind_install.py"), "--source", str(pasta)]
+    README. Ele atualiza todas as cópias (Claude Code e Codex); `skill` serve só aos testes. Sem pedir a
+    permissão de rede do Windows: ela foi oferecida na instalação, e quem atualiza pode estar no celular."""
+    return ["uv", "run", "--no-project", str(Path(pasta) / "cutmind_install.py"), "--source", str(pasta),
+            "--no-firewall"]
 
 
 def sincronizar(skill: Path) -> None:
