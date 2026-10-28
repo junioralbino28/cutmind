@@ -304,5 +304,19 @@
  "o pacote tem um caminho para fora da pasta: {name}": "the package has a path outside its folder: {name}",
  "o pacote tem um link ou arquivo especial: {name}": "the package has a link or special file: {name}",
  "o editor não voltou depois da atualização: {detalhe}": "the editor didn't come back after the update: {detalhe}",
- "a atualização parou no meio ({e}); o CutMind continua na versão de antes": "the update stopped halfway ({e}); CutMind stays on the previous version"
+ "a atualização parou no meio ({e}); o CutMind continua na versão de antes": "the update stopped halfway ({e}); CutMind stays on the previous version",
+ "Pedaço grande demais.": "Chunk too large.",
+ "O envio começa do início.": "The upload starts from the beginning.",
+ "Esse envio não existe mais. Envie o arquivo de novo.": "That upload no longer exists. Send the file again.",
+ "outro pedaço deste envio ainda está chegando": "another chunk of this upload is still arriving",
+ "pedaço fora de ordem": "chunk out of order",
+ "não consegui guardar o arquivo: {e}": "couldn't save the file: {e}",
+ "o cloudflared não deu o link a tempo; confira a internet": "cloudflared didn't give the link in time; check the internet",
+ "o túnel não tem versão para este sistema ({sistema} {p1})": "the tunnel has no build for this system ({sistema} {p1})",
+ "o cloudflared baixado não bate com o publicado pela Cloudflare; nada foi instalado": "the downloaded cloudflared doesn't match the one Cloudflare published; nothing was installed",
+ "não consegui baixar o cloudflared ({e}); confira a internet": "couldn't download cloudflared ({e}); check the internet",
+ "o pacote do cloudflared veio sem o programa": "the cloudflared package came without the program",
+ "Pedaço maior que o arquivo.": "Chunk larger than the file.",
+ "Envio cancelado": "Upload canceled",
+ "não consegui gravar o código do túnel em {arq}": "couldn't save the tunnel code in {arq}"
 }

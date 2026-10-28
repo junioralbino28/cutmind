@@ -151,6 +151,7 @@ def esperar_dlls(importar=_importar_dlls, prazo: float = 20.0, pausa: float = 0.
 ESPERAS_DLL = esperar_dlls()
 
 import atualizar as atu  # mesma pasta deste arquivo
+import tunel as tn  # mesma pasta deste arquivo
 import camadas as cam  # mesma pasta deste arquivo
 import cenas as cn  # mesma pasta deste arquivo
 import efeitos as ef  # mesma pasta deste arquivo
@@ -218,6 +219,54 @@ WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10
 _thumb_lock = threading.Lock()
 _thumb_state: dict[str, float] = {}  # video path -> mtime generated
 _upload_lock = threading.Lock()
+# os envios em pedaços abertos: id → {part, final, total, recebido, ...}; largado há mais de 1 h é apagado
+_ENVIOS: dict[str, dict] = {}
+PEDACO_MAX = 32 * 1024 * 1024
+ENVIO_LARGADO_S = 3600
+
+
+def _limpar_envios_largados(agora: float | None = None, pastas: tuple[Path, ...] = ()) -> None:
+    """Apaga o envio parado há mais de 1 h: o da memória e, nas `pastas`, o .parte que ficou no disco de um
+    servidor que fechou no meio (a lista de envios só vive na memória)."""
+    agora = time.time() if agora is None else agora
+    with _upload_lock:
+        velhos = [k for k, e in _ENVIOS.items() if agora - e["quando"] > ENVIO_LARGADO_S and not e["trava"].locked()]
+        for k in velhos:
+            _ENVIOS.pop(k)["part"].unlink(missing_ok=True)
+        abertos = {e["part"] for e in _ENVIOS.values()}
+        for pasta in pastas:
+            try:
+                partes = list(Path(pasta).glob(".*.parte"))
+            except OSError:
+                continue
+            for parte in partes:
+                try:
+                    if parte not in abertos and agora - parte.stat().st_mtime > ENVIO_LARGADO_S:
+                        parte.unlink()
+                except OSError:
+                    pass
+
+
+_codigos_tunel: dict[Path, tuple[int, str]] = {}
+
+
+def _codigo_do_tunel(arq: Path | None) -> str | None:
+    """O código da porta do túnel, lido do arquivo do tunel.py (um túnel novo ganha código novo, e o
+    servidor acompanha sem reiniciar). Guardado pela data do arquivo: o celular pergunta a cada segundo."""
+    if arq is None:
+        return None
+    try:
+        quando = arq.stat().st_mtime_ns
+        guardado = _codigos_tunel.get(arq)
+        if guardado and guardado[0] == quando:
+            return guardado[1]
+        codigo = arq.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if len(codigo) < 20:
+        return None
+    _codigos_tunel[arq] = (quando, codigo)
+    return codigo
 _frame_slots = threading.BoundedSemaphore(2)  # ffmpeg de quadro avulso ao mesmo tempo
 _quadros_guardados: dict[tuple, bytes] = {}  # miniaturas da montagem já tiradas (o mais velho sai primeiro)
 _quadros_lock = threading.Lock()
@@ -1004,6 +1053,9 @@ def gen_thumbs(video: Path, out_dir: Path) -> None:
 class Handler(BaseHTTPRequestHandler):
     root: Path  # set on the class by main(); a tela Projetos troca por outro (_trocar)
     token: str | None = None  # só existe quando o servidor abre para a rede
+    arquivo_codigo_tunel: Path | None = None  # o código da porta do túnel (tunel.py), à parte do do Wi-Fi
+    porta_tunel: int | None = None
+    servidor_principal = None  # o da porta do editor: é ele que fecha numa atualização, nunca o do túnel
     allow_hosts: tuple[str, ...] = ()
     upload_dir: Path | None = None
     upload_dir_fixo = False  # --upload-dir dado: não acompanha a troca de projeto
@@ -1016,7 +1068,9 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- quem pode entrar ----
     def _client_is_local(self) -> bool:
-        return self.client_address[0] in LOCAL_CLIENTS
+        """Este computador. Na porta do túnel (`remoto`) nunca: pelo túnel todo pedido da internet chega
+        como 127.0.0.1, então lá o código é sempre cobrado."""
+        return not getattr(self.server, "remoto", False) and self.client_address[0] in LOCAL_CLIENTS
 
     def _host_ok(self) -> bool:
         """Contra DNS rebinding: um site de fora que aponta um nome dele para este
@@ -1033,6 +1087,8 @@ class Handler(BaseHTTPRequestHandler):
             pass
         if name == "localhost":
             return True
+        if getattr(self.server, "remoto", False) and name.endswith(".trycloudflare.com"):
+            return True  # o nome do túnel, e só na porta dele
         for allowed in self.allow_hosts:
             a = allowed.lower()
             if (a.startswith(".") and (name.endswith(a) or name == a[1:])) or name == a:
@@ -1064,8 +1120,16 @@ class Handler(BaseHTTPRequestHandler):
         m = jar.get(TOKEN_COOKIE)
         return m.value if m else None
 
+    def _codigo(self) -> str | None:
+        """O código que vale nesta porta: o do projeto na do editor (Wi-Fi); o do túnel na do túnel. Um QR do
+        Wi-Fi que vazou não abre o editor pela internet, e trocar de projeto não derruba o celular do túnel."""
+        if getattr(self.server, "remoto", False):
+            return _codigo_do_tunel(self.arquivo_codigo_tunel)
+        return self.token
+
     def _token_ok(self, value: str | None) -> bool:
-        return bool(self.token and value and hmac.compare_digest(value, self.token))
+        codigo = self._codigo()
+        return bool(codigo and value and hmac.compare_digest(value, codigo))
 
     def _gate(self, path: str) -> bool:
         """True = pode seguir. False = já respondeu com o erro.
@@ -1110,8 +1174,11 @@ class Handler(BaseHTTPRequestHandler):
             self.connection.settimeout(antes)
 
     def _deny(self, code: int, msg: str, path: str) -> None:
-        sys.stderr.write(f"[{time.strftime('%H:%M:%S')}] negado {code} "
-                         f"{self.client_address[0]} {self.command} {path}\n")
+        quem = self.client_address[0]
+        if getattr(self.server, "remoto", False):  # pelo túnel tudo chega como 127.0.0.1
+            ip = re.sub(r"[^0-9A-Fa-f:.]", "", self.headers.get("Cf-Connecting-Ip") or "")[:45]
+            quem = f"túnel {ip or '?'}"
+        sys.stderr.write(f"[{time.strftime('%H:%M:%S')}] negado {code} {quem} {self.command} {path}\n")
         if self.command in ("POST", "PUT"):
             self._descartar_corpo()
         self.close_connection = True  # o corpo grande de um POST negado fica sem ler
@@ -1270,6 +1337,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json(self._trabalho(tb.andamento(self.root)) or {"etapa": None})
         elif path == "/api/pendente":
             self._pendente()
+        elif path == "/api/upload":  # de onde um envio em pedaços continua (a rede caiu no meio)
+            envio = _ENVIOS.get((parse_qs(query).get("id") or [""])[0])
+            self._json({"recebido": envio["recebido"], "total": envio["total"]} if envio
+                       else {"error": "Esse envio não existe mais. Envie o arquivo de novo."}, 200 if envio else 404)
         elif path == "/api/atualizacao":
             self._atualizacao()
         elif path == "/api/sobre":
@@ -1308,6 +1379,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/upload":
             self._upload(query)
+            return
+        if path == "/api/upload/cancelar":
+            self._cancelar_envio(query)
             return
         if path in ("/api/pacotes/usar", "/api/pacotes/favorito"):
             self._pacote_post(path)
@@ -1499,8 +1573,8 @@ class Handler(BaseHTTPRequestHandler):
         t = (parse_qs(query).get("t") or [""])[0]
         extra = {"Location": "/celular"}
         if self._token_ok(t):
-            extra["Set-Cookie"] = (f"{TOKEN_COOKIE}={self.token}; Path=/; Max-Age={TOKEN_MAX_AGE}; "
-                                   "HttpOnly; SameSite=Lax")
+            extra["Set-Cookie"] = (f"{TOKEN_COOKIE}={self._codigo()}; Path=/; Max-Age={TOKEN_MAX_AGE}; "
+                                   "HttpOnly; SameSite=Lax" + ("; Secure" if getattr(self.server, "remoto", False) else ""))
         elif not self._client_is_local():
             self._deny(403, "Link vencido ou incompleto. Abra de novo pelo QR code do computador.", "/c")
             return
@@ -1511,13 +1585,15 @@ class Handler(BaseHTTPRequestHandler):
         if not self._client_is_local():
             self._deny(403, "Só no computador.", "/api/celular")
             return
-        if not self.token:
-            self._json({"enabled": False})
-            return
-        urls = phone_urls(self.bind_host, self.server.server_address[1], self.token)
+        urls = [] if is_local_bind(self.bind_host) or not self.token else phone_urls(
+            self.bind_host, self.server.server_address[1], self.token)
+        tun = tn.estado(atu.casa()) if self.porta_tunel else None
+        codigo = _codigo_do_tunel(self.arquivo_codigo_tunel)
+        if tun and tun.get("porta") == self.porta_tunel and codigo:  # o túnel deste editor: Wi-Fi ou 4G
+            urls.insert(0, {"label": "De qualquer lugar", "url": f"{tun['url']}/c?t={codigo}"})
         for u in urls:
             u["qr"] = qr_svg(u["url"])
-        self._json({"enabled": True, "urls": urls})
+        self._json({"enabled": bool(urls), "urls": urls})
 
     def _source_path(self, name: str) -> Path | None:
         """Um vídeo de origem pelo NOME que o edl.json dá a ele — nunca por um
@@ -1658,11 +1734,16 @@ class Handler(BaseHTTPRequestHandler):
     def _upload(self, query: str) -> None:
         """Em pedaços, direto para o disco — nunca para a memória. Vídeo vai para a
         pasta dos vídeos (é material novo: o agente é avisado); imagem e áudio vão
-        para <edit>/midia/ (são camadas do projeto, que o editor põe na linha do tempo)."""
+        para <edit>/midia/ (são camadas do projeto, que o editor põe na linha do tempo).
+
+        Com `total`, o arquivo chega em vários pedidos (o editor manda pedaços de 8 MB): o 1º (`inicio=0`)
+        reserva o nome e recebe um `id`; os seguintes mandam `id` e `inicio`. Pedaço fora de ordem → 409 com
+        `recebido`, de onde o editor continua. Sem `total`, o arquivo inteiro vem num pedido só (editor antigo)."""
         if self.upload_dir is None:
             self._fail(404, "envio desligado")
             return
-        pid = (parse_qs(query).get("projeto") or [None])[0]
+        q = parse_qs(query)
+        pid = (q.get("projeto") or [None])[0]
         if pid is not None and pid != pj.id_de(self.root):
             self._fail(409, "outro projeto foi aberto no editor; volte para este (Projetos) para enviar")
             return
@@ -1672,40 +1753,131 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             length = int(raw_len)
+            total = int((q.get("total") or [length])[0])
+            inicio = int((q.get("inicio") or [0])[0])
         except ValueError:
             self._fail(400, "Tamanho inválido.")
             return
-        if length <= 0:
+        em_pedacos = "total" in q
+        if length <= 0 or total <= 0:
             self._fail(400, "Arquivo vazio.")
             return
-        if length > self.max_upload:
+        if em_pedacos and length > PEDACO_MAX:
+            self._fail(413, "Pedaço grande demais.")
+            return
+        if length > total:
+            self._fail(400, "Pedaço maior que o arquivo.")
+            return
+        envio_id = (q.get("id") or [""])[0]
+        if envio_id:
+            self._upload_pedaco(envio_id, inicio, length)
+            return
+        if inicio != 0:
+            self._fail(400, "O envio começa do início.")
+            return
+        if total > self.max_upload:
             self._fail(413, f"Arquivo maior que o limite de {self.max_upload / 1024 ** 3:.1f} GB.")
             return
-        name = clean_upload_name((parse_qs(query).get("name") or [""])[0])
+        name = clean_upload_name((q.get("name") or [""])[0])
         kind = upload_kind(name)
         if kind is None:
             self._fail(415, "Só vídeo, imagem ou áudio: mp4, mov, webm, jpg, png, webp, mp3, m4a, wav, ogg.")
             return
         # a foto ou o vídeo de um lugar da montagem (Trocar → Do aparelho) é mídia do projeto: vai
         # para midia/, e o agente não é avisado de material novo para cortar
-        para_lugar = (parse_qs(query).get("para") or [""])[0] == "montagem"
+        para_lugar = (q.get("para") or [""])[0] == "montagem"
         if para_lugar and kind == "audio":
             self._fail(415, "Para um lugar da montagem: foto ou vídeo.")
             return
         folder = self.upload_dir if kind == "video" and not para_lugar else self.root / cam.MIDIA_DIR
         folder.mkdir(exist_ok=True)
         try:
-            if length > shutil.disk_usage(folder).free - DISK_MARGIN:
+            if total > shutil.disk_usage(folder).free - DISK_MARGIN:
                 self._fail(507, "Sem espaço no computador para esse vídeo.")
                 return
         except OSError:
             pass
+        _limpar_envios_largados(pastas=(folder,))
         with _upload_lock:
             final = unique_path(folder, name)
             part = folder / f".{final.name}.parte"
             part.touch(exist_ok=False)  # reserva o nome antes de soltar a trava
+        envio = {"part": part, "final": final, "total": total, "recebido": 0, "kind": kind,
+                 "para_lugar": para_lugar, "folder": folder, "name": name, "quando": time.time(),
+                 "trava": threading.Lock()}
+        if not em_pedacos:
+            envio["trava"].acquire()
+            if self._gravar_pedaco(envio, length):
+                self._envio_chegou(envio)
+            return
+        envio_id = secrets.token_urlsafe(12)
+        with _upload_lock:
+            _ENVIOS[envio_id] = envio
+        envio["trava"].acquire()
+        self._seguir_envio(envio_id, envio, length)
+
+    def _upload_pedaco(self, envio_id: str, inicio: int, length: int) -> None:
+        with _upload_lock:
+            envio = _ENVIOS.get(envio_id)
+        if envio is None:
+            self._descartar_corpo()
+            self._fail(404, "Esse envio não existe mais. Envie o arquivo de novo.")
+            return
+        if not envio["trava"].acquire(blocking=False):
+            self._descartar_corpo()
+            self._json({"error": "outro pedaço deste envio ainda está chegando", "recebido": envio["recebido"]}, 409)
+            return
+        if inicio != envio["recebido"] or inicio + length > envio["total"]:
+            envio["trava"].release()
+            self._descartar_corpo()
+            self._json({"error": "pedaço fora de ordem", "recebido": envio["recebido"]}, 409)
+            return
+        self._seguir_envio(envio_id, envio, length)
+
+    def _cancelar_envio(self, query: str) -> None:
+        """O Cancelar do editor: o envio sai da lista e o .parte vai embora (sem isso, até 8 GB ficariam
+        escondidos na pasta de vídeos). Um pedaço ainda chegando apaga o arquivo quando termina."""
+        if self._corpo_pequeno() is None:
+            return
+        with _upload_lock:
+            envio = _ENVIOS.pop((parse_qs(query).get("id") or [""])[0], None)
+        if envio is None:
+            self._json({"ok": True})
+            return
+        envio["cancelado"] = True
+        if envio["trava"].acquire(timeout=5):
+            try:
+                envio["part"].unlink(missing_ok=True)
+            finally:
+                envio["trava"].release()
+        self._json({"ok": True})
+
+    def _seguir_envio(self, envio_id: str, envio: dict, length: int) -> None:
+        """Grava um pedaço (com a trava do envio já pega) e, no último, entrega o arquivo."""
         try:
-            with open(part, "wb") as f:
+            if not self._gravar_pedaco(envio, length, apagar_se_falhar=False):
+                return
+            if envio.get("cancelado"):
+                envio["part"].unlink(missing_ok=True)
+                self._json({"error": "Envio cancelado"}, 409)
+                return
+            envio["quando"] = time.time()
+            if envio["recebido"] < envio["total"]:
+                self._json({"ok": True, "id": envio_id, "recebido": envio["recebido"]})
+                return
+            with _upload_lock:
+                _ENVIOS.pop(envio_id, None)
+            self._envio_chegou(envio)
+        finally:
+            envio["trava"].release()
+
+    def _gravar_pedaco(self, envio: dict, length: int, apagar_se_falhar: bool = True) -> bool:
+        """Anexa `length` bytes do pedido ao .parte. Falhou no meio: o envio de um pedido só é apagado; o em
+        pedaços volta ao último pedaço inteiro, de onde o editor retoma."""
+        part, inicio = envio["part"], envio["recebido"]
+        try:
+            with open(part, "r+b") as f:
+                f.seek(inicio)
                 remaining = length
                 while remaining > 0:
                     chunk = self.rfile.read(min(1 << 20, remaining))
@@ -1713,15 +1885,36 @@ class Handler(BaseHTTPRequestHandler):
                         raise ConnectionError("o envio parou no meio")
                     f.write(chunk)
                     remaining -= len(chunk)
-            os.replace(part, final)
+                f.truncate()
+            envio["recebido"] = inicio + length
+            return True
         except (OSError, ConnectionError) as e:
-            part.unlink(missing_ok=True)
-            sys.stderr.write(f"[{time.strftime('%H:%M:%S')}] envio de {name} falhou: {e}\n")
+            if apagar_se_falhar:
+                part.unlink(missing_ok=True)
+            else:
+                try:
+                    with open(part, "r+b") as f:
+                        f.truncate(inicio)
+                except OSError:
+                    pass
+            sys.stderr.write(f"[{time.strftime('%H:%M:%S')}] envio de {envio['name']} falhou: {e}\n")
             self.close_connection = True
             try:
-                self._json({"error": "O envio parou no meio. Tente de novo."}, 400)
+                self._json({"error": "O envio parou no meio. Tente de novo.", "recebido": inicio}, 400)
             except OSError:
                 pass
+            return False
+
+    def _envio_chegou(self, envio: dict) -> None:
+        """O arquivo inteiro chegou: troca o .parte pelo nome final e avisa quem precisa saber."""
+        part, final, kind, para_lugar, folder = (envio["part"], envio["final"], envio["kind"],
+                                                 envio["para_lugar"], envio["folder"])
+        length = envio["total"]
+        try:
+            os.replace(part, final)
+        except OSError as e:
+            part.unlink(missing_ok=True)
+            self._fail(500, f"não consegui guardar o arquivo: {e}")
             return
         if kind != "video" or para_lugar:
             self._json({"ok": True, "file": final.name, "size": length, "tipo": kind,
@@ -2001,7 +2194,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": True, "esperando": esperando, "versao": r.get("versao")})
             return
         self._json({"ok": True, "reiniciar": bool(r.get("reiniciar")), "versao": r.get("versao")})
-        comecar_atualizacao(self.server, self.root, r)
+        comecar_atualizacao(self.servidor_principal or self.server, self.root, r)
 
     def _atualizacao_config(self) -> None:
         """O interruptor "Procurar atualizações" do painel ?: grava e procura de novo, sem prender a página."""
@@ -2405,6 +2598,9 @@ def add_network_args(ap: argparse.ArgumentParser) -> None:
                     help="para onde vão os vídeos enviados pelo editor (padrão: a pasta "
                          "dos vídeos, pai do --root)")
     ap.add_argument("--max-upload-gb", type=float, default=8.0)
+    ap.add_argument("--tunel-port", type=int, default=None, metavar="PORTA",
+                    help="abre uma 2ª porta (só em 127.0.0.1) para o túnel https (tunel.py): nela o código é "
+                         "sempre cobrado, porque pelo túnel tudo chega como este computador")
 
 
 def main() -> None:
@@ -2432,17 +2628,28 @@ def main() -> None:
     Handler.bind_host = args.host
     if not is_local_bind(args.host):
         Handler.token = ensure_token(root)
+    if args.tunel_port:
+        Handler.porta_tunel = args.tunel_port
+        Handler.arquivo_codigo_tunel = tn.arquivo_codigo(atu.casa())
+        tn.codigo(atu.casa())
+    _limpar_envios_largados(pastas=(upload_dir, root / cam.MIDIA_DIR))
     try:  # a tela Projetos lista este projeto, e o agente sabe qual está aberto
         pj.registrar(root)
         pj.marcar_aberto(root)
     except OSError as e:
         print(f"aviso: lista de projetos ({pj.casa()}) não gravada: {e}", flush=True)
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
+    Handler.servidor_principal = srv
     print(f"CutMind preview -> http://{pc_host(args.host)}:{args.port}  (root: {root})", flush=True)
     if ESPERAS_DLL:
         print(f"as DLLs da instalação nova estavam presas: esperei {ESPERAS_DLL * 0.5:.1f} s", flush=True)
     threading.Thread(target=vigiar_atualizacao, args=(srv, Handler), daemon=True, name="atualizacao").start()
-    if Handler.token:
+    if args.tunel_port:
+        srv_tunel = ThreadingHTTPServer(("127.0.0.1", args.tunel_port), Handler)
+        srv_tunel.remoto = True
+        threading.Thread(target=srv_tunel.serve_forever, daemon=True, name="tunel").start()
+        print(f"porta do túnel: 127.0.0.1:{args.tunel_port} (o código é sempre cobrado nela)", flush=True)
+    if Handler.token and not is_local_bind(args.host):
         print("Aberto para a rede: só entra quem tem o link com o código.", flush=True)
         for u in phone_urls(args.host, args.port, Handler.token):
             print(f"  celular ({u['label']}): {u['url']}", flush=True)
