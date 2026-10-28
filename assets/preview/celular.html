@@ -421,6 +421,24 @@
 </section>
 <div class="toast hidden" id="toast" role="status"></div>
 
+<!-- o Baixar: o andamento do vídeo final, o "Pronto!" no fim e, enquanto espera, o pedido de avaliação
+     (a página do CutMind no GitHub, onde fica a estrela) -->
+<div class="modal hidden" id="baixarModal" role="dialog" aria-modal="true" aria-labelledby="baixarTitulo">
+  <div class="modal-card baixar-card">
+    <div class="modal-head">
+      <h3 id="baixarTitulo"></h3>
+      <button class="tb-btn" id="baixarFechar" type="button">Fechar</button>
+    </div>
+    <div class="up-track"><div class="up-bar" id="baixarBar"></div></div>
+    <p class="baixar-txt" id="baixarTexto"></p>
+    <p class="baixar-dica" id="baixarDica">Gerando o vídeo final. Ele baixa sozinho quando ficar pronto.</p>
+    <a class="avaliar" id="avaliar" target="_blank" rel="noopener">
+      <span class="avaliar-ico" id="avaliarIco"></span>
+      <span class="avaliar-txt"><b>O que achou de editar com o CutMind?</b><span>Deixe sua estrela no GitHub</span></span>
+    </a>
+  </div>
+</div>
+
 <!-- abrir no celular: o servidor entrega os links (com o código) só a este computador -->
 <div class="modal hidden" id="phoneModal" role="dialog" aria-modal="true" aria-labelledby="phoneTitle">
   <div class="modal-card">

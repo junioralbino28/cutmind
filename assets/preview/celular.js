@@ -3534,13 +3534,18 @@ function baixar(entregaRel) {
   a.click();
   a.remove();
   if (entregaRel) {
-    toast(entregaRel === 'final-entrega.mp4' ? t('Baixando o vídeo final, com a velocidade')
-      : entregaRel === (S.state.video || 'cut.mp4') ? t('Baixando o vídeo') : t('Baixando o vídeo final'), 3200);
+    avisaBaixando(entregaRel === 'final-entrega.mp4' ? t('Baixando o vídeo final, com a velocidade')
+      : entregaRel === (S.state.video || 'cut.mp4') ? t('Baixando o vídeo') : t('Baixando o vídeo final'));
     return;
   }
-  toast(entrega ? t('Baixando o vídeo final, com a velocidade')
+  avisaBaixando(entrega ? t('Baixando o vídeo final, com a velocidade')
     : hasFinal() && S.vel.trechos.length ? t('Baixando o final SEM a velocidade: a versão acelerada ainda não ficou pronta')
-      : hasFinal() ? t('Baixando o vídeo final') : t('Baixando o corte (o final ainda não existe)'), 3200);
+      : hasFinal() ? t('Baixando o vídeo final') : t('Baixando o corte (o final ainda não existe)'));
+}
+// com a janela do Baixar aberta, o aviso vai nela; senão, no aviso de baixo
+function avisaBaixando(msg) {
+  if ($('baixarModal').classList.contains('hidden')) toast(msg, 3200);
+  else $('baixarTexto').textContent = msg;
 }
 /* O Baixar: com algo feito à mão ainda fora do vídeo (camada, filtro, voz, velocidade), o servidor monta
  * o vídeo final pelos programas do kit, sem o agente, e o editor baixa quando fica pronto. */
@@ -3554,11 +3559,50 @@ async function gerarEBaixar() {
     return;
   }
   if (!out.ok) { toast(t('Não gerei o vídeo: {error}', { error: out.error || '' }), 4500); return; }
-  if (out.pronto) { baixar(out.entrega); return; }
+  if (out.pronto) {
+    S.janelaTrab = false;
+    janelaBaixar({ tipo: 'gerar', etapa: 'pronto', vivo: false });
+    baixar(out.entrega);
+    return;
+  }
   S.baixarAoTerminar = true;
+  S.janelaTrab = true; // o andamento deste vídeo vai para a janela (fechada, volta ao cartão do canto)
+  janelaBaixar({ tipo: 'gerar', etapa: 'comecando', vivo: true, fracao: 0 });
   mostraTrabalho({ tipo: 'gerar', etapa: 'comecando', vivo: true, fracao: 0 });
-  toast(t('Gerando o vídeo final. Ele baixa sozinho quando ficar pronto.'), 3600);
 }
+// ---------- a janela do Baixar: o andamento, o "Pronto!" no fim e o pedido de avaliação ----------
+/* Enquanto o vídeo fica pronto, "O que achou de editar com o CutMind?" leva à página do CutMind no GitHub,
+ * onde fica a estrela. Quem já clicou não vê o pedido de novo. */
+const AVALIOU = 'cutmind-avaliou';
+function janelaBaixar(tr) {
+  const card = $('baixarModal').querySelector('.modal-card');
+  $('baixarModal').classList.remove('hidden');
+  card.classList.remove('done', 'bad');
+  $('baixarBar').style.width = `${Math.round((tr.fracao || 0) * 100)}%`;
+  $('baixarDica').classList.toggle('hidden', !tr.vivo);
+  let avaliou = false;
+  try { avaliou = localStorage.getItem(AVALIOU) === '1'; } catch (e) { /* sem armazenamento: pede de novo */ }
+  $('avaliar').classList.toggle('hidden', avaliou || tr.etapa === 'falhou');
+  $('avaliar').href = linkRetorno('estrela');
+  if (tr.vivo) {
+    $('baixarTitulo').textContent = t('Gerando o vídeo');
+    $('baixarTexto').textContent = textoTrab(tr);
+  } else if (tr.etapa === 'falhou') {
+    card.classList.add('bad');
+    $('baixarTitulo').textContent = t('O vídeo não foi gerado.');
+    $('baixarTexto').textContent = tr.erro || '';
+  } else {
+    card.classList.add('done');
+    $('baixarBar').style.width = '100%';
+    $('baixarTitulo').textContent = t('Pronto!');
+  }
+}
+$('avaliarIco').innerHTML = ICON.estrelaCheia;
+$('avaliar').addEventListener('click', () => {
+  try { localStorage.setItem(AVALIOU, '1'); } catch (e) { /* vale só agora */ }
+});
+$('baixarFechar').addEventListener('click', () => $('baixarModal').classList.add('hidden'));
+$('baixarModal').addEventListener('click', (e) => { if (e.target === $('baixarModal')) $('baixarModal').classList.add('hidden'); });
 // o rótulo do Baixar: "Gerar e baixar" quando há algo feito à mão que o vídeo ainda não tem
 async function atualizaPendente() {
   try {
@@ -5009,6 +5053,16 @@ function mostraTrabalho(tr) {
   if (!tr.vivo && tr.tipo === 'corte' && S.prontoAoTerminar) { // o Pronto que esperava o corte (deu certo ou não)
     S.prontoAoTerminar = false;
     pronto();
+  }
+  if (tr.tipo === 'gerar' && S.janelaTrab && !$('baixarModal').classList.contains('hidden')) {
+    card.classList.add('hidden');
+    janelaBaixar(tr);
+    if (!tr.vivo) { // fim: o cartão do canto não aparece depois, e o rótulo do Baixar volta
+      S.janelaTrab = false;
+      S.trabalhoFechado = chave;
+      atualizaPendente();
+    }
+    return;
   }
   if (!tr.vivo && S.trabalhoFechado === chave) return;
   card.classList.remove('hidden', 'done', 'bad');
