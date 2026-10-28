@@ -5,10 +5,11 @@ the screen): same `state.json`, same
 `pronto.json` / `preview_style.json`, same watcher. Nothing about the edit
 changes — only how the user reaches the server.
 
-## Three ways in
+## Four ways in
 
 | Way | When | How | Code? |
 |---|---|---|---|
+| Tunnel | anywhere, Wi-Fi or 4G, nothing to set up on the phone | `start_preview.py --root <edit> --tunel` | yes, inside the link, always |
 | Wi-Fi | same network as the PC | `start_preview.py --root <edit> --host 0.0.0.0` | yes, inside the link |
 | Tailscale | away from home, Tailscale on PC and phone | same `--host 0.0.0.0`; add `--allow-host .ts.net` for the MagicDNS name | yes |
 | Cable (Android) | phone on USB with debugging on | server as usual (127.0.0.1) + `adb reverse tcp:<port> tcp:<port>`, open `http://127.0.0.1:<port>/celular` | no: it arrives as 127.0.0.1 |
@@ -91,33 +92,52 @@ desktop app, or once for good in the settings) and ChatGPT's app through **Codex
 still runs on the PC, which has to stay on and awake. What changes:
 
 - **There is no editor on the PC screen to click.** As soon as they say they are on the
-  phone, or ask to edit from it, turn the network on (below) and send the full link
-  (`http://<ip>:<port>/c?t=<code>`) alone on its own line. If the app does not make it
-  tappable, they copy it into the phone's browser. It opens only on the same Wi-Fi as the
-  PC (or with Tailscale): neither Remote Control nor Codex Remote carries the editor's port.
-- **Windows may ask on the PC screen the first time** (the firewall, item 3 below). The
-  installer already asks for it while the user is at the PC (`ok firewall` in its checklist);
-  if they declined, someone at the PC has to allow it once. Say so before sending the link,
-  or the page just never loads.
-- **The raw video from the phone:** the editor's **Enviar** (Wi-Fi) is the sure path. A
-  file attached in the app lands on the PC (Claude keeps photos in `~/.claude/uploads/`;
-  other files arrive as a path): copy it into the videos folder before Phase 1. A large
-  video through the app is untested; offer Enviar first.
-- **The final video to the phone:** **Baixar** in the editor (Wi-Fi). Away from that Wi-Fi,
-  in Claude Code with the phone connected, send `final.mp4` with `SendUserFile`
-  (`display: "attach"`); Codex has no equivalent, so it waits for the PC.
-- **Away from home without Tailscale there is no editor:** edit by chat (README, "Editar só
-  pela conversa") and deliver as above.
+  phone, or ask to edit from it, start the preview with `--tunel` (below) and send the
+  `celular (de qualquer lugar)` link (`https://<name>.trycloudflare.com/c?t=<code>`) alone on
+  its own line. It opens on any network, Wi-Fi or 4G, with nothing to install on the phone:
+  neither Remote Control nor Codex Remote carries the editor's port, the tunnel does. If the
+  app does not make the link tappable, they copy it into the phone's browser.
+- **The tunnel needs the PC online.** The first time it downloads `cloudflared` (55 MB on
+  Windows, checked against the hash Cloudflare published) into `~/.cutmind/tunel/bin`. If it
+  fails, the start says why and the editor keeps running on the PC: at home, fall back to
+  Wi-Fi (`--host 0.0.0.0`), otherwise edit by chat (README, "Editar só pela conversa").
+- **The raw video from the phone:** the editor's **Enviar** works through the tunnel. It sends
+  in 8 MB pieces and, if the connection drops, asks the PC how far it got and goes on from
+  there (measured through a real tunnel: 150 MB in 31 s; a connection reset at 16 MB of a
+  40 MB video resumed by itself and the file arrived identical). A file attached in the app
+  lands on the PC (Claude keeps photos in `~/.claude/uploads/`; other files arrive as a path):
+  copy it into the videos folder before Phase 1.
+- **The final video to the phone:** **Baixar** in the editor, through the tunnel (150 MB came
+  down in 23 s). In Claude Code with the phone connected, `SendUserFile` (`display: "attach"`)
+  also works; Codex has no equivalent.
 
 ## Turning it on
 
-1. Only when the user asks ("abre no celular", "quero editar pelo celular"). The
-   default stays 127.0.0.1 — never open the server to the network on your own.
-2. Stop the running preview and start it again with `--host 0.0.0.0` (same
-   port). `start_preview.py` prints one link per network ("Wi-Fi de casa",
+1. Only when the user asks ("abre no celular", "quero editar pelo celular"), or is talking
+   to you from the phone app. The default stays 127.0.0.1 — never open the server on your own.
+2. **The tunnel (default when they are on the phone or away from home):** stop the running
+   preview and start it again with `--tunel` (same port). The editor opens a second port,
+   `<port>+1`, on 127.0.0.1 only, and the tunnel goes to that one: there every data route
+   needs the code, even though it arrives from 127.0.0.1 (the interface itself, which holds
+   nothing of the user's, loads without it). The start prints
+   `celular (de qualquer lugar): https://….trycloudflare.com/c?t=<code>`. The tunnel has a code
+   of its own (`~/.cutmind/tunel/codigo`): the Wi-Fi link does not open it, and switching
+   projects does not change it. The name and the code change whenever a new tunnel is started,
+   so send the new link each time. The tunnel survives a restart of the editor (an update, even
+   one started from the phone, brings it back on the same ports with the same link). A watcher
+   checks the port every 5 seconds and turns the tunnel off when another program takes it, or
+   when the editor stays closed for 10 minutes. To turn it off now:
+   `uv run python -X utf8 helpers/tunel.py desligar`. **Abrir no celular**, at the top of the
+   editor on the computer, shows this editor's tunnel link as "De qualquer lugar".
+   What to tell the user if they ask: the link goes through Cloudflare, which carries the https
+   and so sees what passes (the code and the videos), like any https host; and Cloudflare calls
+   this free Quick Tunnel a testing service, with no promise of staying up.
+3. **On the same Wi-Fi:** stop the running preview and start it again with `--host 0.0.0.0`
+   (same port). `start_preview.py` prints one link per network ("Wi-Fi de casa",
    "Tailscale (fora de casa)"). Give the user the link, or tell them to click
    **Abrir no celular** at the top of the editor on the computer and scan the QR.
-3. **Windows asks once** (unless the installer's `ok firewall` already covered it). The
+4. **Windows asks once** for Wi-Fi (the tunnel does not need it), unless the installer's
+   `ok firewall` already covered it. The
    first time Python listens on the network, Windows Firewall shows a dialog on the PC.
    Tell the user to allow it on **private networks**. If the start prints "O Windows marcou esta
    rede como Pública", the network itself is the block (Windows marks many home networks Public):
@@ -125,7 +145,7 @@ still runs on the PC, which has to stay on and awake. What changes:
    Network profile type), then the link works with no restart. If
    the phone loads nothing, that dialog (or a network marked as public) is the
    first suspect — not the code.
-4. The link is `/c?t=<code>`: it stores the code in a cookie and redirects to
+5. The link is `/c?t=<code>`: it stores the code in a cookie and redirects to
    `/celular`, so the address bar never shows it. The code lives in
    `<edit>/.preview_cache/celular-token` and survives restarts. Never paste it
    anywhere public. To revoke: delete that file and restart — old links and
@@ -332,6 +352,17 @@ editor").
   code, and the browser fetches the manifest and icons without cookies.
 - `Host` must be an IP, `localhost` or a name passed with `--allow-host`. That is
   what stops a website from reaching the server through DNS rebinding.
+- The tunnel port (`--tunel-port`, 127.0.0.1 only) asks for the tunnel's own code on every
+  data route, even from 127.0.0.1 (through the tunnel, the whole internet arrives as
+  127.0.0.1), and its cookie is `Secure`. A `*.trycloudflare.com` Host is accepted there and
+  refused on the editor's own port, so a tunnel pointed at the wrong port gets 403 (checked
+  with a real tunnel). `/api/celular` answers only the editor's port. A request refused
+  through the tunnel is logged with the address Cloudflare reports (`Cf-Connecting-Ip`).
+- An upload sent in pieces cannot declare a size smaller than what it sends; **Cancelar**
+  deletes the part already received, and a part left behind for more than an hour (an
+  editor closed mid-upload) is deleted when the editor starts or the next upload begins.
+- POSTs whose `Origin` is not the editor itself (or that the browser marks `cross-site`) are
+  refused: a website open in the same browser cannot send to the server.
 - `/api/celular` (links + QR) answers only this computer.
 - `/gen/frame` (the trim-handle preview) only reads sources listed in `edl.json`
   by name — never a path from the request.

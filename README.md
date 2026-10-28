@@ -21,7 +21,10 @@ timeline, caption styles previewed on your own video, uploads from your
 camera roll and a one-tap download of the final video. Ask the agent to "open the editor on my
 phone" and scan the QR code behind the **Open on phone** button in the editor on
 your computer. On your network, only people who open that link or QR code
-can get in, since both carry an access code from your computer.
+can get in, since both carry an access code from your computer. Away from home,
+on Wi-Fi or 4G, the agent opens an https link through Cloudflare
+(`https://….trycloudflare.com`) with nothing to set up on the phone, and that link
+has an access code of its own.
 
 The editor follows your browser's language, and the **PT | EN** button at the top
 switches it.

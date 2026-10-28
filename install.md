@@ -66,7 +66,8 @@ editing, read `SKILL.md`. Always read `helpers/` — that's where the scripts li
    the same as clicking Allow in the firewall dialog, done while the user is at the PC.
    Someone driving the agent from the phone app later cannot click that dialog. If they
    decline, the checklist says so and the dialog shows on the first phone open instead;
-   `--no-firewall` skips the question.
+   `--no-firewall` skips the question. The tunnel (`start_preview.py --tunel`, any network)
+   does not need this: it downloads `cloudflared` the first time it is used.
 **No key is part of the install.** WhisperX transcribes locally, and Phase 1 needs
 nothing else. Phase 2/3 have a few optional keys for illustrative images and the
 AI soundtrack; they live in the track reference and are asked for only when the
