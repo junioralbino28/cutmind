@@ -88,10 +88,12 @@ def eh_montagem(edit: Path) -> bool:
 
 
 def precisa_remotion(edit: Path) -> bool:
-    """Algo a desenhar por cima do corte: a Fase 2, texto ou imagem das camadas, filtro ou transição."""
+    """Algo a desenhar por cima do corte: a Fase 2, texto ou imagem das camadas, filtro ou transição, ou a
+    gravação de uma tomada enquadrada (o enquadre do edl.json)."""
     edit = Path(edit)
     c = cam.load(edit / "camadas.json")
-    return tem_estilo(edit) or bool(cam.textos(c) or cam.aparecem(c) or ef.load(edit / "efeitos.json")["itens"])
+    enq = any(r.get("enquadre") for r in _ler(edit / "edl.json").get("ranges") or [])
+    return tem_estilo(edit) or enq or bool(cam.textos(c) or cam.aparecem(c) or ef.load(edit / "efeitos.json")["itens"])
 
 
 def precisa_som(edit: Path) -> bool:
@@ -138,7 +140,8 @@ def o_que_falta(edit: Path) -> list[str]:
     falta = ["voz"] if _voz_pedida(edit) or _voz_velha(edit) else []
     if precisa_remotion(edit):
         pub = edit / "remotion" / "public"
-        entradas = [_video(edit), edit / "camadas.json", edit / "efeitos.json",
+        # o edl.json também: o enquadre da gravação muda nele sem refazer o corte (o cut.mp4 fica igual)
+        entradas = [_video(edit), edit / "edl.json", edit / "camadas.json", edit / "efeitos.json",
                     pub / "edit-data.json", pub / "captions.json"]
         if not final.exists() or max(map(_mtime, entradas)) > _mtime(final) or falta:
             falta += ["remotion", "final"]

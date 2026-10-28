@@ -177,6 +177,9 @@ html:not(.desk) .pronto-btn .pronto-n { margin-left: 3px; padding: 0 4px; font-s
 .ov-img-caixa { position: absolute; translate: -50% -50%; pointer-events: auto; cursor: grab; touch-action: none; }
 .ov-img-caixa.sel { outline: 1.5px dashed rgba(255, 255, 255, 0.9); outline-offset: 0.6cqw; }
 .ov-img-caixa.trav { pointer-events: none; }
+/* a caixa da gravação da tomada escolhida: debaixo das imagens e dos textos */
+.ov-tomada { position: absolute; inset: 0; container-type: size; overflow: hidden; z-index: 2; pointer-events: none; }
+.ov-tomada .ov-img-caixa { translate: none; }
 /* o Recortar: a tela toda, a mídia inteira no meio, o que fica fora do quadro escurecido */
 .recorte { position: fixed; inset: 0; z-index: 70; display: flex; flex-direction: column; background: #07080b; }
 .rc-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px;

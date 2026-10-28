@@ -233,6 +233,13 @@ Each layer is a track, as in any editor:
   card is, with `corte` (trimming its left edge walks into the file, like an audio) and
   `volume`. It plays along with the needle WITH its sound, and the final video mixes that
   sound in (`mixar_final.py`). Recortar, move and resize work the same as on an image.
+- **The footage of a take moves, zooms and crops too** (for a hand-made split screen, or a
+  person off-centre). Select the take: a dashed box with the dot covers its picture; drag to
+  move it (snaps to the middle and to the middle of the top/bottom half), pull the dot to zoom
+  in or out, **Recortar** picks the piece (Meia tela puts it in the bottom half),
+  **Enquadre original** fills the screen again. It is the take's `enquadre` in `edl.json`
+  (same model as a free image); a Salvar that changes only that does NOT re-render the cut.
+  The final video draws it in `cameraAt` (black outside the piece, no auto-zoom on that take).
 - Undo/redo covers all of it. **Salvar** sends `camadas`; the server validates it
   (files only from `midia/`, sane times and volumes) and writes `<edit>/camadas.json`
   — the project file, read back when the editor opens. A refusal shows the reason.

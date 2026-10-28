@@ -264,3 +264,51 @@ def test_transcricao_de_um_corte_mais_velho_sai(projeto):
               "changes": [{"source": "A", "take": 0, "from": {"start": 0.0, "end": 1.5}, "to": {"start": 0.0, "end": 1.4}}]}
     ac.aplicar(edit, pedido, confirmado=True)
     assert not tr.exists()
+
+
+
+# ---- o enquadre da gravação (etapa 3): é da pessoa, e sozinho não refaz o corte
+
+def test_enquadre_e_da_pessoa_e_conferido():
+    pedido = {"ranges": [{"source": "A", "start": 0.0, "end": 10.0, "take": 0, "enquadre": {"x": 540, "y": 1440, "largura": 1300}},
+                         {"source": "A", "start": 20.0, "end": 30.0, "take": 1, "volume": 0.5}]}
+    novo, _ = ac.novo_edl(EDL, pedido)
+    assert novo["ranges"][0]["enquadre"] == {"x": 540, "y": 1440, "largura": 1300}
+    assert "enquadre" not in novo["ranges"][1]
+    assert ac.so_enquadre(EDL, novo)
+    pedido["ranges"][1]["volume"] = 0.7
+    assert not ac.so_enquadre(EDL, ac.novo_edl(EDL, pedido)[0])  # o volume mudou: refaz o corte
+    import camadas as cam
+    pedido["ranges"][0]["enquadre"] = {"x": 540, "y": 960, "largura": 99999}
+    with pytest.raises(cam.CamadasInvalidas):
+        ac.novo_edl(EDL, pedido)
+
+
+def test_so_o_enquadre_grava_sem_refazer_o_corte(projeto):
+    edit = projeto
+    antes = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    corte = (edit / "cut.mp4").read_bytes()
+    enq = {"x": 540, "y": 1440, "largura": 1300, "recorte": {"x": 0.2, "y": 0.1, "w": 0.6, "h": 0.5, "formato": "meia"}}
+    # as pontas como o editor manda: arredondadas no milésimo
+    pedido = {"ranges": [{"source": "A", "start": round(r["start"], 3), "end": round(r["end"], 3), "take": i}
+                         for i, r in enumerate(antes["ranges"])]}
+    pedido["ranges"][0]["enquadre"] = enq
+    res = ac.aplicar(edit, pedido)
+    edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    assert edl["ranges"][0]["enquadre"] == enq and "enquadre" not in edl["ranges"][1]
+    assert edl["jcut_timeline"] == antes["jcut_timeline"] and edl["total_duration_s"] == antes["total_duration_s"]
+    assert (edit / "cut.mp4").read_bytes() == corte and res == {"rede": [], "fora": [], "voz": None}
+    del pedido["ranges"][0]["enquadre"]  # Enquadre original: sai do edl.json, ainda sem refazer o corte
+    ac.aplicar(edit, pedido)
+    assert "enquadre" not in json.loads((edit / "edl.json").read_text(encoding="utf-8"))["ranges"][0]
+    assert (edit / "cut.mp4").read_bytes() == corte
+
+
+def test_enquadre_invalido_no_aplicar_vira_erro_de_corte(projeto):
+    edit = projeto
+    antes = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    pedido = {"ranges": [{"source": "A", "start": round(r["start"], 3), "end": round(r["end"], 3), "take": i,
+                          "enquadre": {"x": 540, "y": 960}} for i, r in enumerate(antes["ranges"])]}
+    with pytest.raises(ac.ErroCorte, match="enquadre"):
+        ac.aplicar(edit, pedido)
+    assert json.loads((edit / "edl.json").read_text(encoding="utf-8")) == antes

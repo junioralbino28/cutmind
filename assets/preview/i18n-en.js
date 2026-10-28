@@ -779,5 +779,7 @@ window.I18N_EN = {
   "Meia tela": "Half screen",
   "Escolher o formato e a parte que aparece": "Choose the format and the part that shows",
   "Vídeo por cima": "Video on top",
-  "Chegou. Está por cima do vídeo, na agulha.": "Arrived. It's on top of the video, at the playhead."
+  "Chegou. Está por cima do vídeo, na agulha.": "Arrived. It's on top of the video, at the playhead.",
+  "Enquadre original": "Original framing",
+  "A gravação volta a encher a tela, sem recorte": "The footage fills the screen again, uncropped"
 };

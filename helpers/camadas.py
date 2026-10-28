@@ -129,6 +129,23 @@ def recorte(v: object) -> dict | None:
     return out
 
 
+def enquadre(v: object) -> dict | None:
+    """O enquadre de uma TOMADA (o edl.json): a gravação no lugar e no tamanho que a pessoa pôs, com o mesmo
+    modelo da imagem livre: `x`/`y` (o centro) e `largura` em px do quadro, e o `recorte` opcional (o pedaço da
+    imagem do corte que aparece). Sem enquadre, a tomada enche o quadro como sempre."""
+    if v is None:
+        return None
+    if not isinstance(v, dict):
+        raise CamadasInvalidas("enquadre: {x, y, largura, recorte?}")
+    out = {"x": _num(v.get("x", 540), "x", -1080, 2160),
+           "y": _num(v.get("y", 960), "y", -1920, 3840),
+           "largura": _num(v.get("largura"), "largura", 40, 6480)}
+    rc = recorte(v.get("recorte"))
+    if rc:
+        out["recorte"] = rc
+    return out
+
+
 def _cor(v: object, nome: str) -> str:
     if not isinstance(v, str) or not _COR.fullmatch(v):
         raise CamadasInvalidas(f"{nome}: cor no formato #rrggbb")

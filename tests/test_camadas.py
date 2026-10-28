@@ -232,3 +232,21 @@ def test_o_som_do_video_por_cima_toca_e_o_escondido_ou_mudo_nao():
     foto = _video()
     foto["faixas"][0]["itens"][0]["arquivo"] = "midia/a.png"
     assert cm.tocam(cm.normalize(foto)) == []  # imagem não tem som
+
+
+# ---- o enquadre da gravação de uma tomada (edl.json; etapa 3 do PLANO-recortar-enquadrar)
+
+def test_enquadre_guarda_lugar_tamanho_e_recorte():
+    import camadas as cm
+    e = cm.enquadre({"x": 540, "y": 1440, "largura": 1300, "recorte": {"x": 0.3, "y": 0.2, "w": 0.7, "h": 0.5, "formato": "meia"}})
+    assert (e["x"], e["y"], e["largura"], e["recorte"]["formato"]) == (540, 1440, 1300, "meia")
+    assert cm.enquadre(None) is None
+    assert "recorte" not in cm.enquadre({"x": 540, "y": 960, "largura": 1080, "recorte": {"x": 0, "y": 0, "w": 1, "h": 1}})
+
+
+@pytest.mark.parametrize("ruim,motivo", [({"x": 540, "y": 960}, "largura"), ({"x": 540, "y": 960, "largura": 9000}, "largura"),
+                                         ("cheio", "enquadre"), ({"x": 540, "y": 960, "largura": 1080, "recorte": {"x": 2}}, "recorte")])
+def test_enquadre_errado_e_recusado(ruim, motivo):
+    import camadas as cm
+    with pytest.raises(cm.CamadasInvalidas, match=motivo):
+        cm.enquadre(ruim)

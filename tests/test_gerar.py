@@ -83,6 +83,18 @@ def test_som_do_video_desligado_tambem_e_um_final(edit):
     assert gerar.o_que_falta(edit) == ["final"]
 
 
+def test_enquadre_da_gravacao_pede_o_remotion_e_refaz_quando_muda(edit):
+    """O enquadre muda o edl.json sem refazer o cut.mp4: o Baixar tem de perceber pelo edl.json."""
+    enq = {"ranges": [{"source": "A", "start": 0.0, "end": 10.0, "enquadre": {"x": 540, "y": 1440, "largura": 1080}}]}
+    _grava(edit / "edl.json", enq, T0 + 1)
+    assert gerar.precisa_remotion(edit) and gerar.o_que_falta(edit) == ["remotion", "final"]
+    _grava(edit / "final.mp4", b"f", T0 + 2)
+    assert gerar.o_que_falta(edit) == []
+    enq["ranges"][0]["enquadre"]["largura"] = 1300
+    _grava(edit / "edl.json", enq, T0 + 3)
+    assert gerar.o_que_falta(edit) == ["remotion", "final"]
+
+
 def test_corte_refeito_depois_do_final(edit):
     _grava(edit / "camadas.json", IMAGEM, T0)
     _grava(edit / "final.mp4", b"f", T0 + 2)

@@ -46,6 +46,7 @@ HELPERS = Path(__file__).resolve().parent
 MARCA_LIVRE = "INSERT_LIVRE"  # no src/Main.tsx do template que desenha a imagem livre
 MARCA_RECORTE = "INSERT_RECORTE"  # ... e que desenha só o pedaço recortado dela
 MARCA_VIDEO = "INSERT_VIDEO"  # ... e que desenha o vídeo posto por cima
+MARCA_ENQUADRE = "ENQUADRE_TOMADA"  # ... e que põe a gravação no lugar e no tamanho de cada tomada
 
 
 class TemplateVelho(RuntimeError):
@@ -57,6 +58,37 @@ def template_sem_imagem_livre(ed_p: Path) -> bool:
     imagem livre: ela sairia no cartão de cima, sem erro nenhum. Sem Main.tsx (edit-data avulso), não há o
     que conferir."""
     return template_sem(ed_p, MARCA_LIVRE)
+
+
+def enquadres(edit: Path, ed_p: Path) -> list:
+    """O enquadre de cada tomada (edl.json) na ordem dos trechos do corte (public/segments.json, ao lado do
+    edit-data): `{x, y, w, crop?}` em px do quadro, ou None (a tomada enche o quadro). Sem enquadre nenhum,
+    lista vazia. Com trechos que não batem com as tomadas, para: o enquadre cairia na tomada errada."""
+    try:
+        ranges = json.loads((Path(edit) / "edl.json").read_text(encoding="utf-8")).get("ranges") or []
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not any(r.get("enquadre") for r in ranges):
+        return []
+    segs_p = Path(ed_p).parent / "segments.json"
+    try:
+        segs = json.loads(segs_p.read_text(encoding="utf-8")).get("segments") or []
+    except (OSError, json.JSONDecodeError):
+        segs = []
+    if len(segs) != len(ranges):
+        raise TemplateVelho("os trechos do vídeo final não batem com as tomadas: salve as tomadas de novo para "
+                            "o enquadre da gravação cair na tomada certa")
+    out = []
+    for r in ranges:
+        e = cam.enquadre(r.get("enquadre"))
+        if not e:
+            out.append(None)
+            continue
+        item = {"x": e["x"], "y": e["y"], "w": e["largura"]}
+        if e.get("recorte"):
+            item["crop"] = {k: e["recorte"][k] for k in ("x", "y", "w", "h")}
+        out.append(item)
+    return out
 
 
 def template_sem(ed_p: Path, marca: str) -> bool:
@@ -213,6 +245,12 @@ def aplicar(edit: Path, edit_data: Path | None = None, recortar: bool = True) ->
         raise TemplateVelho(f"o template deste projeto é de um kit anterior e não recorta a imagem: rode "
                             f"`atualizar_template.py {edit}` e depois este de novo")
     d["inserts"] = inserts
+    ens = enquadres(edit, ed_p)
+    if ens and template_sem(ed_p, MARCA_ENQUADRE):
+        raise TemplateVelho(f"o template deste projeto é de um kit anterior e não enquadra a gravação: rode "
+                            f"`atualizar_template.py {edit}` e depois este de novo")
+    if ens or "enquadres" in d:
+        d["enquadres"] = ens
     if behind or "behind" in d:
         d["behind"] = behind
     textos = _textos(ed_p.parent, d, camadas, rec)

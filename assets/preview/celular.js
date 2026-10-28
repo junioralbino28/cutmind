@@ -678,14 +678,17 @@ const quadroDaMidia = (midia, t, h) => `/gen/montagem-quadro?midia=${encodeURICo
 // ---------- o que mudou e ainda não foi salvo ----------
 // comparado com o último corte recebido (ou o último Salvar): aparada, nova, excluída, ordem, volume
 // (`tk`, a troca de um lugar da montagem, conta à parte: não muda o corte)
-const baseOf = (draft) => draft.map((r) => ({ uid: r.uid, start: r.start, end: r.end, vol: r.vol, vel: r.vel, ck: curvaKey(r), tk: trocaKey(r) }));
+const baseOf = (draft) => draft.map((r) => ({ uid: r.uid, start: r.start, end: r.end, vol: r.vol, vel: r.vel, ck: curvaKey(r), tk: trocaKey(r), ek: JSON.stringify(r.enq || null) }));
+// o enquadre da gravação de uma tomada (edl.json `enquadre`): {x, y, largura, recorte?}, como a imagem livre
+function copiaEnq(e) { return e ? JSON.parse(JSON.stringify(e)) : null; }
 function diffBase() {
   const base = new Map(S.base.map((b) => [b.uid, b]));
   const now = new Set(S.draft.map((r) => r.uid));
   let mudou = 0;
   for (const r of S.draft) {
     const b = base.get(r.uid);
-    if (!b || b.start !== r.start || b.end !== r.end || b.vol !== r.vol || b.vel !== r.vel || b.ck !== curvaKey(r)) mudou++;
+    if (!b || b.start !== r.start || b.end !== r.end || b.vol !== r.vol || b.vel !== r.vel || b.ck !== curvaKey(r)
+      || b.ek !== JSON.stringify(r.enq || null)) mudou++;
   }
   mudou += S.base.filter((b) => !now.has(b.uid)).length;
   const antes = S.base.map((b) => b.uid).filter((u) => now.has(u));
@@ -747,7 +750,7 @@ function refreshHeader() {
 const HIST = { past: [], future: [], max: 100 };
 function snap() {
   return {
-    draft: S.draft.map((r) => ({ ...r, orig: r.orig ? { ...r.orig } : null, curva: copiaCurva(r.curva) })),
+    draft: S.draft.map((r) => ({ ...r, orig: r.orig ? { ...r.orig } : null, curva: copiaCurva(r.curva), enq: copiaEnq(r.enq) })),
     notes: S.notes.map((n) => ({ ...n })),
     pendingIn: S.pendingIn,
     selected: S.selected,
@@ -922,6 +925,7 @@ async function applyState(data) {
   S.rendered = ranges.map((r) => ({ source: r.source, start: +r.start, end: +r.end, beat: r.beat || '',
     vol: r.volume == null ? 1 : +r.volume, vel: r.velocidade == null ? 1 : +r.velocidade,
     curva: r.curva && Array.isArray(r.curva.pontos) ? { nome: r.curva.nome || 'personalizar', pontos: r.curva.pontos.map((p) => [+p[0], +p[1]]) } : null,
+    enq: r.enquadre ? copiaEnq(r.enquadre) : null, // a gravação no lugar e no tamanho da pessoa
     ...(r.vaga != null ? { vaga: +r.vaga } : {}) })); // o número do lugar, numa montagem na batida
   // a montagem na batida (montagem.py): os lugares, de onde cada um saiu e as mídias que ela usou
   S.montagem = (data.edl && data.edl.montagem && Array.isArray(data.edl.montagem.lugares)) ? data.edl.montagem : null;
@@ -2288,10 +2292,12 @@ const DICA = { volume: t('Volume'), velocidade: t('Velocidade e curva'), intensi
   'modelos-montagem': t('Os modelos de montagem: o ritmo, a música e as fotos e clipes; ou guardar esta montagem como modelo'),
   formato: t('O formato do vídeo: em pé, deitado ou quadrado'),
   recortar: t('Escolher o formato e a parte que aparece'),
+  'enq-original': t('A gravação volta a encher a tela, sem recorte'),
   'lugar-caber': t('A foto ou o clipe inteiro na tela (arraste a mídia e a bolinha do canto para ajustar à mão)'),
   'lugar-encher': t('A foto ou o clipe cobrindo a tela inteira'), 'lugar-auto': t('O enquadramento automático do lugar'),
   'lugar-repetir': t('O mesmo enquadramento nos outros lugares com esta mídia') };
 function renderToolbar() {
+  desenhaTomadaCaixa(); // a caixa da gravação segue a tomada escolhida
   const tb = $('toolbar');
   const ctx = $('ctxbar');
   const lsel = S.layerSel ? camItem(S.layerSel) : null;
@@ -2472,6 +2478,8 @@ function renderToolbar() {
     tool(ctx, 'volume', `${Math.round(sel.vol * 100)}%`);
     tool(ctx, 'velocidade', sel.curva ? nomeCurva(sel.curva.nome) : fmtVel(sel.vel));
     tool(ctx, 'ajustar', t('Ajustar§cor'));
+    tool(ctx, 'recortar', t('Recortar'), { on: !!(sel.enq && sel.enq.recorte) });
+    tool(ctx, 'enq-original', t('Enquadre original'), { icon: ICON.original, disabled: !sel.enq });
     tool(ctx, 'excluir', t('Excluir'), { icon: ICON.remover, disabled: S.draft.length < 2 });
     tool(ctx, 'ouvir', t('Ouvir'));
     // "Original" volta às bordas que o agente cortou; pedaço novo não tem
@@ -2528,7 +2536,8 @@ document.addEventListener('click', (e) => {
     case 'modelos': S.textMenu = false; renderToolbar(); openModelos(); break;
     case 'texto-editar': openTextoCamada(false); break;
     case 'atras': textoLiga('atras'); break;
-    case 'recortar': recortaImagemSel(); break;
+    case 'recortar': if (S.layerSel) recortaImagemSel(); else recortaTomadaSel(); break;
+    case 'enq-original': { const r = S.draft[S.selected]; if (r && r.enq) { remember(); r.enq = null; enqSig = '-'; syncLayers(); renderTimeline(); renderToolbar(); refreshHeader(); } break; }
     case 'texto-segue': textoLiga('acompanhar'); break;
     case 'leg-texto': openLegendaTexto(); break;
     case 'leg-segue': legendaSegue(); break;
@@ -2617,7 +2626,7 @@ function splitSelected() {
   // com curva, cada metade leva o seu pedaço dela: a mesma velocidade nos mesmos pontos
   const [esq, dir] = r.curva ? Tempo.cortarCurva(r.curva.pontos, (s - r.start) / (r.end - r.start)) : [null, null];
   S.draft.splice(i + 1, 0, { uid: `n${++S.seq}`, from: r.from, kind: 'split', source: r.source, start: s, end: r.end, beat: r.beat, vol: r.vol, vel: r.vel,
-    curva: r.curva ? { nome: r.curva.nome, pontos: dir } : null, orig: null });
+    curva: r.curva ? { nome: r.curva.nome, pontos: dir } : null, enq: copiaEnq(r.enq), orig: null });
   r.end = s;
   if (r.curva) r.curva = { nome: r.curva.nome, pontos: esq };
   renderTimeline(); renderToolbar(); refreshHeader();
@@ -2628,7 +2637,7 @@ function duplicateSelected() {
   const r = S.draft[i];
   if (emLugar(r)) { avisaLugar(); return; }
   remember();
-  S.draft.splice(i + 1, 0, { uid: `n${++S.seq}`, from: r.from, kind: 'dup', source: r.source, start: r.start, end: r.end, beat: r.beat, vol: r.vol, vel: r.vel, curva: copiaCurva(r.curva), orig: null });
+  S.draft.splice(i + 1, 0, { uid: `n${++S.seq}`, from: r.from, kind: 'dup', source: r.source, start: r.start, end: r.end, beat: r.beat, vol: r.vol, vel: r.vel, curva: copiaCurva(r.curva), enq: copiaEnq(r.enq), orig: null });
   S.selected = i + 1;
   renderTimeline(); renderToolbar(); refreshHeader();
 }
@@ -4790,6 +4799,7 @@ function edlPayload() {
     ranges: S.draft.map((r) => ({ source: r.source, start: +r.start.toFixed(3), end: +r.end.toFixed(3), beat: r.beat, take: r.from,
       ...(r.vaga != null ? { vaga: r.vaga } : {}), // sem ele, o primeiro Salvar apagaria os lugares da montagem
       ...(r.vol !== 1 ? { volume: r.vol } : {}),
+      ...(r.enq ? { enquadre: copiaEnq(r.enq) } : {}),
       ...(r.curva ? { curva: copiaCurva(r.curva) } : r.vel !== 1 ? { velocidade: r.vel } : {}) })),
     removed: S.rendered.map((r, i) => ({ r, i })).filter(({ i }) => !tem.has(`o${i}`))
       .map(({ r, i }) => ({ source: r.source, beat: r.beat, start: r.start, end: r.end, take: i })),
@@ -7962,7 +7972,11 @@ function desenhaImagemCaixa() {
   const c = el('div', `ov-img-caixa${sel ? ' sel' : ''}${v.trav ? ' trav' : ''}`, box);
   c.dataset.img = v.it.id;
   Object.assign(c.style, { left: pct(g.x / FRAME_W), top: pct(g.y / FRAME_H), width: pct(g.w / FRAME_W), height: pct(g.h / FRAME_H) });
-  if (sel && !v.trav) el('span', 'ov-tx-tam', c).dataset.tamimg = v.it.id; // a mesma bolinha do texto
+  if (sel && !v.trav) { // a mesma bolinha do texto
+    const b = el('span', 'ov-tx-tam', c);
+    b.dataset.tamimg = v.it.id;
+    bolaNoCanto(b, g.x - g.w / 2, g.y - g.h / 2, g.w, g.h);
+  }
 }
 $('ovImg').addEventListener('load', () => { imgCaixaSig = ''; desenhaImagemCaixa(); }); // a proporção chegou
 const imgDrag = { id: null };
@@ -8152,7 +8166,141 @@ function recortaImagemSel() {
     } });
 }
 
+/* ---------- enquadrar a gravação: a tomada no lugar e no tamanho da pessoa ----------
+ * Pedido de 28/10: "a pessoa do vídeo pode não estar centralizada e na tela dividida feita à mão, se não
+ * centralizar, ampliar ou diminuir pode ficar estranho". Escolhida a tomada, arrastar a gravação move, a bolinha
+ * amplia ou diminui (perto do meio, da metade de baixo ou de cima, encaixa), e o Recortar escolhe o pedaço.
+ * Fica no edl.json (`enquadre`); o Salvar não refaz o corte, e o vídeo final desenha igual (Main.tsx, cameraAt). */
+let enqSig = '';
+function tomadaNaAgulha() {
+  const dl = draftLayout();
+  for (let i = 0; i < dl.length; i++) if (S.t >= dl[i].out && S.t < dl[i].out + dl[i].dur) return i;
+  return dl.length ? dl.length - 1 : -1;
+}
+const ENQ_CHEIO = () => ({ x: FRAME_W / 2, y: FRAME_H / 2, largura: FRAME_W });
+function enquadreGeo(e) { // onde o pedaço fica na tela e a escala da gravação, em px do quadro
+  const c = e.recorte || { x: 0, y: 0, w: 1, h: 1 }, W = FRAME_W, H = FRAME_H;
+  const E = e.largura / (c.w * W), h = c.h * H * E, left = e.x - e.largura / 2, top = e.y - h / 2;
+  return { c, E, left, top, w: e.largura, h, tx: left - c.x * W * E, ty: top - c.y * H * E };
+}
+function enquadreTela() {
+  const win = player.querySelector('.win');
+  const i = S.view === 'corte' && !S.styling && !S.posMode && !formatoPrevia() ? tomadaNaAgulha() : -1;
+  const r = i >= 0 ? S.draft[i] : null;
+  const e = r && r.vaga == null ? r.enq : null;
+  const sig = JSON.stringify([e, FRAME_W, FRAME_H]);
+  if (sig !== enqSig) {
+    enqSig = sig;
+    if (!e) Object.assign(win.style, { transformOrigin: '', transform: '', clipPath: '' });
+    else {
+      const g = enquadreGeo(e), pc = (v) => `${(v * 100).toFixed(4)}%`;
+      Object.assign(win.style, { transformOrigin: '0 0',
+        transform: `translate(${pc(g.tx / FRAME_W)}, ${pc(g.ty / FRAME_H)}) scale(${g.E.toFixed(6)})`,
+        clipPath: `inset(${pc(g.c.y)} ${pc(1 - g.c.x - g.c.w)} ${pc(1 - g.c.y - g.c.h)} ${pc(g.c.x)})` });
+    }
+  }
+  desenhaTomadaCaixa();
+}
+let tomCaixaSig = '';
+function desenhaTomadaCaixa() {
+  const box = $('ovTomada');
+  const r = S.selected >= 0 && !S.layerSel && S.view === 'corte' && !S.styling && !S.posMode && !formatoPrevia()
+    ? S.draft[S.selected] : null;
+  const pode = !!r && r.vaga == null;
+  const sig = JSON.stringify(pode ? [r.uid, r.enq, FRAME_W, FRAME_H] : null);
+  if (sig === tomCaixaSig) return;
+  tomCaixaSig = sig;
+  box.innerHTML = '';
+  if (!pode) return;
+  const g = enquadreGeo(r.enq || ENQ_CHEIO());
+  const c = el('div', 'ov-img-caixa sel', box);
+  c.dataset.tomada = r.uid;
+  Object.assign(c.style, { left: pct(g.left / FRAME_W), top: pct(g.top / FRAME_H), width: pct(g.w / FRAME_W), height: pct(g.h / FRAME_H) });
+  const b = el('span', 'ov-tx-tam', c);
+  b.dataset.tamtom = r.uid;
+  bolaNoCanto(b, g.left, g.top, g.w, g.h);
+}
+// a bolinha de tamanho no canto de baixo à direita QUE APARECE: com a caixa na borda do vídeo (ou além dela), o
+// canto de verdade fica cortado e longe do dedo (achado na prova do enquadre, 28/10: Meia tela encosta na borda)
+function bolaNoCanto(b, left, top, w, h) {
+  const m = FRAME_W * 0.035;
+  if (left + w <= FRAME_W - m && top + h <= FRAME_H - m) return; // o canto aparece: fica no lugar de sempre
+  const bx = Math.min(left + w, FRAME_W - m), by = Math.min(top + h, FRAME_H - m);
+  Object.assign(b.style, { right: 'auto', bottom: 'auto', left: pct((bx - left) / w), top: pct((by - top) / h), translate: '-50% -50%' });
+}
+const tomDrag = { id: null };
+$('ovTomada').addEventListener('pointerdown', (e) => {
+  const caixa = e.target.closest('[data-tomada]');
+  const r = caixa && S.draft.find((x) => x.uid === caixa.dataset.tomada);
+  if (!r) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const P = player.getBoundingClientRect();
+  const g = enquadreGeo(r.enq || ENQ_CHEIO());
+  const cx = P.left + ((g.left + g.w / 2) / FRAME_W) * P.width, cy = P.top + ((g.top + g.h / 2) / FRAME_H) * P.height;
+  Object.assign(tomDrag, { id: e.pointerId, r, x0: e.clientX, y0: e.clientY, e0: { ...(r.enq || ENQ_CHEIO()) }, k: FRAME_W / P.width,
+    tam: !!e.target.closest('[data-tamtom]'), cx, cy, d0: Math.max(6, Math.hypot(e.clientX - cx, e.clientY - cy)),
+    moved: false, before: snap() });
+  video.pause();
+  window.addEventListener('pointermove', tomMove);
+  window.addEventListener('pointerup', tomFim);
+  window.addEventListener('pointercancel', tomFim);
+});
+function tomMove(e) {
+  if (e.pointerId !== tomDrag.id) return;
+  const d = tomDrag, dx = e.clientX - d.x0, dy = e.clientY - d.y0;
+  if (!d.moved && Math.hypot(dx, dy) < 4) return;
+  d.moved = true;
+  const n = { ...d.e0 };
+  if (d.tam) { // longe do centro amplia; perto da largura da tela, encaixa nela
+    let w = Math.max(40, Math.min(FRAME_W * 6, d.e0.largura * (Math.hypot(e.clientX - d.cx, e.clientY - d.cy) / d.d0)));
+    if (Math.abs(w / FRAME_W - 1) < 0.03) w = FRAME_W;
+    n.largura = Math.round(w);
+  } else { // o centro anda; perto do meio (ou do meio da metade de cima ou de baixo), encaixa
+    const nx = Math.round(d.e0.x + dx * d.k), ny = Math.round(d.e0.y + dy * d.k);
+    n.x = Math.abs(nx - FRAME_W / 2) < 12 ? FRAME_W / 2 : Math.max(-FRAME_W, Math.min(FRAME_W * 2, nx));
+    n.y = ny;
+    for (const alvo of [FRAME_H / 2, FRAME_H / 4, (FRAME_H * 3) / 4]) if (Math.abs(ny - alvo) < 12) n.y = alvo;
+    n.y = Math.max(-FRAME_H, Math.min(FRAME_H * 2, n.y));
+  }
+  d.r.enq = n;
+  enquadreTela();
+}
+function tomFim(e) {
+  if (e.pointerId !== tomDrag.id) return;
+  window.removeEventListener('pointermove', tomMove);
+  window.removeEventListener('pointerup', tomFim);
+  window.removeEventListener('pointercancel', tomFim);
+  tomDrag.id = null;
+  if (!tomDrag.moved) { if (performance.now() > tapGuard.until) togglePlay(); return; } // um toque: play/pause
+  tapGuard.until = performance.now() + 400;
+  remember(tomDrag.before);
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+// o Recortar da tomada: o quadro do cut.mp4 na agulha (dentro da tomada); Meia tela a põe na metade de baixo
+function recortaTomadaSel() {
+  const r = S.draft[S.selected];
+  if (!r || r.vaga != null) return;
+  video.pause();
+  const d = draftLayout()[S.selected];
+  const em = draftToRendered(Math.max(d.out, Math.min(S.t, d.out + d.dur - 0.05)));
+  const uid = r.uid;
+  abreRecorte({ src: `/media/${S.state.video}?v=${S.mtimes.video || 0}`, video: true, t: em,
+    recorte: r.enq && r.enq.recorte, aoConcluir: (rc) => {
+      const t2 = S.draft.find((x) => x.uid === uid);
+      if (!t2) return;
+      const before = snap(), e = { ...(t2.enq || ENQ_CHEIO()) };
+      if (rc) e.recorte = rc; else delete e.recorte;
+      if (rc && rc.formato === 'meia') { e.x = FRAME_W / 2; e.y = (FRAME_H * 3) / 4; e.largura = FRAME_W; }
+      const cheio = !e.recorte && e.x === FRAME_W / 2 && e.y === FRAME_H / 2 && e.largura === FRAME_W;
+      t2.enq = cheio ? null : e;
+      remember(before);
+      syncLayers(); renderTimeline(); renderToolbar(); refreshHeader();
+    } });
+}
+
 function syncLayers() {
+  enquadreTela();
   const corte = S.view === 'corte';
   const playing = !video.paused && !video.ended && !G.mode;
   const rt = corte ? draftToRendered(S.t) : 0;

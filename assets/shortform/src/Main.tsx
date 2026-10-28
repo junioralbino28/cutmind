@@ -58,7 +58,14 @@ type BehindImage = {kind: 'image'; src: string; matte: string; start: number; du
 type BehindWords = {kind: 'words'; words: {t: string; at: number}[]; matte: string; start: number; dur: number};
 type Behind = BehindImage | BehindWords;
 
+// ENQUADRE_TOMADA: a gravação de uma tomada no lugar e no tamanho que a pessoa pôs no editor (edl.json,
+// `enquadre`), um por trecho do segments.json: o pedaço `crop` da imagem do corte, com a largura `w` e o centro em
+// x/y (px do quadro); fora dele, preto. Na tomada enquadrada não há zoom automático. A prévia desenha igual
+// (celular.js, enquadreTela)
+type Enquadre = {x: number; y: number; w: number; crop?: Crop} | null;
+
 export type EditData = {
+  enquadres?: Enquadre[];
   width: number;
   height: number;
   fps: number;
@@ -151,20 +158,30 @@ export const Sfx: React.FC<{src: string; volume?: number}> = ({src, volume = 0.0
 // The camera at a GLOBAL frame: the picture is scaled by S and moved by (tx, ty).
 // A point (px, py) of cut.mp4 lands on screen at (tx + px·S, ty + py·S) — this is how
 // a text that follows the person (CamadasTexto.tsx) finds the face on screen.
-export const cameraAt = (frame: number, width: number, height: number, fps: number) => {
+type JanelaTomada = {left: number; top: number; right: number; bottom: number};
+export const cameraAt = (frame: number, width: number, height: number, fps: number): {S: number; tx: number; ty: number; clip: JanelaTomada | null} => {
   const cam = D.camera;
   let S = 1;
   let tx = 0;
   let ty = 0;
+  // which cut segment is this frame in?
+  const segs = segData.segments;
+  let idx = 0;
+  // VIDEO_LAG (videoLag.ts): the zoom must step on the frame the picture cuts.
+  // A wrong lag leaves a one-frame double step at every cut.
+  for (let i = 0; i < segs.length; i++) {
+    if (frame - VIDEO_LAG >= Math.round(segs[i].start * fps)) idx = i;
+  }
+  const enq = D.enquadres?.[idx];
+  if (enq) { // a tomada enquadrada à mão: o pedaço com a largura w e o centro em x/y, sem o zoom automático
+    const c = enq.crop ?? {x: 0, y: 0, w: 1, h: 1};
+    const E = enq.w / (c.w * width);
+    const left = enq.x - enq.w / 2;
+    const top = enq.y - (c.h * height * E) / 2;
+    return {S: E, tx: left - c.x * width * E, ty: top - c.y * height * E,
+      clip: {left, top, right: left + enq.w, bottom: top + c.h * height * E}};
+  }
   if (cam.enabled) {
-    // which cut segment is this frame in?
-    const segs = segData.segments;
-    let idx = 0;
-    // VIDEO_LAG (videoLag.ts): the zoom must step on the frame the picture cuts.
-    // A wrong lag leaves a one-frame double step at every cut.
-    for (let i = 0; i < segs.length; i++) {
-      if (frame - VIDEO_LAG >= Math.round(segs[i].start * fps)) idx = i;
-    }
     const segFrom = Math.round(segs[idx].start * fps) + VIDEO_LAG;
     const segLen = Math.max(1, Math.round(segs[idx].dur * fps));
     const base = cam.zooms[idx % cam.zooms.length] ?? 1.14;
@@ -178,7 +195,7 @@ export const cameraAt = (frame: number, width: number, height: number, fps: numb
     tx = clamp(tx, width - width * S, 0); // never reveal an edge
     ty = clamp(ty, height - height * S, 0);
   }
-  return {S, tx, ty};
+  return {S, tx, ty, clip: null};
 };
 
 export const DynamicVideo: React.FC<{src?: string; frameOffset?: number; transparent?: boolean; trimBefore?: number; muted?: boolean; children?: React.ReactNode}> = ({
@@ -191,10 +208,13 @@ export const DynamicVideo: React.FC<{src?: string; frameOffset?: number; transpa
 }) => {
   const frame = useCurrentFrame() + frameOffset;
   const {width, height, fps} = useVideoConfig();
-  const {S, tx, ty} = cameraAt(frame, width, height, fps);
+  const {S, tx, ty, clip} = cameraAt(frame, width, height, fps);
+  // a tomada enquadrada: só o pedaço aparece (fora dele, o fundo preto do vídeo)
+  const px = (v: number) => `${Math.max(0, v).toFixed(2)}px`;
+  const clipPath = clip ? `inset(${px(clip.top)} ${px(width - clip.right)} ${px(height - clip.bottom)} ${px(clip.left)})` : undefined;
 
   return (
-    <AbsoluteFill>
+    <AbsoluteFill style={clipPath ? {clipPath} : undefined}>
       <div
         style={{
           width,

@@ -306,3 +306,51 @@ def test_o_template_do_kit_desenha_o_video_por_cima():
     texto = main.read_text(encoding="utf-8")
     import camadas_edit_data as ced
     assert ced.MARCA_VIDEO in texto and "<OffthreadVideo" in texto and "from={it.from}" in texto
+
+
+
+# ---- o enquadre da gravação de cada tomada vai para o edit-data, na ordem dos trechos
+
+def _edl_enq(edit, enqs):
+    ranges = [{"source": "A", "start": float(i), "end": float(i) + 1, **({"enquadre": e} if e else {})} for i, e in enumerate(enqs)]
+    (edit / "edl.json").write_text(json.dumps({"ranges": ranges}), encoding="utf-8")
+
+
+def test_enquadres_seguem_os_trechos_do_corte(projeto):
+    edit, public, _ = projeto
+    import camadas_edit_data as ced
+    (public / "segments.json").write_text(json.dumps({"segments": [{"start": 0, "dur": 1}, {"start": 1, "dur": 1}]}), encoding="utf-8")
+    segs = [0, 1]
+    enqs = [{"x": 540, "y": 1440, "largura": 1300, "recorte": {"x": 0.1, "y": 0.2, "w": 0.8, "h": 0.5}}] + [None] * (len(segs) - 1)
+    _edl_enq(edit, enqs)
+    _camadas(edit, [])
+    aplicar(edit)
+    d = json.loads((public / "edit-data.json").read_text(encoding="utf-8"))
+    assert d["enquadres"][0] == {"x": 540, "y": 1440, "w": 1300, "crop": {"x": 0.1, "y": 0.2, "w": 0.8, "h": 0.5}}
+    assert d["enquadres"][1:] == [None] * (len(segs) - 1)
+    _edl_enq(edit, enqs + [None])  # uma tomada a mais que os trechos: o enquadre cairia na tomada errada
+    with pytest.raises(ced.TemplateVelho, match="não batem"):
+        aplicar(edit)
+    _edl_enq(edit, [None] * len(segs))  # sem enquadre: a lista sai vazia
+    aplicar(edit)
+    assert json.loads((public / "edit-data.json").read_text(encoding="utf-8"))["enquadres"] == []
+
+
+def test_template_sem_enquadre_para(projeto):
+    edit, public, _ = projeto
+    (public / "segments.json").write_text(json.dumps({"segments": [{"start": 0, "dur": 1}]}), encoding="utf-8")
+    _edl_enq(edit, [{"x": 540, "y": 1440, "largura": 1300}])
+    _camadas(edit, [])
+    src = public.parent / "src"
+    src.mkdir()
+    (src / "Main.tsx").write_text("// INSERT_LIVRE INSERT_RECORTE INSERT_VIDEO", encoding="utf-8")
+    import camadas_edit_data as ced
+    with pytest.raises(ced.TemplateVelho, match="não enquadra"):
+        aplicar(edit)
+
+
+def test_o_template_do_kit_enquadra_a_gravacao():
+    main = Path(__file__).resolve().parents[1] / "assets" / "shortform" / "src" / "Main.tsx"
+    texto = main.read_text(encoding="utf-8")
+    import camadas_edit_data as ced
+    assert ced.MARCA_ENQUADRE in texto and "D.enquadres?.[idx]" in texto and "clipPath" in texto

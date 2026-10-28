@@ -43,7 +43,7 @@ NOMES_ITEM = {"imagem": "A imagem", "texto": "O texto", "audio": "O áudio", "fi
 
 # o que vem da pessoa (a régua de volume, a velocidade, a curva, o lugar da montagem): o Salvar manda
 # quando não é o padrão; sem ele, a tomada volta ao padrão, e não herda o do edl.json velho
-DA_PESSOA = ("volume", "velocidade", "curva", "vaga")
+DA_PESSOA = ("volume", "velocidade", "curva", "vaga", "enquadre")
 
 
 def novo_edl(edl: dict, pedido: dict) -> tuple[dict, list[int | None]]:
@@ -64,12 +64,30 @@ def novo_edl(edl: dict, pedido: dict) -> tuple[dict, list[int | None]]:
         for c in DA_PESSOA:
             if p.get(c) is not None:
                 base[c] = p[c]
+        if base.get("enquadre") is not None:  # o lugar e o tamanho da gravação: conferido como uma camada
+            base["enquadre"] = cam.enquadre(base["enquadre"])
         ranges.append(base)
         origem.append(k if conhecida else None)
     ranges, origem = _juntar_divisoes(ranges, origem)
     novo = {k: v for k, v in edl.items() if k not in ("ranges", "jcut_timeline", "total_duration_s")}
     novo["ranges"] = ranges
     return novo, origem
+
+
+def so_enquadre(edl: dict, novo: dict) -> bool:
+    """O Salvar só mudou o enquadre das tomadas (o lugar e o tamanho da gravação na tela): as tomadas são as
+    mesmas, nas mesmas pontas (até FOLGA_IGUAL), e o resto delas igual. Aí o corte não precisa ser refeito: o
+    enquadre é desenhado depois, no vídeo final."""
+    velhas, novas = edl.get("ranges") or [], novo.get("ranges") or []
+    if len(velhas) != len(novas):
+        return False
+    for a, b in zip(velhas, novas):
+        if abs(float(a["start"]) - float(b["start"])) > FOLGA_IGUAL or abs(float(a["end"]) - float(b["end"])) > FOLGA_IGUAL:
+            return False
+        fora = ("start", "end", "enquadre")
+        if {k: v for k, v in a.items() if k not in fora} != {k: v for k, v in b.items() if k not in fora}:
+            return False
+    return True
 
 
 def _juntar_divisoes(ranges: list[dict], origem: list[int | None]) -> tuple[list[dict], list[int | None]]:
@@ -417,12 +435,26 @@ def aplicar(edit: Path, pedido: dict, confirmado: bool = False, andamento=_sem_a
     # mais velho sai, para o transcribe.py não devolver do cache as palavras de outro corte
     tr_p = edit / "transcripts" / "cut.json"
     transcricao_ok = tr_p.is_file() and tr_p.stat().st_mtime >= gr._mtime(edit / "cut.mp4")
+    try:
+        novo, origem = novo_edl(edl_velho, pedido)
+    except cam.CamadasInvalidas as e:
+        raise ErroCorte(f"o enquadre de uma tomada ficou inválido: {e}") from None
+    if so_enquadre(edl_velho, novo):  # só o lugar e o tamanho da gravação: grava, sem refazer o corte
+        for r, n in zip(edl_velho.get("ranges") or [], novo["ranges"]):
+            if n.get("enquadre"):
+                r["enquadre"] = n["enquadre"]
+            else:
+                r.pop("enquadre", None)
+        _grava_json(edl_p, edl_velho)
+        anotar_feito(edit, f"enquadre da gravação em {sum(1 for r in novo['ranges'] if r.get('enquadre'))} tomada(s)")
+        res = {"rede": [], "fora": [], "voz": None}
+        andamento("pronto", "Corte guardado", 1.0, **res)
+        return res
     if not confirmado:
         andamento("conferindo", "Conferindo o corte", 0.02)
         avisos = conferir_projeto(edit, pedido)
         if avisos:
             raise PrecisaConfirmar(avisos)
-    novo, origem = novo_edl(edl_velho, pedido)
     _grava_json(edl_p, novo)
     andamento("corte", "Refazendo o corte", 0.1)
     r = subprocess.run([sys.executable, "-X", "utf8", str(AQUI / "render.py"), str(edl_p), "-o", str(edit / "cut.mp4"),

@@ -327,5 +327,6 @@
  "recorte: {k} é um número de {lo} a 1": "crop: {k} must be a number from {lo} to 1",
  "recorte: formato é um de {p0}": "crop: format must be one of {p0}",
  "recorte: só na imagem livre (com largura), não no cartão nem atrás da pessoa": "crop: only on a free image (with a width), not on the card or behind the person",
- "o vídeo por cima não vai atrás da pessoa": "a video on top can't go behind the person"
+ "o vídeo por cima não vai atrás da pessoa": "a video on top can't go behind the person",
+ "o enquadre de uma tomada ficou inválido: {e}": "a take's framing is invalid: {e}"
 }
