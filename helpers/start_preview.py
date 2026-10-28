@@ -14,7 +14,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SERVER = HERE / "preview_server.py"
 sys.path.insert(0, str(HERE))
-from preview_server import add_network_args, ensure_token, is_local_bind, pc_host, phone_urls  # noqa: E402
+from preview_server import (AVISO_REDE_PUBLICA, add_network_args, ensure_token, is_local_bind,  # noqa: E402
+                            pc_host, phone_urls, rede_publica)
 
 
 def port_available(port: int, host: str = "127.0.0.1") -> bool:
@@ -101,6 +102,8 @@ def main() -> int:
         print("Aberto para a rede: só entra quem tem o link com o código.")
         for u in phone_urls(args.host, args.port, token):
             print(f"  celular ({u['label']}): {u['url']}")
+            if rede_publica(u["ip"]):
+                print(AVISO_REDE_PUBLICA)
     print(f"logs: {stdout_path} | {stderr_path}")
     return 0
 

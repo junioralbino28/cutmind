@@ -119,7 +119,10 @@ still runs on the PC, which has to stay on and awake. What changes:
    **Abrir no celular** at the top of the editor on the computer and scan the QR.
 3. **Windows asks once** (unless the installer's `ok firewall` already covered it). The
    first time Python listens on the network, Windows Firewall shows a dialog on the PC.
-   Tell the user to allow it on **private networks**. If
+   Tell the user to allow it on **private networks**. If the start prints "O Windows marcou esta
+   rede como Pública", the network itself is the block (Windows marks many home networks Public):
+   tell the user to switch it to Private (Settings > Network & internet > Wi-Fi or Ethernet >
+   Network profile type), then the link works with no restart. If
    the phone loads nothing, that dialog (or a network marked as public) is the
    first suspect — not the code.
 4. The link is `/c?t=<code>`: it stores the code in a cookie and redirects to

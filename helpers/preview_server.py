@@ -864,8 +864,32 @@ def phone_hosts(bind_host: str) -> list[tuple[str, str]]:
 
 
 def phone_urls(bind_host: str, port: int, token: str) -> list[dict[str, str]]:
-    return [{"label": label, "url": f"http://{ip}:{port}/c?t={token}"}
+    return [{"label": label, "url": f"http://{ip}:{port}/c?t={token}", "ip": ip}
             for label, ip in phone_hosts(bind_host)]
+
+
+AVISO_REDE_PUBLICA = ("  ! O Windows marcou esta rede como Pública e barra o celular. Para abrir pelo Wi-Fi, mude para "
+                      "Rede privada: Configurações > Rede e Internet > Wi-Fi ou Ethernet > Tipo de perfil de rede.")
+
+
+def rede_publica(ip: str) -> bool:
+    """Windows: a rede por onde passa este IP está marcada como Pública? O Windows marca assim muita rede de
+    casa, e então o firewall barra o celular mesmo com a permissão do CutMind (ela vale para redes privadas).
+    Pergunta pelo nome do tipo (Public/Private), que não vem traduzido."""
+    if os.name != "nt":
+        return False
+    try:
+        ip = str(ipaddress.IPv4Address(ip))
+    except ValueError:
+        return False
+    cmd = (f"$i = (Get-NetIPAddress -IPAddress '{ip}' -ErrorAction SilentlyContinue).InterfaceIndex; "
+           "if ($i) { (Get-NetConnectionProfile -InterfaceIndex $i -ErrorAction SilentlyContinue).NetworkCategory }")
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd], capture_output=True,
+                           text=True, encoding="utf-8", errors="replace", timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return r.stdout.strip() == "Public"
 
 
 def qr_svg(text: str) -> str | None:
@@ -2422,6 +2446,8 @@ def main() -> None:
         print("Aberto para a rede: só entra quem tem o link com o código.", flush=True)
         for u in phone_urls(args.host, args.port, Handler.token):
             print(f"  celular ({u['label']}): {u['url']}", flush=True)
+            if rede_publica(u["ip"]):
+                print(AVISO_REDE_PUBLICA, flush=True)
     srv.serve_forever()
 
 
