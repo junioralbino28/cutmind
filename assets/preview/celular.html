@@ -425,6 +425,19 @@
 
 <!-- o Baixar: o andamento do vídeo final, o "Pronto!" no fim e, enquanto espera, o pedido de avaliação
      (a página do CutMind no GitHub, onde fica a estrela) -->
+<!-- o Recortar: a mídia inteira com o quadro do pedaço que aparece; o formato embaixo (celular.js, abreRecorte) -->
+<div class="recorte hidden" id="recorte" role="dialog" aria-modal="true" aria-labelledby="rcTitulo">
+  <div class="rc-topo">
+    <button class="tb-btn" id="rcCancelar" type="button">Cancelar</button>
+    <h3 id="rcTitulo">Recortar</h3>
+    <button class="tb-btn rc-ok" id="rcConcluir" type="button">Concluir</button>
+  </div>
+  <div class="rc-palco" id="rcPalco">
+    <img class="rc-midia" id="rcImg" alt="">
+    <div class="rc-quadro" id="rcQuadro"><span class="rc-bola" data-rc-tam></span></div>
+  </div>
+  <div class="rc-formatos" id="rcFormatos"></div>
+</div>
 <div class="modal hidden" id="baixarModal" role="dialog" aria-modal="true" aria-labelledby="baixarTitulo">
   <div class="modal-card baixar-card">
     <div class="modal-head">

@@ -269,8 +269,8 @@ def preparar_remotion_fase2(edit: Path) -> Path:
     try:
         camadas_edit_data.aplicar(edit)
     except camadas_edit_data.TemplateVelho:
-        raise ErroGerar("o projeto do vídeo final é de um kit anterior e não desenha a imagem no lugar e no tamanho "
-                        "que você pôs: aperte Pronto para o Claude atualizar") from None
+        raise ErroGerar("o projeto do vídeo final é de um kit anterior e não desenha a imagem no lugar, no tamanho "
+                        "ou no recorte que você pôs: aperte Pronto para o Claude atualizar") from None
     return rem
 
 

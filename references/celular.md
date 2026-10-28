@@ -223,6 +223,11 @@ Each layer is a track, as in any editor:
   center `x`/`y` and `largura` in frame px in `camadas.json`, and the final video draws it
   exactly there (`Main.tsx`, `InsertLivre`; measured equal to the preview to the pixel).
   Near the middle it snaps to the middle. "Atrás da pessoa" still uses the big card.
+- **Recortar** (on a selected image) opens the whole image with a frame on top: pick a
+  format (Livre, Original, 9:16, 1:1, 4:5, 16:9, Meia tela), drag the frame over the part
+  that should show, pull the dot to make it smaller. Concluir saves `recorte` (fractions of
+  the image, with the `formato`); the image then shows only that piece, and `largura` is the
+  piece's width. Meia tela also puts it in the top half (1080×960), ready for a split screen.
 - Undo/redo covers all of it. **Salvar** sends `camadas`; the server validates it
   (files only from `midia/`, sane times and volumes) and writes `<edit>/camadas.json`
   — the project file, read back when the editor opens. A refusal shows the reason.

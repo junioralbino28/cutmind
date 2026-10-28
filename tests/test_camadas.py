@@ -142,3 +142,45 @@ def test_imagem_atras_ou_sem_largura_fica_no_cartao():
     item2 = {**item, "largura": 400, "atras": True}
     it = cm.normalize({"versao": 1, "faixas": [{"id": "i1", "tipo": "imagem", "itens": [item2]}]})["faixas"][0]["itens"][0]
     assert it["atras"] is True and "largura" not in it
+
+
+# ---- o Recortar da imagem livre (28/10: "cortar o formato e escolher a parte que aparece")
+
+def _livre_com(recorte, **extra):
+    return {"versao": 1, "faixas": [{"id": "i1", "tipo": "imagem", "itens": [
+        {"id": "i1-1", "arquivo": "midia/a.png", "inicio": 1, "duracao": 2, "x": 540, "y": 480, "largura": 1080,
+         "recorte": recorte, **extra}]}]}
+
+
+def test_recorte_guarda_o_pedaco_e_o_formato():
+    import camadas as cm
+    it = cm.normalize(_livre_com({"x": 0.5, "y": 0.1, "w": 0.3, "h": 0.6, "formato": "1:1"}))["faixas"][0]["itens"][0]
+    assert it["recorte"] == {"x": 0.5, "y": 0.1, "w": 0.3, "h": 0.6, "formato": "1:1"}
+
+
+def test_recorte_da_imagem_inteira_some():
+    import camadas as cm
+    it = cm.normalize(_livre_com({"x": 0, "y": 0, "w": 1, "h": 1, "formato": "original"}))["faixas"][0]["itens"][0]
+    assert "recorte" not in it and it["largura"] == 1080
+
+
+@pytest.mark.parametrize("ruim,motivo", [
+    ({"x": 0.8, "y": 0, "w": 0.3, "h": 0.5}, "sai da imagem"),
+    ({"x": 0, "y": 0, "w": 0, "h": 0.5}, "w"),
+    ({"x": -0.1, "y": 0, "w": 0.5, "h": 0.5}, "x"),
+    ({"x": 0, "y": 0, "w": 0.5, "h": True}, "h"),
+    ({"x": 0, "y": 0, "w": 0.5, "h": 0.5, "formato": "3:2"}, "formato"),
+    ("0,0,1,1", "fração"),
+])
+def test_recorte_errado_e_recusado(ruim, motivo):
+    import camadas as cm
+    with pytest.raises(cm.CamadasInvalidas, match=motivo):
+        cm.normalize(_livre_com(ruim))
+
+
+def test_recorte_so_na_imagem_livre():
+    import camadas as cm
+    base = _livre_com({"x": 0, "y": 0, "w": 0.5, "h": 0.5})
+    del base["faixas"][0]["itens"][0]["largura"]
+    with pytest.raises(cm.CamadasInvalidas, match="só na imagem livre"):
+        cm.normalize(base)

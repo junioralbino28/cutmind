@@ -242,3 +242,35 @@ def test_o_template_do_kit_desenha_a_imagem_livre():
     texto = main.read_text(encoding="utf-8")
     import camadas_edit_data as ced
     assert ced.MARCA_LIVRE in texto and "<InsertLivre" in texto
+
+
+def test_recorte_vai_para_o_insert_como_crop(projeto):
+    edit, public, _ = projeto
+    f = _livre("i1", "midia/outro.jpg", 540, 480, 1080)
+    f["itens"][0]["recorte"] = {"x": 0.55, "y": 0.1, "w": 0.4, "h": 0.8, "formato": "1:1"}
+    _camadas(edit, [f])
+    aplicar(edit)
+    assert _inserts(public)[1]["crop"] == {"x": 0.55, "y": 0.1, "w": 0.4, "h": 0.8}
+    assert _inserts(public)[1]["w"] == 1080
+
+
+def test_template_sem_recorte_para_em_vez_de_mostrar_a_imagem_inteira(projeto):
+    edit, public, _ = projeto
+    src = public.parent / "src"
+    src.mkdir()
+    (src / "Main.tsx").write_text("// INSERT_LIVRE", encoding="utf-8")  # o kit de 28/10 de madrugada
+    f = _livre("i1", "midia/outro.jpg", 540, 480, 1080)
+    f["itens"][0]["recorte"] = {"x": 0.5, "y": 0, "w": 0.5, "h": 1}
+    _camadas(edit, [f])
+    import camadas_edit_data as ced
+    with pytest.raises(ced.TemplateVelho, match="não recorta"):
+        aplicar(edit)
+    (src / "Main.tsx").write_text("// INSERT_LIVRE INSERT_RECORTE", encoding="utf-8")
+    aplicar(edit)
+
+
+def test_o_template_do_kit_recorta_a_imagem():
+    main = Path(__file__).resolve().parents[1] / "assets" / "shortform" / "src" / "Main.tsx"
+    texto = main.read_text(encoding="utf-8")
+    import camadas_edit_data as ced
+    assert ced.MARCA_RECORTE in texto and "crop={it.crop}" in texto and "clipPath" in texto

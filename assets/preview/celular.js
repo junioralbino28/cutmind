@@ -139,6 +139,7 @@ const ICON = {
   ima: sv('<path d="M5 4v8a7 7 0 0 0 14 0V4h-4v8a3 3 0 0 1-6 0V4z"/><path d="M5 7.6h4M15 7.6h4"/>'),
   // um lugar da montagem: Trocar a mídia (as duas setas) e o Trecho do clipe (a janela na tira)
   trocar: sv('<path d="M4.5 8.5h14l-3.5-3.5M19.5 15.5h-14l3.5 3.5"/>'),
+  recortar: sv('<path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/>'),
   formato: sv('<rect x="3" y="7" width="11" height="10" rx="1.6"/><rect x="15.5" y="4" width="5.5" height="16" rx="1.4"/>'),
   trecho: sv('<rect x="2.5" y="7" width="19" height="10" rx="1.6"/><rect x="8" y="4.5" width="7" height="15" rx="1.4" stroke-width="2.3"/>'),
 };
@@ -2286,6 +2287,7 @@ const DICA = { volume: t('Volume'), velocidade: t('Velocidade e curva'), intensi
   'lugar-original': t('O lugar volta à mídia e ao trecho do vídeo'),
   'modelos-montagem': t('Os modelos de montagem: o ritmo, a música e as fotos e clipes; ou guardar esta montagem como modelo'),
   formato: t('O formato do vídeo: em pé, deitado ou quadrado'),
+  recortar: t('Escolher o formato e a parte que aparece'),
   'lugar-caber': t('A foto ou o clipe inteiro na tela (arraste a mídia e a bolinha do canto para ajustar à mão)'),
   'lugar-encher': t('A foto ou o clipe cobrindo a tela inteira'), 'lugar-auto': t('O enquadramento automático do lugar'),
   'lugar-repetir': t('O mesmo enquadramento nos outros lugares com esta mídia') };
@@ -2430,7 +2432,10 @@ function renderToolbar() {
       tool(ctx, 'atras', t('Atrás da pessoa'), { icon: ICON.pessoa, on: lsel.it.atras });
       tool(ctx, 'texto-segue', t('Acompanhar'), { icon: ICON.alvo, on: lsel.it.acompanhar });
     }
-    if (lsel.f.tipo === 'imagem') tool(ctx, 'atras', t('Atrás da pessoa'), { icon: ICON.pessoa, on: !!lsel.it.atras });
+    if (lsel.f.tipo === 'imagem') {
+      tool(ctx, 'atras', t('Atrás da pessoa'), { icon: ICON.pessoa, on: !!lsel.it.atras });
+      if (!lsel.it.atras) tool(ctx, 'recortar', t('Recortar'), { on: !!lsel.it.recorte });
+    }
     if (aud) {
       tool(ctx, 'volume', `${Math.round(lsel.it.volume * 100)}%`);
       // Melhorar é a cadeia de voz (tira ruído): numa música da biblioteca só estragaria
@@ -2518,6 +2523,7 @@ document.addEventListener('click', (e) => {
     case 'modelos': S.textMenu = false; renderToolbar(); openModelos(); break;
     case 'texto-editar': openTextoCamada(false); break;
     case 'atras': textoLiga('atras'); break;
+    case 'recortar': recortaImagemSel(); break;
     case 'texto-segue': textoLiga('acompanhar'); break;
     case 'leg-texto': openLegendaTexto(); break;
     case 'leg-segue': legendaSegue(); break;
@@ -7906,15 +7912,23 @@ function imagemProporcao() {
 }
 function imagemGeometria(it) {
   if (it.largura == null) return { ...CARTAO_IMG };
-  const p = imagemProporcao();
-  return { x: it.x, y: it.y, w: it.largura, h: p ? it.largura * p : it.largura };
+  const p = imagemProporcao(), rc = it.recorte || { w: 1, h: 1 };
+  return { x: it.x, y: it.y, w: it.largura, h: p ? (it.largura * p * rc.h) / rc.w : it.largura };
+}
+// o mesmo desenho do vídeo final (Main.tsx, recorteEstilo): com recorte, a imagem inteira na escala em que o
+// pedaço tem a largura dele, o centro do pedaço no x/y e o clip-path deixa só o pedaço
+function estiloRecorte(it) {
+  const c = it.recorte || { x: 0, y: 0, w: 1, h: 1 }, pc = (v) => `${(v * 100).toFixed(4)}%`;
+  return { left: pct(it.x / FRAME_W), top: pct(it.y / FRAME_H), width: pct(it.largura / c.w / FRAME_W),
+    translate: it.recorte ? `${pc(-(c.x + c.w / 2))} ${pc(-(c.y + c.h / 2))}` : '',
+    clipPath: it.recorte ? `inset(${pc(c.y)} ${pc(1 - c.x - c.w)} ${pc(1 - c.y - c.h)} ${pc(c.x)})` : '' };
 }
 function imagemLivre(it) {
   const ov = $('ovImg');
   const livre = !!(it && it.largura != null);
   ov.classList.toggle('livre', livre);
-  if (livre) Object.assign(ov.style, { left: pct(it.x / FRAME_W), top: pct(it.y / FRAME_H), width: pct(it.largura / FRAME_W) });
-  else { ov.style.left = ''; ov.style.top = ''; ov.style.width = ''; }
+  if (livre) Object.assign(ov.style, estiloRecorte(it));
+  else Object.assign(ov.style, { left: '', top: '', width: '', translate: '', clipPath: '' });
 }
 let imgCaixaSig = '';
 function desenhaImagemCaixa() {
@@ -7922,7 +7936,7 @@ function desenhaImagemCaixa() {
   if (!box) return;
   const v = S.imgNaTela;
   const pode = !!v && S.view === 'corte' && !S.styling && !S.posMode && !formatoPrevia();
-  const sig = JSON.stringify(pode ? [v.it.id, v.it.x, v.it.y, v.it.largura, v.trav, v.it.id === S.layerSel, imagemProporcao(),
+  const sig = JSON.stringify(pode ? [v.it.id, v.it.x, v.it.y, v.it.largura, v.it.recorte, v.trav, v.it.id === S.layerSel, imagemProporcao(),
     FRAME_W, FRAME_H] : null);
   if (sig === imgCaixaSig) return;
   imgCaixaSig = sig;
@@ -7989,6 +8003,123 @@ function imgFim(e) {
   imgDrag.id = null;
   tapGuard.until = performance.now() + 400; // pegar a imagem não dá play
   if (imgDrag.moved) { remember(imgDrag.before); renderTimeline(); renderToolbar(); refreshHeader(); }
+}
+
+/* ---------- o Recortar: o formato e a parte da mídia que aparece ----------
+ * Pedido de 28/10: "cortar o formato [...] e poder colocar dentro desse formato a parte do vídeo que quero
+ * passar". A mídia inteira aparece com o quadro por cima: arrastar o quadro escolhe a parte, a bolinha muda o
+ * tamanho (no formato escolhido, sem mudar a proporção; em Livre, cada lado à vontade). O recorte é em fração da
+ * mídia ({x, y, w, h}) com o `formato`: números que o agente compara de um vídeo para o outro. */
+const RC = { aberto: false, rc: null, formato: 'livre', mw: 0, mh: 0, box: null, aoConcluir: null };
+const RC_FORMATOS = () => [['livre', t('Livre'), 0], ['original', t('Original'), -1], ['9:16', '9:16', 9 / 16], ['1:1', '1:1', 1],
+  ['4:5', '4:5', 4 / 5], ['16:9', '16:9', 16 / 9], ['meia', t('Meia tela'), FRAME_W / (FRAME_H / 2)]];
+const rcLimita = (v, a, b) => Math.max(a, Math.min(b, v));
+function abreRecorte({ src, recorte, aoConcluir }) {
+  const img = $('rcImg');
+  RC.aoConcluir = aoConcluir;
+  RC.rc = recorte ? { x: recorte.x, y: recorte.y, w: recorte.w, h: recorte.h } : { x: 0, y: 0, w: 1, h: 1 };
+  RC.formato = recorte ? recorte.formato || 'livre' : 'original';
+  RC.aberto = true;
+  $('recorte').classList.remove('hidden');
+  const pronto = () => { RC.mw = img.naturalWidth; RC.mh = img.naturalHeight; rcDesenha(); };
+  img.onload = pronto;
+  if (img.getAttribute('src') !== src) img.src = src; else if (img.complete && img.naturalWidth) pronto();
+}
+function fechaRecorte() {
+  RC.aberto = false;
+  $('recorte').classList.add('hidden');
+}
+function rcDesenha() {
+  if (!RC.aberto || !RC.mw) return;
+  const P = $('rcPalco').getBoundingClientRect();
+  // 16 px em volta: com o quadro na borda da mídia, a bolinha do canto fica inteira e o dedo a pega
+  const k = Math.min((P.width - 32) / RC.mw, (P.height - 32) / RC.mh), dw = RC.mw * k, dh = RC.mh * k;
+  const ox = (P.width - dw) / 2, oy = (P.height - dh) / 2;
+  RC.box = { ox, oy, dw, dh };
+  Object.assign($('rcImg').style, { left: `${ox}px`, top: `${oy}px`, width: `${dw}px`, height: `${dh}px` });
+  const q = RC.rc;
+  Object.assign($('rcQuadro').style, { left: `${ox + q.x * dw}px`, top: `${oy + q.y * dh}px`, width: `${q.w * dw}px`, height: `${q.h * dh}px` });
+  const fm = $('rcFormatos');
+  fm.innerHTML = '';
+  for (const [id, nome] of RC_FORMATOS()) {
+    const b = el('button', `rc-fmt${RC.formato === id ? ' on' : ''}`, fm);
+    b.type = 'button';
+    b.dataset.rcFmt = id;
+    b.textContent = nome;
+  }
+}
+function rcFormato(id) {
+  const f = RC_FORMATOS().find((x) => x[0] === id);
+  if (!f) return;
+  RC.formato = id;
+  if (id === 'original') RC.rc = { x: 0, y: 0, w: 1, h: 1 };
+  else if (f[2] > 0) { // o maior pedaço nesse formato que cabe na mídia, no meio do pedaço de agora
+    const a = f[2], q = RC.rc, cx = q.x + q.w / 2, cy = q.y + q.h / 2;
+    let wpx = RC.mw, hpx = wpx / a;
+    if (hpx > RC.mh) { hpx = RC.mh; wpx = hpx * a; }
+    const w = wpx / RC.mw, h = hpx / RC.mh;
+    RC.rc = { x: rcLimita(cx - w / 2, 0, 1 - w), y: rcLimita(cy - h / 2, 0, 1 - h), w, h };
+  }
+  rcDesenha();
+}
+const rcDrag = { id: null };
+$('rcQuadro').addEventListener('pointerdown', (e) => {
+  if (!RC.box) return;
+  e.preventDefault();
+  Object.assign(rcDrag, { id: e.pointerId, tam: !!e.target.closest('[data-rc-tam]'), x0: e.clientX, y0: e.clientY, q0: { ...RC.rc } });
+  $('rcQuadro').setPointerCapture(e.pointerId);
+});
+$('rcQuadro').addEventListener('pointermove', (e) => {
+  if (e.pointerId !== rcDrag.id) return;
+  const { dw, dh } = RC.box, q0 = rcDrag.q0;
+  const dx = (e.clientX - rcDrag.x0) / dw, dy = (e.clientY - rcDrag.y0) / dh;
+  if (!rcDrag.tam) RC.rc = { ...q0, x: rcLimita(q0.x + dx, 0, 1 - q0.w), y: rcLimita(q0.y + dy, 0, 1 - q0.h) };
+  else if (RC.formato === 'livre') { // cada lado à vontade, preso no canto de cima
+    RC.rc = { ...q0, w: rcLimita(q0.w + dx, 0.04, 1 - q0.x), h: rcLimita(q0.h + dy, 0.04, 1 - q0.y) };
+  } else { // a proporção do formato fica; a bolinha só aumenta ou diminui
+    const a = (q0.w * RC.mw) / (q0.h * RC.mh), w0 = q0.w * RC.mw;
+    const s = Math.max((w0 + dx * RC.mw) / w0, (q0.h * RC.mh + dy * RC.mh) / (q0.h * RC.mh));
+    const wpx = rcLimita(w0 * s, Math.max(0.04 * RC.mw, 0.04 * RC.mh * a), Math.min((1 - q0.x) * RC.mw, (1 - q0.y) * RC.mh * a));
+    RC.rc = { ...q0, w: wpx / RC.mw, h: wpx / a / RC.mh };
+  }
+  rcDesenha();
+});
+const rcSolta = (e) => { if (e.pointerId === rcDrag.id) rcDrag.id = null; };
+$('rcQuadro').addEventListener('pointerup', rcSolta);
+$('rcQuadro').addEventListener('pointercancel', rcSolta);
+$('rcFormatos').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-rc-fmt]');
+  if (b) rcFormato(b.dataset.rcFmt);
+});
+$('rcCancelar').addEventListener('click', fechaRecorte);
+$('rcConcluir').addEventListener('click', () => {
+  const r4 = (v) => Math.round(v * 10000) / 10000, q = RC.rc;
+  const inteira = q.x < 0.0005 && q.y < 0.0005 && q.w > 0.9995 && q.h > 0.9995;
+  const rc = inteira ? null : { x: r4(q.x), y: r4(q.y), w: r4(Math.min(q.w, 1 - r4(q.x))), h: r4(Math.min(q.h, 1 - r4(q.y))), formato: RC.formato };
+  const fim = RC.aoConcluir;
+  fechaRecorte();
+  if (fim) fim(rc);
+});
+window.addEventListener('resize', () => { if (RC.aberto) rcDesenha(); });
+document.addEventListener('keydown', (e) => { if (RC.aberto && e.key === 'Escape') { e.stopPropagation(); fechaRecorte(); } }, true);
+// a imagem escolhida: o Recortar a tira do cartão (como a primeira mexida); Meia tela já a põe na metade de cima
+function recortaImagemSel() {
+  const hit = S.layerSel ? camItem(S.layerSel) : null;
+  if (!hit || hit.f.tipo !== 'imagem' || hit.it.atras) return;
+  video.pause();
+  const id = hit.it.id;
+  abreRecorte({ src: `/media/${hit.it.arquivo.split('/').map(encodeURIComponent).join('/')}`, recorte: hit.it.recorte,
+    aoConcluir: (rc) => {
+      const h2 = camItem(id);
+      if (!h2) return;
+      const before = snap(), it = h2.it;
+      if (it.largura == null) { it.x = CARTAO_IMG.x; it.y = CARTAO_IMG.y; it.largura = CARTAO_IMG.w; }
+      if (rc) it.recorte = rc; else delete it.recorte;
+      if (rc && rc.formato === 'meia') { it.x = FRAME_W / 2; it.y = FRAME_H / 4; it.largura = FRAME_W; }
+      remember(before);
+      imgCaixaSig = '';
+      syncLayers(); renderTimeline(); renderToolbar(); refreshHeader();
+    } });
 }
 
 function syncLayers() {

@@ -23,6 +23,9 @@ Uma imagem com `"atras": true` vira o cartão grande atrás da pessoa, em vez do
 Uma imagem com `largura` é livre: inteira (sem o recorte do cartão), com o centro em `x`/`y` e essa
 largura em px do quadro 1080x1920, no lugar e no tamanho que a pessoa pôs no editor. Sem `largura`,
 é o cartão de cima (780x500, 90 px do topo).
+A imagem livre pode ter `recorte`: `{"x", "y", "w", "h"}` em fração da imagem (0 a 1), o pedaço
+que aparece; `largura` é então a largura desse pedaço na tela. `formato` diz qual formato a pessoa
+escolheu no Recortar (FORMATOS), para o agente aprender o jeito dela.
 Um texto tem o centro em `x`/`y` (px do quadro 1080x1920, podendo sair um pouco dele), quebra
 de linha com "\n" e o `estilo` do painel de Texto: `fonte` (uma família do catálogo de
 fontes), `peso`, `cor` e `corContorno` (#rrggbb), `tamanho` (× 96 px) e `contorno` (px). Com
@@ -53,6 +56,7 @@ _ID = re.compile(r"[A-Za-z0-9_-]{1,40}")
 _COR = re.compile(r"#[0-9a-fA-F]{6}")
 _FONTE = re.compile(r"[A-Za-z0-9 ]{1,60}")
 _ARQ = re.compile(r"midia/[^/\\]+")
+FORMATOS = ("livre", "original", "9:16", "1:1", "4:5", "16:9", "meia")  # os do Recortar do editor
 
 
 class CamadasInvalidas(ValueError):
@@ -90,6 +94,30 @@ def _arquivo(v: object, tipo: str) -> str:
     if ext not in (AUDIO_EXTS if tipo == "audio" else IMAGE_EXTS):
         raise CamadasInvalidas(f"{v} não é {'áudio' if tipo == 'audio' else 'imagem'}")
     return v
+
+
+def recorte(v: object) -> dict | None:
+    """O pedaço da imagem (ou do vídeo) que aparece, conferido: x, y, w, h em fração (0 a 1), dentro dela.
+    A imagem inteira volta None (não há o que recortar)."""
+    if v is None:
+        return None
+    if not isinstance(v, dict):
+        raise CamadasInvalidas("recorte: {x, y, w, h} em fração da imagem")
+    out: dict = {}
+    for k, lo in (("x", 0.0), ("y", 0.0), ("w", 0.01), ("h", 0.01)):
+        x = v.get(k)
+        if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x) or not lo <= x <= 1:
+            raise CamadasInvalidas(f"recorte: {k} é um número de {lo:g} a 1")
+        out[k] = round(float(x), 4)
+    if out["x"] + out["w"] > 1.0005 or out["y"] + out["h"] > 1.0005:
+        raise CamadasInvalidas("recorte: o pedaço sai da imagem")
+    if v.get("formato") is not None:
+        if v["formato"] not in FORMATOS:
+            raise CamadasInvalidas(f"recorte: formato é um de {', '.join(FORMATOS)}")
+        out["formato"] = v["formato"]
+    if out["x"] == 0 and out["y"] == 0 and out["w"] >= 0.9995 and out["h"] >= 0.9995:
+        return None
+    return out
 
 
 def _cor(v: object, nome: str) -> str:
@@ -192,6 +220,11 @@ def normalize(obj: object) -> dict:
                 item["x"] = _num(it.get("x", 540), "x", -1080, 2160)
                 item["y"] = _num(it.get("y", 960), "y", -1920, 3840)
                 item["largura"] = _num(it["largura"], "largura", 40, 3240)
+                rc = recorte(it.get("recorte"))
+                if rc:
+                    item["recorte"] = rc
+            if tipo == "imagem" and it.get("recorte") is not None and "largura" not in item:
+                raise CamadasInvalidas("recorte: só na imagem livre (com largura), não no cartão nem atrás da pessoa")
             if tipo == "audio":
                 item["corte"] = _num(it.get("corte", 0), "corte")
                 item["volume"] = _num(it.get("volume", 1), "volume", 0.0, 2.0)

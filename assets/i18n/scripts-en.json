@@ -321,5 +321,10 @@
  "não consegui gravar o código do túnel em {arq}": "couldn't save the tunnel code in {arq}",
  "o Remotion deste projeto não carrega nem depois de instalar de novo ({motivo}): apague a pasta remotion/node_modules e tente outra vez": "this project's Remotion doesn't load even after reinstalling ({motivo}): delete the remotion/node_modules folder and try again",
  "outro processo está montando o Remotion deste projeto há muito tempo: tente de novo daqui a pouco": "another process has been setting up this project's Remotion for a long time: try again in a moment",
- "o projeto do vídeo final é de um kit anterior e não desenha a imagem no lugar e no tamanho que você pôs: aperte Pronto para o Claude atualizar": "the final video's project is from an older kit and doesn't draw the image where and at the size you set it: press Pronto for Claude to update it"
+ "o projeto do vídeo final é de um kit anterior e não desenha a imagem no lugar, no tamanho ou no recorte que você pôs: aperte Pronto para o Claude atualizar": "the final video's project is from an older kit and doesn't draw the image with the position, size or crop you set: press Pronto for Claude to update it",
+ "recorte: {x, y, w, h} em fração da imagem": "crop: {x, y, w, h} as fractions of the image",
+ "recorte: o pedaço sai da imagem": "crop: the piece goes outside the image",
+ "recorte: {k} é um número de {lo} a 1": "crop: {k} must be a number from {lo} to 1",
+ "recorte: formato é um de {p0}": "crop: format must be one of {p0}",
+ "recorte: só na imagem livre (com largura), não no cartão nem atrás da pessoa": "crop: only on a free image (with a width), not on the card or behind the person"
 }

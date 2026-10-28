@@ -772,5 +772,10 @@ window.I18N_EN = {
   "aplicam o que você fez à mão sem o Claude e não gastam nada": "apply what you did by hand without Claude and cost nothing",
   "acorda o Claude uma vez só, com as marcações e os pedidos juntos": "wakes Claude just once, with your markers and requests together",
   "pela conversa": "in the chat",
-  "junte os pedidos numa mensagem e diga o tempo (\"de 0:12 a 0:15\")": "put your requests in one message and give the time (\"from 0:12 to 0:15\")"
+  "junte os pedidos numa mensagem e diga o tempo (\"de 0:12 a 0:15\")": "put your requests in one message and give the time (\"from 0:12 to 0:15\")",
+  "Recortar": "Crop",
+  "Concluir": "Done",
+  "Livre": "Free",
+  "Meia tela": "Half screen",
+  "Escolher o formato e a parte que aparece": "Choose the format and the part that shows"
 };

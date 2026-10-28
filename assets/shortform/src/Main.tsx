@@ -50,7 +50,9 @@ const {fontFamily} = POPPINS;
 // ============ TYPES + DATA ====================================================
 type Caption = {text: string; startMs: number; endMs: number};
 // x/y/w: a imagem livre das camadas (o centro e a largura em px do quadro, como a pessoa pôs no editor)
-type Insert = {src: string; start: number; end: number; x?: number; y?: number; w?: number};
+// crop: o pedaço da imagem que aparece (fração dela); w é então a largura do pedaço na tela
+type Crop = {x: number; y: number; w: number; h: number};
+type Insert = {src: string; start: number; end: number; x?: number; y?: number; w?: number; crop?: Crop};
 type BehindImage = {kind: 'image'; src: string; matte: string; start: number; dur: number};
 type BehindWords = {kind: 'words'; words: {t: string; at: number}[]; matte: string; start: number; dur: number};
 type Behind = BehindImage | BehindWords;
@@ -469,14 +471,25 @@ const InsertCard: React.FC<{src: string; totalFrames: number}> = ({src, totalFra
 
 // INSERT_LIVRE: a imagem que a pessoa moveu ou redimensionou no editor, inteira (sem o recorte do cartão),
 // com o centro em x/y e a largura w, em px do quadro. A prévia do editor desenha igual (celular.css, .ov-img.livre)
-const InsertLivre: React.FC<{src: string; x: number; y: number; w: number; totalFrames: number}> = ({src, x, y, w, totalFrames}) => {
+// INSERT_RECORTE: com crop, a imagem inteira fica na escala em que o pedaço tem a largura w, o centro do pedaço
+// em x/y (translate em % da própria imagem) e o clip-path deixa só o pedaço. Igual à prévia (imagemLivre)
+export const recorteEstilo = (x: number, y: number, w: number, crop?: Crop): React.CSSProperties => {
+  const c = crop ?? {x: 0, y: 0, w: 1, h: 1};
+  const pc = (v: number) => `${(v * 100).toFixed(4)}%`;
+  return {
+    position: 'absolute', left: x, top: y, width: w / c.w, height: 'auto',
+    translate: `${pc(-(c.x + c.w / 2))} ${pc(-(c.y + c.h / 2))}`,
+    ...(crop ? {clipPath: `inset(${pc(c.y)} ${pc(1 - c.x - c.w)} ${pc(1 - c.y - c.h)} ${pc(c.x)})`} : {}),
+  };
+};
+const InsertLivre: React.FC<{src: string; x: number; y: number; w: number; crop?: Crop; totalFrames: number}> = ({src, x, y, w, crop, totalFrames}) => {
   const frame = useCurrentFrame();
   const enter = interpolate(frame, [0, 6], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
   const exit = interpolate(frame, [totalFrames - 6, totalFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
   return (
     <AbsoluteFill>
       <Sfx src="whoosh.mp3" />
-      <Img src={staticFile(src)} style={{position: 'absolute', left: x, top: y, width: w, height: 'auto', translate: '-50% -50%', opacity: Math.min(enter, exit)}} />
+      <Img src={staticFile(src)} style={{...recorteEstilo(x, y, w, crop), opacity: Math.min(enter, exit)}} />
     </AbsoluteFill>
   );
 };
@@ -491,7 +504,7 @@ const Inserts: React.FC = () => {
         return (
           <Sequence key={i} from={from} durationInFrames={duration} layout="none">
             {it.w != null && it.x != null && it.y != null
-              ? <InsertLivre src={it.src} x={it.x} y={it.y} w={it.w} totalFrames={duration} />
+              ? <InsertLivre src={it.src} x={it.x} y={it.y} w={it.w} crop={it.crop} totalFrames={duration} />
               : <InsertCard src={it.src} totalFrames={duration} />}
           </Sequence>
         );
