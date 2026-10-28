@@ -110,6 +110,7 @@ const ICON = {
   melhorar: sv('<path d="M3.5 12h2.2M7.7 8.5v7M11.9 5.5v13M16.1 8.5v7M20.3 12h-2.2"/>'),
   voz: sv('<rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.8 11.5a6.2 6.2 0 0 0 12.4 0M12 17.7v2.8"/>'),
   volume: sv('<path d="M4.5 9.5v5h3.2l4.8 4V5.5l-4.8 4z"/><path d="M15.8 9a4 4 0 0 1 0 6"/>'),
+  alerta: sv('<path d="M12 4 2.8 19.5h18.4z"/><path d="M12 10v4.5M12 17.2v.1"/>'),
   estrela: sv('<path d="M12 3.8l2.5 5.1 5.6.8-4 3.9.9 5.6L12 16.6l-5 2.6.9-5.6-4-3.9 5.6-.8z"/>'),
   estrelaCheia: sv('<path d="M12 3.8l2.5 5.1 5.6.8-4 3.9.9 5.6L12 16.6l-5 2.6.9-5.6-4-3.9 5.6-.8z" fill="currentColor"/>'),
   efeitos: sv('<circle cx="9" cy="9.6" r="5"/><circle cx="15" cy="9.6" r="5"/><circle cx="12" cy="14.8" r="5"/>'),
@@ -5041,8 +5042,44 @@ $('trabFechar').addEventListener('click', () => {
   $('trabalho').classList.add('hidden');
 });
 
-// ---------- atualização do CutMind (atualizar.py): o cartão do Papory, numa faixa no topo ----------
-/* O servidor procura a versão nova sozinho (ao subir e a cada 6 h). A faixa só aparece com uma. O clique
+// ---------- "Gostou do CutMind?": estrela, erro e sugestão no GitHub (o kit de retorno, como no Papory) ----------
+/* Abre o GitHub no navegador; quem envia é a pessoa. O formulário vem só com a versão e o sistema (o
+ * /api/sobre): nunca nome de aparelho, de máquina ou de pessoa. */
+const SOBRE = { repo: 'https://github.com/junioralbino28/cutmind', versao: '', sistema: '' };
+const RETORNO = [['estrela', 'estrela', t('Dar uma estrela')], ['erro', 'alerta', t('Relatar um erro')],
+  ['sugestao', 'mais', t('Mandar sugestão')]];
+function linkRetorno(tipo) {
+  if (tipo === 'estrela') return SOBRE.repo;
+  const campos = new URLSearchParams({ template: `${tipo}.yml` });
+  if (SOBRE.versao) campos.set('versao', SOBRE.versao);
+  if (tipo === 'erro' && SOBRE.sistema) campos.set('sistema', SOBRE.sistema);
+  return `${SOBRE.repo}/issues/new?${campos.toString().replace(/\+/g, '%20')}`; // espaço como %20
+}
+function montaRetorno() {
+  for (const caixa of [$('gostouLado'), $('gostouProjetos')]) {
+    caixa.querySelectorAll('a').forEach((a) => a.remove());
+    for (const [tipo, icone, texto] of RETORNO) {
+      const a = document.createElement('a');
+      a.className = 'gostou-link';
+      a.href = linkRetorno(tipo);
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.title = t('Abre no GitHub');
+      a.innerHTML = `<span class="tb-ico">${ICON[icone]}</span>`;
+      a.append(texto);
+      caixa.append(a);
+    }
+  }
+}
+async function carregaSobre() {
+  try {
+    Object.assign(SOBRE, await (await fetch('/api/sobre')).json());
+  } catch (e) { /* fica o link sem versão */ }
+  montaRetorno();
+}
+
+// ---------- atualização do CutMind (atualizar.py): o cartão do Papory, abaixo da barra de cima ----------
+/* O servidor procura a versão nova sozinho (ao subir e a cada 6 h). O cartão só aparece com uma. O clique
  * pede ao servidor, que espera o trabalho do projeto acabar, baixa, confere, instala e, quando a mudança
  * pede, fecha e liga de novo: a página volta sozinha. Instruções do agente novas: um aviso depois. */
 const ATU = { info: null, rodando: false, alvo: null, agente: false, notasAbertas: false };
@@ -8853,6 +8890,7 @@ poll();
 loop();
 avisoDepoisDeAtualizar();
 procuraAtualizacao();
+carregaSobre();
 setInterval(procuraAtualizacao, 10 * 60 * 1000); // o servidor procura a cada 6 h; a faixa confere a cada 10 min
 if (document.fonts && document.fonts.ready) {
   // as amostras medem o texto: erradas até a Poppins carregar

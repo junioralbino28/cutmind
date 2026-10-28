@@ -104,6 +104,7 @@ import io
 import ipaddress
 import json
 import os
+import platform
 import re
 import secrets
 import shutil
@@ -338,6 +339,15 @@ def _esperando(root: Path) -> str | None:
     if tb.vivo(root):
         return "trabalho"
     return "agente" if agente_trabalhando(root) else None
+
+
+def sistema() -> str:
+    """Só o nome e a versão do sistema, para o formulário de erro do GitHub: nunca nome de máquina ou de pessoa."""
+    if sys.platform == "darwin":
+        return f"macOS {platform.mac_ver()[0]}".strip()
+    if os.name == "nt":
+        return "Windows 11" if sys.getwindowsversion().build >= 22000 else f"Windows {platform.release()}"
+    return platform.system()
 
 
 def resultado_atual() -> dict | None:
@@ -1238,6 +1248,10 @@ class Handler(BaseHTTPRequestHandler):
             self._pendente()
         elif path == "/api/atualizacao":
             self._atualizacao()
+        elif path == "/api/sobre":
+            # o "Gostou do CutMind?" do editor: a versão e o sistema que vão no formulário do GitHub
+            self._json({"versao": (atu.vs.ler(SKILL) or {}).get("versao"), "sistema": sistema(),
+                        "repo": f"https://github.com/{atu.REPO}"})
         elif path == "/api/atualizacao/andamento":
             # com o clique esperando um trabalho, o andamento.json ainda é o da atualização ANTERIOR
             a = None if ATUALIZACAO["pedido"] else atu._ler_json(atu.casa() / "atualizacao" / "andamento.json")

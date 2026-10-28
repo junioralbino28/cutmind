@@ -187,6 +187,19 @@ def test_a_procura_roda_ao_subir_sem_prender_a_pagina(srv):
     assert esperar(lambda: pedir(srv.port, "GET", "/api/atualizacao")[1].get("versao") == "0.3.0")
 
 
+# ---- o "Gostou do CutMind?" (estrela, erro e sugestão no GitHub)
+
+def test_sobre_da_so_a_versao_e_o_sistema(srv):
+    """O formulário do GitHub abre com a versão e o sistema; nunca o nome da máquina ou da pessoa."""
+    import getpass
+    import socket
+    r, d = pedir(srv.port, "GET", "/api/sobre")
+    assert r.status == 200 and set(d) == {"versao", "sistema", "repo"}
+    assert d["versao"] == ps.atu.vs.ler(ps.SKILL)["versao"] and d["repo"] == "https://github.com/junioralbino28/cutmind"
+    assert d["sistema"] and socket.gethostname().lower() not in d["sistema"].lower()
+    assert getpass.getuser().lower() not in d["sistema"].lower()
+
+
 # ---- a DLL presa logo depois de instalar (o conserto do Papory 0.1.9)
 
 def test_espera_a_dll_presa_e_so_ela():

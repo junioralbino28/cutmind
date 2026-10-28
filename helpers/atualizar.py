@@ -28,8 +28,9 @@ import trabalhos as tb  # mesma pasta deste arquivo
 import versao as vs  # mesma pasta deste arquivo
 
 SKILL = Path(__file__).resolve().parents[1]
-URL = "https://raw.githubusercontent.com/junioralbino28/cutmind/main/versao.json"
-PACOTE = "https://codeload.github.com/junioralbino28/cutmind/tar.gz/refs/heads/main"
+REPO = "junioralbino28/cutmind"
+URL = f"https://raw.githubusercontent.com/{REPO}/main/versao.json"
+PACOTE = f"https://codeload.github.com/{REPO}/tar.gz/refs/heads/main"
 CACHE_S = 6 * 3600       # de quanto em quanto tempo pergunta de novo (como o Papory)
 TEMPO_REDE = 4.0         # a pergunta nunca prende o editor
 PACOTE_MAX = 500 * 1024 ** 2
