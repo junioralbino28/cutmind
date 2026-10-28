@@ -229,8 +229,18 @@ def voltar(skill: Path, origem: Path) -> None:
 
 def _vivo(pid: int) -> bool:
     if os.name == "nt":
-        r = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True)
-        return str(pid) in r.stdout
+        # pergunta ao Windows, sem ler texto: o tasklist responde "processo não existe" no código de página do
+        # console (acentuado), e a leitura em UTF-8 derrubava o atualizador com o editor já fechado
+        import ctypes
+        k = ctypes.windll.kernel32
+        h = k.OpenProcess(0x1000, False, int(pid))   # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return False
+        try:
+            codigo = ctypes.c_ulong()
+            return bool(k.GetExitCodeProcess(h, ctypes.byref(codigo))) and codigo.value == 259   # STILL_ACTIVE
+        finally:
+            k.CloseHandle(h)
     try:
         os.kill(pid, 0)
     except OSError:
@@ -281,7 +291,38 @@ def religar(servidor: dict, prazo: float = 60.0) -> int:
         cauda = (raiz / "preview-server.err.log").read_text(encoding="utf-8", errors="replace").strip().splitlines()[-3:]
     except OSError:
         cauda = []
-    raise ErroAtualizar("o editor não voltou depois da atualização: " + " ".join(cauda))
+    detalhe = " ".join(cauda)
+    raise ErroAtualizar(f"o editor não voltou depois da atualização: {detalhe}")
+
+
+def _trocar(skill: Path, pasta: Path, raiz: Path, versao: str, servidor: dict | None, andamento) -> None:
+    """Espera o editor fechar (quando a versão pede reinício), guarda a versão de agora e instala a nova.
+    Qualquer erro sai como ErroAtualizar, com os arquivos de antes de volta: nada fica pela metade."""
+    guardou = False
+    try:
+        if servidor:
+            andamento("fechando", "Fechando o editor para trocar os arquivos", 0.52)
+            esperar_sair(int(servidor["pid"]))
+        andamento("guardando", "Guardando a versão de agora", 0.55)
+        guardar(skill, pasta / "anterior")
+        guardou = True
+        andamento("instalando", "Instalando", 0.6)
+        p = subprocess.run(comando_instalar(raiz, skill), capture_output=True, text=True, encoding="utf-8",
+                           errors="replace")
+        (pasta / "instalador.log").write_bytes((p.stdout + p.stderr).encode("utf-8"))
+        if p.returncode != 0:
+            ultima = next((x for x in reversed((p.stdout + p.stderr).splitlines()) if x.strip()), "")
+            andamento("voltando", "Voltando para a versão de antes", 0.85)
+            voltar(skill, pasta / "anterior")
+            raise ErroAtualizar(f"a instalação falhou; o CutMind continua na versão de antes ({ultima.strip()})")
+        if (vs.ler(skill) or {}).get("versao") != versao:
+            raise ErroAtualizar(f"a instalação não chegou nesta pasta ({skill}); rode o comando de instalação do README")
+    except ErroAtualizar:
+        raise
+    except Exception as e:  # noqa: BLE001 (o editor fechado não pode ficar desligado nem pela metade)
+        if guardou:
+            voltar(skill, pasta / "anterior")
+        raise ErroAtualizar(f"a atualização parou no meio ({e}); o CutMind continua na versão de antes") from e
 
 
 def aplicar(skill: Path = SKILL, c: Path | None = None, servidor: dict | None = None, andamento=_sem_andamento) -> dict:
@@ -303,36 +344,20 @@ def aplicar(skill: Path = SKILL, c: Path | None = None, servidor: dict | None = 
         andamento("falhou", str(e), 1.0, erro=str(e))
         raise
     r = vs.resumo(vs.ler(skill), rem)
-    desligou = False
+    reinicio = bool(servidor and r["reiniciar"])   # o editor se desliga sozinho logo depois do clique
     try:
-        if servidor and r["reiniciar"]:
-            andamento("fechando", "Fechando o editor para trocar os arquivos", 0.52)
-            esperar_sair(int(servidor["pid"]))
-            desligou = True
-        andamento("guardando", "Guardando a versão de agora", 0.55)
-        guardar(skill, pasta / "anterior")
-        andamento("instalando", "Instalando", 0.6)
-        p = subprocess.run(comando_instalar(raiz, skill), capture_output=True, text=True, encoding="utf-8",
-                           errors="replace")
-        (pasta / "instalador.log").write_bytes((p.stdout + p.stderr).encode("utf-8"))
-        if p.returncode != 0:
-            ultima = next((x for x in reversed((p.stdout + p.stderr).splitlines()) if x.strip()), "")
-            andamento("voltando", "Voltando para a versão de antes", 0.85)
-            voltar(skill, pasta / "anterior")
-            raise ErroAtualizar(f"a instalação falhou; o CutMind continua na versão de antes ({ultima.strip()})")
-        if (vs.ler(skill) or {}).get("versao") != rem["versao"]:
-            raise ErroAtualizar(f"a instalação não chegou nesta pasta ({skill}); rode o comando de instalação do README")
+        _trocar(skill, pasta, raiz, rem["versao"], servidor if reinicio else None, andamento)
     except ErroAtualizar as e:
-        if desligou:
+        if reinicio and not _vivo(int(servidor["pid"])):
             religar(servidor)
         andamento("falhou", str(e), 1.0, erro=str(e))
         raise
     finally:
         shutil.rmtree(baixado, ignore_errors=True)
-    if desligou:
+    if reinicio:
         andamento("religando", "Ligando o editor de novo", 0.95)
         religar(servidor)
-    fim = {"versao": rem["versao"], "agente": r["agente"], "remotion": r["remotion"], "reiniciou": desligou}
+    fim = {"versao": rem["versao"], "agente": r["agente"], "remotion": r["remotion"], "reiniciou": reinicio}
     andamento("pronto", "Atualizado", 1.0, **fim)
     return {**r, **fim}
 

@@ -208,3 +208,83 @@ def test_aplicar_confere_que_a_instalacao_chegou_nesta_pasta(tmp_path, github, i
     with pytest.raises(at.ErroAtualizar, match="não chegou"):
         at.aplicar(s, casa, None, lambda *a, **k: None)
     assert vs.ler(s)["versao"] == "0.2.0"
+
+
+def test_processo_que_ja_saiu_nao_esta_vivo():
+    """No Windows em português o tasklist responde "não existe" com acento no código de página do console;
+    lido como UTF-8, derrubava o atualizador com o editor já fechado (visto na prova no navegador)."""
+    import subprocess
+    p = subprocess.Popen([sys.executable, "-c", "pass"])
+    p.wait()
+    assert at._vivo(p.pid) is False
+    import os
+    assert at._vivo(os.getpid()) is True
+
+
+def test_erro_inesperado_com_o_editor_fechado_religa_e_conta(tmp_path, github, instalador, monkeypatch):
+    """Qualquer erro depois que o editor se desligou: ele liga de novo na versão de antes."""
+    pub, _ = github
+    s, casa = _skill(tmp_path), tmp_path / "casa"
+    _publicar(pub, "0.3.0", {"SKILL.md": "novo", "helpers/x.py": "2"})      # helpers/: pede reinício
+    religados = []
+    monkeypatch.setattr(at, "esperar_sair", lambda pid: (_ for _ in ()).throw(TypeError("tasklist quebrou")))
+    monkeypatch.setattr(at, "_vivo", lambda pid: False)
+    monkeypatch.setattr(at, "religar", lambda servidor: religados.append(servidor) or 1)
+    etapas = []
+    servidor = {"pid": 4242, "argv": ["x.py", "--port", "1"], "python": sys.executable}
+    with pytest.raises(at.ErroAtualizar, match="parou no meio"):
+        at.aplicar(s, casa, servidor, lambda etapa, texto, fracao, **x: etapas.append((etapa, x)))
+    assert religados == [servidor] and vs.ler(s)["versao"] == "0.2.0"
+    assert etapas[-1][0] == "falhou" and "tasklist quebrou" in etapas[-1][1]["erro"]
+
+
+def test_erro_inesperado_no_meio_da_instalacao_volta_os_arquivos(tmp_path, github, instalador, monkeypatch):
+    pub, _ = github
+    s, casa = _skill(tmp_path), tmp_path / "casa"
+    _publicar(pub, "0.3.0", {"SKILL.md": "novo", "helpers/x.py": "2"})
+    monkeypatch.setattr(at, "comando_instalar", lambda pasta, skill: ["programa-que-nao-existe-cutmind"])
+    with pytest.raises(at.ErroAtualizar, match="parou no meio"):
+        at.aplicar(s, casa, None, lambda *a, **k: None)
+    assert instalador["sincronizou"] == [s] and vs.ler(s)["versao"] == "0.2.0"
+
+
+# ---- religar (integração: um servidor do editor de verdade)
+
+def _matar_arvore(pid: int) -> None:
+    import os
+    import signal
+    import subprocess
+    if os.name == "nt":  # o python do .venv no Windows abre um filho: a árvore inteira
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True)
+    else:
+        os.killpg(os.getpgid(pid), signal.SIGTERM)
+
+
+def test_religar_liga_o_editor_e_so_conta_quando_ele_responde(tmp_path, monkeypatch):
+    import socket
+    edit = tmp_path / "edit"
+    edit.mkdir()
+    (edit / "state.json").write_bytes(json.dumps({"project": "t", "phase": 1, "video": "cut.mp4"}).encode("utf-8"))
+    monkeypatch.setenv("CUTMIND_HOME", str(tmp_path / "casa"))     # nunca a lista de projetos da pessoa
+    monkeypatch.setenv("CUTMIND_SEM_ATUALIZACAO", "1")              # o servidor religado não sai na rede
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        porta = s.getsockname()[1]
+    script = Path(at.__file__).resolve().parent / "preview_server.py"
+    servidor = {"argv": [str(script), "--root", str(edit), "--port", str(porta)], "python": sys.executable,
+                "script": str(script)}
+    pid = at.religar(servidor, prazo=60)
+    try:
+        assert at.respondendo(porta)
+        assert "CutMind preview" in (edit / "preview-server.log").read_text(encoding="utf-8", errors="replace")
+    finally:
+        _matar_arvore(pid)
+
+
+def test_religar_que_nao_responde_conta_o_erro(tmp_path):
+    edit = tmp_path / "edit"
+    edit.mkdir()
+    servidor = {"argv": ["x", "--root", str(edit), "--port", "9"], "python": sys.executable,
+                "script": str(tmp_path / "nao_existe.py")}
+    with pytest.raises(at.ErroAtualizar, match="não voltou"):
+        at.religar(servidor, prazo=5)

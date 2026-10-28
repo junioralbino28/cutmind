@@ -290,5 +290,19 @@
  "número inválido: {v}": "invalid number: {v}",
  "o agente está trabalhando neste projeto: espere ele terminar para mexer no corte": "the agent is working on this project: wait for it to finish before changing the cut",
  "o agente está trabalhando neste projeto: espere ele terminar para gerar o vídeo": "the agent is working on this project: wait for it to finish before generating the video",
- "o agente já está trabalhando neste projeto: espere ele terminar": "the agent is already working on this project: wait for it to finish"
+ "o agente já está trabalhando neste projeto: espere ele terminar": "the agent is already working on this project: wait for it to finish",
+ "esta é uma cópia de desenvolvimento do CutMind: atualize com git": "this is a development copy of CutMind: update it with git",
+ "não há versão nova do CutMind": "there's no new CutMind version",
+ "o pacote baixado não bate com a versão {p0} publicada": "the downloaded package doesn't match the published version {p0}",
+ "o pacote da versão nova não tem a pasta esperada": "the new version's package doesn't have the expected folder",
+ "o editor não fechou para a atualização": "the editor didn't close for the update",
+ "não deu para baixar a versão nova: confira a internet ({e})": "couldn't download the new version: check your internet ({e})",
+ "o pacote da versão nova veio quebrado ({e})": "the new version's package arrived broken ({e})",
+ "a instalação falhou; o CutMind continua na versão de antes ({p0})": "the install failed; CutMind stays on the previous version ({p0})",
+ "a instalação não chegou nesta pasta ({skill}); rode o comando de instalação do README": "the install didn't reach this folder ({skill}); run the install command from the README",
+ "o pacote da versão nova é grande demais": "the new version's package is too large",
+ "o pacote tem um caminho para fora da pasta: {name}": "the package has a path outside its folder: {name}",
+ "o pacote tem um link ou arquivo especial: {name}": "the package has a link or special file: {name}",
+ "o editor não voltou depois da atualização: {detalhe}": "the editor didn't come back after the update: {detalhe}",
+ "a atualização parou no meio ({e}); o CutMind continua na versão de antes": "the update stopped halfway ({e}); CutMind stays on the previous version"
 }

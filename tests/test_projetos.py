@@ -246,6 +246,7 @@ def test_main_registra_e_marca_aberto(tmp_path, monkeypatch):
             raise KeyboardInterrupt
 
     monkeypatch.setattr(ps, "ThreadingHTTPServer", Falso)
+    monkeypatch.setattr(ps, "vigiar_atualizacao", lambda *a, **k: None)   # o Falso não tem socket
     monkeypatch.setattr(sys, "argv", ["preview_server.py", "--root", str(a), "--port", "0"])
     with pytest.raises(KeyboardInterrupt):
         ps.main()

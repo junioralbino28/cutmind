@@ -11,3 +11,5 @@ import pytest
 @pytest.fixture(autouse=True)
 def _casa_isolada(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("CUTMIND_HOME", str(tmp_path_factory.mktemp("cutmind-home")))
+    # a procura da versão nova nunca pergunta ao GitHub de verdade (test_atualizar.py liga com o GitHub de mentira)
+    monkeypatch.setenv("CUTMIND_SEM_ATUALIZACAO", "1")

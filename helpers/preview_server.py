@@ -117,6 +117,39 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
+
+def _texto_do_erro(erro: BaseException | None) -> str:
+    partes = []
+    while erro is not None and len(partes) < 5:
+        partes.append(str(erro))
+        erro = erro.__cause__ or erro.__context__
+    return " ".join(partes)
+
+
+def _importar_dlls() -> None:
+    import numpy  # noqa: F401  (as únicas bibliotecas do .venv com DLL que o servidor carrega: medido)
+    import PIL.Image  # noqa: F401
+
+
+def esperar_dlls(importar=_importar_dlls, prazo: float = 20.0, pausa: float = 0.5) -> int:
+    """Logo depois de instalar ou atualizar, o antivírus ainda examina as DLLs novas e o Windows recusa
+    carregá-las ("o arquivo já está sendo usado por outro processo"); passa em segundos. Tenta de novo a cada
+    0,5 s por até 20 s, só nesse erro (o mesmo conserto do Papory 0.1.9). Devolve quantas vezes esperou."""
+    inicio, esperas = time.monotonic(), 0
+    while True:
+        try:
+            importar()
+            return esperas
+        except ImportError as e:
+            if "DLL load failed" not in _texto_do_erro(e) or time.monotonic() - inicio > prazo:
+                raise
+            esperas += 1
+            time.sleep(pausa)
+
+
+ESPERAS_DLL = esperar_dlls()
+
+import atualizar as atu  # mesma pasta deste arquivo
 import camadas as cam  # mesma pasta deste arquivo
 import cenas as cn  # mesma pasta deste arquivo
 import efeitos as ef  # mesma pasta deste arquivo
@@ -248,6 +281,92 @@ def comando_gerar(edit: Path, andamento: Path) -> list[str]:
     Os testes trocam por um falso."""
     return [sys.executable, "-X", "utf8", str(Path(__file__).resolve().parent / "gerar.py"), str(edit),
             "--andamento", str(andamento)]
+
+
+SKILL = Path(__file__).resolve().parents[1]
+# o que a procura achou (a linha à parte de vigiar_atualizacao) e o clique que espera um trabalho acabar
+ATUALIZACAO: dict = {"resultado": None, "pedido": False}
+
+
+def copia_de_desenvolvimento() -> bool:
+    """Rodando de um clone git: quem desenvolve atualiza com git, não pela barra."""
+    return (SKILL / ".git").exists()
+
+
+def comando_atualizar(andamento: Path, servidor: Path) -> list[str]:
+    """A atualização num processo à parte e solto (atualizar.py), porque ela pode precisar fechar este
+    servidor e ligá-lo de novo. Os testes trocam por um falso."""
+    return [sys.executable, "-X", "utf8", str(Path(__file__).resolve().parent / "atualizar.py"), "aplicar",
+            "--andamento", str(andamento), "--servidor", str(servidor)]
+
+
+def lancar_solto(cmd: list[str], log: Path) -> subprocess.Popen:
+    """Como o start_preview.py: sem janela no Windows e fora do grupo deste processo, para sobreviver a ele."""
+    log.parent.mkdir(parents=True, exist_ok=True)
+    flags = (subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP) if os.name == "nt" else 0
+    with log.open("ab") as saida:
+        return subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=saida, stderr=subprocess.STDOUT, close_fds=True,
+                                cwd=str(Path(__file__).resolve().parent), creationflags=flags,
+                                start_new_session=os.name != "nt")
+
+
+def linha_de_comando(root: Path) -> dict:
+    """Como religar este servidor depois de atualizar: os mesmos argumentos, com o projeto aberto AGORA (a
+    tela Projetos troca o --root com o servidor ligado)."""
+    argv = list(sys.argv)
+    if "--root" in argv:
+        argv[argv.index("--root") + 1] = str(root)
+    else:
+        argv += ["--root", str(root)]
+    return {"argv": argv, "python": sys.executable, "pid": os.getpid(), "script": str(Path(__file__).resolve())}
+
+
+def comecar_atualizacao(srv, root: Path, r: dict) -> None:
+    """Lança o atualizador solto; com reinício, este servidor desliga 1 s depois (o atualizador espera ele
+    sair, instala e liga de novo)."""
+    pasta = atu.casa() / "atualizacao"
+    servidor = pasta / "servidor.json"
+    atu._gravar_json(servidor, linha_de_comando(root))
+    (pasta / "andamento.json").unlink(missing_ok=True)
+    lancar_solto(comando_atualizar(pasta / "andamento.json", servidor), pasta / "atualizar.log")
+    ATUALIZACAO["pedido"] = False
+    if r.get("reiniciar"):
+        threading.Timer(1.0, srv.shutdown).start()
+
+
+def _esperando(root: Path) -> str | None:
+    if tb.vivo(root):
+        return "trabalho"
+    return "agente" if agente_trabalhando(root) else None
+
+
+def resultado_atual() -> dict | None:
+    """O que a procura achou, conferido contra a versão instalada AGORA: depois de uma atualização sem
+    reinício o servidor é o mesmo, e a versão que ele oferecia já está aqui."""
+    r = ATUALIZACAO["resultado"]
+    if r and r.get("nova"):
+        local = (atu.vs.ler(SKILL) or {}).get("versao")
+        if local and atu.vs.numero(local) >= atu.vs.numero(r.get("versao")):
+            return {**r, "nova": False, "atual": local}
+    return r
+
+
+def vigiar_atualizacao(srv, handler, pausa: float = 2.0) -> None:
+    """A procura da versão nova numa linha à parte (a página nunca espera a rede): ao subir e a cada 6 h,
+    como o Papory; e o clique que esperava um trabalho acabar começa quando o projeto libera. Sai quando o
+    servidor fecha."""
+    proxima = 0.0
+    while srv.socket.fileno() >= 0:
+        if time.time() >= proxima:
+            try:
+                ATUALIZACAO["resultado"] = atu.procurar()
+            except Exception as e:  # noqa: BLE001 (a procura nunca derruba o editor)
+                print(f"atualização: não deu para procurar ({e})", file=sys.stderr, flush=True)
+            proxima = time.time() + atu.CACHE_S
+        r = resultado_atual() or {}
+        if ATUALIZACAO["pedido"] and r.get("nova") and _esperando(handler.root) is None:
+            comecar_atualizacao(srv, handler.root, r)
+        time.sleep(pausa)
 
 
 def comando_corte(edit: Path, pedido: Path, andamento: Path) -> list[str]:
@@ -1117,6 +1236,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json(self._trabalho(tb.andamento(self.root)) or {"etapa": None})
         elif path == "/api/pendente":
             self._pendente()
+        elif path == "/api/atualizacao":
+            self._atualizacao()
+        elif path == "/api/atualizacao/andamento":
+            # com o clique esperando um trabalho, o andamento.json ainda é o da atualização ANTERIOR
+            a = None if ATUALIZACAO["pedido"] else atu._ler_json(atu.casa() / "atualizacao" / "andamento.json")
+            self._json(self._trabalho(a) if a else {"etapa": None})
         elif path == "/api/midia":
             self._midia()
         elif path == "/api/batida":
@@ -1172,6 +1297,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/pronto":
             self._pronto()
+            return
+        if path == "/api/atualizar":
+            self._atualizar()
+            return
+        if path == "/api/atualizacao/config":
+            self._atualizacao_config()
             return
         if path != "/api/save":
             self._fail(404, "unknown route")
@@ -1805,6 +1936,51 @@ class Handler(BaseHTTPRequestHandler):
             print(f"conferência do corte não rodou: {e}", file=sys.stderr, flush=True)
             self._json({"avisos": []})
 
+    # ---- atualização do CutMind (atualizar.py) ----
+    def _atualizacao(self) -> None:
+        """O que a procura achou (sem esperar a rede), o interruptor e o clique que espera um trabalho."""
+        r = dict(resultado_atual() or {"nova": False, "procurando": True})
+        r["ligado"] = atu.ligado()
+        if ATUALIZACAO["pedido"]:
+            r["esperando"] = _esperando(self.root)
+        self._json(r)
+
+    def _atualizar(self) -> None:
+        """O clique em Atualizar: no meio de um trabalho ou com o agente trabalhando, espera e começa
+        sozinho depois (o Papory faz o mesmo com o ditado); senão, lança agora."""
+        if self._corpo_pequeno() is None:
+            return
+        r = resultado_atual() or {}
+        if copia_de_desenvolvimento() or r.get("motivo") == "desenvolvimento":
+            self._json({"error": "esta é uma cópia de desenvolvimento do CutMind: atualize com git"}, 409)
+            return
+        if not r.get("nova"):
+            self._json({"error": "não há versão nova do CutMind"}, 409)
+            return
+        esperando = _esperando(self.root)
+        if esperando:
+            ATUALIZACAO["pedido"] = True
+            self._json({"ok": True, "esperando": esperando, "versao": r.get("versao")})
+            return
+        self._json({"ok": True, "reiniciar": bool(r.get("reiniciar")), "versao": r.get("versao")})
+        comecar_atualizacao(self.server, self.root, r)
+
+    def _atualizacao_config(self) -> None:
+        """O interruptor "Procurar atualizações" do painel ?: grava e procura de novo, sem prender a página."""
+        body = self._corpo_pequeno()
+        if body is None:
+            return
+        if not isinstance(body.get("procurar"), bool):
+            self._json({"error": "pedido inválido"}, 400)
+            return
+        atu.ligar(None, body["procurar"])
+
+        def de_novo() -> None:
+            ATUALIZACAO["resultado"] = atu.procurar(forcar=True)
+
+        threading.Thread(target=de_novo, daemon=True).start()
+        self._json({"ok": True, "ligado": body["procurar"]})
+
     def _ocupado(self, tipo: str | None) -> None:
         """A resposta a um pedido que mexeria no projeto com um trabalho rodando nele."""
         if tipo == "gerar":
@@ -2225,6 +2401,9 @@ def main() -> None:
         print(f"aviso: lista de projetos ({pj.casa()}) não gravada: {e}", flush=True)
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"CutMind preview -> http://{pc_host(args.host)}:{args.port}  (root: {root})", flush=True)
+    if ESPERAS_DLL:
+        print(f"as DLLs da instalação nova estavam presas: esperei {ESPERAS_DLL * 0.5:.1f} s", flush=True)
+    threading.Thread(target=vigiar_atualizacao, args=(srv, Handler), daemon=True, name="atualizacao").start()
     if Handler.token:
         print("Aberto para a rede: só entra quem tem o link com o código.", flush=True)
         for u in phone_urls(args.host, args.port, Handler.token):
