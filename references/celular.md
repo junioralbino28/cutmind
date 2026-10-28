@@ -228,6 +228,11 @@ Each layer is a track, as in any editor:
   that should show, pull the dot to make it smaller. Concluir saves `recorte` (fractions of
   the image, with the `formato`); the image then shows only that piece, and `largura` is the
   piece's width. Meia tela also puts it in the top half (1080×960), ready for a split screen.
+- **Importar → Vídeo por cima** sends a video to `midia/` (the agent is not woken: it is not
+  footage to cut) and puts it on the timeline as an image-track item: free, where the top
+  card is, with `corte` (trimming its left edge walks into the file, like an audio) and
+  `volume`. It plays along with the needle WITH its sound, and the final video mixes that
+  sound in (`mixar_final.py`). Recortar, move and resize work the same as on an image.
 - Undo/redo covers all of it. **Salvar** sends `camadas`; the server validates it
   (files only from `midia/`, sane times and volumes) and writes `<edit>/camadas.json`
   — the project file, read back when the editor opens. A refusal shows the reason.

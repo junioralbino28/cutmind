@@ -184,3 +184,51 @@ def test_recorte_so_na_imagem_livre():
     del base["faixas"][0]["itens"][0]["largura"]
     with pytest.raises(cm.CamadasInvalidas, match="só na imagem livre"):
         cm.normalize(base)
+
+
+# ---- o vídeo posto por cima (faixa de imagem, etapa 2 do PLANO-recortar-enquadrar)
+
+def _video(**extra):
+    return {"versao": 1, "faixas": [{"id": "i1", "tipo": "imagem", "itens": [
+        {"id": "i1-1", "arquivo": "midia/clipe.mp4", "inicio": 2, "duracao": 3, **extra}]}]}
+
+
+def test_video_por_cima_nasce_livre_no_lugar_do_cartao_com_som():
+    import camadas as cm
+    it = cm.normalize(_video())["faixas"][0]["itens"][0]
+    assert (it["x"], it["y"], it["largura"], it["corte"], it["volume"]) == (540, 340, 780, 0, 1)
+
+
+def test_video_por_cima_guarda_corte_volume_lugar_e_recorte():
+    import camadas as cm
+    it = cm.normalize(_video(corte=1.5, volume=0.4, x=540, y=480, largura=1080,
+                             recorte={"x": 0.6, "y": 0.1, "w": 0.3, "h": 0.6, "formato": "meia"}))["faixas"][0]["itens"][0]
+    assert (it["corte"], it["volume"], it["y"], it["largura"]) == (1.5, 0.4, 480, 1080)
+    assert it["recorte"]["formato"] == "meia"
+
+
+def test_video_por_cima_nao_vai_atras_da_pessoa():
+    import camadas as cm
+    with pytest.raises(cm.CamadasInvalidas, match="atrás da pessoa"):
+        cm.normalize(_video(atras=True))
+
+
+def test_extensao_que_nao_e_imagem_nem_video_e_recusada():
+    import camadas as cm
+    base = _video()
+    base["faixas"][0]["itens"][0]["arquivo"] = "midia/som.mp3"
+    with pytest.raises(cm.CamadasInvalidas, match="imagem nem vídeo"):
+        cm.normalize(base)
+
+
+def test_o_som_do_video_por_cima_toca_e_o_escondido_ou_mudo_nao():
+    import camadas as cm
+    c = cm.normalize(_video(volume=0.5))
+    assert [(i["id"], i["volume"], i["melhorar"]) for i in cm.tocam(c)] == [("i1-1", 0.5, False)]
+    assert cm.tocam(cm.normalize(_video(volume=0))) == []
+    escondida = _video()
+    escondida["faixas"][0]["oculto"] = True
+    assert cm.tocam(cm.normalize(escondida)) == []
+    foto = _video()
+    foto["faixas"][0]["itens"][0]["arquivo"] = "midia/a.png"
+    assert cm.tocam(cm.normalize(foto)) == []  # imagem não tem som

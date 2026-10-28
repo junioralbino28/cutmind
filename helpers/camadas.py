@@ -26,6 +26,9 @@ largura em px do quadro 1080x1920, no lugar e no tamanho que a pessoa pôs no ed
 A imagem livre pode ter `recorte`: `{"x", "y", "w", "h"}` em fração da imagem (0 a 1), o pedaço
 que aparece; `largura` é então a largura desse pedaço na tela. `formato` diz qual formato a pessoa
 escolheu no Recortar (FORMATOS), para o agente aprender o jeito dela.
+A faixa de imagem aceita também VÍDEO (VIDEO_EXTS): o vídeo posto por cima, sempre livre (sem `largura`,
+fica no lugar e na largura do cartão), com `corte` (de onde o arquivo começa, como no áudio) e `volume` (0 a
+2): o som dele entra no som final (`tocam`). Não vai atrás da pessoa.
 Um texto tem o centro em `x`/`y` (px do quadro 1080x1920, podendo sair um pouco dele), quebra
 de linha com "\n" e o `estilo` do painel de Texto: `fonte` (uma família do catálogo de
 fontes), `peso`, `cor` e `corContorno` (#rrggbb), `tamanho` (× 96 px) e `contorno` (px). Com
@@ -45,6 +48,7 @@ from pathlib import Path
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 AUDIO_EXTS = {".mp3", ".m4a", ".aac", ".wav", ".ogg", ".opus", ".flac", ".weba"}
+VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm"}  # o vídeo posto por cima (faixa de imagem)
 MIDIA_DIR = "midia"
 MAX_FAIXAS = 40
 MAX_ITENS = 200
@@ -91,9 +95,14 @@ def _arquivo(v: object, tipo: str) -> str:
     if nome in (".", "..") or nome.startswith("."):
         raise CamadasInvalidas("arquivo fora de midia/")
     ext = Path(nome).suffix.lower()
-    if ext not in (AUDIO_EXTS if tipo == "audio" else IMAGE_EXTS):
-        raise CamadasInvalidas(f"{v} não é {'áudio' if tipo == 'audio' else 'imagem'}")
+    if ext not in (AUDIO_EXTS if tipo == "audio" else IMAGE_EXTS | VIDEO_EXTS):
+        raise CamadasInvalidas(f"{v} não é {'áudio' if tipo == 'audio' else 'imagem nem vídeo'}")
     return v
+
+
+def eh_video(arquivo: str) -> bool:
+    """O item da faixa de imagem é um vídeo posto por cima."""
+    return Path(str(arquivo)).suffix.lower() in VIDEO_EXTS
 
 
 def recorte(v: object) -> dict | None:
@@ -214,6 +223,13 @@ def normalize(obj: object) -> dict:
             item = {"id": iid, "arquivo": _arquivo(it.get("arquivo"), tipo),
                     "inicio": _num(it.get("inicio", 0), "inicio"),
                     "duracao": _num(it.get("duracao", 0), "duracao", 0.05)}
+            if tipo == "imagem" and eh_video(item["arquivo"]):  # o vídeo por cima: livre, com o som dele
+                if it.get("atras"):
+                    raise CamadasInvalidas("o vídeo por cima não vai atrás da pessoa")
+                item["corte"] = _num(it.get("corte", 0), "corte")
+                item["volume"] = _num(it.get("volume", 1), "volume", 0.0, 2.0)
+                if it.get("largura") is None:  # sem lugar escolhido: o do cartão de cima
+                    it = {**it, "x": 540, "y": 340, "largura": 780}
             if tipo == "imagem" and it.get("atras"):  # o cartão grande, atrás da pessoa
                 item["atras"] = True
             elif tipo == "imagem" and it.get("largura") is not None:  # a imagem livre: lugar e tamanho da pessoa
@@ -254,13 +270,20 @@ def save(path: Path, camadas: dict) -> None:
 
 
 def tocam(camadas: dict) -> list[dict]:
-    """Os itens de áudio que entram no som final: de faixa não silenciada e com volume."""
-    return [{**it, "faixa": f["id"]} for f in camadas["faixas"]
-            if f["tipo"] == "audio" and not f["mudo"] for it in f["itens"] if it["volume"] > 0]
+    """Os itens que entram no som final, com volume: os áudios de faixa não silenciada e os vídeos postos por
+    cima de faixa não escondida (o som que o arquivo tiver; quem mistura confere se tem)."""
+    out = []
+    for f in camadas["faixas"]:
+        for it in f["itens"]:
+            if f["tipo"] == "audio" and not f["mudo"] and it["volume"] > 0:
+                out.append({**it, "faixa": f["id"]})
+            elif f["tipo"] == "imagem" and not f["oculto"] and eh_video(it["arquivo"]) and it.get("volume", 0) > 0:
+                out.append({**it, "melhorar": False, "faixa": f["id"]})
+    return out
 
 
 def aparecem(camadas: dict) -> list[dict]:
-    """Os itens de imagem que entram no vídeo: de faixa que não está escondida."""
+    """Os itens de imagem (e os vídeos postos por cima) que entram no vídeo: de faixa que não está escondida."""
     return [{**it, "faixa": f["id"]} for f in camadas["faixas"]
             if f["tipo"] == "imagem" and not f["oculto"] for it in f["itens"]]
 

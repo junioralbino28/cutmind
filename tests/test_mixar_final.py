@@ -244,3 +244,36 @@ def test_no_video_final_a_tomada_mais_baixa_continua_mais_baixa(tmp_path):
         return float(next(ln.split("mean_volume:")[1].split()[0] for ln in p.stderr.splitlines() if "mean_volume:" in ln))
     dif = media(0.5, 2.0) - media(3.5, 2.0)
     assert abs(dif - (-6.02)) < 0.5, dif
+
+
+def _vid(fid, arquivo, inicio, duracao, corte=0.0, volume=1.0, oculto=False):
+    return {"id": fid, "tipo": "imagem", "oculto": oculto, "travado": False,
+            "itens": [{"id": f"{fid}-1", "arquivo": arquivo, "inicio": inicio, "duracao": duracao,
+                       "corte": corte, "volume": volume}]}
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="sem ffmpeg")
+def test_no_video_final_toca_o_som_do_video_por_cima_e_o_mudo_fica_de_fora(tmp_path):
+    """O vídeo posto por cima com som (660 Hz) entra no tempo, a partir do `corte`; um vídeo sem trilha de som
+    na mesma montagem não quebra o ffmpeg (ele não tem [k:a])."""
+    edit, _ = _projeto(tmp_path, {"video": {"mudo": True},
+                                  "faixas": [_vid("i1", "midia/clipe.mp4", 1.0, 0.8, corte=0.5),
+                                             _vid("i2", "midia/mudo.mp4", 0.2, 0.5)]})
+    ff = ["ffmpeg", "-v", "error", "-y"]
+    subprocess.run(ff + ["-f", "lavfi", "-i", "color=c=gray:s=108x192:d=3:r=30", "-pix_fmt", "yuvj420p",
+                         "-c:v", "libx264", str(edit / "render.mp4")], check=True)
+    subprocess.run(ff + ["-f", "lavfi", "-i", "color=c=black:s=108x192:d=3:r=30", "-f", "lavfi", "-i",
+                         "sine=f=440:d=3", "-shortest", "-c:v", "libx264", "-c:a", "aac", str(edit / "cut.mp4")], check=True)
+    subprocess.run(ff + ["-f", "lavfi", "-i", "color=c=blue:s=160x90:d=3:r=30", "-f", "lavfi", "-i",
+                         "sine=f=660:d=3", "-shortest", "-c:v", "libx264", "-c:a", "aac",
+                         str(edit / "midia" / "clipe.mp4")], check=True)
+    subprocess.run(ff + ["-f", "lavfi", "-i", "color=c=red:s=160x90:d=2:r=30", "-c:v", "libx264",
+                         str(edit / "midia" / "mudo.mp4")], check=True)
+    r = subprocess.run([sys.executable, "-X", "utf8", str(HELPERS / "mixar_final.py"), str(edit), "--render", str(edit / "render.mp4"),
+                        "-o", str(edit / "final.mp4")], capture_output=True, text=True, encoding="utf-8")
+    assert r.returncode == 0, r.stderr + r.stdout
+    taxa = 8000
+    pcm = _ler_pcm(edit / "final.mp4", taxa)
+    assert _goertzel(_janela(pcm, taxa, 1.25, 1.65), taxa, 660) > 20 * max(_goertzel(_janela(pcm, taxa, 0.3, 0.8), taxa, 660), 1e-3)
+    inicio = next(i for i, x in enumerate(pcm) if abs(x) > 300) / taxa
+    assert abs(inicio - 1.033) < 0.03, inicio  # entra em 1 s + 1 quadro, como a camada de áudio

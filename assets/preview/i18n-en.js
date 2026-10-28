@@ -777,5 +777,7 @@ window.I18N_EN = {
   "Concluir": "Done",
   "Livre": "Free",
   "Meia tela": "Half screen",
-  "Escolher o formato e a parte que aparece": "Choose the format and the part that shows"
+  "Escolher o formato e a parte que aparece": "Choose the format and the part that shows",
+  "Vídeo por cima": "Video on top",
+  "Chegou. Está por cima do vídeo, na agulha.": "Arrived. It's on top of the video, at the playhead."
 };

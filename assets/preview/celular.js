@@ -2349,6 +2349,7 @@ function renderToolbar() {
     tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
     tool(ctx, 'imp-video', t('Vídeo'), { icon: ICON.final });
     tool(ctx, 'imp-imagem', t('Imagem'), { icon: ICON.imagem, disabled: !hasVideo && !ehMontagem() });
+    if (!ehMontagem()) tool(ctx, 'imp-sobrepor', t('Vídeo por cima'), { icon: ICON.final, disabled: !hasVideo });
     tool(ctx, 'imp-audio', t('Áudio'), { icon: ICON.audio, disabled: !hasVideo && !ehMontagem() });
     return;
   }
@@ -2432,7 +2433,10 @@ function renderToolbar() {
       tool(ctx, 'atras', t('Atrás da pessoa'), { icon: ICON.pessoa, on: lsel.it.atras });
       tool(ctx, 'texto-segue', t('Acompanhar'), { icon: ICON.alvo, on: lsel.it.acompanhar });
     }
-    if (lsel.f.tipo === 'imagem') {
+    if (lsel.f.tipo === 'imagem' && ehVideoArq(lsel.it.arquivo)) {
+      tool(ctx, 'recortar', t('Recortar'), { on: !!lsel.it.recorte });
+      tool(ctx, 'volume', `${Math.round((lsel.it.volume ?? 1) * 100)}%`);
+    } else if (lsel.f.tipo === 'imagem') {
       tool(ctx, 'atras', t('Atrás da pessoa'), { icon: ICON.pessoa, on: !!lsel.it.atras });
       if (!lsel.it.atras) tool(ctx, 'recortar', t('Recortar'), { on: !!lsel.it.recorte });
     }
@@ -2505,6 +2509,7 @@ document.addEventListener('click', (e) => {
     case 'imp-video': S.importMenu = false; renderToolbar(); $(ehMontagem() ? 'fileMontMidia' : 'fileInput').click(); break;
     case 'imp-imagem': S.importMenu = false; renderToolbar(); $(montagemSemVideo() ? 'fileMontMidia' : 'fileImagem').click(); break;
     case 'imp-audio': S.importMenu = false; renderToolbar(); $(montagemSemVideo() ? 'fileMontMusica' : 'fileAudio').click(); break;
+    case 'imp-sobrepor': S.importMenu = false; renderToolbar(); $('fileSobrepor').click(); break;
     case 'modelos-montagem': if (MT.aberto) fechaMontagem(); else abreMontagem(); break;
     case 'formato': openFormato(); break;
     case 'lugar-caber': enqRapido('caber'); break;
@@ -3640,8 +3645,9 @@ const mb = (b) => `${Math.round(b / 1e6)} MB`;
 // `para` 'montagem': a foto ou o vídeo de um lugar (fica em midia/ e entra no lugar, sem avisar o agente);
 // 'montagem-nova', uma foto ou clipe para o painel Modelos de montagem (também em midia/); 'musica', a
 // música dele (o áudio já vai para midia/ sem `para`, e não vira camada). `aoFalhar`: o envio não chegou
-const PARA_SERVIDOR = { montagem: 'montagem', 'montagem-nova': 'montagem' };
-const CHEGOU = { montagem: t('Chegou. Entra no lugar quando você salvar.'), 'montagem-nova': t('Chegou. Está na lista da montagem.'),
+const PARA_SERVIDOR = { montagem: 'montagem', 'montagem-nova': 'montagem', camada: 'camada' };
+const CHEGOU = { camada: t('Chegou. Está por cima do vídeo, na agulha.'),
+  montagem: t('Chegou. Entra no lugar quando você salvar.'), 'montagem-nova': t('Chegou. Está na lista da montagem.'),
   musica: t('Chegou. Está entre as músicas da montagem.') };
 /* Em pedaços de 8 MB: pelo túnel (o editor aberto de qualquer lugar) um pedido grande passa do limite do
  * caminho, e no 4G a rede cai. O 1º pedaço recebe um id; se a rede cair, o editor pergunta ao computador até
@@ -5496,13 +5502,15 @@ async function addLayer(tipo, arquivo, extra = {}) {
   const total = S.videoDuration || totalT();
   const inicio = +Math.min(draftToRendered(S.t), Math.max(0, total - 0.5)).toFixed(3);
   const resto = Math.max(0.5, total - inicio);
-  let dur = tipo === 'imagem' ? 3 : await midiaDuration(arquivo);
+  const vid = tipo === 'imagem' && ehVideoArq(arquivo);
+  let dur = tipo === 'imagem' && !vid ? 3 : await midiaDuration(arquivo);
   dur = Math.min(dur || 3, resto);
   remember();
   const letra = tipo === 'audio' ? 'a' : 'i';
   const fid = newFaixaId(letra);
   const item = { id: `${fid}-1`, arquivo, inicio, duracao: +dur.toFixed(3) };
   if (tipo === 'audio') Object.assign(item, { corte: 0, volume: 1, melhorar: false }, extra);
+  if (vid) Object.assign(item, { corte: 0, volume: 1, x: CARTAO_IMG.x, y: CARTAO_IMG.y, largura: CARTAO_IMG.w }, extra);
   const faixa = { id: fid, tipo, travado: false, itens: [item] };
   faixa[tipo === 'audio' ? 'mudo' : 'oculto'] = false;
   S.camadas.faixas.push(faixa);
@@ -5666,7 +5674,7 @@ function dragLayer(x) {
   const L = G.ly;
   const hit = camItem(L.id);
   if (!hit) return;
-  const it = hit.it, o = L.it0, aud = hit.f.tipo === 'audio';
+  const it = hit.it, o = L.it0, aud = hit.f.tipo === 'audio', comCorte = aud || ehVideoArq(it.arquivo);
   let dt = (x - L.x0) / S.pps;
   const fim = S.videoDuration || totalT();
   // o ímã: a ponta que anda (ou a mais perto, levando o item inteiro) gruda na batida da música. Só
@@ -5684,17 +5692,17 @@ function dragLayer(x) {
   } else if (L.side === 'r') {
     dt += gruda(o.inicio + o.duracao + dt);
     let d = Math.max(0.2, o.duracao + dt);
-    const tot = aud && S.midiaDur[it.arquivo];
+    const tot = comCorte && S.midiaDur[it.arquivo];
     if (tot) d = Math.min(d, tot - it.corte);
     it.duracao = +d.toFixed(3);
   } else { // a ponta esquerda anda; a direita fica onde está
     dt += gruda(o.inicio + dt);
     let k = Math.min(dt, o.duracao - 0.2);
     k = Math.max(k, -o.inicio);
-    if (aud) k = Math.max(k, -o.corte); // não volta antes do começo do arquivo
+    if (comCorte) k = Math.max(k, -o.corte); // não volta antes do começo do arquivo
     it.inicio = +(o.inicio + k).toFixed(3);
     it.duracao = +(o.duracao - k).toFixed(3);
-    if (aud) it.corte = +(o.corte + k).toFixed(3);
+    if (comCorte) it.corte = +(o.corte + k).toFixed(3);
   }
   const tip = $('trimTip');
   tip.textContent = L.kind === 'move' ? t('começa em {p0}', { p0: fmt(it.inicio) }) : t('dura {p0} s', { p0: it.duracao.toFixed(2) });
@@ -7906,7 +7914,12 @@ function enqNasOutras() {
  * e na largura do cartão, e daí anda. `x`/`y` (centro) e `largura` em px do quadro, no camadas.json; o vídeo final
  * desenha igual (Main.tsx, InsertLivre). */
 const CARTAO_IMG = { x: 540, y: 340, w: 780, h: 500 }; // Main.tsx: 780x500, 90 px do topo
+function ehVideoArq(arq) { return /\.(mp4|mov|m4v|webm)$/i.test(arq || ''); } // o vídeo posto por cima
 function imagemProporcao() {
+  if (S.imgNaTela && S.imgNaTela.video) {
+    const v = $('ovVid');
+    return v.videoWidth && v.videoHeight ? v.videoHeight / v.videoWidth : 0;
+  }
   const ov = $('ovImg');
   return ov.naturalWidth && ov.naturalHeight ? ov.naturalHeight / ov.naturalWidth : 0;
 }
@@ -7929,7 +7942,9 @@ function imagemLivre(it) {
   ov.classList.toggle('livre', livre);
   if (livre) Object.assign(ov.style, estiloRecorte(it));
   else Object.assign(ov.style, { left: '', top: '', width: '', translate: '', clipPath: '' });
+  if (it && ehVideoArq(it.arquivo)) Object.assign($('ovVid').style, estiloRecorte(it));
 }
+$('ovVid').addEventListener('loadedmetadata', () => { imgCaixaSig = ''; desenhaImagemCaixa(); }); // a proporção chegou
 let imgCaixaSig = '';
 function desenhaImagemCaixa() {
   const box = $('ovImgCaixa');
@@ -8014,13 +8029,25 @@ const RC = { aberto: false, rc: null, formato: 'livre', mw: 0, mh: 0, box: null,
 const RC_FORMATOS = () => [['livre', t('Livre'), 0], ['original', t('Original'), -1], ['9:16', '9:16', 9 / 16], ['1:1', '1:1', 1],
   ['4:5', '4:5', 4 / 5], ['16:9', '16:9', 16 / 9], ['meia', t('Meia tela'), FRAME_W / (FRAME_H / 2)]];
 const rcLimita = (v, a, b) => Math.max(a, Math.min(b, v));
-function abreRecorte({ src, recorte, aoConcluir }) {
-  const img = $('rcImg');
+function abreRecorte({ src, video: ehVid = false, t: em = 0, recorte, aoConcluir }) {
+  const img = $('rcImg'), vid = $('rcVid');
+  RC.video = ehVid;
+  img.classList.toggle('hidden', ehVid);
+  vid.classList.toggle('hidden', !ehVid);
   RC.aoConcluir = aoConcluir;
   RC.rc = recorte ? { x: recorte.x, y: recorte.y, w: recorte.w, h: recorte.h } : { x: 0, y: 0, w: 1, h: 1 };
   RC.formato = recorte ? recorte.formato || 'livre' : 'original';
   RC.aberto = true;
   $('recorte').classList.remove('hidden');
+  if (ehVid) { // o quadro do instante da agulha: carrega, vai até ele e mede
+    RC.mw = 0;
+    const pronto = () => { RC.mw = vid.videoWidth; RC.mh = vid.videoHeight; rcDesenha(); };
+    const vai = () => { if (Math.abs(vid.currentTime - em) > 0.04) vid.currentTime = em; else pronto(); };
+    vid.onseeked = pronto;
+    vid.onloadeddata = vai;
+    if (vid.dataset.src !== src) { vid.dataset.src = src; vid.src = src; } else if (vid.readyState >= 2) vai();
+    return;
+  }
   const pronto = () => { RC.mw = img.naturalWidth; RC.mh = img.naturalHeight; rcDesenha(); };
   img.onload = pronto;
   if (img.getAttribute('src') !== src) img.src = src; else if (img.complete && img.naturalWidth) pronto();
@@ -8036,7 +8063,7 @@ function rcDesenha() {
   const k = Math.min((P.width - 32) / RC.mw, (P.height - 32) / RC.mh), dw = RC.mw * k, dh = RC.mh * k;
   const ox = (P.width - dw) / 2, oy = (P.height - dh) / 2;
   RC.box = { ox, oy, dw, dh };
-  Object.assign($('rcImg').style, { left: `${ox}px`, top: `${oy}px`, width: `${dw}px`, height: `${dh}px` });
+  Object.assign($(RC.video ? 'rcVid' : 'rcImg').style, { left: `${ox}px`, top: `${oy}px`, width: `${dw}px`, height: `${dh}px` });
   const q = RC.rc;
   Object.assign($('rcQuadro').style, { left: `${ox + q.x * dw}px`, top: `${oy + q.y * dh}px`, width: `${q.w * dw}px`, height: `${q.h * dh}px` });
   const fm = $('rcFormatos');
@@ -8107,8 +8134,11 @@ function recortaImagemSel() {
   const hit = S.layerSel ? camItem(S.layerSel) : null;
   if (!hit || hit.f.tipo !== 'imagem' || hit.it.atras) return;
   video.pause();
-  const id = hit.it.id;
+  const id = hit.it.id, vid = ehVideoArq(hit.it.arquivo);
+  // num vídeo, o quadro da agulha (ou o primeiro, com a agulha fora dele)
+  const rt = draftToRendered(S.t), dentro = rt >= hit.it.inicio && rt < hit.it.inicio + hit.it.duracao;
   abreRecorte({ src: `/media/${hit.it.arquivo.split('/').map(encodeURIComponent).join('/')}`, recorte: hit.it.recorte,
+    video: vid, t: vid ? (hit.it.corte || 0) + (dentro ? rt - hit.it.inicio : 0) : 0,
     aoConcluir: (rc) => {
       const h2 = camItem(id);
       if (!h2) return;
@@ -8127,14 +8157,14 @@ function syncLayers() {
   const playing = !video.paused && !video.ended && !G.mode;
   const rt = corte ? draftToRendered(S.t) : 0;
   const vivos = new Set();
-  let img = '', imgAtras = false, imgIt = null, imgTrav = false;
+  let img = '', imgAtras = false, imgIt = null, imgTrav = false, imgVid = false;
   if (corte && S.camadas) {
     for (const f of S.camadas.faixas) {
       for (const it of f.itens) {
         const dentro = rt >= it.inicio && rt < it.inicio + it.duracao;
         if (!dentro) continue;
         // a camada mais nova fica por cima, como no vídeo final (os inserts dela entram por último)
-        if (f.tipo === 'imagem') { if (!f.oculto) { img = it.arquivo; imgAtras = !!it.atras; imgIt = it; imgTrav = f.travado; } continue; }
+        if (f.tipo === 'imagem') { if (!f.oculto) { img = it.arquivo; imgAtras = !!it.atras; imgIt = it; imgTrav = f.travado; imgVid = ehVideoArq(it.arquivo); } continue; }
         if (f.tipo === 'texto') continue; // os textos: desenhaTextos
         if (f.mudo || !playing) continue;
         vivos.add(it.id);
@@ -8148,20 +8178,44 @@ function syncLayers() {
     }
   }
   for (const [id, a] of AUD) if (!vivos.has(id) && !a.paused) a.pause();
-  if (img !== ovShown) {
-    ovShown = img;
+  const ovV = $('ovVid');
+  if (imgVid) { // o vídeo por cima: o quadro de corte + (agulha - início), tocando junto quando o vídeo toca
+    if (ovV.dataset.src !== img) { ovV.dataset.src = img; ovV.src = `/media/${img}`; }
+    ovV.classList.remove('hidden');
+    const alvo = (imgIt.corte || 0) + (rt - imgIt.inicio);
+    ovV.volume = Math.min(1, imgIt.volume ?? 1); // acima de 100% a prévia toca a 100%; o vídeo final leva o ganho
+    ovV.muted = S.mudoUsuario || !((imgIt.volume ?? 1) > 0);
+    if (playing) {
+      if (Math.abs(ovV.currentTime - alvo) > 0.25) ovV.currentTime = alvo;
+      if (ovV.paused) ovV.play().catch(() => {});
+    } else {
+      if (!ovV.paused) ovV.pause();
+      if (Math.abs(ovV.currentTime - alvo) > 0.04) ovV.currentTime = alvo;
+    }
+  } else {
+    if (!ovV.paused) ovV.pause();
+    ovV.classList.add('hidden');
+  }
+  const soImg = imgVid ? '' : img;
+  if (soImg !== ovShown) {
+    ovShown = soImg;
     const ov = $('ovImg');
-    if (img) ov.src = `/media/${img}`;
-    ov.classList.toggle('hidden', !img);
+    if (soImg) ov.src = `/media/${soImg}`;
+    ov.classList.toggle('hidden', !soImg);
   }
   $('ovImg').classList.toggle('atras', imgAtras); // o cartão grande de trás, no lugar dele no vídeo final
   imagemLivre(imgIt && !imgAtras ? imgIt : null);
-  S.imgNaTela = imgIt && !imgAtras ? { it: imgIt, trav: imgTrav } : null;
+  S.imgNaTela = imgIt && !imgAtras ? { it: imgIt, trav: imgTrav, video: imgVid } : null;
   desenhaImagemCaixa();
   syncQuadro();
   desenhaTextos();
   desenhaLegendaPrevia(false);
 }
+$('fileSobrepor').addEventListener('change', (e) => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (f) sendVideo(f, (res) => addLayer('imagem', res.arquivo), 'camada'); // midia/, sem acordar o agente
+});
 ['fileAudio', 'fileImagem'].forEach((id) => {
   $(id).addEventListener('change', (e) => {
     const f = e.target.files && e.target.files[0];

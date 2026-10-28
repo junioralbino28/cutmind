@@ -52,7 +52,8 @@ type Caption = {text: string; startMs: number; endMs: number};
 // x/y/w: a imagem livre das camadas (o centro e a largura em px do quadro, como a pessoa pôs no editor)
 // crop: o pedaço da imagem que aparece (fração dela); w é então a largura do pedaço na tela
 type Crop = {x: number; y: number; w: number; h: number};
-type Insert = {src: string; start: number; end: number; x?: number; y?: number; w?: number; crop?: Crop};
+// video/from: o vídeo posto por cima (INSERT_VIDEO), mudo aqui (o som vai no mixar_final), começando em `from` s
+type Insert = {src: string; start: number; end: number; x?: number; y?: number; w?: number; crop?: Crop; video?: boolean; from?: number};
 type BehindImage = {kind: 'image'; src: string; matte: string; start: number; dur: number};
 type BehindWords = {kind: 'words'; words: {t: string; at: number}[]; matte: string; start: number; dur: number};
 type Behind = BehindImage | BehindWords;
@@ -482,14 +483,17 @@ export const recorteEstilo = (x: number, y: number, w: number, crop?: Crop): Rea
     ...(crop ? {clipPath: `inset(${pc(c.y)} ${pc(1 - c.x - c.w)} ${pc(1 - c.y - c.h)} ${pc(c.x)})`} : {}),
   };
 };
-const InsertLivre: React.FC<{src: string; x: number; y: number; w: number; crop?: Crop; totalFrames: number}> = ({src, x, y, w, crop, totalFrames}) => {
+const InsertLivre: React.FC<{src: string; x: number; y: number; w: number; crop?: Crop; video?: boolean; from?: number; totalFrames: number}> = ({src, x, y, w, crop, video, from, totalFrames}) => {
   const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
   const enter = interpolate(frame, [0, 6], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
   const exit = interpolate(frame, [totalFrames - 6, totalFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
   return (
     <AbsoluteFill>
-      <Sfx src="whoosh.mp3" />
-      <Img src={staticFile(src)} style={{...recorteEstilo(x, y, w, crop), opacity: Math.min(enter, exit)}} />
+      {video ? null : <Sfx src="whoosh.mp3" />}
+      {video
+        ? <OffthreadVideo src={staticFile(src)} muted trimBefore={Math.round((from ?? 0) * fps)} style={{...recorteEstilo(x, y, w, crop), opacity: Math.min(enter, exit)}} />
+        : <Img src={staticFile(src)} style={{...recorteEstilo(x, y, w, crop), opacity: Math.min(enter, exit)}} />}
     </AbsoluteFill>
   );
 };
@@ -504,7 +508,7 @@ const Inserts: React.FC = () => {
         return (
           <Sequence key={i} from={from} durationInFrames={duration} layout="none">
             {it.w != null && it.x != null && it.y != null
-              ? <InsertLivre src={it.src} x={it.x} y={it.y} w={it.w} crop={it.crop} totalFrames={duration} />
+              ? <InsertLivre src={it.src} x={it.x} y={it.y} w={it.w} crop={it.crop} video={it.video} from={it.from} totalFrames={duration} />
               : <InsertCard src={it.src} totalFrames={duration} />}
           </Sequence>
         );

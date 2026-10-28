@@ -274,3 +274,35 @@ def test_o_template_do_kit_recorta_a_imagem():
     texto = main.read_text(encoding="utf-8")
     import camadas_edit_data as ced
     assert ced.MARCA_RECORTE in texto and "crop={it.crop}" in texto and "clipPath" in texto
+
+
+def test_video_por_cima_vai_para_o_insert_com_o_comeco_dele(projeto):
+    edit, public, _ = projeto
+    (edit / "midia" / "clipe.mp4").write_bytes(b"x")
+    f = _img("i1", "midia/clipe.mp4", 5, 3)
+    f["itens"][0].update({"corte": 1.25, "volume": 1, "x": 540, "y": 480, "largura": 1080,
+                          "recorte": {"x": 0.6, "y": 0, "w": 0.3, "h": 1}})
+    _camadas(edit, [f])
+    aplicar(edit)
+    ins = _inserts(public)[1]
+    assert ins["src"] == "midia/camada-i1-1.mp4" and ins["video"] is True and ins["from"] == 1.25
+    assert ins["crop"] == {"x": 0.6, "y": 0, "w": 0.3, "h": 1} and ins["w"] == 1080
+
+
+def test_template_sem_video_para_em_vez_de_sumir_com_ele(projeto):
+    edit, public, _ = projeto
+    (edit / "midia" / "clipe.mp4").write_bytes(b"x")
+    src = public.parent / "src"
+    src.mkdir()
+    (src / "Main.tsx").write_text("// INSERT_LIVRE INSERT_RECORTE", encoding="utf-8")
+    _camadas(edit, [_img("i1", "midia/clipe.mp4", 5, 3)])
+    import camadas_edit_data as ced
+    with pytest.raises(ced.TemplateVelho, match="vídeo por cima"):
+        aplicar(edit)
+
+
+def test_o_template_do_kit_desenha_o_video_por_cima():
+    main = Path(__file__).resolve().parents[1] / "assets" / "shortform" / "src" / "Main.tsx"
+    texto = main.read_text(encoding="utf-8")
+    import camadas_edit_data as ced
+    assert ced.MARCA_VIDEO in texto and "<OffthreadVideo" in texto and "from={it.from}" in texto

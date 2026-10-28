@@ -134,6 +134,7 @@ editor").
 |---|---|---|
 | `imp-imagem` | "põe esse print aos 12 s por 3 s" | copy the file the user gives into `<edit>/midia/`; a `tipo: "imagem"` track with `{"arquivo": "midia/<name>", "inicio", "duracao"}` |
 | `imp-audio` / `do-celular` | "põe esse áudio de fundo" | same, `tipo: "audio"`, with `corte` (where the file starts playing) and `volume` 0–2 |
+| `imp-sobrepor` | "põe esse vídeo por cima, na metade de cima", "o vídeo do convidado em cima de mim" | the file goes to `midia/` (an `.mp4`/`.mov`/`.m4v`/`.webm`) and becomes a `tipo: "imagem"` track item: `{"arquivo", "inicio", "duracao", "corte" (where the file starts), "volume" 0–2, "x", "y", "largura"}` — always free (without `largura` it sits where the top card is). Its SOUND plays in the final video (`mixar_final.py`; `volume: 0` mutes it), it never goes `atras`, and `recortar` works on it the same way |
 | `trilhas` | "põe uma trilha animada" | `pacotes.py listar --tipo trilha --busca <mood>`, then `pacotes.py camada <edit> <id> [--inicio s]` (it writes the layer, marked `trilha`, at 15%) |
 | `volume` (on a layer) | "a música mais baixa" | the item's `volume` |
 | `melhorar` | "limpa o ruído desse áudio" | the item's `melhorar: true` (noise reduction + voice chain in `mixar_final.py`) |

@@ -45,6 +45,7 @@ HELPERS = Path(__file__).resolve().parent
 
 MARCA_LIVRE = "INSERT_LIVRE"  # no src/Main.tsx do template que desenha a imagem livre
 MARCA_RECORTE = "INSERT_RECORTE"  # ... e que desenha só o pedaço recortado dela
+MARCA_VIDEO = "INSERT_VIDEO"  # ... e que desenha o vídeo posto por cima
 
 
 class TemplateVelho(RuntimeError):
@@ -199,10 +200,15 @@ def aplicar(edit: Path, edit_data: Path | None = None, recortar: bool = True) ->
                 ins.update({"x": it["x"], "y": it["y"], "w": it["largura"]})
                 if it.get("recorte"):  # só o pedaço: o Main.tsx recorta, a largura é a do pedaço
                     ins["crop"] = {k: it["recorte"][k] for k in ("x", "y", "w", "h")}
+            if cam.eh_video(it["arquivo"]):  # o vídeo por cima: mudo no Remotion (o som vai no mixar_final)
+                ins.update({"video": True, "from": it.get("corte", 0.0)})
             inserts.append(ins)
     if any("w" in i for i in inserts) and template_sem_imagem_livre(ed_p):
         raise TemplateVelho(f"o template deste projeto é de um kit anterior e não desenha a imagem no lugar e no "
                             f"tamanho que você pôs: rode `atualizar_template.py {edit}` e depois este de novo")
+    if any(i.get("video") for i in inserts) and template_sem(ed_p, MARCA_VIDEO):
+        raise TemplateVelho(f"o template deste projeto é de um kit anterior e não desenha vídeo por cima: rode "
+                            f"`atualizar_template.py {edit}` e depois este de novo")
     if any("crop" in i for i in inserts) and template_sem(ed_p, MARCA_RECORTE):
         raise TemplateVelho(f"o template deste projeto é de um kit anterior e não recorta a imagem: rode "
                             f"`atualizar_template.py {edit}` e depois este de novo")

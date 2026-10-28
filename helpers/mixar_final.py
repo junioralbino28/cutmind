@@ -149,6 +149,8 @@ def montar(edit: Path, render: Path, saida: Path, vd: float, base: str = "cut",
             resumo["trilha"] = True
 
     for n, it in enumerate(cam.tocam(camadas)):
+        if cam.eh_video(it["arquivo"]) and not tem_som(edit / it["arquivo"]):
+            continue  # o vídeo por cima sem trilha de som: nada a misturar (o [k:a] quebraria o ffmpeg)
         k = entrada(edit / it["arquivo"])
         d = it["duracao"]
         cadeia = [f"atrim=start={_n(it['corte'])}:duration={_n(d)}", "asetpts=PTS-STARTPTS"]
@@ -189,6 +191,13 @@ def montar(edit: Path, render: Path, saida: Path, vd: float, base: str = "cut",
     cmd += ["-filter_complex", ";".join(partes), *v,
             "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-t", _n(vd), "-movflags", "+faststart", str(saida)]
     return cmd, resumo
+
+
+def tem_som(p: Path) -> bool:
+    """O arquivo tem trilha de som (um vídeo gravado sem áudio não tem)."""
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0",
+                          str(p)], capture_output=True, text=True)
+    return bool(out.stdout.strip())
 
 
 def _duracao_video(p: Path) -> float:

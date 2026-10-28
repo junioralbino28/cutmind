@@ -80,6 +80,8 @@
       <div class="cap" id="ovCap"></div>
       <!-- camada de imagem debaixo da agulha: no lugar e no tamanho do cartão do vídeo final -->
       <img class="ov-img hidden" id="ovImg" alt="">
+      <!-- o vídeo posto por cima (faixa de imagem): toca junto com a agulha, com o som dele -->
+      <video class="ov-img livre hidden" id="ovVid" playsinline preload="auto"></video>
       <!-- com o painel Fundo aberto: o fundo escolhido atrás da pessoa recortada, parado no quadro da agulha -->
       <div class="ov-fundo hidden" id="ovFundo"><div class="fundo-bg" id="ovFundoBg"></div><div class="fundo-veu"></div><img class="fundo-pessoa" id="ovFundoPessoa" alt=""></div>
       <!-- camadas de texto debaixo da agulha, no lugar, na fonte e no tamanho do vídeo final -->
@@ -397,6 +399,7 @@
 <input type="file" id="fileInput" accept="video/*" hidden>
 <input type="file" id="fileAudio" accept="audio/*" hidden>
 <input type="file" id="fileImagem" accept="image/*" hidden>
+<input type="file" id="fileSobrepor" accept="video/*" hidden>
 <input type="file" id="fileFundo" accept="image/*" hidden>
 <input type="file" id="fileLugar" accept="image/*,video/*" hidden>
 <input type="file" id="fileMontMidia" accept="image/*,video/*" multiple hidden>
@@ -434,6 +437,7 @@
   </div>
   <div class="rc-palco" id="rcPalco">
     <img class="rc-midia" id="rcImg" alt="">
+    <video class="rc-midia hidden" id="rcVid" muted playsinline preload="auto"></video>
     <div class="rc-quadro" id="rcQuadro"><span class="rc-bola" data-rc-tam></span></div>
   </div>
   <div class="rc-formatos" id="rcFormatos"></div>

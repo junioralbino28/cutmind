@@ -1785,8 +1785,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         # a foto ou o vídeo de um lugar da montagem (Trocar → Do aparelho) é mídia do projeto: vai
         # para midia/, e o agente não é avisado de material novo para cortar
-        para_lugar = (q.get("para") or [""])[0] == "montagem"
-        if para_lugar and kind == "audio":
+        # o vídeo posto por cima (camada) também é mídia do projeto, não material para cortar
+        para = (q.get("para") or [""])[0]
+        para_lugar = para in ("montagem", "camada")
+        if para == "montagem" and kind == "audio":
             self._fail(415, "Para um lugar da montagem: foto ou vídeo.")
             return
         folder = self.upload_dir if kind == "video" and not para_lugar else self.root / cam.MIDIA_DIR
