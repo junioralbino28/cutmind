@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -56,7 +57,7 @@ def probe(path: Path) -> dict:
     out = subprocess.run(
         ["ffprobe", "-v", "error", "-print_format", "json",
          "-show_format", "-show_streams", str(path)],
-        check=True, capture_output=True, text=True,
+        check=True, capture_output=True, encoding="utf-8", errors="replace",
     )
     data = json.loads(out.stdout or "{}")
     v = next((s for s in data.get("streams", []) if s.get("codec_type") == "video"), {})
@@ -117,7 +118,10 @@ def main() -> None:
                 "--force-keyframes-at-cuts"]
     cmd += ["--", args.url]
 
-    r = subprocess.run(cmd, stdout=subprocess.PIPE, text=True)
+    # yt-dlp is a separate Python process: on Windows, piped, it writes in the system code page unless told
+    # otherwise, and a folder like "EDIÇÃO" broke the UTF-8 read of its output after the download had finished
+    r = subprocess.run(cmd, stdout=subprocess.PIPE, encoding="utf-8",
+                       env={**os.environ, "PYTHONIOENCODING": "utf-8"})
     lines = [ln for ln in (r.stdout or "").splitlines() if ln.strip()]
     if r.returncode != 0 or not lines:
         sys.exit(f"yt-dlp failed (exit {r.returncode}) — see stderr above")
@@ -129,7 +133,7 @@ def main() -> None:
     info_path = video.with_name(video.stem + ".info.json")
     if info_path.exists():
         try:
-            raw = json.loads(info_path.read_text())
+            raw = json.loads(info_path.read_text(encoding="utf-8"))
             info = {"title": raw.get("title"), "uploader": raw.get("uploader") or raw.get("channel"),
                     "source_url": raw.get("webpage_url"), "upload_date": raw.get("upload_date")}
         except Exception:
