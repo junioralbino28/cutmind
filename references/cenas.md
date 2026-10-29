@@ -13,8 +13,9 @@ per effect, and the template draws them (`assets/shortform/src/cenas/`).
 | `parede` | Parede de fotos | polaroids fill the wall behind the person, a giant word above the head |
 | `grafico` | Gráfico | a bar chart grows behind the person, a tag pops at the end |
 | `chroma` | Site | the background becomes a web page and the person, smaller, slides into a corner |
+| `orbita` | Órbita | cards (images or frames) circle the person: behind the head, then in front |
 
-The editor knows ten more names (`papel`, `rabisco`, `orbita`, `saindo`, `vertigem`, `app`,
+The editor knows nine more names (`papel`, `rabisco`, `saindo`, `vertigem`, `app`,
 `celular`, `checklist`, `revelacao`, `zoomDigital`, plus `corteZoom`). The template does not draw
 them yet: `cenas_edit_data.py` refuses them with the list above.
 
@@ -176,6 +177,25 @@ action and the person, smaller, stays in a corner.
 ```json
 {"tipo": "chroma", "start": 47.97, "end": 52.63, "titulo": "Menos CRM, mais venda",
  "frase": "As horas preenchendo viram tempo vendendo.", "botao": "Quero isso"}
+```
+
+### `orbita` — cards circling the person
+
+When the take shows several things at once (features, results, screens of a product, a portfolio):
+cards orbit on a tilted ring, the back ones pass BEHIND the person and the front ones in front. Unlike
+the other effects the picture stays as it is (the take's framing and zoom too); only the cards and the
+person cut out over them are drawn.
+
+- `cartoes`: 2–10 images of the project (`[{"src": "midia/<file>"}]`), prints and photos work best
+  (they show at 300×210, cropped to fill). Without them, 6 frames of the video itself, cropped around
+  the face.
+- `titulo` (optional): one or two short lines, below the safe-zone line; `voltas` 0.25–3 (0.75): how
+  many turns in the window.
+- The ring's centre follows the person on screen; it reads best on a waist-up or wider take.
+
+```json
+{"tipo": "orbita", "start": 30.5, "end": 33.4, "titulo": "Tudo num lugar só",
+ "cartoes": [{"src": "midia/print-editor.png"}, {"src": "midia/print-legenda.png"}, {"src": "midia/print-trilha.png"}]}
 ```
 
 ## Rules

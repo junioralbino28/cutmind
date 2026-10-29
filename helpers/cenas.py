@@ -31,6 +31,7 @@ ZONA_BOTOES = (930, 880, 1680)  # a coluna de botões do Reels: à direita de x 
 FUNDOS = ("concreto", "parede", "kraft", "lousa", "estudio", "neon")
 FUNDO_PADRAO = {"mural": "fundos/parede", "parede": "fundos/concreto"}  # os que o tipo usa sem pedir
 PAREDE_FOTOS = 14  # os lugares de foto da Parede
+ORBITA_CARTOES = 6  # os cards da Órbita sem `cartoes`: quadros do próprio corte
 PRESENCA_MINIMA = 0.6  # abaixo disso a pessoa sai do quadro boa parte da janela: o efeito não serve
 
 # `obrigatorios`: textos que não podem faltar (nenhum texto tem padrão: campo vazio não desenha
@@ -45,6 +46,7 @@ TIPOS: dict[str, dict] = {
     "parede": {"nome": "Parede de fotos", "obrigatorios": (), "numeros": {"cada": (0.03, 1), "inicio": (0, 5)}},
     "grafico": {"nome": "Gráfico subindo", "obrigatorios": (), "numeros": {"inicio": (0, 5), "passo": (0.03, 1)}},
     "chroma": {"nome": "Site", "obrigatorios": ("titulo",), "numeros": {"escala": (0.45, 0.85), "entrada": (0, 5)}},
+    "orbita": {"nome": "Órbita", "obrigatorios": (), "numeros": {"voltas": (0.25, 3)}},
 }
 # instantes em segundos do corte (como `start`/`end`): têm de cair dentro da janela
 INSTANTES = {"vidro": ("at",), "mural": ("circuloAt",), "parede": ("pequenoAt", "giganteAt")}
@@ -142,8 +144,23 @@ def _c_chroma(c) -> list[str]:
     return erros
 
 
+def _c_orbita(c) -> list[str]:
+    erros = []
+    tt = c.get("titulo")
+    if tt is not None and not (isinstance(tt, str) or _textos(tt, 2)):
+        erros.append("`titulo` é um texto ou uma lista de até 2 linhas")
+    cs = c.get("cartoes")
+    if cs is not None:
+        if not isinstance(cs, list) or not 2 <= len(cs) <= 10:
+            erros.append("`cartoes` é uma lista de 2 a 10 itens {src}")
+        else:
+            erros += [f"`cartoes[{i}].src` é `midia/<arquivo do projeto>`" for i, f in enumerate(cs)
+                      if not (isinstance(f, dict) and midia(f.get("src")))]
+    return erros
+
+
 _CONFERE = {"fundo": lambda c: _fundo(c, True), "vidro": lambda c: [], "capa": _c_capa, "mural": _c_mural,
-            "parede": _c_parede, "grafico": _c_grafico, "chroma": _c_chroma}
+            "parede": _c_parede, "grafico": _c_grafico, "chroma": _c_chroma, "orbita": _c_orbita}
 
 
 def _instantes(c):
@@ -470,8 +487,9 @@ def _chroma(p: dict, c: dict) -> dict:
             "bloco": {"x": cx, "y": round(cy - min(max(sobe, 0.0), _SITE_SOBE))}}
 
 
+# a Órbita acha o centro do anel na pessoa já na tela (o template, pelo cameraAt): aqui, só a altura dele
 _LAYOUTS = {"fundo": lambda p, c: {}, "vidro": _vidro, "capa": _capa, "mural": _mural, "parede": _parede,
-            "grafico": _grafico, "chroma": _chroma}
+            "grafico": _grafico, "chroma": _chroma, "orbita": lambda p, c: {"raio": {"ry": 190}}}
 
 
 def layout(tipo: str, p: dict, c: dict) -> dict:

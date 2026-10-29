@@ -180,8 +180,8 @@ def test_validar_diz_o_campo_que_falta():
 
 
 def test_validar_lista_os_tipos_que_existem():
-    (msg,) = cenas.validar({"tipo": "orbita", "start": 1, "end": 3, "titulo": "x"})
-    assert "orbita" in msg and all(t in msg for t in ("fundo", "vidro", "capa", "mural", "parede", "grafico", "chroma"))
+    (msg,) = cenas.validar({"tipo": "rabisco", "start": 1, "end": 3, "frase": "x"})
+    assert "rabisco" in msg and all(t in msg for t in ("fundo", "vidro", "capa", "mural", "parede", "grafico", "chroma", "orbita"))
 
 
 def test_validar_confere_faixas_listas_janela_e_caminhos():

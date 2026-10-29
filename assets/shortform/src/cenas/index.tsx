@@ -15,6 +15,7 @@ import {VIDEO_LAG} from '../videoLag';
 import {Cena, CenaProps, H, W} from './comum';
 import {FundoNovo} from './fundo';
 import {Capa, Chroma, Grafico, Mural, Parede} from './fundoNovo';
+import {Orbita} from './orbita';
 import {Vidro} from './vidro';
 
 // the types helpers/cenas.py validates (TIPOS there; tests/test_cenas_contrato.py keeps both equal)
@@ -26,6 +27,7 @@ export const TIPOS: Record<string, React.FC<CenaProps>> = {
   parede: Parede,
   grafico: Grafico,
   chroma: Chroma,
+  orbita: Orbita,
 };
 
 export const janelaDaCena = (c: Cena, fps: number): [number, number] => [

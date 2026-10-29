@@ -180,8 +180,36 @@ def _quadros(public: Path, pasta: Path, c: dict, usados: set[str]) -> list[dict]
     return fotos
 
 
+CARTAO = (600, 420)  # os cards da Órbita: o template mostra 300x210, o dobro fica nítido
+
+
+def _cartoes(public: Path, pasta: Path, c: dict, usados: set[str]) -> list[dict]:
+    """Os cards da Órbita sem `cartoes`: quadros do próprio corte, um recorte deitado em volta do rosto."""
+    cut = public / "cut.mp4"
+    info = _sonda(cut) if cut.is_file() else None
+    if not info:
+        return []
+    dur, wv, hv = info
+    w = wv - wv % 2
+    h = min(hv, round(w * CARTAO[1] / CARTAO[0]) // 2 * 2)
+    cards = []
+    for t in _tempos(dur, c["start"], c["end"], cenas.ORBITA_CARTOES):
+        nome = f"cartao-{round(t * 1000)}.jpg"
+        alvo = pasta / nome
+        if not alvo.is_file() or alvo.stat().st_mtime < cut.stat().st_mtime:
+            _, fy = _rosto(public, t)
+            y = min(hv - h, max(0, round(fy * hv - h * 0.4)))
+            subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-y", "-ss", f"{t:.3f}", "-i", str(cut), "-frames:v", "1",
+                            "-vf", f"crop={w}:{h}:0:{y},scale={CARTAO[0]}:{CARTAO[1]}", "-q:v", "3", str(alvo)])
+        if alvo.is_file():
+            usados.add(nome)
+            cards.append({"src": f"{PASTA}/{nome}"})
+    return cards
+
+
 def _arquivos(edit: Path, public: Path, pasta: Path, c: dict, usados: set[str], faltando: list[str]) -> dict:
-    """O que o template carrega de public/: o fundo (Fundo, Mural e Parede) e as fotos (Parede)."""
+    """O que o template carrega de public/: o fundo (Fundo, Mural e Parede), as fotos (Parede) e os cards
+    (Órbita)."""
     out: dict = {}
     v = (c.get("fundo") if c["tipo"] in ("fundo", "mural", "parede") else None) or cenas.FUNDO_PADRAO.get(c["tipo"])
     if v:
@@ -209,6 +237,21 @@ def _arquivos(edit: Path, public: Path, pasta: Path, c: dict, usados: set[str], 
         else:
             fotos = _quadros(public, pasta, c, usados)
         out["fotos"] = fotos
+    if c["tipo"] == "orbita":
+        if c.get("cartoes"):
+            cards = []
+            for f in c["cartoes"]:
+                origem = edit / f["src"]
+                if not origem.is_file():
+                    faltando.append(f["src"])
+                    continue
+                nome = _nome("orbita", f["src"])
+                _copia(origem, pasta / nome)
+                usados.add(nome)
+                cards.append({"src": f"{PASTA}/{nome}"})
+        else:
+            cards = _cartoes(public, pasta, c, usados)
+        out["cartoes"] = cards
     return out
 
 

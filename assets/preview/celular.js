@@ -5923,7 +5923,7 @@ const CENA_BLOCO = {
   rabisco: (c, t) => ({ x: 540, y: 184, w: largo(t.frase, 48), h: 124 }),
   checklist: (c) => ({ x: 540, y: (c.top ?? 108) + 234, w: 908, h: 468 }),
   celular: () => ({ x: 778, y: 795, w: 452, h: 930 }),
-  orbita: (c, t) => ({ x: 540, y: 252, w: largo(maisLonga(t.titulo), 46), h: 104 * linhasDe(t.titulo).length }),
+  orbita: (c, t) => { const h = 104 * linhasDe(t.titulo).length; return { x: 540, y: 270 + h / 2, w: largo(maisLonga(t.titulo), 46), h }; },
   saindo: (c, t) => ({ x: 540, y: 213, w: largo(t.titulo, 66), h: 150 }),
   vertigem: (c, t) => ({ x: 540, y: 226, w: largo(t.pergunta, 70), h: 132 }),
   hook: (c) => {
