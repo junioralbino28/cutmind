@@ -248,6 +248,57 @@ def test_erro_inesperado_no_meio_da_instalacao_volta_os_arquivos(tmp_path, githu
     assert instalador["sincronizou"] == [s] and vs.ler(s)["versao"] == "0.2.0"
 
 
+QUEBRA_COM_NOVO = QUEBRA.replace("print('instalando...')",
+                                  "(dst / 'helpers' / 'novo.py').write_bytes(b'da versao nova'); print('instalando...')")
+
+
+def test_falha_com_o_atualizador_parado_em_helpers_volta_os_arquivos(tmp_path, github, instalador, monkeypatch):
+    """O atualizador roda com a pasta atual em helpers/ (lancar_solto). No Windows a pasta atual de um processo
+    vivo não pode ser apagada: a volta antiga (rmtree calado + copytree) quebrava com FileExistsError e deixava a
+    skill sem os helpers e o editor desligado (achado pelo e2e em 29/10)."""
+    pub, _ = github
+    s, casa = _skill(tmp_path), tmp_path / "casa"
+    _publicar(pub, "0.3.0", {"SKILL.md": "novo", "helpers/x.py": "2"})
+    instalador["script"] = QUEBRA_COM_NOVO
+    monkeypatch.chdir(s / "helpers")
+    with pytest.raises(at.ErroAtualizar, match="uv sync caiu"):
+        at.aplicar(s, casa, None, lambda *a, **k: None)
+    assert (s / "helpers" / "x.py").read_bytes() == b"1" and (s / "SKILL.md").read_bytes() == b"velho"
+    assert not (s / "helpers" / "novo.py").exists() and vs.ler(s)["versao"] == "0.2.0"
+
+
+def _falha_com_editor_fechado(tmp_path, github, instalador, monkeypatch):
+    pub, _ = github
+    s, casa = _skill(tmp_path), tmp_path / "casa"
+    _publicar(pub, "0.3.0", {"SKILL.md": "novo", "helpers/x.py": "2"})      # helpers/: pede reinício
+    instalador["script"] = QUEBRA
+    monkeypatch.setattr(at, "esperar_sair", lambda pid: None)
+    monkeypatch.setattr(at, "_vivo", lambda pid: False)
+    return s, casa, {"pid": 4242, "argv": ["x.py", "--port", "1"], "python": sys.executable}
+
+
+def test_volta_que_tambem_falha_conta_e_religa_o_editor(tmp_path, github, instalador, monkeypatch):
+    """Se nem a volta der certo, o erro não escapa solto: o editor fechado liga de novo e o andamento diz o que
+    houve e o que fazer."""
+    s, casa, servidor = _falha_com_editor_fechado(tmp_path, github, instalador, monkeypatch)
+    monkeypatch.setattr(at, "voltar", lambda skill, origem: (_ for _ in ()).throw(PermissionError("arquivo preso")))
+    religados, etapas = [], []
+    monkeypatch.setattr(at, "religar", lambda srv: religados.append(srv) or 1)
+    with pytest.raises(at.ErroAtualizar, match="não deu para voltar"):
+        at.aplicar(s, casa, servidor, lambda etapa, texto, fracao, **x: etapas.append((etapa, x)))
+    assert religados == [servidor]
+    assert etapas[-1][0] == "falhou" and "arquivo preso" in etapas[-1][1]["erro"]
+
+
+def test_editor_que_nao_volta_depois_da_falha_ainda_marca_falhou(tmp_path, github, instalador, monkeypatch):
+    s, casa, servidor = _falha_com_editor_fechado(tmp_path, github, instalador, monkeypatch)
+    monkeypatch.setattr(at, "religar", lambda srv: (_ for _ in ()).throw(at.ErroAtualizar("o editor não voltou")))
+    etapas = []
+    with pytest.raises(at.ErroAtualizar, match="uv sync caiu"):
+        at.aplicar(s, casa, servidor, lambda etapa, texto, fracao, **x: etapas.append((etapa, x)))
+    assert etapas[-1][0] == "falhou" and vs.ler(s)["versao"] == "0.2.0"
+
+
 # ---- religar (integração: um servidor do editor de verdade)
 
 def _matar_arvore(pid: int) -> None:

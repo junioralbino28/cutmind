@@ -216,15 +216,27 @@ def guardar(skill: Path, destino: Path) -> None:
             shutil.copy2(p, destino / entrada)
 
 
+def _esvaziar(pasta: Path) -> None:
+    """Tira tudo de dentro e deixa a pasta: no Windows a pasta atual de um processo vivo não pode ser apagada, e
+    este atualizador roda com a pasta atual em helpers/ (o rmtree calado dela deixava a pasta e o copytree caía)."""
+    for p in Path(pasta).iterdir():
+        if p.is_dir() and not p.is_symlink():
+            shutil.rmtree(p)
+        else:
+            p.unlink()
+
+
 def voltar(skill: Path, origem: Path) -> None:
     for entrada in (*vs.PAYLOAD, vs.ARQ):
         alvo, p = Path(skill) / entrada, Path(origem) / entrada
-        if alvo.is_dir():
-            shutil.rmtree(alvo, ignore_errors=True)
+        if alvo.is_dir() and p.is_dir():
+            _esvaziar(alvo)
+        elif alvo.is_dir():
+            shutil.rmtree(alvo)
         elif alvo.exists():
             alvo.unlink()
         if p.is_dir():
-            shutil.copytree(p, alvo)
+            shutil.copytree(p, alvo, dirs_exist_ok=True)
         elif p.is_file():
             shutil.copy2(p, alvo)
     sincronizar(skill)
@@ -324,7 +336,11 @@ def _trocar(skill: Path, pasta: Path, raiz: Path, versao: str, servidor: dict | 
         raise
     except Exception as e:  # noqa: BLE001 (o editor fechado não pode ficar desligado nem pela metade)
         if guardou:
-            voltar(skill, pasta / "anterior")
+            try:
+                voltar(skill, pasta / "anterior")
+            except Exception as e2:  # noqa: BLE001 (sai como ErroAtualizar: o editor religa e o andamento conta)
+                raise ErroAtualizar(f"a atualização parou no meio ({e}) e não deu para voltar à versão de antes "
+                                    f"({e2}); rode o comando de instalação do README") from e2
         raise ErroAtualizar(f"a atualização parou no meio ({e}); o CutMind continua na versão de antes") from e
 
 
@@ -352,7 +368,10 @@ def aplicar(skill: Path = SKILL, c: Path | None = None, servidor: dict | None = 
         _trocar(skill, pasta, raiz, rem["versao"], servidor if reinicio else None, andamento)
     except ErroAtualizar as e:
         if reinicio and not _vivo(int(servidor["pid"])):
-            religar(servidor)
+            try:
+                religar(servidor)
+            except Exception as e2:  # noqa: BLE001 (o erro que importa é o da atualização; este fica no log)
+                print(f"o editor não religou: {e2}", file=sys.stderr)
         andamento("falhou", str(e), 1.0, erro=str(e))
         raise
     finally:

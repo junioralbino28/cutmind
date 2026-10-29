@@ -305,6 +305,7 @@
  "o pacote tem um link ou arquivo especial: {name}": "the package has a link or special file: {name}",
  "o editor não voltou depois da atualização: {detalhe}": "the editor didn't come back after the update: {detalhe}",
  "a atualização parou no meio ({e}); o CutMind continua na versão de antes": "the update stopped halfway ({e}); CutMind stays on the previous version",
+ "a atualização parou no meio ({e}) e não deu para voltar à versão de antes ({e2}); rode o comando de instalação do README": "the update stopped halfway ({e}) and couldn't go back to the previous version ({e2}); run the install command from the README",
  "Pedaço grande demais.": "Chunk too large.",
  "O envio começa do início.": "The upload starts from the beginning.",
  "Esse envio não existe mais. Envie o arquivo de novo.": "That upload no longer exists. Send the file again.",
