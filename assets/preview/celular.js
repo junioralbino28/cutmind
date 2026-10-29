@@ -2444,6 +2444,7 @@ function renderToolbar() {
     tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
     tool(ctx, 'filtros', t('Filtros'), { icon: ICON.filtro });
     tool(ctx, 'transicoes', t('Transições'), { icon: ICON.transicao });
+    tool(ctx, 'voz', t('Voz'), { icon: ICON.voz, disabled: !hasVideo });
     tool(ctx, 'fundo', t('Fundo'), { icon: ICON.fundo, disabled: !fundoPode() });
     return;
   }
@@ -2571,6 +2572,7 @@ document.addEventListener('click', (e) => {
     case 'importar': S.importMenu = true; S.audioMenu = false; S.fxMenu = false; S.textMenu = false; renderToolbar(); break;
     case 'efeitos': S.fxMenu = true; S.audioMenu = false; S.importMenu = false; S.textMenu = false; renderToolbar(); break;
     case 'filtros': S.fxMenu = false; renderToolbar(); openFx('filtro'); break;
+    case 'voz': S.fxMenu = false; renderToolbar(); openVfx(); break;
     case 'transicoes': S.fxMenu = false; renderToolbar(); openFx('transicao'); break;
     case 'fundo': { // do menu Efeitos (a tomada da agulha) ou do Fundo escolhido na faixa
       const c = S.cenaSel >= 0 ? S.cenasDraft[S.cenaSel] : null;
@@ -5113,7 +5115,7 @@ const ITEM_AVISO = { imagem: () => t('A imagem'), texto: () => t('O texto'), aud
   insert: () => t('A imagem do vídeo final'), split: () => t('A tela dividida'),
   splitvideo: () => t('O vídeo da tela dividida'), word: () => t('A palavra em destaque'),
   behind: () => t('O destaque atrás da pessoa'), numero: () => t('O número'), cena: () => t('O efeito do vídeo final'),
-  grafico: () => t('O gráfico do vídeo final') };
+  grafico: () => t('O gráfico do vídeo final'), voz: () => t('O efeito de voz') };
 const numLocal = (v) => String(v).replace('.', IDIOMA === 'pt' ? ',' : '.');
 function textoDoAviso(a) {
   if (a.tipo === 'ponta_na_fala') {
@@ -8855,6 +8857,96 @@ $('sfxLista').addEventListener('click', (e) => {
 });
 ['play', 'pause'].forEach((ev) => PREV.addEventListener(ev, () => { if (sfxAberto()) renderSfx(); }));
 
+/* ---------- efeitos de voz (voz_efeitos.py): gás hélio, eco, robô, grave, rádio ----------
+ * Na tomada debaixo da agulha, como o filtro; o bloco da faixa de efeitos depois anda e estica
+ * até o trecho exato da fala. Ouvir pede a prévia ao servidor (o trecho com o efeito, meio
+ * segundo antes e depois); Usar grava o item `voz` no efeitos.json, um por vez. O vídeo do
+ * editor toca a voz como gravada: o efeito entra no vídeo final (mixar_final.py). */
+const VOZ_EFEITOS = {
+  helio: [t('Gás hélio'), t('voz de desenho, aguda')], eco: [t('Eco'), t('como num salão vazio')],
+  robo: [t('Robô'), t('voz metálica, sem tom')], grave: [t('Grave'), t('voz de monstro, lenta')],
+  radio: [t('Rádio'), t('voz de telefone ou rádio antigo')],
+};
+let vfxSel = null;
+const vfxAberto = () => $('vfxSheet').classList.contains('open');
+function vfxJanela() {
+  const tk = tomadaEm(draftToRendered(S.t));
+  return tk ? { inicio: +tk.out.toFixed(3), duracao: +tk.dur.toFixed(3) } : null;
+}
+function openVfx() {
+  video.pause();
+  vfxSel = null;
+  showSheet($('vfxSheet'), true);
+  renderVfx();
+}
+function closeVfx() {
+  PREV.pause();
+  vfxSel = null;
+  showSheet($('vfxSheet'), false);
+}
+function renderVfx() {
+  const box = $('vfxLista');
+  box.innerHTML = '';
+  el('p', 'sheet-hint', box).textContent = t('Vale para a tomada debaixo da agulha; depois, puxe as pontas do bloco até o trecho exato. O efeito entra no vídeo final.');
+  const tocando = !PREV.paused && PREV.dataset.id;
+  for (const [id, [nome, uso]] of Object.entries(VOZ_EFEITOS)) {
+    const row = el('div', `tr-row${vfxSel === id ? ' on' : ''}`, box);
+    row.dataset.id = id;
+    const play = el('button', 'tr-play', row);
+    play.type = 'button';
+    play.dataset.act = 'ouvir';
+    play.innerHTML = tocando === `voz:${id}` ? ICON.pause : ICON.play;
+    play.setAttribute('aria-label', `${tocando === `voz:${id}` ? t('Parar') : t('Ouvir')} ${nome}`);
+    const txt = el('div', 'tr-txt', row);
+    el('b', null, txt).textContent = nome;
+    el('span', null, txt).textContent = uso;
+    if (vfxSel === id) {
+      const usar = el('button', 'tb-btn primary tr-usar', row);
+      usar.type = 'button';
+      usar.dataset.act = 'usar';
+      usar.textContent = t('Usar');
+    }
+  }
+}
+function ouvirVfx(id) {
+  if (vfxSel === id && !PREV.paused && PREV.dataset.id === `voz:${id}`) { PREV.pause(); return; }
+  const j = vfxJanela();
+  if (!j) return;
+  vfxSel = id;
+  PREV.src = `/gen/voz-previa?efeito=${encodeURIComponent(id)}&inicio=${j.inicio}&duracao=${j.duracao}`;
+  PREV.dataset.id = `voz:${id}`;
+  PREV.muted = S.mudoUsuario;
+  PREV.play().catch(() => {});
+  renderVfx();
+}
+function usarVfx(id) {
+  const j = vfxJanela();
+  if (!j) return;
+  remember();
+  const novo = { id: novoFxId('v'), tipo: 'voz', efeito: id, ...j };
+  S.efeitos.itens = S.efeitos.itens.filter((x) => x.tipo !== 'voz' || !fxCruzam(x, novo)); // um por vez
+  S.efeitos.itens.push(novo);
+  S.fxSel = novo.id;
+  S.layerSel = null;
+  S.selected = -1;
+  closeVfx();
+  renderTimeline(); renderToolbar(); refreshHeader();
+  toast(t('"{nome}" entrou na tomada: puxe as pontas até o trecho da fala', { nome: VOZ_EFEITOS[id][0] }), 2800);
+}
+$('vfxClose').innerHTML = ICON.fechar;
+$('vfxClose').addEventListener('click', closeVfx);
+$('vfxLista').addEventListener('click', (e) => {
+  const row = e.target.closest('.tr-row');
+  if (!row) return;
+  const btn = e.target.closest('[data-act]');
+  if (btn && btn.dataset.act === 'usar') usarVfx(row.dataset.id);
+  else ouvirVfx(row.dataset.id);
+});
+PREV.addEventListener('error', () => {
+  if (vfxAberto() && (PREV.dataset.id || '').startsWith('voz:')) toast(t('A prévia da voz não saiu agora'), 2600);
+});
+['play', 'pause'].forEach((ev) => PREV.addEventListener(ev, () => { if (vfxAberto()) renderVfx(); }));
+
 /* ---------- efeitos: filtros e transições da biblioteca (helpers/efeitos.py) ----------
  * O filtro entra na tomada debaixo da agulha; a transição, no corte mais perto dela,
  * centrada nele. Tudo fica em efeitos.json, no relógio do cut.mp4: o Salvar leva
@@ -9012,7 +9104,7 @@ function fxDesenhar(tempo, exato) {
   if (FX.pararEm != null && !video.paused && t >= FX.pararEm) { video.pause(); FX.pararEm = null; }
   let tr = null, fi = null, aj = null;
   for (const it of S.fxTeste ? [...S.efeitos.itens, S.fxTeste] : S.efeitos.itens) { // o de teste vale por último
-    if (!fxDentro(it, t)) continue;
+    if (it.tipo === 'voz' || !fxDentro(it, t)) continue; // a voz é só som (voz_efeitos.py)
     if (it.tipo === 'transicao') tr = it; else if (it.tipo === 'ajuste') aj = it; else fi = it;
   }
   FX.completo = !tr && !fi && !aj; // o desenho tem tudo o que o quadro pede (os testes esperam por isto)
@@ -9084,14 +9176,15 @@ function renderFxTrack(lane, ajustes) {
     if ((it.tipo === 'ajuste') !== ajustes) continue;
     const [a0, b0] = fxJanela(it);
     const a = renderedToDraft(Math.max(0, a0)), b = renderedToDraft(b0);
-    const cls = { filtro: 'fi', transicao: 'tr', ajuste: 'aj' }[it.tipo];
+    const cls = { filtro: 'fi', transicao: 'tr', ajuste: 'aj', voz: 'vz' }[it.tipo];
     const chip = el('div', `chip fx ${cls}${it.id === S.fxSel ? ' sel' : ''}`, lane);
     chip.dataset.id = it.id;
     chip.style.left = `${a * S.pps}px`;
     chip.style.width = `${Math.max((b - a) * S.pps, 12)}px`;
-    el('span', 'l-ico', chip).innerHTML = { filtro: ICON.filtro, transicao: ICON.transicao, ajuste: ICON.ajustar }[it.tipo];
-    el('span', 'l-name', chip).textContent = it.tipo === 'ajuste' ? t('Ajuste') : S.fxNomes[it.pacote] || it.pacote;
-    if (it.tipo === 'filtro' && it.id === S.fxSel && S.view === 'corte') { // o filtro estica além da tomada
+    el('span', 'l-ico', chip).innerHTML = { filtro: ICON.filtro, transicao: ICON.transicao, ajuste: ICON.ajustar, voz: ICON.voz }[it.tipo];
+    el('span', 'l-name', chip).textContent = it.tipo === 'ajuste' ? t('Ajuste')
+      : it.tipo === 'voz' ? `${t('Voz')}: ${(VOZ_EFEITOS[it.efeito] || [it.efeito])[0]}` : S.fxNomes[it.pacote] || it.pacote;
+    if (ESTICA.has(it.tipo) && it.id === S.fxSel && S.view === 'corte') { // o filtro e a voz esticam além da tomada
       el('div', 'lh l', chip).dataset.side = 'l';
       el('div', 'lh r', chip).dataset.side = 'r';
     }
@@ -9112,11 +9205,12 @@ function tapFx(id) {
  * atravessa tomadas. Continua um filtro por vez: o vizinho é o limite. As pontas grudam no começo, no fim e
  * nos cortes entre tomadas (sem isso, esticar até o fim pedia acertar o pixel). */
 const MIN_FX = 0.2;
+const ESTICA = new Set(['filtro', 'voz']); // os que andam e esticam (o efeito de voz também: um trecho da fala)
 function fxLimites(id) {
   const it = fxItem(id), fim = S.videoDuration || totalT();
   let lo = 0, hi = fim;
   for (const x of S.efeitos.itens) {
-    if (x.tipo !== 'filtro' || x.id === id) continue;
+    if (x.tipo !== it.tipo || x.id === id) continue;
     const [a, b] = fxJanela(x);
     if (b <= it.inicio + FX_ENCOSTA) lo = Math.max(lo, b);
     else if (a >= it.inicio + it.duracao - FX_ENCOSTA) hi = Math.min(hi, a);
@@ -9136,7 +9230,7 @@ function fxGruda(r) {
 }
 function startFxDrag(x, kind, side) {
   const it = fxItem(S.fxSel);
-  if (!it || it.tipo !== 'filtro' || S.view !== 'corte') return false;
+  if (!it || !ESTICA.has(it.tipo) || S.view !== 'corte') return false;
   G.mode = 'fx';
   G.fx = { id: it.id, kind, side, x0: x, it0: { ...it }, lim: fxLimites(it.id), before: snap() };
   video.pause();
@@ -9147,7 +9241,7 @@ function startFxDrag(x, kind, side) {
 function holdFx(id, x) {
   if (G.mode !== 'pan' || G.moved) return;
   const it = fxItem(id);
-  if (!it || it.tipo !== 'filtro') return;
+  if (!it || !ESTICA.has(it.tipo)) return;
   const before = snap();
   S.fxSel = id; S.layerSel = null; S.selected = -1;
   if (navigator.vibrate) navigator.vibrate(12);

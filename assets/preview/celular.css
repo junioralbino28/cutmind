@@ -766,6 +766,8 @@ html:not(.desk) .pronto-btn .pronto-n { margin-left: 3px; padding: 0 4px; font-s
 .chip.fx.sel { overflow: visible; outline: 2px solid #fff; outline-offset: -1px; z-index: 3; }
 .chip.fx.aj { background: #18261d; box-shadow: inset 2px 0 0 #3fbf74; }
 .chip.fx.aj .l-ico { color: #3fbf74; }
+.chip.fx.vz { background: #241a2c; box-shadow: inset 2px 0 0 #b07cf0; }
+.chip.fx.vz .l-ico { color: #b07cf0; }
 .fx-ico { color: var(--brand); }
 .tr-play.fx-ico svg { width: 20px; height: 20px; fill: none; } /* o ícone é de traço; o play das trilhas é cheio */
 .tr-row.on .tr-play.fx-ico { background: var(--surface3); color: var(--brand); }

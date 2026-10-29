@@ -364,7 +364,7 @@ def extract_segment(
     elif keep_resolution:
         scale = ""  # keep native resolution (longform)
     else:
-        scale = "scale=-2:1920" if portrait else "scale=1920:-2"
+        scale = f"scale=-2:{LADO_MAIOR}" if portrait else f"scale={LADO_MAIOR}:-2"
 
     vf_parts: list[str] = []
     if curva:
@@ -1304,6 +1304,11 @@ def aplicar_volume_das_tomadas(path: Path, janelas: list[tuple[float, float, flo
 
 # -------- Main ---------------------------------------------------------------
 
+# O lado maior do corte vertical (ou o lado maior do deitado) quando a resolução não é a da gravação.
+# O --lado-maior (corte_alta.py: 3840, para o zoom do Remotion ficar nítido) muda só este número e NÃO
+# entra no `render` do edl.json: o "como antes" do editor nunca refaz o corte normal em 4K.
+LADO_MAIOR = 1920
+
 # As opções que mudam o corte. O edl.json guarda com quais o render rodou (`render`), para o editor
 # refazer o corte do mesmo jeito sem o agente (--como-antes).
 OPCOES = ("keep_resolution", "voice_master", "no_jcut", "jcut_lead", "jcut_tail_trim", "no_loudnorm")
@@ -1385,6 +1390,13 @@ def main() -> None:
              'disabled by EDL field "jcut": false.',
     )
     ap.add_argument(
+        "--lado-maior",
+        type=int,
+        default=None,
+        help="Short-form: the long side of the output in px (default 1920). corte_alta.py uses 3840 for a "
+             "sharp source under the Remotion zoom; it is not saved as a render option.",
+    )
+    ap.add_argument(
         "--como-antes",
         action="store_true",
         help='The options of the last render (EDL field "render"): how the editor re-renders the cut '
@@ -1404,6 +1416,9 @@ def main() -> None:
              f"{JCUT_TAIL_TRIM_FRAMES}). Capped by the silence actually there.",
     )
     args = ap.parse_args()
+    if args.lado_maior:
+        global LADO_MAIOR
+        LADO_MAIOR = int(args.lado_maior)
 
     edl_path = args.edl.resolve()
     if not edl_path.exists():

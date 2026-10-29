@@ -67,6 +67,8 @@ def receitas(efeitos: dict, fps: float, total: int) -> list[dict]:
     {n, tr?: {pacote, tempo_ms, duracao_ms, a, b}, fi?: {pacote, intensidade}, aj?: {ajustes}}."""
     por_n: dict[int, dict] = {}
     for it in efeitos["itens"]:
+        if it["tipo"] == "voz":  # só o som (voz_efeitos.py, no mixar_final): nada a desenhar
+            continue
         ini, fim = ef.janela(it)
         for n in quadros(ini, fim, fps, total):
             r = por_n.setdefault(n, {"n": n})
@@ -188,13 +190,16 @@ def montar_public(pasta: Path, ids: set[str], pac: pk.Pacotes) -> None:
     (destino / "quadros").mkdir()
 
 
-def aplicar(edit: Path, remotion: Path, pac: pk.Pacotes | None = None, bloco: int = BLOCO) -> dict:
-    corte = edit / "cut.mp4"
+def aplicar(edit: Path, remotion: Path, pac: pk.Pacotes | None = None, bloco: int = BLOCO,
+            corte: Path | None = None, saida: Path | None = None) -> dict:
+    """Os efeitos do editor no corte. `corte`/`saida`: outro corte com os mesmos quadros e onde gravar
+    (o corte_alta.py passa o cut-alta.mp4, desenhado na resolução dele)."""
+    corte = Path(corte) if corte else edit / "cut.mp4"
     efeitos = ef.load(edit / "efeitos.json")
-    saida = remotion / "public" / "cut.mp4"
+    saida = Path(saida) if saida else remotion / "public" / "cut.mp4"
     saida.parent.mkdir(parents=True, exist_ok=True)
     tmp_saida = saida.with_name(f".cut.{os.getpid()}.mp4")
-    if not efeitos["itens"]:
+    if not any(it["tipo"] != "voz" for it in efeitos["itens"]):  # nada de imagem: o corte vai como está
         shutil.copyfile(corte, tmp_saida)
         tmp_saida.replace(saida)  # troca o arquivo: nunca grava através de um link
         return {"quadros": 0, "efeitos": 0}

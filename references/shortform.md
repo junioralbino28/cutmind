@@ -232,6 +232,18 @@ lines with the **Zona segura** button under the player):
 - Checking: open the editor, turn on **Zona segura** and scrub the Final view;
   nothing readable may touch the red or yellow bands.
 
+## Corte nítido para zoom (`cut-alta.mp4`)
+
+The take's framing (`enquadre`) and the camera zoom enlarge the base picture in Remotion. Over the
+1080 `cut.mp4`, 1.7× goes soft. When the recording is 2× the output or more (4K for 1080x1920) and
+some zoom passes 1.25×, `corte_alta.py <edit>` renders the same EDL at 3840 (`render.py
+--lado-maior`, in `<edit>/.alta/`, so `clips_graded/` and `edl.json` stay the cut's), checks it has
+the cut's frames (same count, PSNR ≥ 30 dB downscaled), draws the editor's filters on it and sets
+`corteAlta: true`: the template's base picture then reads `public/cut-alta.mp4`. Mattes, scenes and
+captions keep using `cut.mp4`. `gerar.py` runs it before every render; without zoom or a 4K source it
+removes the file and sets `corteAlta: false`. Measured on the Reels 1 (enquadre 1.84×): same 1058
+frames, PSNR 48 dB, face detail (Laplacian variance) 3.2× higher.
+
 ## Headline styles — always two lines
 
 Four looks via `hook.style`, picked by the user on the Estilo panel: **`outline`**
@@ -766,6 +778,19 @@ exposicao, temperatura, matiz, realces, sombras, vinheta, each −100…100) cov
 take like a filter, has no package (it is a shader inside `motor.js`), and one take
 holds one. The editor's Salvar writes it; the Baixar draws it (`gerar.py`).
 
+A `voz` item changes only the SOUND of a span of speech: `{"tipo": "voz", "efeito": "helio" |
+"eco" | "robo" | "grave" | "radio", "inicio", "duracao"}` (editor: **Efeitos → Voz**, on the take
+under the needle, then the block's ends are dragged to the exact words; one at a time).
+`mixar_final.py` uses the voice from `voz_efeitos.py` instead of the cut's audio: outside the spans
+it is the cut's sound sample for sample; inside, the span goes through ffmpeg (`rubberband` for the
+pitch when the build has it, `asetrate`+`atempo` otherwise) and is ALIGNED back to the original by
+its energy envelope — the pitch shift moves the sound 10–60 ms and the amount depends on the ffmpeg
+build, so it is measured on every span, never a fixed number (the Reels 1 helium was 11 ms early).
+20 ms crossfades at the edges; the echo's tail rings past the end, as an echo does. Measured on
+synthetic syllables: every onset within 5 ms (rubberband) / 10 ms (fallback). To hear one before
+writing it: `voz_efeitos.py <edit> --previa helio <inicio> <duracao> -o x.wav`. `efeitos_render.py`
+ignores `voz` items (nothing to draw).
+
 ```bash
 uv run python -X utf8 helpers/efeitos_render.py <edit> [--remotion <edit>/remotion]
 ```
@@ -977,7 +1002,7 @@ skill prompt is resent every turn.
 
 ## Helpers de Fase 2/3
 
-- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte, ONNX Runtime; `--motor torch` and resnet50 need `uv sync --extra matting`) · **`cenas_edit_data.py`** (prepares `cenas[]`: cut-out, measurement, `layout`, backgrounds; `references/cenas.md`) · **`efeitos_sonoros.py`** (the kit's sound effects: `listar`, `usar <edit> <id>` → `midia/sfx-<id>.mp3`; `references/efeitos-sonoros.md`) · **`graficos.py`** (checks `graficos[]` before the render: fields, beats in the window, icons, images in `public/`, an older template; `references/graficos.md`) · **`render_janelas.py`** (re-renders only some windows and splices them into `out/render.mp4`; then `mixar_final.py`) · **`atualizar_template.py`** (a project scaffolded with an older kit gets this kit's template code; `public/` and `CustomGraphics.tsx` stay) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`pacotes.py`** (kit library: `listar --tipo trilha`, `camada <edit> <id>`, `abrir <id>`) · **`efeitos_render.py`** (filters and transitions from the editor into `public/cut.mp4`) · **`velocidade_final.py`** (the editor's speed spans on the finished video → `final-entrega.mp4`) · **`legenda_tempos.py`** (caption pieces the user dragged in time → `captions.json`) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental).
+- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte, ONNX Runtime; `--motor torch` and resnet50 need `uv sync --extra matting`) · **`cenas_edit_data.py`** (prepares `cenas[]`: cut-out, measurement, `layout`, backgrounds; `references/cenas.md`) · **`voz_efeitos.py`** (the `voz` items of `efeitos.json`: helium, echo, robot, deep, radio; `mixar_final.py` calls it; `--previa` to hear one) · **`corte_alta.py`** (4K cut under the Remotion zoom, `cut-alta.mp4`; `gerar.py` calls it) · **`efeitos_sonoros.py`** (the kit's sound effects: `listar`, `usar <edit> <id>` → `midia/sfx-<id>.mp3`; `references/efeitos-sonoros.md`) · **`graficos.py`** (checks `graficos[]` before the render: fields, beats in the window, icons, images in `public/`, an older template; `references/graficos.md`) · **`render_janelas.py`** (re-renders only some windows and splices them into `out/render.mp4`; then `mixar_final.py`) · **`atualizar_template.py`** (a project scaffolded with an older kit gets this kit's template code; `public/` and `CustomGraphics.tsx` stay) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`pacotes.py`** (kit library: `listar --tipo trilha`, `camada <edit> <id>`, `abrir <id>`) · **`efeitos_render.py`** (filters and transitions from the editor into `public/cut.mp4`) · **`velocidade_final.py`** (the editor's speed spans on the finished video → `final-entrega.mp4`) · **`legenda_tempos.py`** (caption pieces the user dragged in time → `captions.json`) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental).
 
 ---
 

@@ -60,6 +60,8 @@ Routes:
   /api/sfx      GET     os efeitos sonoros do kit (efeitos_sonoros.py, assets/sfx/catalogo.json)
   /gen/sfx?id=          o arquivo de um efeito sonoro, para ouvir
   /api/sfx/usar POST {id}: copia o efeito para <edit>/midia/sfx-<id>.mp3 (vira camada de áudio)
+  /gen/voz-previa?efeito=&inicio=&duracao=  o trecho do corte com um efeito de voz, para ouvir antes
+                        de usar (voz_efeitos.py; guardado em <edit>/.voz/)
   /api/melhorar          GET  Melhorar voz (melhorar_voz.py): se o preparo vale para o corte
                          de agora, a escolha, o que está aplicado, o que foi salvo e ainda
                          não aplicado (`pendente`) e as faixas da prévia (servidas em /media/)
@@ -173,6 +175,7 @@ import trabalhos as tb  # mesma pasta deste arquivo
 import gerar as gr  # mesma pasta deste arquivo
 import editdata_aplicar as eda  # mesma pasta deste arquivo
 import efeitos_sonoros as es  # mesma pasta deste arquivo
+import voz_efeitos as vze  # mesma pasta deste arquivo
 import pendente as pend  # mesma pasta deste arquivo
 
 APP_DIR = Path(__file__).resolve().parent.parent / "assets" / "preview"
@@ -1369,6 +1372,8 @@ class Handler(BaseHTTPRequestHandler):
             self._pacotes_lista(query)
         elif path == "/gen/pacote-previa":
             self._pacote_previa(query)
+        elif path == "/gen/voz-previa":
+            self._voz_previa(query)
         elif path == "/api/sfx":
             self._json({"itens": es.catalogo()})
         elif path == "/gen/sfx":
@@ -2043,6 +2048,38 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": str(e)}, 502)
         except pk.PacoteErro as e:
             self._json({"error": str(e)}, 404)
+
+    def _voz_previa(self, query: str) -> None:
+        """O trecho com o efeito de voz (meio segundo antes e depois), guardado por efeito e janela."""
+        q = parse_qs(query)
+        efeito = (q.get("efeito") or [""])[0]
+        if efeito not in vze.EFEITOS:
+            self._json({"error": "efeito de voz desconhecido"}, 404)
+            return
+        try:
+            inicio = float((q.get("inicio") or ["x"])[0])
+            duracao = float((q.get("duracao") or ["x"])[0])
+        except ValueError:
+            inicio = duracao = -1.0
+        if not (0 <= inicio < 6 * 3600 and 0.1 <= duracao <= 120):
+            self._json({"error": "trecho da voz inválido"}, 400)
+            return
+        video = gr._video(self.root)
+        if not video.is_file():
+            self._json({"error": "o projeto ainda não tem o corte"}, 404)
+            return
+        pasta = self.root / vze.PASTA
+        pasta.mkdir(exist_ok=True)
+        alvo = pasta / f"previa-{efeito}-{round(inicio * 1000)}-{round(duracao * 1000)}-{int(video.stat().st_mtime)}.wav"
+        if not alvo.is_file():
+            for velho in pasta.glob("previa-*.wav"):
+                velho.unlink(missing_ok=True)
+            try:
+                vze.previa(self.root, efeito, inicio, duracao, alvo, video)
+            except (subprocess.CalledProcessError, OSError) as e:
+                self._json({"error": f"a prévia da voz não saiu: {e}"}, 500)
+                return
+        self._send_file(alvo)
 
     def _sfx_usar(self) -> None:
         """Um efeito sonoro do kit na pasta das camadas do projeto: o editor o põe na agulha."""

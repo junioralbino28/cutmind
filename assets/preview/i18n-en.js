@@ -811,5 +811,20 @@ window.I18N_EN = {
   "Não deu para carregar os efeitos sonoros agora": "Couldn't load the sound effects right now",
   "Sons feitos pelo próprio CutMind: podem ir até em anúncio. Entram na agulha, como camada de áudio.": "Sounds made by CutMind itself: fine even in ads. They go in at the playhead, as an audio layer.",
   "\"{nome}\" entrou na agulha": "\"{nome}\" is in at the playhead",
-  "O efeito sonoro não entrou: {message}": "The sound effect didn't go in: {message}"
+  "O efeito sonoro não entrou: {message}": "The sound effect didn't go in: {message}",
+  "Efeitos de voz": "Voice effects",
+  "Gás hélio": "Helium",
+  "voz de desenho, aguda": "cartoon voice, high",
+  "Eco": "Echo",
+  "como num salão vazio": "like an empty hall",
+  "Robô": "Robot",
+  "voz metálica, sem tom": "metallic voice, no pitch",
+  "Grave": "Deep",
+  "voz de monstro, lenta": "monster voice, slow",
+  "Rádio": "Radio",
+  "voz de telefone ou rádio antigo": "phone or old radio voice",
+  "Vale para a tomada debaixo da agulha; depois, puxe as pontas do bloco até o trecho exato. O efeito entra no vídeo final.": "It goes on the take under the playhead; then drag the block's ends to the exact part. The effect goes into the final video.",
+  "\"{nome}\" entrou na tomada: puxe as pontas até o trecho da fala": "\"{nome}\" is on the take: drag the ends to the part of the speech",
+  "A prévia da voz não saiu agora": "The voice preview didn't come out right now",
+  "O efeito de voz": "The voice effect"
 };

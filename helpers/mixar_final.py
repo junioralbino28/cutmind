@@ -5,7 +5,7 @@
 
   - imagem: render.mp4 do Remotion, convertido para a faixa limitada e marcado bt709
     (o Remotion sai cheio, 0–255, e marcado como PAL);
-  - voz: o áudio do cut.mp4, atrasado o mesmo tanto que a imagem do Remotion vem atrás
+  - voz: o áudio do cut.mp4 (com os efeitos de voz do efeitos.json, voz_efeitos.py), atrasado o mesmo tanto que a imagem do Remotion vem atrás
     do corte (`videoLag`, ver atraso_da_imagem: 0 quando o vídeo do cut.mp4 começa em
     zero). Fica FORA quando a pessoa desligou o som do vídeo no editor;
   - trilha: a do edit-data (`soundtrack`), quando ligada, com o volume e os fades da receita;
@@ -39,6 +39,7 @@ import sys
 from pathlib import Path
 
 import camadas as cam  # mesma pasta deste arquivo
+import voz_efeitos  # mesma pasta deste arquivo
 from melhorar_audio import MELHORAR
 
 FMT = "aformat=sample_rates=48000:channel_layouts=stereo"
@@ -136,10 +137,13 @@ def montar(edit: Path, render: Path, saida: Path, vd: float, base: str = "cut",
         resumo["voz"] = "render"
     else:
         if not camadas["video"]["mudo"]:
-            k = entrada(edit / (state.get("video") or "cut.mp4"))
+            corte_voz = edit / (state.get("video") or "cut.mp4")
+            # os efeitos de voz do editor (gás hélio, eco...): a voz inteira pronta, do mesmo tamanho
+            com_efeito = voz_efeitos.preparar(edit, corte_voz)
+            k = entrada(com_efeito or corte_voz)
             partes.append(f"[{k}:a]adelay={lag}:all=1,{FMT}[voz]")
             soma.append("[voz]")
-            resumo["voz"] = "corte"
+            resumo["voz"] = "corte com efeito de voz" if com_efeito else "corte"
         st = ed.get("soundtrack") or {}
         if st.get("enabled"):
             k = entrada(public / st["file"])

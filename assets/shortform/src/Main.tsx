@@ -136,6 +136,9 @@ export type EditData = {
   // helpers/cenas_edit_data.py adds `matte`, `pessoa` and `layout` to each one before the render
   cenas?: Cena[];
   soundtrack: {enabled: boolean; file: string; volume: number};
+  // helpers/corte_alta.py: the base picture comes from public/cut-alta.mp4, the cut at the
+  // recording's resolution (4K), so the take's framing and the camera zoom stay sharp
+  corteAlta?: boolean;
 };
 
 const D = editData as unknown as EditData;
@@ -201,7 +204,7 @@ export const cameraAt = (frame: number, width: number, height: number, fps: numb
 };
 
 export const DynamicVideo: React.FC<{src?: string; frameOffset?: number; transparent?: boolean; trimBefore?: number; muted?: boolean; children?: React.ReactNode}> = ({
-  src = 'cut.mp4',
+  src = D.corteAlta ? 'cut-alta.mp4' : 'cut.mp4',
   frameOffset = 0,
   transparent = false,
   trimBefore,

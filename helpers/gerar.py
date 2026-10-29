@@ -34,6 +34,7 @@ import camadas as cam  # mesma pasta deste arquivo
 import camadas_edit_data  # mesma pasta deste arquivo
 import cenas_edit_data  # mesma pasta deste arquivo
 import efeitos as ef  # mesma pasta deste arquivo
+import corte_alta  # mesma pasta deste arquivo
 import efeitos_render  # mesma pasta deste arquivo
 import melhorar_voz as mv  # mesma pasta deste arquivo
 import montagem as mt  # mesma pasta deste arquivo
@@ -239,6 +240,7 @@ def preparar_remotion_fala(edit: Path) -> Path:
     ed = _ler(ed_p)
     ed["_gerar"] = "editor"  # feito pelo Baixar, não pelo agente: a Fase 2 pode montar por cima
     mt._grava_json(ed_p, ed)
+    corte_alta.aplicar(edit, rem, edit_data=ed_p)  # enquadre de 1,25× ou mais sobre gravação 4K: zoom nítido
     return rem
 
 
@@ -261,6 +263,7 @@ def preparar_remotion_fase2(edit: Path) -> Path:
     # o public/cut.mp4 só é refeito quando o corte ou os efeitos mudaram: desenhar os filtros leva minutos
     if _mtime(pub / "cut.mp4") < max(_mtime(_video(edit)), _mtime(edit / "efeitos.json")):
         efeitos_render.aplicar(edit, rem)
+    corte_alta.aplicar(edit, rem, edit_data=pub / "edit-data.json")  # zoom nítido (gravação 4K)
     _refazer_rastreio(edit, pub)
     _refazer_recortes(edit, pub)
     r = cenas_edit_data.aplicar(edit)

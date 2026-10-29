@@ -115,6 +115,7 @@ Run `helpers/efeitos_render.py <edit>` after writing it, then the Phase 2 render
 | `ajustar` | "clareia a tomada 2 e tira um pouco da cor" | `{"tipo": "ajuste", "inicio", "duracao", "ajustes": {...}}` over the take's window in the cut (`tomadas_no_corte`); keys `brilho contraste saturacao exposicao temperatura matiz realces sombras vinheta`, each −100…100, 0 left out; one per take |
 | `filtros` | "põe um P&B no começo" | find the id with `pacotes.py listar --tipo filtro --busca pb`, then `{"tipo": "filtro", "pacote": <id>, "inicio", "duracao"}` |
 | `intensidade` | "esse filtro mais fraco" | the filter's `intensidade`, 0–1 (absent = the package's own) |
+| `voz` | "voz de gás hélio na parte da objeção", "um eco nessa frase" | an item `{"tipo": "voz", "efeito": "helio" | "eco" | "robo" | "grave" | "radio", "inicio", "duracao"}` (cut seconds of the exact span of speech, from the transcript; one at a time). Only the sound changes; `mixar_final.py` applies it through `voz_efeitos.py`, aligned to the original (to hear it first: `voz_efeitos.py <edit> --previa helio <inicio> <duracao>`) |
 | `transicoes` | "uma transição de zoom entre a 2 e a 3" | `pacotes.py listar --tipo transicao`, then `{"tipo": "transicao", "pacote": <id>, "corte": <cut second where the takes meet>, "duracao"}` (0.1–5 s) |
 | `excluir` (on an effect) | "tira o filtro" | drop the item |
 

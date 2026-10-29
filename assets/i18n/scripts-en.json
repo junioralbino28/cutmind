@@ -106,7 +106,7 @@
  "ajustes não é um objeto": "adjustments isn't an object",
  "ajuste desconhecido: {p0}": "unknown adjustment: {p0}",
  "id inválido ou repetido: {p0}": "invalid or duplicate id: {p0}",
- "tipo do efeito: filtro, transicao ou ajuste": "effect type must be `filtro`, `transicao` or `ajuste`",
+ "tipo do efeito: filtro, transicao, ajuste ou voz": "effect type must be `filtro`, `transicao`, `ajuste` or `voz`",
  "pacote inválido": "invalid package",
  "velocidade não é um objeto": "speed isn't an object",
  "trechos: lista de até {MAX_TRECHOS}": "sections: a list of up to {MAX_TRECHOS}",
@@ -331,5 +331,8 @@
  "o vídeo por cima não vai atrás da pessoa": "a video on top can't go behind the person",
  "o enquadre de uma tomada ficou inválido: {e}": "a take's framing is invalid: {e}",
  "efeito sonoro desconhecido": "unknown sound effect",
- "efeito sonoro `{sid}` não existe; os que existem: {p1}": "sound effect `{sid}` doesn't exist; available: {p1}"
+ "efeito sonoro `{sid}` não existe; os que existem: {p1}": "sound effect `{sid}` doesn't exist; available: {p1}",
+ "efeito de voz desconhecido": "unknown voice effect",
+ "trecho da voz inválido": "invalid voice span",
+ "a prévia da voz não saiu: {e}": "the voice preview didn't come out: {e}"
 }

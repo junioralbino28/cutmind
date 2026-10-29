@@ -10,7 +10,8 @@ com o mesmo motor da prévia (assets/efeitos/motor.js). Tempos em segundos do cu
         "intensidade": 0.8},
        {"id": "t1", "tipo": "transicao", "pacote": "zoom-central", "corte": 4.2, "duracao": 1.1},
        {"id": "a1", "tipo": "ajuste", "inicio": 2.0, "duracao": 3.5,
-        "ajustes": {"brilho": 20, "vinheta": -35}}]}
+        "ajustes": {"brilho": 20, "vinheta": -35}},
+       {"id": "v1", "tipo": "voz", "inicio": 12.4, "duracao": 2.1, "efeito": "helio"}]}
 
 Filtro: de `inicio` por `duracao`; `intensidade` de 0 a 1 (sem ela, vale a do pacote).
 Ajuste (a ferramenta Ajustar da tomada): de `inicio` por `duracao`, sem pacote: é um
@@ -22,6 +23,8 @@ depois do corte, o A fica parado no último quadro antes dele e o B anda.
 Um quadro que cai numa transição, num filtro e num ajuste recebe a transição primeiro, o
 filtro por cima e o ajuste por último, na prévia e no vídeo final. Neste primeiro passo,
 um filtro por vez.
+Voz: o som do trecho com um efeito de EFEITOS_VOZ (gás hélio, eco, robô, grave, rádio); não
+mexe na imagem. O mixar_final.py aplica pelo voz_efeitos.py. Um efeito de voz por vez.
 """
 from __future__ import annotations
 
@@ -41,6 +44,7 @@ ENCOSTA = 1.5e-3
 TRANSICAO_MIN, TRANSICAO_MAX = 0.1, 5.0
 # a ordem é a da fileira de ferramentas do editor; o motor (assets/efeitos/motor.js) lê as mesmas chaves
 AJUSTES = ("brilho", "contraste", "saturacao", "exposicao", "temperatura", "matiz", "realces", "sombras", "vinheta")
+EFEITOS_VOZ = ("helio", "eco", "robo", "grave", "radio")  # os de voz_efeitos.EFEITOS (o teste confere)
 
 _ID = re.compile(r"[A-Za-z0-9_-]{1,40}")
 _PACOTE = re.compile(r"[a-z0-9][a-z0-9-]{0,60}")  # o id do catálogo (pacotes.py)
@@ -97,8 +101,14 @@ def normalize(obj: object) -> dict:
             raise EfeitosInvalidos(f"id inválido ou repetido: {str(iid)[:40]!r}")
         ids.add(iid)
         tipo = it.get("tipo")
-        if tipo not in ("filtro", "transicao", "ajuste"):
-            raise EfeitosInvalidos("tipo do efeito: filtro, transicao ou ajuste")
+        if tipo not in ("filtro", "transicao", "ajuste", "voz"):
+            raise EfeitosInvalidos("tipo do efeito: filtro, transicao, ajuste ou voz")
+        if tipo == "voz":
+            if it.get("efeito") not in EFEITOS_VOZ:
+                raise EfeitosInvalidos("efeito de voz desconhecido")
+            itens.append({"id": iid, "tipo": tipo, "inicio": _num(it.get("inicio", 0), "inicio"),
+                          "duracao": _num(it.get("duracao", 0), "duracao", 0.1), "efeito": it["efeito"]})
+            continue
         if tipo == "ajuste":
             item = {"id": iid, "tipo": tipo, "inicio": _num(it.get("inicio", 0), "inicio"),
                     "duracao": _num(it.get("duracao", 0), "duracao", 0.05), "ajustes": _ajustes(it.get("ajustes"))}
@@ -121,6 +131,7 @@ def normalize(obj: object) -> dict:
     _sem_sobrepor(itens, "filtro", "dois filtros ao mesmo tempo: neste passo, um filtro por vez")
     _sem_sobrepor(itens, "transicao", "duas transições se cruzam")
     _sem_sobrepor(itens, "ajuste", "dois ajustes ao mesmo tempo: um por tomada")
+    _sem_sobrepor(itens, "voz", "dois efeitos de voz ao mesmo tempo")
     return {"versao": 1, "itens": itens}
 
 
