@@ -4,11 +4,13 @@
   "notas": {
     "pt": [
       "Camada no lugar certo: com o começo de uma tomada cortado (antes de salvar), o áudio, a imagem e o texto aparecem onde tocam.",
-      "Bloco curto fácil de pegar: arrasta pelo meio, e a agulha não rouba mais o arraste de um bloco."
+      "Bloco curto fácil de pegar: arrasta pelo meio, e a agulha não rouba mais o arraste de um bloco.",
+      "Aparar mais fino: a ponta da tomada anda de quadro em quadro, não gruda mais na batida da música (só numa montagem), e segurando Shift anda 4× mais devagar."
     ],
     "en": [
       "Layers in the right place: with the start of a take trimmed (before saving), audio, images and text show where they play.",
-      "Short blocks are easy to grab: drag them by the middle, and the playhead no longer steals a block drag."
+      "Short blocks are easy to grab: drag them by the middle, and the playhead no longer steals a block drag.",
+      "Finer trimming: a clip edge moves frame by frame, no longer snaps to the music's beat (only in a montage), and holding Shift it moves 4× slower."
     ]
   },
   "arquivos": {
@@ -40,8 +42,8 @@
     "assets/montagens/drop-cedo.json": "4cb47b63b796a05e1bfc69bf817a6b494d4f93028163359f11e5502de5020f46",
     "assets/pacotes/catalogo.json": "003984b0e4e9705cff4cff10b83a51172e8961f7cc3aab2b633ea8a62381d0f8",
     "assets/preview/celular.css": "531da3e36dd5e6be790e2655cc2b648e14f3da4fdbb3e0c145e78fcd2ab5cfae",
-    "assets/preview/celular.html": "d25e69db158be1441f07006b7292f1148dd2a07c67f957077c4496c8c21bd2ee",
-    "assets/preview/celular.js": "962eb2b8a7e311274eb00d29789823cd21beec9afd2e180946d1d2f256f3dc2a",
+    "assets/preview/celular.html": "a234c95416eefe79e5454609839a20ff02ec12a665a67d5acf2b74e8c1501da1",
+    "assets/preview/celular.js": "62df721cd6b2ab5b80e29a800b39fdb36de9a74031b8d6ab0ff3b8725cb84bbd",
     "assets/preview/celular.webmanifest": "bf58d21563dba777f93a62a09aa5169d83a94ea8aaf46d70f7068f7594bf4bd7",
     "assets/preview/cutmind-logo-white.png": "b3f7435d87d0d53b6b768e8b8abfe829b23b69baa9a6ddfcbb08f89e9271b1c4",
     "assets/preview/cutmind-logo.png": "23dc4e814c3ad65bb875f5ef52b26a4d8d36cf5ee78eddd0e2ae119220951110",
@@ -55,7 +57,7 @@
     "assets/preview/fundos/lousa.jpg": "4044be1594456f58b93c656e6dd2cf8b3458c145553b69284bed170cca731d96",
     "assets/preview/fundos/neon.jpg": "0a489f7b4a0cdfd79ad301c1980b15588ba165c6b627f796775782610eeac53f",
     "assets/preview/fundos/parede.jpg": "6fcc80dd3d966c9b7781d1edcf60d7568d2a7d499c6b6bd998b43496a33a1c1e",
-    "assets/preview/i18n-en.js": "79d6bde8f456b12e04bd45ab39ef984bc0625a3920efc513d9cd73e98c0bff45",
+    "assets/preview/i18n-en.js": "5fe108183bfd9f31fe74dde8cea76a5b41f3588c34b41f680f279862518e1595",
     "assets/preview/i18n.js": "4020dda6dbd66c085a1d2a0bb1d1e51b1b4ff244683a0c3a62a47dc809b9e030",
     "assets/preview/icone-192.png": "efaf78f4da6cc7db932d7a94c23d3d80338897d1c7252b6122ff17b8ec732b57",
     "assets/preview/icone-512.png": "1ca318a50076cbe3a3820121242ec1979f7b20e9da134d7211d5f74f94ece1ce",

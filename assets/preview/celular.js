@@ -1586,7 +1586,7 @@ timeline.addEventListener('pointerdown', (e) => {
   if (h && S.view === 'corte') {
     const i = +h.dataset.i;
     G.mode = 'trim';
-    G.trim = { i, side: h.dataset.side, x0: e.clientX, r: { ...S.draft[i] }, before: snap() };
+    G.trim = { i, side: h.dataset.side, x0: e.clientX, ultX: e.clientX, px: 0, r: { ...S.draft[i] }, before: snap() };
     video.pause();
     requestPeek(S.draft[i].source, edgeT(S.draft[i], h.dataset.side));
     return;
@@ -1694,7 +1694,13 @@ timeline.addEventListener('pointermove', (e) => {
   if (G.mode === 'trim') {
     const T = G.trim;
     const r = S.draft[T.i];
-    const dt = (e.clientX - T.x0) / S.pps;
+    // o arrasto soma por pedaço: com Shift a ponta anda 4× mais devagar que o mouse, e soltar o Shift no
+    // meio não dá pulo. A ponta anda de quadro em quadro do corte (antes andava pelo pixel, e no zoom
+    // de sempre um pixel passava de um quadro)
+    T.px += (e.clientX - T.ultX) * (e.shiftKey ? 0.25 : 1);
+    T.ultX = e.clientX;
+    const fps = S.fps || 30;
+    const dt = Math.round((T.px / S.pps) * fps) / fps;
     // dt é do corte; a borda, da gravação (com curva, pela velocidade da curva naquela ponta)
     const vb = r.curva ? Tempo.velEm(pedsD(T.r), T.side === 'l' ? T.r.start : T.r.end - 1e-6) : r.vel;
     if (T.side === 'l') {
@@ -1703,17 +1709,22 @@ timeline.addEventListener('pointermove', (e) => {
       r.end = Math.max(T.r.end + dt * vb, r.start + MIN_SEG);
       const srcDur = (S.state.sourceDurations || {})[r.source];
       if (srcDur) r.end = Math.min(r.end, srcDur);
-      // o ímã: o fim da tomada é o corte para a seguinte, e ele gruda na batida. A ponta esquerda
-      // não anda na linha do tempo (aparar o começo encurta a tomada no mesmo lugar)
-      const d = draftLayout()[T.i], fim = d.out + d.dur, alvo = imaPonto(fim);
-      const e2 = r.end + (alvo - fim) * vb;
-      if (alvo !== fim && e2 > r.start + MIN_SEG && (!srcDur || e2 <= srcDur)) r.end = e2;
+      // o ímã: o fim da tomada é o corte para a seguinte, e numa montagem ele gruda na batida. Fora
+      // dela a ponta é da fala, não da música: com uma trilha de 130 BPM no projeto, o fim pulava de
+      // batida em batida (0,46 s) e não dava para tirar ou devolver um pedaço pequeno (Reels, 29/10).
+      // A ponta esquerda não anda na linha do tempo (aparar o começo encurta a tomada no mesmo lugar)
+      if (ehMontagem()) {
+        const d = draftLayout()[T.i], fim = d.out + d.dur, alvo = imaPonto(fim);
+        const e2 = r.end + (alvo - fim) * vb;
+        if (alvo !== fim && e2 > r.start + MIN_SEG && (!srcDur || e2 <= srcDur)) r.end = e2;
+      }
     }
     requestPeek(r.source, edgeT(r, T.side));
     const ref = r.orig || T.r; // pedaço novo (divisão, cópia) não tem borda original: conta do início do gesto
     const d = T.side === 'l' ? r.start - ref.start : r.end - ref.end;
+    const quadros = Math.round((Math.abs(d) / (vb || 1)) * fps);
     const tip = $('trimTip');
-    tip.textContent = `${T.side === 'l' ? t('início') : 'fim'} ${d >= 0 ? '+' : ''}${d.toFixed(2)} s`;
+    tip.textContent = `${T.side === 'l' ? t('início') : t('fim')} ${d >= 0 ? '+' : ''}${d.toFixed(2)} s · ${quadros} ${quadros === 1 ? t('quadro') : t('quadros')}${e.shiftKey ? ' · ' + t('fino') : ''}`;
     tip.classList.remove('hidden');
     if (!G.trimQueued) {
       G.trimQueued = true;
