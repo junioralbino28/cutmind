@@ -1,0 +1,102 @@
+[
+ {
+  "id": "impacto",
+  "nome": "Impacto",
+  "nome_en": "Impact",
+  "uso": "a palavra grande ou o número que cai",
+  "arquivo": "impacto.mp3",
+  "duracao": 1.4,
+  "golpe": 0.0,
+  "volume": 0.42
+ },
+ {
+  "id": "notificacao",
+  "nome": "Notificação",
+  "nome_en": "Notification",
+  "uso": "comentário, mensagem, direct aparecendo",
+  "arquivo": "notificacao.mp3",
+  "duracao": 0.7,
+  "golpe": 0.0,
+  "volume": 0.25
+ },
+ {
+  "id": "dinheiro",
+  "nome": "Dinheiro",
+  "nome_en": "Cash",
+  "uso": "preço, faturamento, economia",
+  "arquivo": "dinheiro.mp3",
+  "duracao": 1.0,
+  "golpe": 0.0,
+  "volume": 0.34
+ },
+ {
+  "id": "brilho",
+  "nome": "Brilho mágico",
+  "nome_en": "Magic sparkle",
+  "uso": "IA, a transformação, o antes e depois",
+  "arquivo": "brilho.mp3",
+  "duracao": 1.1,
+  "golpe": 0.0,
+  "volume": 0.34
+ },
+ {
+  "id": "ding",
+  "nome": "Ding",
+  "nome_en": "Ding",
+  "uso": "acerto, o item que entra na lista",
+  "arquivo": "ding.mp3",
+  "duracao": 1.6,
+  "golpe": 0.0,
+  "volume": 0.27
+ },
+ {
+  "id": "whoosh",
+  "nome": "Whoosh",
+  "nome_en": "Whoosh",
+  "uso": "o cartão ou o texto que passa",
+  "arquivo": "whoosh.mp3",
+  "duracao": 0.5,
+  "golpe": 0.25,
+  "volume": 0.51
+ },
+ {
+  "id": "clique",
+  "nome": "Clique",
+  "nome_en": "Click",
+  "uso": "o botão clicado, o cursor",
+  "arquivo": "clique.mp3",
+  "duracao": 0.12,
+  "golpe": 0.0,
+  "volume": 1.0
+ },
+ {
+  "id": "pop",
+  "nome": "Pop",
+  "nome_en": "Pop",
+  "uso": "cada palavra que surge",
+  "arquivo": "pop.mp3",
+  "duracao": 0.16,
+  "golpe": 0.0,
+  "volume": 0.55
+ },
+ {
+  "id": "risco",
+  "nome": "Risco de disco",
+  "nome_en": "Record scratch",
+  "uso": "a objeção, o \"pera aí\", o riscado",
+  "arquivo": "risco.mp3",
+  "duracao": 0.45,
+  "golpe": 0.0,
+  "volume": 0.37
+ },
+ {
+  "id": "digitacao",
+  "nome": "Digitação",
+  "nome_en": "Typing",
+  "uso": "o comentário sendo escrito",
+  "arquivo": "digitacao.mp3",
+  "duracao": 1.9,
+  "golpe": 0.0,
+  "volume": 1.0
+ }
+]

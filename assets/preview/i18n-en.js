@@ -806,5 +806,10 @@ window.I18N_EN = {
   "Selo": "Badge",
   "Progresso": "Progress",
   "Comenta": "Comment",
-  "O gráfico do vídeo final": "The final video's graphic"
+  "O gráfico do vídeo final": "The final video's graphic",
+  "Efeitos sonoros": "Sound effects",
+  "Não deu para carregar os efeitos sonoros agora": "Couldn't load the sound effects right now",
+  "Sons feitos pelo próprio CutMind: podem ir até em anúncio. Entram na agulha, como camada de áudio.": "Sounds made by CutMind itself: fine even in ads. They go in at the playhead, as an audio layer.",
+  "\"{nome}\" entrou na agulha": "\"{nome}\" is in at the playhead",
+  "O efeito sonoro não entrou: {message}": "The sound effect didn't go in: {message}"
 };

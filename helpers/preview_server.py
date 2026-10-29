@@ -57,6 +57,9 @@ Routes:
                         cache (baixa e abre o zip na primeira vez)
   /api/pacotes/usar      POST {id}: baixa o pacote e copia para <edit>/midia/
   /api/pacotes/favorito  POST {id, on}: favorito fica no cache, mesmo cheio
+  /api/sfx      GET     os efeitos sonoros do kit (efeitos_sonoros.py, assets/sfx/catalogo.json)
+  /gen/sfx?id=          o arquivo de um efeito sonoro, para ouvir
+  /api/sfx/usar POST {id}: copia o efeito para <edit>/midia/sfx-<id>.mp3 (vira camada de áudio)
   /api/melhorar          GET  Melhorar voz (melhorar_voz.py): se o preparo vale para o corte
                          de agora, a escolha, o que está aplicado, o que foi salvo e ainda
                          não aplicado (`pendente`) e as faixas da prévia (servidas em /media/)
@@ -169,6 +172,7 @@ import aplicar_corte as ac  # mesma pasta deste arquivo
 import trabalhos as tb  # mesma pasta deste arquivo
 import gerar as gr  # mesma pasta deste arquivo
 import editdata_aplicar as eda  # mesma pasta deste arquivo
+import efeitos_sonoros as es  # mesma pasta deste arquivo
 import pendente as pend  # mesma pasta deste arquivo
 
 APP_DIR = Path(__file__).resolve().parent.parent / "assets" / "preview"
@@ -1365,6 +1369,15 @@ class Handler(BaseHTTPRequestHandler):
             self._pacotes_lista(query)
         elif path == "/gen/pacote-previa":
             self._pacote_previa(query)
+        elif path == "/api/sfx":
+            self._json({"itens": es.catalogo()})
+        elif path == "/gen/sfx":
+            sid = (parse_qs(query).get("id") or [""])[0]
+            item = next((x for x in es.catalogo() if x["id"] == sid), None)
+            if item is None:
+                self._json({"error": "efeito sonoro desconhecido"}, 404)
+            else:
+                self._send_file(es.PASTA / item["arquivo"])
         elif path.startswith("/gen/pacote/"):
             self._pacote_arquivo(path[len("/gen/pacote/"):])
         else:
@@ -1385,6 +1398,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in ("/api/pacotes/usar", "/api/pacotes/favorito"):
             self._pacote_post(path)
+            return
+        if path == "/api/sfx/usar":
+            self._sfx_usar()
             return
         if path in ("/api/projetos/abrir", "/api/projetos/novo"):
             self._projeto_post(path)
@@ -2027,6 +2043,29 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": str(e)}, 502)
         except pk.PacoteErro as e:
             self._json({"error": str(e)}, 404)
+
+    def _sfx_usar(self) -> None:
+        """Um efeito sonoro do kit na pasta das camadas do projeto: o editor o põe na agulha."""
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self._fail(400, "invalid Content-Length")
+            return
+        if length > 10_000:
+            self._fail(413, "pedido grande demais")
+            return
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, json.JSONDecodeError):
+            body = None
+        sid = body.get("id") if isinstance(body, dict) else None
+        item = next((x for x in es.catalogo() if x["id"] == sid), None) if isinstance(sid, str) else None
+        if item is None:
+            self._json({"error": "efeito sonoro desconhecido"}, 404)
+            return
+        dest = es.usar(self.root, sid)
+        self._json({"arquivo": f"{cam.MIDIA_DIR}/{dest.name}", "id": sid, "nome": item["nome"], "nomeEn": item["nome_en"],
+                    "duracao": item["duracao"], "volume": item["volume"], "golpe": item["golpe"]})
 
     def _pacote_arquivo(self, resto: str) -> None:
         """Um arquivo de filtro/transição, da pasta aberta no cache (baixa e abre na 1ª vez)."""

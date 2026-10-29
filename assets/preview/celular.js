@@ -2429,6 +2429,7 @@ function renderToolbar() {
   if (amenu) { // Áudio: uma trilha da biblioteca do kit ou um arquivo do celular
     tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
     tool(ctx, 'trilhas', t('Trilhas'), { icon: ICON.audio });
+    tool(ctx, 'sfx', t('Efeitos sonoros'), { icon: ICON.som });
     tool(ctx, 'do-celular', doAparelho(), { icon: ICON.enviar }); // no computador, "Do computador"
     tool(ctx, 'melhorar-voz', t('Melhorar voz'), { icon: ICON.voz });
     return;
@@ -2593,6 +2594,7 @@ document.addEventListener('click', (e) => {
     case 'lugar-repetir': enqNasOutras(); break;
     case 'audio': S.audioMenu = true; S.importMenu = false; S.fxMenu = false; S.textMenu = false; renderToolbar(); break;
     case 'trilhas': S.audioMenu = false; renderToolbar(); openTrilhas(); break;
+    case 'sfx': S.audioMenu = false; renderToolbar(); openSfx(); break;
     case 'do-celular': S.audioMenu = false; renderToolbar(); $('fileAudio').click(); break;
     case 'melhorar-voz': S.audioMenu = false; renderToolbar(); openVoz(); break;
     case 'voltar': soltaEscolha(); break;
@@ -8764,6 +8766,94 @@ $('trilhaLista').addEventListener('click', (e) => {
 PREV.addEventListener('error', () => {
   if (PREV.dataset.id && trAberto()) toast(t('A prévia não carregou. Confira a internet do computador.'), 3000);
 });
+
+/* ---------- efeitos sonoros do kit (helpers/efeitos_sonoros.py, assets/sfx/) ----------
+ * Sons que o próprio kit sintetiza (podem ir até em anúncio): ouvir e Usar, que põe o som
+ * na agulha como camada de áudio, com o volume sugerido do catálogo (todos no mesmo nível
+ * embaixo da voz). O golpe está no começo do arquivo; o do whoosh, no `golpe`, e por isso
+ * ele entra esse tanto antes da agulha, para o pico cair nela. */
+let sfxSel = null;
+const sfxAberto = () => $('sfxSheet').classList.contains('open');
+const nomeSfx = (s) => (IDIOMA === 'en' && s.nome_en) || s.nome;
+async function openSfx() {
+  video.pause();
+  showSheet($('sfxSheet'), true);
+  if (!S.sfx) {
+    $('sfxLista').innerHTML = `<p class="sheet-hint">${t('Carregando…')}</p>`;
+    try {
+      const r = await fetch('/api/sfx');
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || String(r.status));
+      S.sfx = d.itens || [];
+    } catch (e) {
+      $('sfxLista').innerHTML = `<p class="sheet-hint">${t('Não deu para carregar os efeitos sonoros agora')}</p>`;
+      return;
+    }
+  }
+  renderSfx();
+}
+function closeSfx() {
+  PREV.pause();
+  sfxSel = null;
+  showSheet($('sfxSheet'), false);
+}
+function renderSfx() {
+  const box = $('sfxLista');
+  box.innerHTML = '';
+  el('p', 'sheet-hint', box).textContent = t('Sons feitos pelo próprio CutMind: podem ir até em anúncio. Entram na agulha, como camada de áudio.');
+  const tocando = !PREV.paused && PREV.dataset.id;
+  for (const s of S.sfx || []) {
+    const row = el('div', `tr-row${sfxSel === s.id ? ' on' : ''}`, box);
+    row.dataset.id = s.id;
+    const play = el('button', 'tr-play', row);
+    play.type = 'button';
+    play.dataset.act = 'ouvir';
+    play.innerHTML = tocando === `sfx:${s.id}` ? ICON.pause : ICON.play;
+    play.setAttribute('aria-label', `${tocando === `sfx:${s.id}` ? t('Parar') : t('Ouvir')} ${nomeSfx(s)}`);
+    const txt = el('div', 'tr-txt', row);
+    el('b', null, txt).textContent = nomeSfx(s);
+    el('span', null, txt).textContent = [`${numLocal(s.duracao)} s`, IDIOMA === 'pt' ? s.uso : ''].filter(Boolean).join(' · ');
+    if (sfxSel === s.id) {
+      const usar = el('button', 'tb-btn primary tr-usar', row);
+      usar.type = 'button';
+      usar.dataset.act = 'usar';
+      usar.textContent = t('Usar');
+    }
+  }
+}
+function ouvirSfx(id) {
+  if (sfxSel === id && !PREV.paused && PREV.dataset.id === `sfx:${id}`) { PREV.pause(); return; }
+  sfxSel = id;
+  PREV.src = `/gen/sfx?id=${encodeURIComponent(id)}`;
+  PREV.dataset.id = `sfx:${id}`;
+  PREV.muted = S.mudoUsuario;
+  PREV.play().catch(() => {});
+  renderSfx();
+}
+async function usarSfx(id) {
+  try {
+    const r = await fetch('/api/sfx/usar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || t('erro {status}', { status: r.status }));
+    closeSfx();
+    const inicio = +Math.max(0, draftToRendered(S.t) - (d.golpe || 0)).toFixed(3);
+    await addLayer('audio', d.arquivo, { volume: d.volume ?? 0.5, inicio });
+    toast(t('"{nome}" entrou na agulha', { nome: IDIOMA === 'en' ? d.nomeEn || d.nome : d.nome }), 2200);
+  } catch (e) {
+    toast(t('O efeito sonoro não entrou: {message}', { message: e.message }), 3600);
+  }
+}
+$('sfxClose').innerHTML = ICON.fechar;
+$('sfxClose').addEventListener('click', closeSfx);
+$('sfxLista').addEventListener('click', (e) => {
+  const row = e.target.closest('.tr-row');
+  if (!row) return;
+  const btn = e.target.closest('[data-act]');
+  if (btn && btn.dataset.act === 'usar') usarSfx(row.dataset.id);
+  else ouvirSfx(row.dataset.id);
+});
+['play', 'pause'].forEach((ev) => PREV.addEventListener(ev, () => { if (sfxAberto()) renderSfx(); }));
 
 /* ---------- efeitos: filtros e transições da biblioteca (helpers/efeitos.py) ----------
  * O filtro entra na tomada debaixo da agulha; a transição, no corte mais perto dela,
