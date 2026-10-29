@@ -6,8 +6,8 @@ cima, o mesmo dos inserts do agente — com `"camada": <id do item>`. A imagem q
 redimensionou no editor (livre, com `largura`) leva `x`, `y` e `w` (px do quadro): o Main.tsx a desenha
 inteira, nesse lugar e nesse tamanho; um template de kit anterior não sabe, e o helper para. Só esses são mexidos: os
 inserts do agente ficam como estão, e as camadas entram por último (ficam por cima, como no
-editor). A imagem com `atras` vira um item de `behind[]` (o cartão grande atrás da pessoa),
-com o recorte da janela dela. O arquivo é copiado para `public/midia/camada-<id>.<ext>`, um
+editor). A imagem com `atras` vira um item de `behind[]` (atrás da pessoa), com o recorte da janela
+dela: sem `largura`, o cartão grande; livre, com `x`, `y`, `w` e o `crop` (ATRAS_LIVRE no Main.tsx). O arquivo é copiado para `public/midia/camada-<id>.<ext>`, um
 nome sem espaço nem acento para o `staticFile` do Remotion.
 
 Textos: cada texto visível vira um item de `textos[]` (src/CamadasTexto.tsx desenha), na
@@ -47,6 +47,7 @@ MARCA_LIVRE = "INSERT_LIVRE"  # no src/Main.tsx do template que desenha a imagem
 MARCA_RECORTE = "INSERT_RECORTE"  # ... e que desenha só o pedaço recortado dela
 MARCA_VIDEO = "INSERT_VIDEO"  # ... e que desenha o vídeo posto por cima
 MARCA_ENQUADRE = "ENQUADRE_TOMADA"  # ... e que põe a gravação no lugar e no tamanho de cada tomada
+MARCA_ATRAS_LIVRE = "ATRAS_LIVRE"  # ... e que põe a imagem atrás da pessoa no lugar e no tamanho dela
 
 
 class TemplateVelho(RuntimeError):
@@ -223,15 +224,18 @@ def aplicar(edit: Path, edit_data: Path | None = None, recortar: bool = True) ->
         shutil.copy2(origem, destino / nome)
         src = f"{cam.MIDIA_DIR}/{nome}"
         matte = rec.de(it["id"]) if it.get("atras") else None
-        if matte:  # o cartão grande atrás da pessoa (BehindSubject), no quadro exato do recorte
+        livre = {}
+        if "largura" in it:  # o lugar e o tamanho que a pessoa pôs, na frente ou atrás dela
+            livre = {"x": it["x"], "y": it["y"], "w": it["largura"]}
+            if it.get("recorte"):  # só o pedaço: o Main.tsx recorta, a largura é a do pedaço
+                livre["crop"] = {k: it["recorte"][k] for k in ("x", "y", "w", "h")}
+        if matte:  # atrás da pessoa (BehindSubject), no quadro exato do recorte; sem lugar, o cartão grande
             start, dur = rec.janela(it["id"])
-            behind.append({"kind": "image", "src": src, "matte": matte, "start": start, "dur": dur, "camada": it["id"]})
+            behind.append({"kind": "image", "src": src, "matte": matte, "start": start, "dur": dur, **livre,
+                           "camada": it["id"]})
         else:  # o cartão de cima (ou a imagem livre); com o recorte por fazer, também (e o comando fica avisado)
-            ins = {"src": src, "start": it["inicio"], "end": round(it["inicio"] + it["duracao"], 3), "camada": it["id"]}
-            if "largura" in it and not it.get("atras"):
-                ins.update({"x": it["x"], "y": it["y"], "w": it["largura"]})
-                if it.get("recorte"):  # só o pedaço: o Main.tsx recorta, a largura é a do pedaço
-                    ins["crop"] = {k: it["recorte"][k] for k in ("x", "y", "w", "h")}
+            ins = {"src": src, "start": it["inicio"], "end": round(it["inicio"] + it["duracao"], 3), "camada": it["id"],
+                   **livre}
             if cam.eh_video(it["arquivo"]):  # o vídeo por cima: mudo no Remotion (o som vai no mixar_final)
                 ins.update({"video": True, "from": it.get("corte", 0.0)})
             inserts.append(ins)
@@ -249,6 +253,9 @@ def aplicar(edit: Path, edit_data: Path | None = None, recortar: bool = True) ->
     if ens and template_sem(ed_p, MARCA_ENQUADRE):
         raise TemplateVelho(f"o template deste projeto é de um kit anterior e não enquadra a gravação: rode "
                             f"`atualizar_template.py {edit}` e depois este de novo")
+    if any("w" in b for b in behind if b.get("camada")) and template_sem(ed_p, MARCA_ATRAS_LIVRE):
+        raise TemplateVelho(f"o template deste projeto é de um kit anterior e põe a imagem atrás da pessoa sempre no "
+                            f"cartão grande: rode `atualizar_template.py {edit}` e depois este de novo")
     if ens or "enquadres" in d:
         d["enquadres"] = ens
     if behind or "behind" in d:

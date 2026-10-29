@@ -19,7 +19,8 @@ viram `inserts` no edit-data, `camadas_edit_data.py`) e o som do vídeo final
                    "atras": false, "acompanhar": false, "curva": 0}]}]}
 
 Cada faixa é uma camada: áudio tem "mudo", imagem e texto têm "oculto", todas têm "travado".
-Uma imagem com `"atras": true` vira o cartão grande atrás da pessoa, em vez do cartão de cima.
+Uma imagem com `"atras": true` fica atrás da pessoa: sem `largura`, no cartão grande; com `largura`
+(e o `recorte`, se tiver), no lugar e no tamanho que a pessoa pôs, como a imagem livre.
 Uma imagem com `largura` é livre: inteira (sem o recorte do cartão), com o centro em `x`/`y` e essa
 largura em px do quadro 1080x1920, no lugar e no tamanho que a pessoa pôs no editor. Sem `largura`,
 é o cartão de cima (780x500, 90 px do topo).
@@ -247,9 +248,9 @@ def normalize(obj: object) -> dict:
                 item["volume"] = _num(it.get("volume", 1), "volume", 0.0, 2.0)
                 if it.get("largura") is None:  # sem lugar escolhido: o do cartão de cima
                     it = {**it, "x": 540, "y": 340, "largura": 780}
-            if tipo == "imagem" and it.get("atras"):  # o cartão grande, atrás da pessoa
+            if tipo == "imagem" and it.get("atras"):  # atrás da pessoa (sem largura, o cartão grande)
                 item["atras"] = True
-            elif tipo == "imagem" and it.get("largura") is not None:  # a imagem livre: lugar e tamanho da pessoa
+            if tipo == "imagem" and it.get("largura") is not None:  # a imagem livre: lugar e tamanho da pessoa
                 item["x"] = _num(it.get("x", 540), "x", -1080, 2160)
                 item["y"] = _num(it.get("y", 960), "y", -1920, 3840)
                 item["largura"] = _num(it["largura"], "largura", 40, 3240)
@@ -257,7 +258,7 @@ def normalize(obj: object) -> dict:
                 if rc:
                     item["recorte"] = rc
             if tipo == "imagem" and it.get("recorte") is not None and "largura" not in item:
-                raise CamadasInvalidas("recorte: só na imagem livre (com largura), não no cartão nem atrás da pessoa")
+                raise CamadasInvalidas("recorte: só na imagem livre (com largura), não no cartão")
             if tipo == "audio":
                 item["corte"] = _num(it.get("corte", 0), "corte")
                 item["volume"] = _num(it.get("volume", 1), "volume", 0.0, 2.0)

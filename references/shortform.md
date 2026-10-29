@@ -666,8 +666,9 @@ final video (or run `gerar.py <edit>`, which does the same).
    Each visible image becomes an `inserts[]` card (the upper-zone card above, marked
    `"camada": <id>`) and is copied to `public/midia/camada-<id>.<ext>` — a name with
    no spaces or accents for `staticFile`. Only those inserts are touched, and they
-   go last (on top, as in the editor). An image with `atras` becomes the big card
-   behind the person instead (`behind[]`, marked the same way). Each visible text
+   go last (on top, as in the editor). An image with `atras` goes behind the person
+   instead (`behind[]`, marked the same way): the big card, or, when the user moved it,
+   its `x`/`y`/`w` and `crop` (the template's `ATRAS_LIVRE`). Each visible text
    becomes a `textos[]` item, drawn by `src/CamadasTexto.tsx` exactly as the editor
    showed it: centre `x`/`y`, the Text panel's `estilo`, `curva` (an arc). For a text
    or image with `atras` the helper makes the person's cut-out of that window

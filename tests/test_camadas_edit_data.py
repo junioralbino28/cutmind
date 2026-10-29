@@ -213,6 +213,56 @@ def _livre(fid, arquivo, x, y, largura, atras=False):
     return f
 
 
+def test_imagem_atras_livre_leva_lugar_tamanho_e_recorte_para_o_behind(projeto, ferramentas):
+    """Teste no PC de 29/10: atrás da pessoa, a imagem vinha sempre no cartão grande, ignorando o que a pessoa pôs."""
+    edit, public, agente = projeto
+    (public / "cut.mp4").write_bytes(b"mp4")
+    f = _livre("i1", "midia/outro.jpg", 300, 700, 600, atras=True)
+    f["itens"][0]["recorte"] = {"x": 0.2, "y": 0, "w": 0.6, "h": 1, "formato": "livre"}
+    _camadas(edit, [f])
+    aplicar(edit)
+    ed = json.loads((public / "edit-data.json").read_text(encoding="utf-8"))
+    assert ed["inserts"] == [agente]
+    b = ed["behind"][0]
+    assert (b["kind"], b["x"], b["y"], b["w"]) == ("image", 300, 700, 600) and b["matte"].endswith(".mov")
+    assert b["crop"] == {"x": 0.2, "y": 0, "w": 0.6, "h": 1}
+
+
+def test_imagem_atras_livre_sem_recorte_da_pessoa_sai_no_lugar_dela(projeto):
+    edit, public, _ = projeto
+    (public / "cut.mp4").write_bytes(b"mp4")
+    _camadas(edit, [_livre("i1", "midia/outro.jpg", 300, 700, 600, atras=True)])
+    r = aplicar(edit, recortar=False)
+    assert len(r["pendentes"]) == 1  # o comando do recorte fica avisado; até lá, na frente, mas no lugar certo
+    assert {k: _inserts(public)[1][k] for k in ("x", "y", "w")} == {"x": 300, "y": 700, "w": 600}
+
+
+def test_template_sem_imagem_atras_livre_para(projeto, ferramentas):
+    edit, public, _ = projeto
+    (public / "cut.mp4").write_bytes(b"mp4")
+    src = public.parent / "src"
+    src.mkdir()
+    (src / "Main.tsx").write_text("// INSERT_LIVRE INSERT_RECORTE", encoding="utf-8")  # o kit de 0.2.0
+    _camadas(edit, [_livre("i1", "midia/outro.jpg", 300, 700, 600, atras=True)])
+    import camadas_edit_data as ced
+    with pytest.raises(ced.TemplateVelho, match="atualizar_template"):
+        aplicar(edit)
+    (src / "Main.tsx").write_text("// INSERT_LIVRE INSERT_RECORTE ATRAS_LIVRE", encoding="utf-8")
+    aplicar(edit)
+    img = _img("i1", "midia/outro.jpg", 5, 3)
+    img["itens"][0]["atras"] = True
+    _camadas(edit, [img])
+    (src / "Main.tsx").write_text("// INSERT_LIVRE INSERT_RECORTE", encoding="utf-8")
+    aplicar(edit)  # atrás, mas no cartão grande: o template de antes desenha, nada a conferir
+
+
+def test_o_template_do_kit_desenha_a_imagem_atras_no_lugar_dela():
+    main = Path(__file__).resolve().parents[1] / "assets" / "shortform" / "src" / "Main.tsx"
+    texto = main.read_text(encoding="utf-8")
+    import camadas_edit_data as ced
+    assert ced.MARCA_ATRAS_LIVRE in texto and "crop={b.crop}" in texto
+
+
 def test_imagem_livre_leva_lugar_e_tamanho_para_o_insert(projeto):
     edit, public, _ = projeto
     _camadas(edit, [_livre("i1", "midia/outro.jpg", 300, 1500, 420)])

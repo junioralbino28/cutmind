@@ -2445,7 +2445,7 @@ function renderToolbar() {
       tool(ctx, 'volume', `${Math.round((lsel.it.volume ?? 1) * 100)}%`);
     } else if (lsel.f.tipo === 'imagem') {
       tool(ctx, 'atras', t('Atrás da pessoa'), { icon: ICON.pessoa, on: !!lsel.it.atras });
-      if (!lsel.it.atras) tool(ctx, 'recortar', t('Recortar'), { on: !!lsel.it.recorte });
+      tool(ctx, 'recortar', t('Recortar'), { on: !!lsel.it.recorte });
     }
     if (aud) {
       tool(ctx, 'volume', `${Math.round(lsel.it.volume * 100)}%`);
@@ -6515,7 +6515,8 @@ function textoLiga(k) {
   const cobre = k === 'atras' && liga && [...S.cenasDraft.filter((c) => !c.desligada), ...S.insertsDraft.filter((c) => c.kind === 'split' || c.kind === 'splitvideo')]
     .find((c) => isFinite(c.start) && isFinite(c.end) && c.start < b && c.end > a);
   if (cobre) { toast(t('Atenção: {p0} ocupa a tela inteira nesse trecho e cobre o que fica atrás da pessoa', { p0: cobre.nome || t('a tela dividida') }), 4200); renderTimeline(); renderToolbar(); refreshHeader(); return; }
-  if (hit.f.tipo === 'imagem') toast(liga ? t('No vídeo final a imagem vira o cartão grande atrás da pessoa (a prévia mostra por cima, transparente)') : t('A imagem volta para o cartão de cima'), 3200);
+  if (hit.f.tipo === 'imagem') toast(liga ? t('No vídeo final a imagem passa atrás da pessoa (a prévia mostra por cima, transparente)')
+    : hit.it.largura != null ? t('A imagem volta para a frente') : t('A imagem volta para o cartão de cima'), 3200);
   else if (k === 'atras') toast(liga ? t('No vídeo final o texto passa atrás da pessoa (a prévia mostra na frente)') : t('O texto volta para a frente'), 2800);
   else toast(liga ? (S.rastreio ? t('O texto anda junto com a pessoa') : t('O texto anda junto com a pessoa no vídeo final (o agente rastreia o rosto)')) : t('O texto fica parado'), 2800);
   renderTimeline(); renderToolbar(); refreshHeader();
@@ -8017,6 +8018,9 @@ function enqNasOutras() {
  * e na largura do cartão, e daí anda. `x`/`y` (centro) e `largura` em px do quadro, no camadas.json; o vídeo final
  * desenha igual (Main.tsx, InsertLivre). */
 const CARTAO_IMG = { x: 540, y: 340, w: 780, h: 500 }; // Main.tsx: 780x500, 90 px do topo
+// atrás da pessoa, sem lugar escolhido: o cartão grande (Main.tsx, BehindImageEl: 1000x1250, 40 px do topo). A
+// primeira mexida a tira dele como do cartão de cima (teste no PC de 29/10: atrás, nada mexia)
+const CARTAO_ATRAS = { x: 540, y: 665, w: 1000, h: 1250 };
 function ehVideoArq(arq) { return /\.(mp4|mov|m4v|webm)$/i.test(arq || ''); } // o vídeo posto por cima
 function imagemProporcao() {
   if (S.imgNaTela && S.imgNaTela.video) {
@@ -8027,7 +8031,7 @@ function imagemProporcao() {
   return ov.naturalWidth && ov.naturalHeight ? ov.naturalHeight / ov.naturalWidth : 0;
 }
 function imagemGeometria(it) {
-  if (it.largura == null) return { ...CARTAO_IMG };
+  if (it.largura == null) return { ...(it.atras ? CARTAO_ATRAS : CARTAO_IMG) };
   const p = imagemProporcao(), rc = it.recorte || { w: 1, h: 1 };
   return { x: it.x, y: it.y, w: it.largura, h: p ? (it.largura * p * rc.h) / rc.w : it.largura };
 }
@@ -8239,7 +8243,7 @@ document.addEventListener('keydown', (e) => { if (RC.aberto && e.key === 'Escape
 // a imagem escolhida: o Recortar a tira do cartão (como a primeira mexida); Meia tela já a põe na metade de cima
 function recortaImagemSel() {
   const hit = S.layerSel ? camItem(S.layerSel) : null;
-  if (!hit || hit.f.tipo !== 'imagem' || hit.it.atras) return;
+  if (!hit || hit.f.tipo !== 'imagem') return;
   video.pause();
   const id = hit.it.id, vid = ehVideoArq(hit.it.arquivo);
   // num vídeo, o quadro da agulha (ou o primeiro, com a agulha fora dele)
@@ -8250,7 +8254,7 @@ function recortaImagemSel() {
       const h2 = camItem(id);
       if (!h2) return;
       const before = snap(), it = h2.it;
-      if (it.largura == null) { it.x = CARTAO_IMG.x; it.y = CARTAO_IMG.y; it.largura = CARTAO_IMG.w; }
+      if (it.largura == null) { const c = imagemGeometria(it); it.x = c.x; it.y = c.y; it.largura = c.w; }
       if (rc) it.recorte = rc; else delete it.recorte;
       if (rc && rc.formato === 'meia') { it.x = FRAME_W / 2; it.y = FRAME_H / 4; it.largura = FRAME_W; }
       remember(before);
@@ -8457,9 +8461,10 @@ function syncLayers() {
     if (soImg) ov.src = `/media/${soImg}`;
     ov.classList.toggle('hidden', !soImg);
   }
-  $('ovImg').classList.toggle('atras', imgAtras); // o cartão grande de trás, no lugar dele no vídeo final
-  imagemLivre(imgIt && !imgAtras ? imgIt : null);
-  S.imgNaTela = imgIt && !imgAtras ? { it: imgIt, trav: imgTrav, video: imgVid } : null;
+  // atrás da pessoa: transparente (a prévia não recorta a pessoa); sem lugar, o cartão grande do vídeo final
+  $('ovImg').classList.toggle('atras', imgAtras);
+  imagemLivre(imgIt);
+  S.imgNaTela = imgIt ? { it: imgIt, trav: imgTrav, video: imgVid } : null;
   desenhaImagemCaixa();
   syncQuadro();
   desenhaTextos();

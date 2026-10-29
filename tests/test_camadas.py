@@ -134,14 +134,25 @@ def test_imagem_livre_guarda_lugar_e_tamanho():
         cm.normalize(base)
 
 
-def test_imagem_atras_ou_sem_largura_fica_no_cartao():
+def test_imagem_sem_largura_fica_no_cartao():
     import camadas as cm
     item = {"id": "i1-1", "arquivo": "midia/a.png", "inicio": 1, "duracao": 2, "x": 300, "y": 1500}
     it = cm.normalize({"versao": 1, "faixas": [{"id": "i1", "tipo": "imagem", "itens": [item]}]})["faixas"][0]["itens"][0]
     assert "x" not in it and "largura" not in it
-    item2 = {**item, "largura": 400, "atras": True}
-    it = cm.normalize({"versao": 1, "faixas": [{"id": "i1", "tipo": "imagem", "itens": [item2]}]})["faixas"][0]["itens"][0]
-    assert it["atras"] is True and "largura" not in it
+
+
+def test_imagem_atras_da_pessoa_guarda_lugar_tamanho_e_recorte():
+    """Teste no PC de 29/10: com "Atrás da pessoa" ligado, o Salvar jogava fora o lugar, o tamanho e o recorte
+    (e recusava o recorte), e a imagem voltava ao cartão grande."""
+    import camadas as cm
+    item = {"id": "i1-1", "arquivo": "midia/a.png", "inicio": 1, "duracao": 2, "x": 300, "y": 1500, "largura": 400,
+            "atras": True, "recorte": {"x": 0.1, "y": 0, "w": 0.5, "h": 0.8, "formato": "livre"}}
+    it = cm.normalize({"versao": 1, "faixas": [{"id": "i1", "tipo": "imagem", "itens": [item]}]})["faixas"][0]["itens"][0]
+    assert it["atras"] is True and (it["x"], it["y"], it["largura"]) == (300, 1500, 400)
+    assert it["recorte"] == {"x": 0.1, "y": 0, "w": 0.5, "h": 0.8, "formato": "livre"}
+    sem = {k: v for k, v in item.items() if k not in ("x", "y", "largura", "recorte")}
+    it = cm.normalize({"versao": 1, "faixas": [{"id": "i1", "tipo": "imagem", "itens": [sem]}]})["faixas"][0]["itens"][0]
+    assert it["atras"] is True and "largura" not in it  # nunca mexida: o cartão grande de sempre
 
 
 # ---- o Recortar da imagem livre (28/10: "cortar o formato e escolher a parte que aparece")

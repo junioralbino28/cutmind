@@ -54,7 +54,7 @@ type Caption = {text: string; startMs: number; endMs: number};
 type Crop = {x: number; y: number; w: number; h: number};
 // video/from: o vídeo posto por cima (INSERT_VIDEO), mudo aqui (o som vai no mixar_final), começando em `from` s
 type Insert = {src: string; start: number; end: number; x?: number; y?: number; w?: number; crop?: Crop; video?: boolean; from?: number};
-type BehindImage = {kind: 'image'; src: string; matte: string; start: number; dur: number};
+type BehindImage = {kind: 'image'; src: string; matte: string; start: number; dur: number; x?: number; y?: number; w?: number; crop?: Crop};
 type BehindWords = {kind: 'words'; words: {t: string; at: number}[]; matte: string; start: number; dur: number};
 type Behind = BehindImage | BehindWords;
 
@@ -307,7 +307,11 @@ const BehindSubject: React.FC = () => {
         const duration = Math.round(b.dur * fps);
         return (
           <Sequence key={i} from={from} durationInFrames={duration} layout="none">
-            {b.kind === 'image' ? (
+            {/* ATRAS_LIVRE: a imagem que a pessoa pôs no lugar dela no editor vai atrás da pessoa nesse lugar,
+                tamanho e recorte (o mesmo desenho do InsertLivre); sem x/y/w, o cartão grande */}
+            {b.kind === 'image' && b.x != null && b.y != null && b.w != null ? (
+              <InsertLivre src={b.src} x={b.x} y={b.y} w={b.w} crop={b.crop} totalFrames={duration} />
+            ) : b.kind === 'image' ? (
               <BehindImageEl src={b.src} totalFrames={duration} />
             ) : (
               <BehindWordsEl words={b.words} startSec={b.start} totalFrames={duration} />

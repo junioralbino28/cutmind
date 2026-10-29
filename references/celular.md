@@ -213,8 +213,9 @@ Each layer is a track, as in any editor:
 - Tap selects: **Voltar · Volume · Melhorar · Duplicar · Excluir** for audio (volume
   0–200%; Melhorar asks the agent to clean the noise and run the voice chain — not
   offered on a library track, where it would only damage the music), **Voltar · Atrás
-  da pessoa · Duplicar · Excluir** for an image (behind the person it becomes the big
-  card behind the head; the preview shows it there, see-through). Hold and drag moves
+  da pessoa · Duplicar · Excluir** for an image (behind the person it goes behind the
+  head: the big card until it is moved, then its own place; the preview shows it
+  see-through, since it cannot cut the person out live). Hold and drag moves
   it; the white handles trim (audio cannot stretch past its file). **Duplicar** (and
   Ctrl+D) copies the layer into a new track right above, same time. A locked layer
   cannot be selected or moved.
@@ -227,7 +228,9 @@ Each layer is a track, as in any editor:
   move takes it out of the card: it becomes the whole image (no 780×500 crop), with its
   center `x`/`y` and `largura` in frame px in `camadas.json`, and the final video draws it
   exactly there (`Main.tsx`, `InsertLivre`; measured equal to the preview to the pixel).
-  Near the middle it snaps to the middle. "Atrás da pessoa" still uses the big card.
+  Near the middle it snaps to the middle. Behind the person it moves, resizes and crops
+  the same way: the first move takes it out of the big card (1000×1250, 40 px from the
+  top), and the final video draws it behind the person in that place, size and crop.
 - **Recortar** (on a selected image) opens the whole image with a frame on top: pick a
   format (Livre, Original, 9:16, 1:1, 4:5, 16:9, Meia tela), drag the frame over the part
   that should show, pull the dot to make it smaller. Concluir saves `recorte` (fractions of

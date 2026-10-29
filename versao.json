@@ -1,16 +1,12 @@
 {
-  "versao": "0.2.0",
+  "versao": "0.2.1",
   "data": "2026-10-29",
   "notas": {
     "pt": [
-      "Salvar no editor refaz o corte na hora, sem gastar o Claude.",
-      "Baixar monta o vídeo final sozinho, com legenda, efeitos e camadas.",
-      "O botão \"Pronto, Claude segue\" chama o Claude uma vez só, com tudo o que você fez à mão."
+      "Imagem atrás da pessoa: agora ela muda de lugar, de tamanho e recorta como as outras, e o vídeo final a põe nesse lugar, atrás de você."
     ],
     "en": [
-      "Saving in the editor rebuilds the cut right away, without spending Claude.",
-      "Download builds the final video by itself, with captions, effects and layers.",
-      "The \"Done, Claude takes over\" button calls Claude once, with everything you did by hand."
+      "Image behind the person: it now moves, resizes and crops like the others, and the final video puts it right there, behind you."
     ]
   },
   "arquivos": {
@@ -26,7 +22,7 @@
     "assets/efeitos/vendor/jsm/postprocessing/ShaderPass.js": "e1127e62e93a629106702697311098863b71c69311ddf1a67aa2975cf4232413",
     "assets/efeitos/vendor/jsm/shaders/CopyShader.js": "4e3346db194db56a596cd074e9bdb39fb5eb52040c333e0d29dc4eb1324d3b1d",
     "assets/efeitos/vendor/three.module.min.js": "c8f0efb99adcb9826c604e859851501ab6b78bce634b012822878c7b9656d83c",
-    "assets/i18n/scripts-en.json": "1405f02ac83232118c6c25f1773d3c5ab5c6689a56ce320708406e72c27564d9",
+    "assets/i18n/scripts-en.json": "ba249759e20a94e59159f9abb850a9362691e0986c47185f7f2957a64a65d120",
     "assets/longform/README.md": "e2e545e198259ea3a6937d5d68ec6efea081330e286eb537ee6ca5ff7fc3dbd9",
     "assets/longform/package.json": "85c782ad6fc9ae548fde1bef8921b144d64992c251831022828be7188ef45fac",
     "assets/longform/public/edit-data.json": "35afca7753c35ce8c30598652ffbee82ace18472229c1b304afe089ba65d965e",
@@ -43,7 +39,7 @@
     "assets/pacotes/catalogo.json": "003984b0e4e9705cff4cff10b83a51172e8961f7cc3aab2b633ea8a62381d0f8",
     "assets/preview/celular.css": "503eb9934f69dbeee677716902fb920095ef7fd88da527b28cd51b347c85bf8e",
     "assets/preview/celular.html": "d25e69db158be1441f07006b7292f1148dd2a07c67f957077c4496c8c21bd2ee",
-    "assets/preview/celular.js": "31f7cdad0e59f6c0819567bebfd032d4b9624d81e216476e4ef2b8f93776e52f",
+    "assets/preview/celular.js": "362addccc60769d0b31e7cbe4568018dc644e2ce724b6dfcf068b1118923755e",
     "assets/preview/celular.webmanifest": "bf58d21563dba777f93a62a09aa5169d83a94ea8aaf46d70f7068f7594bf4bd7",
     "assets/preview/cutmind-logo-white.png": "b3f7435d87d0d53b6b768e8b8abfe829b23b69baa9a6ddfcbb08f89e9271b1c4",
     "assets/preview/cutmind-logo.png": "23dc4e814c3ad65bb875f5ef52b26a4d8d36cf5ee78eddd0e2ae119220951110",
@@ -57,7 +53,7 @@
     "assets/preview/fundos/lousa.jpg": "4044be1594456f58b93c656e6dd2cf8b3458c145553b69284bed170cca731d96",
     "assets/preview/fundos/neon.jpg": "0a489f7b4a0cdfd79ad301c1980b15588ba165c6b627f796775782610eeac53f",
     "assets/preview/fundos/parede.jpg": "6fcc80dd3d966c9b7781d1edcf60d7568d2a7d499c6b6bd998b43496a33a1c1e",
-    "assets/preview/i18n-en.js": "2e9d1b1f8d6d91dec9ea4b7631dbecc8f9a876ad5f8752aabf880a28a6757836",
+    "assets/preview/i18n-en.js": "79d6bde8f456b12e04bd45ab39ef984bc0625a3920efc513d9cd73e98c0bff45",
     "assets/preview/i18n.js": "4020dda6dbd66c085a1d2a0bb1d1e51b1b4ff244683a0c3a62a47dc809b9e030",
     "assets/preview/icone-192.png": "efaf78f4da6cc7db932d7a94c23d3d80338897d1c7252b6122ff17b8ec732b57",
     "assets/preview/icone-512.png": "1ca318a50076cbe3a3820121242ec1979f7b20e9da134d7211d5f74f94ece1ce",
@@ -86,7 +82,7 @@
     "assets/shortform/src/CamadasTexto.tsx": "ff05afe5755e1a37536fea3eb98d7da2a110cc81651db98dd58419cccc51d792",
     "assets/shortform/src/CustomGraphics.tsx": "131a43fd13e70044f8eac6f3ae49443792e8b11afec2fd37b089277fab47268d",
     "assets/shortform/src/EfeitosBase.tsx": "fd389d068efcb1283c15fac90b4abcc1755d4c63e028d4b86032680d7d241925",
-    "assets/shortform/src/Main.tsx": "f8defcab06e065b2a1f96b8c862d5c0e3d7b48d1aef0cbb85ad5e53254163885",
+    "assets/shortform/src/Main.tsx": "1b47f8e77f6384d24a16b38fe99e2eb402e8ffc6f2541cd08a53211a41d238a6",
     "assets/shortform/src/PencilOutline.tsx": "ab03e07262a1a8f8ca55d1d7283ba0320eec10a919ea4e2941a40e558d9fe2e4",
     "assets/shortform/src/Root.tsx": "902c569da6dad5cf5de909515408c7b21d0821515c9222afacc00a4ef7230e81",
     "assets/shortform/src/ScatterCaptions.tsx": "e63cd698fcd2907698cea4f6ad952ffd2ab984a03b9883d21d9cfcc4b01c47a2",
@@ -110,8 +106,8 @@
     "helpers/atualizar.py": "5f42ebf23b27dbe8105ac7073e68b26565761c61d360d0ec88afdbfb0b932f70",
     "helpers/atualizar_template.py": "b8092326f5f242e4d2279248a84c0495ae1f08a463e959647ca71a493933bb00",
     "helpers/batida.py": "7bef1232c372c5c504fc207371a9ab2515b46b11ec071ed83125db0b0d2b837f",
-    "helpers/camadas.py": "a7fc68f62a9ef783e7e201d79f48e5d6388dcc506d7f239e697d4ab5e75d8ae0",
-    "helpers/camadas_edit_data.py": "d48871c82a5a5131a1227c8352b9a480b05272eade033c4dcdf525dd7fb80f32",
+    "helpers/camadas.py": "7b5b0267993c60b164b5e5a0857c5f65c9956846e67e07dd51ed499e135d802c",
+    "helpers/camadas_edit_data.py": "a84790b531d8da7478542d2aa32dbd6b04162a24d9222cb5bca2f53ede15c022",
     "helpers/caption_positions.py": "b0b2244432033d1917f1778ef7e830fcf8fc56822ecce1e59bdabfff250a78ce",
     "helpers/caption_style.py": "f58ecfa4825f6b4c43eaa934c36e4d4455a6451c328bddfd6ea8d71a19768b31",
     "helpers/captions_for_remotion.py": "cc0238c47b49d3604ad9ace27dc66517fcde63780af837c7fe861083af24181d",
@@ -172,14 +168,14 @@
     "helpers/wikimedia_images.py": "db86016fc50261cc47a5ef8fb14768a472bed72a02e25344531916d9136e3bcf",
     "install.md": "84a792ad84cfef6ace8eea4bcc8fcf25b1bedfefa8ff80fd61c71e0023ef40b2",
     "pyproject.toml": "de2284d3a213f0e48c3cd2e03d157769eaab23cb153cb09ffdb54c9ac8629d97",
-    "references/celular.md": "c79f9dad199a5f5fd14e32cddfd05da7e5e8c3090b76396899ba3b9ae4314c01",
+    "references/celular.md": "870ca97a71607428ef767795ea800ae4fda9f60b6f35a760b3266062e36653b8",
     "references/cenas.md": "acae578b6d5dc5787853227929d2ec3629884c07264ea90a95db7e744008326b",
     "references/log-grade.md": "50eba561bf746d7a941209d9de25296eacc4384d3823967522bb231478380b4f",
     "references/longform.md": "2b92ef6185adad1a95b776389f38d3a83dd193095cedf1607acb779b0a5d8139",
     "references/montagem.md": "ad6f069d88b365b3ce589b593cc8aa273a646640300a3a44168cc839957c4f43",
-    "references/pelo-chat.md": "a29aa47eb27156d78dbf4edf944641304b65e3e9608ee2860204078d194f5b02",
+    "references/pelo-chat.md": "c9a01d3f1a864c363081bc5548ed8b534fee1f0ff9223045bf1de8674620409f",
     "references/premiere-mcp.md": "46dee7c1c67a545dfe918260e4547fbf7ee8f6ddf2f8ad47badd5f8ffb1b3a72",
-    "references/shortform.md": "67a019996b36bc8b17a0667f7f2f299e3975ebe37c148db157f9022b41f390b4",
+    "references/shortform.md": "4206c86a0b59830b35c0fb9f82a84c355185a88709c99c756f1bb62ab59494fb",
     "references/trilhas-gratis.md": "4dab2b78670c37843f00077885f4e8b1b7b534be7305197d9a9c786d97f5c580",
     "uv.lock": "1087927e450da1d3c47f09987b870af6ed321416c996f39e6faa5794bd831625"
   }
