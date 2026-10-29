@@ -269,7 +269,7 @@ const TimelineInner: React.FC<{totalFrames: number}> = ({totalFrames}) => {
   return (
     <AbsoluteFill style={{justifyContent: 'flex-start', alignItems: 'center'}}>
       <Sfx src="whoosh.mp3" />
-      <div style={{width: TL_W, height: TL_H, marginTop: 105, borderRadius: 28, background: '#15171c', border: '1px solid #262a31', boxShadow: '0 18px 50px rgba(0,0,0,0.5)', opacity: appear * exit, scale: String(interpolate(appear, [0, 1], [0.93, 1])), translate: `0px ${rise}px`, padding: PAD, boxSizing: 'border-box', position: 'relative', fontFamily}}>
+      <div style={{width: TL_W, height: TL_H, marginTop: 270, borderRadius: 28, background: '#15171c', border: '1px solid #262a31', boxShadow: '0 18px 50px rgba(0,0,0,0.5)', opacity: appear * exit, scale: String(interpolate(appear, [0, 1], [0.93, 1])), translate: `0px ${rise}px`, padding: PAD, boxSizing: 'border-box', position: 'relative', fontFamily}}>
         {/* window dots */}
         <div style={{display: 'flex', gap: 12}}>
           {['#ff5f57', '#febc2e', '#28c840'].map((c) => (<div key={c} style={{width: 16, height: 16, borderRadius: 999, background: c}} />))}
@@ -333,7 +333,7 @@ const ScriptInner: React.FC<{totalFrames: number; lines: string[]}> = ({totalFra
   return (
     <AbsoluteFill style={{justifyContent: 'flex-start', alignItems: 'center'}}>
       <Sfx src="whoosh.mp3" />
-      <div style={{width: 640, height: 420, marginTop: 100, borderRadius: 16, background: '#f4f1e8', boxShadow: '0 22px 55px rgba(0,0,0,0.5)', opacity: appear * exit, scale: String(interpolate(appear, [0, 1], [0.94, 1])), rotate: '-2deg', translate: `0px ${interpolate(appear, [0, 1], [26, 0])}px`, padding: 46, boxSizing: 'border-box', fontFamily}}>
+      <div style={{width: 640, height: 420, marginTop: 270, borderRadius: 16, background: '#f4f1e8', boxShadow: '0 22px 55px rgba(0,0,0,0.5)', opacity: appear * exit, scale: String(interpolate(appear, [0, 1], [0.94, 1])), rotate: '-2deg', translate: `0px ${interpolate(appear, [0, 1], [26, 0])}px`, padding: 46, boxSizing: 'border-box', fontFamily}}>
         <div style={{fontWeight: 900, fontSize: 26, letterSpacing: 3, color: '#c2492b'}}>ROTEIRO</div>
         <div style={{height: 4, width: 90, background: '#c2492b', borderRadius: 3, marginTop: 10, marginBottom: 30}} />
         {lines.map((line, i) => {
@@ -393,7 +393,7 @@ const ShapesInner: React.FC<{totalFrames: number}> = ({totalFrames}) => {
   return (
     <AbsoluteFill style={{justifyContent: 'flex-start', alignItems: 'center'}}>
       <Sfx src="pop.mp3" volume={0.12} />
-      <div style={{marginTop: 210, display: 'flex', gap: 34, opacity: exit, translate: `0px ${rise}px`}}>
+      <div style={{marginTop: 300, display: 'flex', gap: 34, opacity: exit, translate: `0px ${rise}px`}}>
         <Shape i={0} color="white" round={46} />
         <Shape i={1} color="#33e0a3" round={20} />
         <Shape i={2} color="white" round={8} />

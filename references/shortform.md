@@ -31,8 +31,9 @@ approved. Everything here rides on the **data-driven template** at
   slow Ken-Burns. Pexels for concrete objects; **bespoke motion graphics** when
   a word names something animatable (timeline for "cortes", typewriter sheet
   for "roteiro" — worked examples in `src/CustomGraphics.tsx`).
-- **Zones:** inserts/graphics upper third, captions lower third, face clear.
-  Minimalist; accent `#33e0a3`.
+- **Zones:** inserts/graphics in the upper third BELOW the safe-zone line,
+  captions lower third, face clear. Minimalist; accent `#33e0a3`. See "Zona
+  segura" below: nothing with words starts above y 240.
 - **Audio:** whoosh ~0.09 on card entrances, pop ~0.12 on shapes, music ~0.0445,
   and ALWAYS a final loudnorm pass (voice+music+SFX summed will clip). The
   shared sfx pack (`public/sfx/`) also ships `click1`/`click2` (element pops) and
@@ -199,6 +200,32 @@ when the user reopens Posição), clear `awaitingStyle`, delete `preview_style.j
 
 Never edit `src/Main.tsx`. Bespoke graphics go in `src/CustomGraphics.tsx`
 (the ONE editable file — read it only when the video needs a custom graphic).
+
+## Zona segura (Reels, TikTok, Shorts)
+
+The 1080×1920 frame is not all visible all the time. Measured against Instagram's
+own templates (`src/zonaSegura.ts` holds the numbers, the editor draws the same
+lines with the **Zona segura** button under the player):
+
+| Band | Where | Why |
+|---|---|---|
+| top | y < 240 | the profile grid shows only 1080×1440 of the middle; the Reels header sits here |
+| bottom | y > 1680 | cut by the profile grid |
+| post | y > 1560 | the post's name and description cover it |
+| buttons | x > 930, y 880–1680 | like / comment / share / audio column |
+
+- **No text, number, logo or card with words starts in those bands.** Pictures,
+  backgrounds and decorative frames (a photo wall, a site's gradient, the
+  magazine barcode) may bleed into them; the message may not.
+- The template already obeys: headlines and image cards start at 260, the words
+  behind the person at 250, the `cenas[]` layouts (vidro, mural, parede, gráfico,
+  site, capa) keep their text below 240. A bespoke graphic in
+  `CustomGraphics.tsx` imports `ZONA_SEGURA` from `./zonaSegura` and starts at
+  `ZONA_SEGURA.topo` or lower, never at a hand-picked 100.
+- Captions sit in the lower third ABOVE 1560; a CTA arrow or a comment box near
+  the bottom stays left of x 930.
+- Checking: open the editor, turn on **Zona segura** and scrub the Final view;
+  nothing readable may touch the red or yellow bands.
 
 ## Headline styles — always two lines
 
@@ -912,6 +939,10 @@ skill prompt is resent every turn.
   the real faces, sizes and motion, scaled from 1080-wide — that is the whole
   reason the user can choose by looking. A preview that lies about the style is
   worse than no preview.
+- Placing text or a card in the top 240 px (or under the post caption / button
+  column). It looks fine in the full-screen preview and is cut off on the
+  profile grid and covered by the Reels header. Use `ZONA_SEGURA` (see "Zona
+  segura"); the editor's **Zona segura** button shows the bands.
 - Hardcoding a bespoke graphic's timings inside `CustomGraphics.tsx`. Put the
   windows in an `edit-data.json` array (a key the template ignores, e.g.
   `splitInserts`) and map over it — otherwise the graphic is invisible to the

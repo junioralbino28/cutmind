@@ -137,6 +137,8 @@ const ICON = {
   tudo: sv('<path d="M3.5 12h17M7 8.5 3.5 12 7 15.5M17 8.5l3.5 3.5-3.5 3.5"/>'),
   // o ímã da linha do tempo: a agulha e as pontas grudam na batida da música
   ima: sv('<path d="M5 4v8a7 7 0 0 0 14 0V4h-4v8a3 3 0 0 1-6 0V4z"/><path d="M5 7.6h4M15 7.6h4"/>'),
+  // a zona segura do Reels: o quadro com as faixas que somem ou ficam cobertas
+  zona: sv('<rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M5 6.5h14M5 17.5h14" stroke-dasharray="2 1.6"/>'),
   // um lugar da montagem: Trocar a mídia (as duas setas) e o Trecho do clipe (a janela na tira)
   trocar: sv('<path d="M4.5 8.5h14l-3.5-3.5M19.5 15.5h-14l3.5 3.5"/>'),
   recortar: sv('<path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/>'),
@@ -185,7 +187,7 @@ const SPLIT_GEOM = {
   split: { band: 'top', bandH: 750, zoom: 1.25, focusY: 400, capPB: 1074 },
   split2: { band: 'bottom', bandH: 750, zoom: 1.0, focusY: 225, capPB: 790 },
 };
-const HL_TOP = { outline: 330, card: 120, realce: 300, misto: 300 };
+const HL_TOP = { outline: 330, card: 260, realce: 300, misto: 300 };
 const STATIC_BOTTOM = 430;
 const KARAOKE_LINE = 61; // a amostra do karaokê usa 61px de letra, line-height 1
 
@@ -446,6 +448,7 @@ const S = {
   batidas: {},        // arquivo de midia/ → a grade de batida dele ({estado, batidas, fortes, bpm, confianca})
   grade: [],          // as batidas das músicas no tempo da linha do tempo: [{t, forte, it}], em ordem
   ima: lerPref('cutmind.ima') !== '0', // ímã ligado: agulha e pontas grudam na batida (lembrado)
+  zona: lerPref('cutmind.zona') === '1', // a régua da zona segura por cima do vídeo (lembrada)
 };
 
 const fmt = (t) => {
@@ -1509,6 +1512,39 @@ $('zoomFit').addEventListener('click', () => { S.v0 = 0; setZoom(S.minPps, DESK_
 $('btnIma').innerHTML = `${ICON.ima}<span>${t('Ímã')}</span>`;
 $('btnIma').addEventListener('click', alternaIma);
 syncIma();
+/* A zona segura do Reels (assets/shortform/src/zonaSegura.ts: os mesmos números, conferidos por teste). A grade
+ * do perfil mostra só 1080×1440 do meio, o cabeçalho fica em cima, a coluna de botões à direita e o nome e a
+ * descrição do post embaixo: o botão pinta essas faixas por cima do vídeo, para nada de texto cair nelas.
+ * Só no vídeo em pé: o deitado não passa por essa tela. */
+const ZONA_SEGURA = { topo: 240, base: 1680, legendaPost: 1560, colunaX: 930, colunaY0: 880, colunaY1: 1680 };
+function montaZona() {
+  const z = ZONA_SEGURA, W = 1080, H = 1920;
+  const pc = (v, d) => `${((v / d) * 100).toFixed(4)}%`;
+  const caixa = (cls, x0, y0, x1, y1, txt) =>
+    `<div class="oz ${cls}" style="left:${pc(x0, W)};top:${pc(y0, H)};width:${pc(x1 - x0, W)};height:${pc(y1 - y0, H)}"><span>${txt}</span></div>`;
+  $('ovZona').innerHTML = caixa('topo', 0, 0, W, z.topo, t('some na grade do perfil'))
+    + caixa('base', 0, z.base, W, H, t('some na grade do perfil'))
+    + caixa('post', 0, z.legendaPost, z.colunaX, z.base, t('nome e legenda do post'))
+    + caixa('coluna', z.colunaX, z.colunaY0, W, z.colunaY1, t('botões'));
+}
+function syncZona() {
+  const emPe = !(video.videoWidth > video.videoHeight);
+  $('ovZona').classList.toggle('hidden', !(S.zona && emPe));
+  const b = $('btnZona');
+  b.classList.toggle('on', S.zona);
+  b.classList.toggle('hidden', !emPe);
+  b.setAttribute('aria-pressed', String(S.zona));
+}
+$('btnZona').innerHTML = ICON.zona;
+$('btnZona').addEventListener('click', () => {
+  S.zona = !S.zona;
+  gravaPref('cutmind.zona', S.zona ? '1' : '0');
+  syncZona();
+  toast(S.zona ? t('Zona segura: texto e gráfico ficam fora das faixas pintadas') : t('Zona segura escondida'), 2400);
+});
+video.addEventListener('loadedmetadata', syncZona);
+montaZona();
+syncZona();
 
 // ---------- busca no vídeo enquanto o dedo arrasta ----------
 let seekQueued = false;
@@ -5861,10 +5897,10 @@ const CENA_BLOCO = {
   // a palavra de vidro é esticada até `largura` (textLength no vidro.tsx), qualquer que seja o tamanho dela
   vidro: (c) => { const tam = lay(c).tamanho ?? 300; return { x: 540, y: lay(c).y ?? 700, w: c.largura ?? 1000, h: tam * 0.74 }; },
   zoomDigital: (c, t) => ({ x: 540, y: c.y ?? 960, w: largo(maisLonga(t.batidas), (c.tamanho ?? 330) * 0.42), h: (c.tamanho ?? 330) * 0.74 }),
-  parede: (c, t) => { const b = lay(c).bloco || { x: 540, y: 245 }; return { x: b.x, y: b.y, w: Math.max(largo(t.gigante, 116), largo(t.pequeno, 30)), h: 316 }; },
+  parede: (c, t) => { const b = lay(c).bloco || { x: 540, y: 400 }; return { x: b.x, y: b.y, w: Math.max(largo(t.gigante, 116), largo(t.pequeno, 30)), h: 316 }; },
   capa: (c) => { const tam = lay(c).tamanho ?? 330; return { x: 540, y: (lay(c).baseline ?? 690) - tam * 0.355, w: c.largura ?? 1010, h: tam * 0.72 }; },
   grafico: (c, t) => { const b = lay(c).bloco || { x: 751, y: 411 }; return { x: b.x, y: b.y, w: largo(t.etiqueta || 'ESCALA', 42) + 128, h: 130 }; },
-  chroma: (c) => { const b = lay(c).bloco || { x: 514, y: 590 }; return { x: b.x, y: b.y, w: 900, h: 680 }; },
+  chroma: (c) => { const b = lay(c).bloco || { x: 514, y: 640 }; return { x: b.x, y: b.y, w: 900, h: 580 }; },
   papel: (c, t) => ({ x: 540, y: 268, w: largo(maisLonga(t.frase), 96), h: 296 }),
   rabisco: (c, t) => ({ x: 540, y: 184, w: largo(t.frase, 48), h: 124 }),
   checklist: (c) => ({ x: 540, y: (c.top ?? 108) + 234, w: 908, h: 468 }),
@@ -5902,7 +5938,7 @@ const CENA_ESTILO = {
     linhas: (t) => [`${t.prefixo || ''}${t.valor || ''}${t.sufixo || ''}`] },
 };
 // os estilos do gancho (HL_STYLES em Main.tsx): o teto da letra, a largura, a linha e o topo
-const GANCHO = { outline: { cap: 51, w: 900, lh: 1.02, top: 330 }, card: { cap: 46, w: 820, lh: 1.06, top: 120 },
+const GANCHO = { outline: { cap: 51, w: 900, lh: 1.02, top: 330 }, card: { cap: 46, w: 820, lh: 1.06, top: 260 },
   realce: { cap: 48, w: 830, lh: 1.04, top: 300 }, misto: { cap: 55, w: 900, lh: 0.98, top: 300 } };
 // as duas linhas do gancho, partidas no meio pelo número de letras (o render parte pela largura medida)
 function duasLinhas(txt) {

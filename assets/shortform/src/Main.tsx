@@ -35,6 +35,7 @@ import segData from '../public/segments.json';
 import editData from '../public/edit-data.json';
 import {CustomGraphics} from './CustomGraphics';
 import {VIDEO_LAG} from './videoLag';
+import {ZONA_SEGURA} from './zonaSegura';
 import {StackedCaptions} from './StackedCaptions';
 import {ScatterCaptions} from './ScatterCaptions';
 import {SimpleCaptions, SIMPLE_VARIANTS} from './SimpleCaptions';
@@ -279,7 +280,7 @@ const BehindWordsEl: React.FC<{words: {t: string; at: number}[]; startSec: numbe
   const scrim = interpolate(f, [0, 8, totalFrames - 8, totalFrames], [0, 1, 1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
   if (!pronta) return null;
   return (
-    <AbsoluteFill style={{justifyContent: 'flex-start', alignItems: 'center', paddingTop: 180}}>
+    <AbsoluteFill style={{justifyContent: 'flex-start', alignItems: 'center', paddingTop: ZONA_SEGURA.topo + 10}}>
       <AbsoluteFill style={{background: 'rgba(0,0,0,0.26)', opacity: scrim}} />
       {words.map((w, i) => {
         const from = Math.round((w.at - startSec) * fps);
@@ -471,9 +472,10 @@ const Karaoke: React.FC = () => {
 };
 
 // ============ ILLUSTRATIVE IMAGE INSERTS (rounded card + shadow, upper zone) ====
-const CARD_W = 780;
-const CARD_H = 500;
-const CARD_TOP = 90;
+// abaixo da faixa de cima que some na grade do perfil (zonaSegura.ts); antes nascia a 90 px do topo
+const CARD_W = 700;
+const CARD_H = 420;
+const CARD_TOP = ZONA_SEGURA.topo + 20;
 
 const InsertCard: React.FC<{src: string; totalFrames: number}> = ({src, totalFrames}) => {
   const frame = useCurrentFrame();
@@ -582,7 +584,7 @@ const HL_MIN = 28;
 type HlStyle = {weights: [number, number]; cap: number; safeW: number; lh: number; top: number};
 const HL_STYLES: Record<string, HlStyle> = {
   outline: {weights: [800, 800], cap: 51, safeW: 900, lh: 1.02, top: 330},
-  card: {weights: [900, 900], cap: 46, safeW: 820, lh: 1.06, top: 120},
+  card: {weights: [900, 900], cap: 46, safeW: 820, lh: 1.06, top: 260},
   realce: {weights: [900, 900], cap: 48, safeW: 830, lh: 1.04, top: 300},
   misto: {weights: [400, 900], cap: 55, safeW: 900, lh: 0.98, top: 300},
 };

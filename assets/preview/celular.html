@@ -101,6 +101,8 @@
       <button class="final-velho hidden" id="finalVelho" type="button"><span>O vídeo final ainda não tem seus últimos ajustes</span><b>Gerar e baixar</b></button>
       <!-- com o Estilo aberto, deslizar no vídeo troca o estilo: o nome aparece aqui por um instante -->
       <div class="swipe-name" id="swipeName" aria-live="polite"></div>
+      <!-- a zona segura do Reels (botão ao lado do som): as faixas onde o Instagram corta ou cobre o vídeo -->
+      <div class="ov-zona hidden" id="ovZona" aria-hidden="true"></div>
     </div>
   </section>
 
@@ -109,6 +111,7 @@
     <div class="t-side">
       <button class="t-ico" id="btnFull" type="button" aria-label="Tela cheia" title="Tela cheia"></button>
       <button class="t-ico" id="btnMute" type="button" aria-label="Som" title="Som da prévia"></button>
+      <button class="t-ico" id="btnZona" type="button" aria-pressed="false" aria-label="Zona segura" title="Zona segura: onde o Instagram corta ou cobre o vídeo"></button>
     </div>
     <button class="t-play" id="btnPlay" type="button" aria-label="Reproduzir" title="Tocar / pausar (Espaço)"></button>
     <div class="t-side right">

@@ -96,7 +96,7 @@ def test_layout_vidro_poe_so_a_base_das_letras_atras_da_cabeca(topo):
     t = lay["tamanho"]
     pe, alto = lay["y"] + 0.36 * t, lay["y"] - 0.36 * t  # como o template desenha a palavra
     assert topo <= pe <= topo + 0.3 * t
-    assert alto >= 60
+    assert alto >= cenas.ZONA_TOPO
 
 
 def test_layout_vidro_palavra_longa_fica_menor():
@@ -166,8 +166,11 @@ def test_layout_grafico():
 
 @pytest.mark.parametrize("topo", [400, 600, 900])
 def test_layout_parede(topo):
-    y = cenas.layout("parede", _pessoa(topo=topo), {"gigante": "POSTS"})["bloco"]["y"]
-    assert y - 158 >= 0 and y + 158 < topo  # o bloco (~316 px) dentro do quadro e acima da cabeça
+    lay = cenas.layout("parede", _pessoa(topo=topo), {"gigante": "POSTS"})
+    y = lay["bloco"]["y"]
+    # o bloco (~316 px) abaixo da zona segura e acima da cabeça, que desce quando precisa
+    assert y - 158 >= cenas.ZONA_TOPO and y + 158 < topo + lay["desce"]
+    assert lay["desce"] == (0 if topo >= 600 else 178)
 
 
 # ---------------------------------------------------------------- validação

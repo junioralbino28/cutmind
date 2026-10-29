@@ -105,7 +105,9 @@ result. A personal brand → "MENTORA"; a gym → "TREINO"; a finance creator �
 
 - **`nome`**: the cover's title, 1 word (it is stretched to 1010 px).
 - `cor` (#b0101b); `topo`: up to 3 short lines across the top; `esquerda`, `direita`: up to 3
-  pairs `[line, line]` each (a short uppercase line and an italic one); `selo`: the corner ribbon.
+  pairs `[line, line]` each (a short uppercase line and an italic one); `selo`: a round seal
+  just under the title, on the side without a list (1–2 short words; it wraps inside the circle).
+- The right list ends before the Reels button column (x 930); see "Zona segura" in shortform.md.
 - The side lines only go where the person is not. On a close-up with the body touching both
   edges there may be room on one side only: a list whose side has no room moves to the free
   side; with no room at all it stays out and the helper says so. Prefer ONE list of 2 pairs.

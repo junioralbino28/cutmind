@@ -266,6 +266,10 @@ def aplicar(edit: Path, edit_data: Path | None = None, recortar: bool = True) ->
             if c.get(k) and not c["layout"]["colunas"][k]:
                 r["avisos"].append(f"cenas[{i}] ({c['tipo']}): as chamadas `{k}` não cabem fora da pessoa nesta tomada e "
                                    "ficam fora do vídeo; use um lado só ou outra tomada")
+        fora = [j for j, s in enumerate(c["layout"].get("slots") or []) if s is None] if c["tipo"] == "mural" else []
+        if fora:
+            r["avisos"].append(f"cenas[{i}] (mural): a(s) manchete(s) {', '.join(str(j) for j in fora)} não cabe(m) fora da "
+                               "pessoa e da zona segura nesta tomada e fica(m) fora do vídeo; use menos manchetes ou outra tomada")
     medidas.gravar(validos)
     for velho in pasta.iterdir():  # a pasta é toda deste helper
         if velho.is_file() and velho.name != MEDIDAS and velho.name not in usados:

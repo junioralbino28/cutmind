@@ -159,7 +159,7 @@ html:not(.desk) .pronto-btn .pronto-n { margin-left: 3px; padding: 0 4px; font-s
 .peek { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; background: #000; z-index: 3; pointer-events: none; }
 /* camada de imagem: o cartão do vídeo final (Main.tsx: 780×500 px, 90 do topo, canto 28) */
 .ov-img {
-  position: absolute; left: 50%; top: 4.6875%; width: 72.222%; height: 26.042%;
+  position: absolute; left: 50%; top: 13.5417%; width: 64.8148%; height: 21.875%; /* Main.tsx CARD_*: abaixo da faixa que some na grade */
   translate: -50% 0;
   border-radius: 3.59% / 5.6%;
   object-fit: cover;
@@ -494,6 +494,16 @@ html:not(.desk) .pronto-btn .pronto-n { margin-left: 3px; padding: 0 4px; font-s
 }
 .t-ico svg { width: 21px; height: 21px; display: block; }
 #btnMute svg { width: 18px; height: 18px; fill: currentColor; } /* o ícone de som é preenchido, os outros são de traço */
+#btnZona.on { color: var(--brand); }
+/* a zona segura: as faixas que somem na grade do perfil (vermelho) e as cobertas pelo nome do post (amarelo) e pelos
+   botões; as letras em cqw acompanham o tamanho do player */
+.ov-zona { position: absolute; inset: 0; z-index: 6; pointer-events: none; container-type: size; }
+.ov-zona .oz { position: absolute; display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 59, 48, 0.22); outline: 1px dashed rgba(255, 90, 80, 0.9); outline-offset: -1px; }
+.ov-zona .oz.post { background: rgba(255, 196, 0, 0.18); outline-color: rgba(255, 200, 0, 0.85); }
+.ov-zona .oz span { font-size: 2.6cqw; font-weight: 700; color: #fff; text-align: center; padding: 0 2%;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75); }
+.ov-zona .oz.coluna span { writing-mode: vertical-rl; }
 .t-ico:disabled { opacity: 0.28; }
 .t-ico:not(:disabled):active { background: var(--surface2); }
 .t-play {

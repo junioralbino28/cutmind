@@ -87,8 +87,9 @@ export const Mural: React.FC<CenaProps> = ({c, a}) => {
 // ============ PAREDE DE FOTOS ===================================================
 // The wall behind the person fills with polaroids, one every `cada` seconds, falling on a spring
 // with a coloured pin; the person casts a shadow on it; a tape strip and a giant word sit above
-// the head. Data: cada (s), inicio (s), pequeno, pequenoAt, gigante, giganteAt; layout.fotos (the
-// user's images, or frames of the video itself), layout.bloco, layout.fundo.
+// the head, below the Reels safe zone (the person moves down `layout.desce` px to make room). Data:
+// cada (s), inicio (s), pequeno, pequenoAt, gigante, giganteAt; layout.fotos (the user's images, or
+// frames of the video itself), layout.bloco, layout.desce, layout.fundo.
 const SLOTS_PAREDE = [
   {x: 24, y: 120, r: -6}, {x: 286, y: 80, r: 4}, {x: 548, y: 128, r: -3}, {x: 806, y: 92, r: 7},
   {x: -6, y: 470, r: 5}, {x: 818, y: 452, r: -4}, {x: 258, y: 420, r: -5}, {x: 574, y: 462, r: 6},
@@ -106,8 +107,9 @@ export const Parede: React.FC<CenaProps> = ({c, a}) => {
   const pAt = local(c.pequenoAt ?? c.start + 0.3, a, fps);
   const gp = mola(f, gAt, fps, {damping: 10, stiffness: 160});
   const pp = ease(f, pAt, pAt + 8);
-  const b = c.layout?.bloco ?? {x: W / 2, y: 245};
+  const b = c.layout?.bloco ?? {x: W / 2, y: 400};
   const [tx, ty] = centro(c, [b.x, b.y]);
+  const desce = Number(c.layout?.desce) || 0;
   const est = estiloDe(c, {fonte: 'anton', cor: ACCENT, escala: 1, contorno: 10, corContorno: '#ffffff'});
   return (
     <AbsoluteFill>
@@ -140,8 +142,8 @@ export const Parede: React.FC<CenaProps> = ({c, a}) => {
         );
       })}
       {/* the person's shadow on the wall, then the person */}
-      <Recorte c={c} style={{filter: 'brightness(0) blur(16px)', opacity: 0.42, transform: 'translate(38px, 26px)'}} />
-      <Recorte c={c} />
+      <Recorte c={c} style={{filter: 'brightness(0) blur(16px)', opacity: 0.42, transform: `translate(38px, ${26 + desce}px)`}} />
+      <Recorte c={c} style={desce ? {transform: `translateY(${desce}px)`} : undefined} />
       {/* tape + giant word: one block, centred on `texto` or on layout.bloco */}
       <div style={{position: 'absolute', left: tx, top: ty, width: W, transform: 'translate(-50%, -50%)', display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
         {c.pequeno ? (
@@ -169,8 +171,8 @@ export const Parede: React.FC<CenaProps> = ({c, a}) => {
 
 // ============ CAPA DE REVISTA ===================================================
 // The frame becomes a magazine cover: studio cream, the masthead huge behind the head (the person
-// covers its foot), the side lines outside the person, an optional ribbon, a barcode and a gloss
-// sweep. Data: nome, cor, topo [], esquerda [[a, b]], direita [[a, b]], selo; layout.baseline,
+// covers its foot), the side lines outside the person, an optional round seal just under the
+// masthead (layout.selo: centre and diameter), a barcode and a gloss sweep. Data: nome, cor, topo [], esquerda [[a, b]], direita [[a, b]], selo; layout.baseline,
 // layout.tamanho, layout.colunas (where each list sits: a list whose side has no room moves to the
 // free side and keeps its own look, aligned to the side it landed on).
 const ColunaCapa: React.FC<{col: Coluna; linhas: [string, string][]; estilo: 'esquerda' | 'direita'; entra: (d: number) => number}> = ({col, linhas, estilo, entra}) => {
@@ -207,6 +209,7 @@ export const Capa: React.FC<CenaProps> = ({c, a}) => {
   const tam = tam0 * est.escala; // grows around the centre: the default centre is the computed one
   const [mx, my] = centro(c, [W / 2, (c.layout?.baseline ?? 690) - tam0 * 0.355]);
   const colunas = c.layout?.colunas ?? {};
+  const selo: {x: number; y: number; d: number} = c.layout?.selo ?? {x: 830, y: 790, d: 200};
   return (
     <AbsoluteFill>
       <AbsoluteFill style={{background: 'radial-gradient(ellipse 80% 60% at 50% 38%, #f8f1e6 0%, #ece1cd 55%, #cdbd9f 100%)'}} />
@@ -233,8 +236,14 @@ export const Capa: React.FC<CenaProps> = ({c, a}) => {
       <ColunaCapa col={colunas.esquerda ?? null} linhas={c.esquerda ?? []} estilo="esquerda" entra={entra} />
       <ColunaCapa col={colunas.direita ?? null} linhas={c.direita ?? []} estilo="direita" entra={entra} />
       {c.selo ? (
-        <div style={{position: 'absolute', right: -150, top: 70, width: 560, height: 74, background: '#d4141c', transform: `rotate(38deg) translateX(${(1 - entra(4)) * 300}px)`, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 20px rgba(0,0,0,.3)'}}>
-          <span style={{fontFamily: FONTE.anton, fontSize: 46, letterSpacing: 6, color: '#fff'}}>{c.selo}</span>
+        <div
+          style={{
+            position: 'absolute', left: selo.x - selo.d / 2, top: selo.y - selo.d / 2, width: selo.d, height: selo.d, borderRadius: 999, boxSizing: 'border-box', background: '#d4141c',
+            border: '5px dashed rgba(255,255,255,.6)', boxShadow: '0 10px 24px rgba(0,0,0,.3)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transform: `rotate(-12deg) scale(${mola(f, 4, fps, {damping: 9, stiffness: 180})})`,
+          }}
+        >
+          <span style={{fontFamily: FONTE.anton, fontSize: selo.d * 0.18, lineHeight: 1.05, letterSpacing: 2, color: '#fff', textAlign: 'center', maxWidth: selo.d * 0.8}}>{c.selo}</span>
         </div>
       ) : null}
       {/* barcode */}
@@ -328,7 +337,8 @@ export const Grafico: React.FC<CenaProps> = ({c, a}) => {
 // The background becomes a web page (gradient, moving light blobs, a menu, a big title, a line and
 // a button) and the person, whole and scaled down, slides in at a lower corner. Data: titulo, marca,
 // menu [], frase, botao, lado ('direita' | 'esquerda'), entrada (s); layout.escala, layout.x,
-// layout.y (the corner of the scaled frame) and layout.bloco (the text, around the designed 514, 590).
+// layout.y (the corner of the scaled frame) and layout.bloco (the text, around the designed 514, 640).
+// The menu and the title sit below the Reels safe zone.
 export const Chroma: React.FC<CenaProps> = ({c}) => {
   const {f, fps} = useJanela();
   const entra = (d: number) => ease(f, d, d + 10);
@@ -340,7 +350,7 @@ export const Chroma: React.FC<CenaProps> = ({c}) => {
   const ph = H * esc;
   const px = L.x ?? (direita ? W - pw + 90 : -90);
   const py = L.y ?? H - ph;
-  const b = L.bloco ?? {x: 514, y: 590};
+  const b = L.bloco ?? {x: 514, y: 640};
   const [bx, by] = centro(c, [b.x, b.y]);
   const est = estiloDe(c, {fonte: 'poppins', cor: '#ffffff', escala: 1, contorno: 0, corContorno: '#3a0ca3'});
   // scaled down, the side of the original frame that faces the page (a straight cut through the
@@ -365,7 +375,7 @@ export const Chroma: React.FC<CenaProps> = ({c}) => {
         />
       ))}
       {c.marca || (c.menu ?? []).length ? (
-        <div style={{position: 'absolute', left: 56, right: 56, top: 70, height: 84, display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: entra(0)}}>
+        <div style={{position: 'absolute', left: 56, right: 56, top: 250, height: 84, display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: entra(0)}}>
           <div style={{fontFamily: FONTE.poppins, fontWeight: 800, fontSize: 36, color: '#fff', display: 'flex', alignItems: 'center', gap: 12}}>
             {c.marca ? <div style={{width: 30, height: 30, background: '#fff', transform: 'rotate(45deg)', borderRadius: 6}} /> : null}
             {c.marca ?? ''}
@@ -377,8 +387,8 @@ export const Chroma: React.FC<CenaProps> = ({c}) => {
           </div>
         </div>
       ) : null}
-      <AbsoluteFill style={{transform: `translate(${bx - 514}px, ${by - 590}px)`}}>
-        <div style={{position: 'absolute', left: 64, top: 250, width: 900, fontFamily: est.familia, fontWeight: est.peso, fontStyle: est.italico, fontSize: 94 * est.escala, lineHeight: 1.0, color: est.cor, ...est.traco, letterSpacing: -2, opacity: entra(4), transform: `translateY(${(1 - entra(4)) * 30}px)`}}>
+      <AbsoluteFill style={{transform: `translate(${bx - 514}px, ${by - 640}px)`}}>
+        <div style={{position: 'absolute', left: 64, top: 350, width: 900, fontFamily: est.familia, fontWeight: est.peso, fontStyle: est.italico, fontSize: 94 * est.escala, lineHeight: 1.0, color: est.cor, ...est.traco, letterSpacing: -2, opacity: entra(4), transform: `translateY(${(1 - entra(4)) * 30}px)`}}>
           {c.titulo}
         </div>
         {c.frase ? (

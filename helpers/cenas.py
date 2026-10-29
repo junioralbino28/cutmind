@@ -24,6 +24,10 @@ from pathlib import Path, PurePosixPath
 import numpy as np
 
 W, H = 1080, 1920
+# a zona segura do Reels (assets/shortform/src/zonaSegura.ts; tests/test_zona_segura.py confere as duas):
+# nenhum texto nasce acima de y 240, a faixa que a grade do perfil corta e o cabeçalho do Reels cobre
+ZONA_TOPO = 240
+ZONA_BOTOES = (930, 880, 1680)  # a coluna de botões do Reels: à direita de x 930, de y 880 a 1680
 FUNDOS = ("concreto", "parede", "kraft", "lousa", "estudio", "neon")
 FUNDO_PADRAO = {"mural": "fundos/parede", "parede": "fundos/concreto"}  # os que o tipo usa sem pedir
 PAREDE_FOTOS = 14  # os lugares de foto da Parede
@@ -296,6 +300,12 @@ def cobre(p: dict, r: tuple) -> float:
     return sum(_inter(r, (x0, y0, x1 - x0, y1 - y0)) for y0, y1, x0, x1 in _perfil(p)) / (r[2] * r[3])
 
 
+def _nos_botoes(r: tuple) -> bool:
+    """O retângulo (x, y, w, h) entra na coluna de botões do Reels (curtir, comentar, compartilhar)."""
+    bx, by0, by1 = ZONA_BOTOES
+    return r[0] + r[2] > bx and r[1] + r[3] > by0 and r[1] < by1
+
+
 def _lado(p: dict, ya: float, yb: float) -> tuple[float, float]:
     """Onde a pessoa começa e termina na horizontal entre as alturas ya e yb (W, 0 = não está)."""
     rs = [(x0, x1) for y0, y1, x0, x1 in _perfil(p) if y1 > ya and y0 < yb]
@@ -313,110 +323,151 @@ def _letras(s) -> float:
 def _vidro(p: dict, c: dict) -> dict:
     """`y`: o centro da palavra (o template põe o pé das letras em y + 0,36·tamanho, e a letra tem
     0,72·tamanho de altura). Só o pé das letras fica atrás do topo da cabeça, entre `topo` e
-    `topo + 0,3·tamanho`, e o topo delas a 60 px ou mais da borda. `tamanho`: o pedido, ou o maior que
-    cabe nessas regras e na `largura` sem apertar a palavra a menos de 70 % da largura dela."""
+    `topo + 0,3·tamanho`, e o topo delas abaixo da zona segura (`ZONA_TOPO`). `tamanho`: o pedido, ou o
+    maior que cabe nessas regras e na `largura` sem apertar a palavra a menos de 70 % da largura dela.
+    Com a cabeça muito alta, a palavra fica na zona e mais do pé dela passa atrás da cabeça."""
     topo = p["topo"]
-    t = c.get("tamanho") or max(120.0, min(300.0, (topo - 60) / 0.59,
+    t = c.get("tamanho") or max(120.0, min(300.0, (topo - ZONA_TOPO) / 0.59,
                                            float(c.get("largura") or 1000) / (0.46 * _letras(c.get("palavra")))))
-    return {"y": round(max(60 + 0.37 * t, topo - 0.22 * t)), "tamanho": round(t)}
+    return {"y": round(max(ZONA_TOPO + 0.37 * t, topo - 0.22 * t)), "tamanho": round(t)}
 
 
 def _capa(p: dict, c: dict) -> dict:
     """`baseline` e `tamanho` do nome da revista: atrás da cabeça, que cobre o pé dele, e abaixo da
     linha do topo (o nome começa em 300 ou mais). `colunas`: onde fica cada lista de chamadas
-    (`esquerda`, `direita`), abaixo do nome e fora da pessoa, com o `lado` do quadro em que ficou. A
-    lista cujo lado não tem espaço vai para o outro, se ele está livre; sem lugar, fica `null`."""
+    (`esquerda`, `direita`), abaixo do nome e fora da pessoa, com o `lado` do quadro em que ficou; a
+    da direita termina antes da coluna de botões do Reels. A lista cujo lado não tem espaço vai para o
+    outro, se ele está livre; sem lugar, fica `null`. `selo`: o centro e o diâmetro do selo redondo,
+    logo abaixo do nome (sem cobrir letra), no lado sem chamada ou no mais livre; a chamada do mesmo
+    lado desce para baixo dele."""
     topo = p["topo"]
     tam = c.get("tamanho") or max(220.0, min(330.0, (topo - 300) / 0.54))
     baseline = max(topo + 0.18 * tam, 300 + 0.72 * tam)
     y = max(820.0, baseline + 80)
     x0, x1 = _lado(p, y, y + 460)
-    we, wd = min(262.0, x0 - 40), min(180.0, W - 22 - x1)
+    fim = ZONA_BOTOES[0] - 12  # a chamada da direita termina antes dos botões
+    we, wd = min(262.0, x0 - 40), min(180.0, fim - x1)
     lados = {"esquerda": {"x": 40, "y": round(y), "w": round(we), "lado": "esquerda"} if we >= 140 else None,
-             "direita": {"x": round(W - 22 - wd), "y": round(y), "w": round(wd), "lado": "direita"} if wd >= 120 else None}
+             "direita": {"x": round(fim - wd), "y": round(y), "w": round(wd), "lado": "direita"} if wd >= 120 else None}
     colunas = dict(lados)
     for k, outro in (("esquerda", "direita"), ("direita", "esquerda")):
         if c.get(k) and not lados[k] and lados[outro] and not c.get(outro):
             colunas = {k: lados[outro], outro: None}
-    return {"baseline": round(baseline), "tamanho": round(tam), "colunas": colunas}
+    selo = None
+    if c.get("selo"):
+        d = 200
+        sy = baseline + 25 + d / 2
+        a0, a1 = _lado(p, sy - d / 2, sy + d / 2)
+        livre = {"esquerda": a0 - 24, "direita": W - 24 - a1}
+        usados = {v["lado"] for v in colunas.values() if v}
+        lado = max([k for k in ("direita", "esquerda") if k not in usados] or ["direita", "esquerda"], key=lambda k: livre[k])
+        sx = 24 + d / 2 if lado == "esquerda" else W - 24 - d / 2
+        if lado == "direita" and _nos_botoes((sx - d / 2, sy - d / 2, d, d)):
+            sx = ZONA_BOTOES[0] - 6 - d / 2
+        caixa = (sx - d / 2, sy - d / 2, d, d)
+        for k, v in colunas.items():
+            if v and _inter(caixa, (v["x"], v["y"], v["w"], 400)):
+                colunas[k] = {**v, "y": round(sy + d / 2 + 30)}
+        selo = {"x": round(sx), "y": round(sy), "d": d}
+    return {"baseline": round(baseline), "tamanho": round(tam), "colunas": colunas, "selo": selo}
 
 
-# os recortes de jornal como foram desenhados (x, y, w, h, giro): dois em cima, dois dos lados
-_MURAL = ((34, 170, 540, 300, -4), (560, 110, 490, 300, 3.5), (18, 640, 330, 380, 2.5), (730, 600, 330, 380, -3))
+# os recortes de jornal como foram desenhados (x, y, w, h, giro): dois em cima, dois dos lados; os de
+# cima com o canto girado ainda abaixo da zona segura, o da direita acima da coluna de botões
+_MURAL = ((34, 300, 540, 300, -4), (560, 260, 490, 300, 3.5), (18, 640, 330, 380, 2.5), (720, 490, 330, 380, -3))
 
 
-def _lugar(p: dict, x: float, y: float, w: float, h: float, outros: list) -> tuple[int, int]:
+def _lugar(p: dict, x: float, y: float, w: float, h: float, outros: list) -> tuple[int, int] | None:
     """O lugar mais perto do desenhado em que a pessoa cobre até 12 % do recorte e os outros
-    recortes até 20 % (no mural eles se sobrepõem um pouco); sem nenhum assim, o menos coberto."""
+    recortes até 20 % (no mural eles se sobrepõem um pouco), fora da coluna de botões do Reels; sem
+    nenhum assim, o mais perto com até 25 % e 30 %; nem isso, None (empilhado ou escondido atrás da
+    pessoa o recorte não se lê: fica fora, e o helper avisa)."""
     def custo(cx, cy):
         r = (cx, cy, w, h)
         return cobre(p, r), max((_inter(r, (o["x"], o["y"], o["w"], o["h"])) / (w * h) for o in outros), default=0.0)
 
     cp, co = custo(x, y)
-    if cp <= 0.12 and co <= 0.2:
+    if cp <= 0.12 and co <= 0.2 and not _nos_botoes((x, y, w, h)):
         return round(x), round(y)
     melhor = None
-    for cy in range(90, 1380 - int(h) + 1, 20):  # abaixo de 1380 ficam a legenda e o gancho
-        for cx in range(-20, W + 20 - int(w) + 1, 20):
+    for cy in range(ZONA_TOPO + 20, 1380 - int(h) + 1, 20):  # abaixo de 1380 ficam a legenda e o gancho
+        for cx in range(0, W - int(w) + 1, 20):  # dentro do quadro: a borda não corta a letra
+            if _nos_botoes((cx, cy, w, h)):
+                continue
             cp, co = custo(cx, cy)
-            d = math.hypot(cx - x, cy - y)
-            ok = cp <= 0.12 and co <= 0.2
-            chave = (0, d) if ok else (1, cp + co, d)
+            if cp > 0.25 or co > 0.3:
+                continue
+            chave = (0 if cp <= 0.12 and co <= 0.2 else 1, math.hypot(cx - x, cy - y))
             if melhor is None or chave < melhor[0]:
                 melhor = (chave, cx, cy)
-    return melhor[1], melhor[2]
+    return (melhor[1], melhor[2]) if melhor else None
 
 
 def _mural(p: dict, c: dict) -> dict:
-    """`slots`: um recorte de jornal por manchete, onde a pessoa não está."""
-    slots: list[dict] = []
+    """`slots`: um recorte de jornal por manchete, onde a pessoa não está; a manchete sem lugar fica
+    `null` (fora do vídeo)."""
+    slots: list[dict | None] = []
     for x, y, w, h, r in _MURAL[:len(c.get("manchetes") or [])]:
-        lx, ly = _lugar(p, x, y, w, h, slots)
-        slots.append({"x": lx, "y": ly, "w": w, "h": h, "r": r})
+        lugar = _lugar(p, x, y, w, h, [s for s in slots if s])
+        slots.append({"x": lugar[0], "y": lugar[1], "w": w, "h": h, "r": r} if lugar else None)
     return {"slots": slots}
 
 
 def _parede(p: dict, c: dict) -> dict:
-    """`bloco`: o centro da fita com a palavra grande (~316 px de altura), no lugar desenhado
-    (y 245) quando cabe acima da cabeça; com a cabeça alta, ele sobe junto, até 160."""
-    return {"bloco": {"x": W // 2, "y": round(max(160.0, min(245.0, p["topo"] - 170)))}}
+    """`bloco`: o centro da fita com a palavra grande (~316 px de altura), com o topo logo abaixo da
+    zona segura. `desce`: quanto a pessoa desce para a cabeça ficar 20 px abaixo do bloco, até 260 px
+    (com a cabeça mais alta que isso, o pé da palavra fica por cima dela)."""
+    y = ZONA_TOPO + 160
+    return {"bloco": {"x": W // 2, "y": y}, "desce": round(max(0.0, min(260.0, y + 158 + 20 - p["topo"])))}
 
 
 def _grafico(p: dict, c: dict) -> dict:
     """`base` e `altura` das barras: a base nunca abaixo da base da pessoa. `bloco`: a etiqueta, do
-    lado oposto ao da cabeça, na altura desenhada (411) ou acima da cabeça quando bate nela."""
+    lado oposto ao da cabeça, na altura desenhada (411) ou acima da cabeça quando bate nela, sem
+    subir para a zona segura."""
     base = min(1270.0, float(p["base"]))
     tw = min(1040, max(160, len(str(c.get("etiqueta") or "")) * 42)) + 128  # a largura que o editor usa
     x = 751 if p["cabecaX"] <= W / 2 else W - 751
     y = 411.0
     if _inter((x - tw / 2, y - 65, tw, 130), _cabeca(p)):
-        y = max(110.0, p["topo"] - 90)
+        y = max(ZONA_TOPO + 75.0, p["topo"] - 90)
     return {"base": round(base), "altura": round(max(160.0, min(760.0, base - 240))), "bloco": {"x": x, "y": round(y)}}
 
 
-# os três blocos de texto do Site, em volta do centro desenhado (514, 590): título, frase e botão
-_SITE = ((64, 250, 900, 188), (66, 640, 560, 135), (64, 830, 496, 100))
+# o menu do Site (top, altura), abaixo da zona segura, e os três blocos de texto em volta do centro
+# desenhado: título, frase e botão
+_MENU = (250, 84)
+_SITE = ((64, 350, 900, 188), (66, 640, 560, 135), (64, 830, 496, 100))
+_SITE_CENTRO = (514, 640)
+_SITE_SOBE = _SITE[0][1] - (_MENU[0] + _MENU[1] + 10)  # o título não sobe por cima do menu
 
 
 def _chroma(p: dict, c: dict) -> dict:
     """A pessoa no canto do `lado` pedido, inteira no quadro: o quadro todo em `escala`, com o canto
     em (`x`, `y`) e o pé no chão. O lado que ela toca no vídeo original (um ombro cortado) fica na
-    borda da tela, para a linha reta do corte não aparecer. `bloco`: o texto, que sobe quando bate
-    nela."""
-    esc = min(0.85, max(0.45, float(c.get("escala") or 0.7)))
-    pw, ph = W * esc, H * esc
-    if (c.get("lado") or "direita") == "direita":
-        x = W - 120 - p["x1"] * esc
-        if p["x1"] >= W - 8:
-            x = max(x, W - pw)
-    else:
-        x = 120 - p["x0"] * esc
-        if p["x0"] <= 8:
-            x = min(x, 0.0)
-    y = H - ph
-    gente = (x + p["x0"] * esc - 24, y + p["topo"] * esc - 24, (p["x1"] - p["x0"]) * esc + 48, H)
-    sobe = max([b[1] + b[3] - gente[1] for b in _SITE if _inter(b, gente)], default=0.0)
-    return {"escala": round(esc, 3), "x": round(x), "y": round(y), "bloco": {"x": 514, "y": round(max(494.0, 590 - sobe))}}
+    borda da tela, para a linha reta do corte não aparecer. `bloco`: o texto, que sobe um pouco
+    quando bate nela; sem espaço para subir (o menu está em cima), a pessoa diminui até caber."""
+    pedida = min(0.85, max(0.45, float(c.get("escala") or 0.7)))
+    lado = c.get("lado") or "direita"
+    for passo in range(int((pedida - 0.45) / 0.05 + 1e-9) + 2):
+        esc = max(0.45, pedida - 0.05 * passo)
+        pw, ph = W * esc, H * esc
+        if lado == "direita":
+            x = W - 120 - p["x1"] * esc
+            if p["x1"] >= W - 8:
+                x = max(x, W - pw)
+        else:
+            x = 120 - p["x0"] * esc
+            if p["x0"] <= 8:
+                x = min(x, 0.0)
+        y = H - ph
+        gente = (x + p["x0"] * esc - 24, y + p["topo"] * esc - 24, (p["x1"] - p["x0"]) * esc + 48, H)
+        sobe = max([b[1] + b[3] - gente[1] for b in _SITE if _inter(b, gente)], default=0.0)
+        if sobe <= _SITE_SOBE or esc <= 0.45:
+            break
+    cx, cy = _SITE_CENTRO
+    return {"escala": round(esc, 3), "x": round(x), "y": round(y),
+            "bloco": {"x": cx, "y": round(cy - min(max(sobe, 0.0), _SITE_SOBE))}}
 
 
 _LAYOUTS = {"fundo": lambda p, c: {}, "vidro": _vidro, "capa": _capa, "mural": _mural, "parede": _parede,
