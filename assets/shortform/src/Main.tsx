@@ -43,6 +43,7 @@ import {spotFor, spotCentre, type Spot} from './captionPlace';
 import {CATALOGO, carregarFontesUsadas, familiaCss, useFontesProntas} from './fontes';
 import {CamadasTexto, rostoNaTela, type Texto} from './CamadasTexto';
 import {Cenas} from './cenas';
+import {Graficos} from './graficos';
 import type {Cena} from './cenas/comum';
 
 const POPPINS = loadFont('normal', {weights: ['400', '600', '900']});
@@ -810,6 +811,8 @@ export const Main: React.FC = () => {
       {/* the effects redraw the whole frame of their window: above the picture, the inserts and
           what sits behind the person; below the front texts, the hook and the captions */}
       <Cenas />
+      {/* the animated graphics of edit-data `graficos[]` (src/graficos/): above the effects */}
+      <Graficos />
       <CustomGraphics />
       <CamadasTexto />
       {D.hook.enabled ? <HookIntro /> : null}

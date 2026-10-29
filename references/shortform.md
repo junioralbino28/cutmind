@@ -28,9 +28,10 @@ approved. Everything here rides on the **data-driven template** at
   Instagram/TikTok's right action rail; verified on a real screenshot). Never
   rely on `nowrap` alone.
 - **Inserts (upper zone):** rounded-card + shadow motif synced to spoken nouns,
-  slow Ken-Burns. Pexels for concrete objects; **bespoke motion graphics** when
-  a word names something animatable (timeline for "cortes", typewriter sheet
-  for "roteiro" — worked examples in `src/CustomGraphics.tsx`).
+  slow Ken-Burns. Pexels for concrete objects; **animated graphics as data**
+  (`graficos[]`, `references/graficos.md`) for words per beat, buttons, an
+  objection, a list, a CTA; a **bespoke motion graphic** in
+  `src/CustomGraphics.tsx` only for what none of them covers.
 - **Zones:** inserts/graphics in the upper third BELOW the safe-zone line,
   captions lower third, face clear. Minimalist; accent `#33e0a3`. See "Zona
   segura" below: nothing with words starts above y 240.
@@ -551,6 +552,18 @@ run `cenas_edit_data.py <edit>` (it cuts the person out of each window, measures
 places everything around them) and render. Types, fields, examples and limits:
 **`references/cenas.md`** — read it before the first effect.
 
+## Animated graphics (`graficos[]`)
+
+Ten motion graphics drawn over the video, all data: words per beat (`palavras`), clicked
+buttons (`botoes`), a slamming or struck-through word (`grande`), a viewer's objection card
+(`objecao`), a list with red X's (`lista`), a logo seal (`selo`), a timeline being trimmed
+(`ajuste`), a filling bar (`progresso`), the "comment X" CTA with arrow and direct
+(`comenta`) and a screenshot in a phone (`celular`). Each item has a `start`/`end` window and
+beats named `at`/`ate`/`*At`, so the editor shows it as a block and a re-cut carries it. Check
+with `graficos.py <edit>` before rendering. Types, fields and when to use each:
+**`references/graficos.md`** — read it before the first graphic, and prefer these over a
+bespoke graphic in `CustomGraphics.tsx`.
+
 ## Illustrative images
 
 Pexels for generic concepts (key: `PEXELS_API_KEY`). For brands/people/specific
@@ -960,7 +973,7 @@ skill prompt is resent every turn.
 
 ## Helpers de Fase 2/3
 
-- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte, ONNX Runtime; `--motor torch` and resnet50 need `uv sync --extra matting`) · **`cenas_edit_data.py`** (prepares `cenas[]`: cut-out, measurement, `layout`, backgrounds; `references/cenas.md`) · **`render_janelas.py`** (re-renders only some windows and splices them into `out/render.mp4`; then `mixar_final.py`) · **`atualizar_template.py`** (a project scaffolded with an older kit gets this kit's template code; `public/` and `CustomGraphics.tsx` stay) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`pacotes.py`** (kit library: `listar --tipo trilha`, `camada <edit> <id>`, `abrir <id>`) · **`efeitos_render.py`** (filters and transitions from the editor into `public/cut.mp4`) · **`velocidade_final.py`** (the editor's speed spans on the finished video → `final-entrega.mp4`) · **`legenda_tempos.py`** (caption pieces the user dragged in time → `captions.json`) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental).
+- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte, ONNX Runtime; `--motor torch` and resnet50 need `uv sync --extra matting`) · **`cenas_edit_data.py`** (prepares `cenas[]`: cut-out, measurement, `layout`, backgrounds; `references/cenas.md`) · **`graficos.py`** (checks `graficos[]` before the render: fields, beats in the window, icons, images in `public/`, an older template; `references/graficos.md`) · **`render_janelas.py`** (re-renders only some windows and splices them into `out/render.mp4`; then `mixar_final.py`) · **`atualizar_template.py`** (a project scaffolded with an older kit gets this kit's template code; `public/` and `CustomGraphics.tsx` stay) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`pacotes.py`** (kit library: `listar --tipo trilha`, `camada <edit> <id>`, `abrir <id>`) · **`efeitos_render.py`** (filters and transitions from the editor into `public/cut.mp4`) · **`velocidade_final.py`** (the editor's speed spans on the finished video → `final-entrega.mp4`) · **`legenda_tempos.py`** (caption pieces the user dragged in time → `captions.json`) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental).
 
 ---
 

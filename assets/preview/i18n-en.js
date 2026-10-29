@@ -798,5 +798,13 @@ window.I18N_EN = {
   "Vídeo por cima": "Video on top",
   "Chegou. Está por cima do vídeo, na agulha.": "Arrived. It's on top of the video, at the playhead.",
   "Enquadre original": "Original framing",
-  "A gravação volta a encher a tela, sem recorte": "The footage fills the screen again, uncropped"
+  "A gravação volta a encher a tela, sem recorte": "The footage fills the screen again, uncropped",
+  "Palavras": "Words",
+  "Botões": "Buttons",
+  "Objeção": "Objection",
+  "Lista": "List",
+  "Selo": "Badge",
+  "Progresso": "Progress",
+  "Comenta": "Comment",
+  "O gráfico do vídeo final": "The final video's graphic"
 };

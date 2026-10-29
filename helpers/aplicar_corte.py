@@ -39,7 +39,7 @@ NOMES_ITEM = {"imagem": "A imagem", "texto": "O texto", "audio": "O áudio", "fi
               # os blocos e efeitos da Fase 2 (remapear.fase2)
               "insert": "A imagem do vídeo final", "split": "A tela dividida", "splitvideo": "O vídeo da tela dividida",
               "word": "A palavra em destaque", "behind": "O destaque atrás da pessoa", "numero": "O número",
-              "cena": "O efeito do vídeo final"}
+              "cena": "O efeito do vídeo final", "grafico": "O gráfico do vídeo final"}
 
 # o que vem da pessoa (a régua de volume, a velocidade, a curva, o lugar da montagem): o Salvar manda
 # quando não é o padrão; sem ele, a tomada volta ao padrão, e não herda o do edl.json velho

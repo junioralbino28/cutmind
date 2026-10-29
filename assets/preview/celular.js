@@ -618,13 +618,25 @@ function buildInsertsDraft() {
   (d.wordAccents || []).forEach((w, i) => list.push({ kind: 'word', label: w.text, start: +w.start, end: +w.end, ref: i }));
   // o número que conta (numeros[]: at → end) anda e apara como as palavras
   (d.numeros || []).forEach((n, i) => list.push({ kind: 'numero', label: `${n.prefixo || ''}${n.valor}${n.sufixo || ''}`, start: +n.at, end: +(n.end ?? +n.at + 2.4), ref: i }));
+  // os gráficos animados (graficos[]): andam e aparam como as palavras; os instantes de dentro vão junto
+  (d.graficos || []).forEach((g, i) => list.push({ kind: 'grafico', label: rotuloGrafico(g), start: +g.start, end: +g.end, ref: i }));
   S.insertsDraft = list.map((c) => ({ ...c, orig: { start: c.start, end: c.end } }));
   S.insSel = -1;
   buildCenasDraft(d);
   buildDestaques(d);
   buildLegenda(d);
 }
-const isText = (c) => c.kind === 'hook' || c.kind === 'word' || c.kind === 'numero';
+const isText = (c) => c.kind === 'hook' || c.kind === 'word' || c.kind === 'numero' || c.kind === 'grafico';
+// o nome de cada tipo de gráfico animado (graficos[] do edit-data.json; src/graficos/ do template)
+const NOME_GRAFICO = {
+  palavras: t('Palavras'), botoes: t('Botões'), celular: t('Celular'), objecao: t('Objeção'), grande: t('Palavra grande'),
+  lista: t('Lista'), selo: t('Selo'), ajuste: t('Ajuste'), progresso: t('Progresso'), comenta: t('Comenta'),
+};
+function rotuloGrafico(g) {
+  const txt = g.t || g.titulo || g.texto || (g.itens || []).map((i) => i.t).filter(Boolean).join(' ');
+  const nome = NOME_GRAFICO[g.tipo] || g.tipo || t('Gráfico');
+  return txt ? `${nome}: ${txt}` : nome;
+}
 // o bloco andou ou foi aparado desde o último vídeo do agente (ou o último Salvar)
 const insMudou = (c) => c.start !== c.orig.start || c.end !== c.orig.end;
 const insertsDirty = () => S.insertsDraft.some(insMudou);
@@ -4905,6 +4917,7 @@ async function salvar(aviso, confirmado) {
       behind: de('behind').map((c) => ({ ref: c.ref, start: t(c.start), dur: t(c.end - c.start) })),
       wordAccents: de('word').map((c) => ({ ref: c.ref, text: c.label, start: t(c.start), end: t(c.end) })),
       numeros: de('numero').map((c) => ({ ref: c.ref, at: t(c.start), end: t(c.end) })),
+      graficos: de('grafico').map((c) => ({ ref: c.ref, start: t(c.start), end: t(c.end) })),
     });
   }
   // efeitos: só os que mudaram, pelo `ref` (o agente refaz só a janela de cada um); o Fundo
@@ -5097,7 +5110,8 @@ const ITEM_AVISO = { imagem: () => t('A imagem'), texto: () => t('O texto'), aud
   // os blocos e efeitos da Fase 2 (remapear.fase2)
   insert: () => t('A imagem do vídeo final'), split: () => t('A tela dividida'),
   splitvideo: () => t('O vídeo da tela dividida'), word: () => t('A palavra em destaque'),
-  behind: () => t('O destaque atrás da pessoa'), numero: () => t('O número'), cena: () => t('O efeito do vídeo final') };
+  behind: () => t('O destaque atrás da pessoa'), numero: () => t('O número'), cena: () => t('O efeito do vídeo final'),
+  grafico: () => t('O gráfico do vídeo final') };
 const numLocal = (v) => String(v).replace('.', IDIOMA === 'pt' ? ',' : '.');
 function textoDoAviso(a) {
   if (a.tipo === 'ponta_na_fala') {

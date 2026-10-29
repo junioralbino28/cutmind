@@ -542,7 +542,7 @@ def grade_da_musica(arquivo: Path, edit: Path) -> dict:
 
 
 # blocos da Fase 2 que o editor manda INTEIROS (todos os de cada tipo) quando algum anda
-BLOCOS_F2 = ("inserts", "splitInserts", "splitVideos", "hook", "behind", "wordAccents", "numeros")
+BLOCOS_F2 = ("inserts", "splitInserts", "splitVideos", "hook", "behind", "wordAccents", "numeros", "graficos")
 
 
 def recorte_disponivel() -> bool:

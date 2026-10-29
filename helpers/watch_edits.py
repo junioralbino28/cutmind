@@ -144,7 +144,7 @@ def digest(p: Path) -> str:
             c = r["curva"]
             parts.append(f'  · take {i} ({r.get("beat") or r.get("source", "")}): '
                          f'curva {c.get("nome") or "personalizada"}, {len(c.get("pontos") or [])} pontos')
-    if any(k in ed for k in ("inserts", "splitInserts", "splitVideos", "hook", "behind", "wordAccents", "numeros")):
+    if any(k in ed for k in ("inserts", "splitInserts", "splitVideos", "hook", "behind", "wordAccents", "numeros", "graficos")):
         head.append("inserts/gancho movidos")
     cenas = ed.get("cenas") or []
     if cenas:

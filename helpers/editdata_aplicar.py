@@ -6,7 +6,8 @@ São as regras que o SKILL.md dava ao agente a cada Salvar ("When the user saves
 
   - blocos por `ref` (o índice na lista do edit-data), com os nomes do editor: `inserts`,
     `splitInserts`, `splitVideos` e `wordAccents` com `start`/`end`; `behind` com `start`/`dur`;
-    `numeros` com `at`/`end`; `hook.endSec`;
+    `numeros` com `at`/`end`; `hook.endSec`; `graficos` com `start`/`end`, e os instantes de dentro
+    andam junto (movido, todos com o bloco; aparado, presos na janela nova);
   - `cenas`: com `ref`, o que veio (`desligada`, `texto`, `textos`, `estilo` e os `campos` do Fundo)
     no item; `nova`, um Fundo novo no fim da lista (o desligado nunca chegou ao vídeo e fica de fora);
   - `destaques`: o gancho (`alvo: "hook"`) e os números (`alvo: "numero"`, `ref`), com texto, lugar e
@@ -28,6 +29,7 @@ from pathlib import Path
 
 import legenda_tempos as lt  # mesma pasta deste arquivo
 from aplicar_corte import _grava_json, anotar_feito
+from remapear import INSTANTE
 
 # o nome de cada bloco no edit-data e os campos de tempo que o editor manda dele
 BLOCOS = {"inserts": ("start", "end"), "splitInserts": ("start", "end"), "splitVideos": ("start", "end"),
@@ -87,6 +89,34 @@ def _cena(c: dict, v: dict) -> None:
         c[k] = x
 
 
+def _desloca(d: dict, mover: float, de: float, ate: float) -> None:
+    """Os instantes de um gráfico (e das listas e objetos de dentro) somados de `mover`, presos em [de, ate]."""
+    for k, v in d.items():
+        if INSTANTE.match(k) and isinstance(v, (int, float)) and not isinstance(v, bool):
+            d[k] = round(min(max(v + mover, de), ate), 4)
+        elif isinstance(v, dict):
+            _desloca(v, mover, de, ate)
+        elif isinstance(v, list):
+            for x in v:
+                if isinstance(x, dict):
+                    _desloca(x, mover, de, ate)
+
+
+def _grafico(g: dict, ini: float, fim: float) -> None:
+    """A janela nova de um gráfico. Movido (mesma duração), tudo anda junto; aparado, o que ficou fora
+    da janela entra na ponta mais perto."""
+    velho_ini, velho_fim = float(g.get("start", ini)), float(g.get("end", fim))
+    mover = ini - velho_ini if abs((fim - ini) - (velho_fim - velho_ini)) < 1e-3 else 0.0
+    g["start"], g["end"] = ini, fim
+    for k, v in list(g.items()):
+        if k in ("start", "end"):
+            continue
+        if INSTANTE.match(k) and isinstance(v, (int, float)) and not isinstance(v, bool):
+            g[k] = round(min(max(v + mover, ini), fim), 4)
+        elif isinstance(v, (dict, list)):
+            _desloca({k: v}, mover, ini, fim)
+
+
 def aplicar(ed: dict, pedido: dict) -> tuple[list[str], list[str]]:
     """Aplica o `editData` do Salvar em `ed` (no lugar). Devolve (os helpers que o vídeo final precisa
     rodar de novo, avisos do que não deu para aplicar)."""
@@ -102,6 +132,13 @@ def aplicar(ed: dict, pedido: dict) -> tuple[list[str], list[str]]:
             for k in campos:
                 if k in b:
                     lista[i][k] = b[k] if k == "text" else _num(b[k])
+    gs = ed.get("graficos") or []
+    for b in pedido.get("graficos") or []:
+        i = _ref(b.get("ref"), gs)
+        if i is None:
+            avisos.append(f"graficos: o gráfico {b.get('ref')!r} não existe mais no vídeo final")
+            continue
+        _grafico(gs[i], float(_num(b.get("start"))), float(_num(b.get("end"))))
     if isinstance(pedido.get("hook"), dict) and "endSec" in pedido["hook"] and isinstance(ed.get("hook"), dict):
         ed["hook"]["endSec"] = _num(pedido["hook"]["endSec"])
 

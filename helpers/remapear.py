@@ -184,9 +184,10 @@ def velocidade(vel: dict, levar: Levar, total: float) -> tuple[dict, list[dict]]
 BLOCOS = {"inserts": ("start", "end", "insert"), "splitInserts": ("start", "end", "split"),
           "splitVideos": ("start", "end", "splitvideo"), "wordAccents": ("start", "end", "word"),
           "behind": ("start", "dur", "behind"), "numeros": ("at", "end", "numero")}
-# instantes absolutos do corte dentro de um efeito: `at` e todo campo terminado em `At` (kpiAt,
-# circuloAt...). Os relativos (`inicio`, `entrada`, `saiEm`, `cada`, `passo`, `fraseInicio`) ficam.
-INSTANTE = re.compile(r"^(at|[a-z][A-Za-z]*At)$")
+# instantes absolutos do corte dentro de um efeito ou gráfico: `at`, `ate` (até quando um item da
+# lista fica) e todo campo terminado em `At` (kpiAt, circuloAt, fimAt...). Os relativos (`inicio`,
+# `entrada`, `saiEm`, `cada`, `passo`, `fraseInicio`) ficam.
+INSTANTE = re.compile(r"^(at|ate|[a-z][A-Za-z]*At)$")
 
 
 def _r(x: float) -> float:
@@ -194,11 +195,14 @@ def _r(x: float) -> float:
 
 
 def _instantes(d: dict, levar: Levar, de: float, ate: float) -> None:
-    """Os instantes do item (e das listas dentro dele) na janela nova [de, ate]."""
+    """Os instantes do item (e das listas e objetos dentro dele, como `itens[].selecao.at`) na janela
+    nova [de, ate]."""
     for k, v in list(d.items()):
         if INSTANTE.match(k) and isinstance(v, (int, float)) and not isinstance(v, bool):
             t = levar.perto(float(v)) if hasattr(levar, "perto") else levar(float(v))
             d[k] = _r(min(max(t if t is not None else de, de), ate))
+        elif isinstance(v, dict):
+            _instantes(v, levar, de, ate)
         elif isinstance(v, list):
             for x in v:
                 if isinstance(x, dict):
@@ -242,26 +246,28 @@ def fase2(ed: dict, levar: Levar, total: float, origem: list[int | None], n_velh
             manter.append(b)
         if chave in novo:
             novo[chave] = manter
-    cenas = []
-    for c in novo.get("cenas") or []:
-        if not isinstance(c, dict):
-            continue
-        if "start" in c and "end" in c:
-            j = _janela(levar, float(c["start"]), float(c["end"]) - float(c["start"]), total)
-            if j is None:
-                fora.append(_fora("cena", str(c.get("tipo") or ""), c["start"]))
+    # os efeitos (`cenas`) e os gráficos animados (`graficos`): a janela e os instantes de dentro
+    for chave, item in (("cenas", "cena"), ("graficos", "grafico")):
+        manter = []
+        for c in novo.get(chave) or []:
+            if not isinstance(c, dict):
                 continue
-            c["start"], c["end"] = _r(j[0]), _r(j[0] + j[1])
-            _instantes(c, levar, c["start"], c["end"])
-        elif "at" in c:  # um efeito de um instante só (o corte com zoom)
-            t = levar(float(c["at"]))
-            if t is None:
-                fora.append(_fora("cena", str(c.get("tipo") or ""), c["at"]))
-                continue
-            c["at"] = _r(t)
-        cenas.append(c)
-    if "cenas" in novo:
-        novo["cenas"] = cenas
+            if "start" in c and "end" in c:
+                j = _janela(levar, float(c["start"]), float(c["end"]) - float(c["start"]), total)
+                if j is None:
+                    fora.append(_fora(item, str(c.get("tipo") or ""), c["start"]))
+                    continue
+                c["start"], c["end"] = _r(j[0]), _r(j[0] + j[1])
+                _instantes(c, levar, c["start"], c["end"])
+            elif "at" in c:  # um efeito de um instante só (o corte com zoom)
+                t = levar(float(c["at"]))
+                if t is None:
+                    fora.append(_fora(item, str(c.get("tipo") or ""), c["at"]))
+                    continue
+                c["at"] = _r(t)
+            manter.append(c)
+        if chave in novo:
+            novo[chave] = manter
     h = novo.get("hook")
     if isinstance(h, dict) and h.get("endSec") is not None:  # o gancho vai do 0 ao fim dele
         r = levar.janela(0.0, float(h["endSec"])) if hasattr(levar, "janela") else None
