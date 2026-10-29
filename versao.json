@@ -1,12 +1,14 @@
 {
-  "versao": "0.2.1",
+  "versao": "0.2.2",
   "data": "2026-10-29",
   "notas": {
     "pt": [
-      "Imagem atrás da pessoa: agora ela muda de lugar, de tamanho e recorta como as outras, e o vídeo final a põe nesse lugar, atrás de você."
+      "Camada no lugar certo: com o começo de uma tomada cortado (antes de salvar), o áudio, a imagem e o texto aparecem onde tocam.",
+      "Bloco curto fácil de pegar: arrasta pelo meio, e a agulha não rouba mais o arraste de um bloco."
     ],
     "en": [
-      "Image behind the person: it now moves, resizes and crops like the others, and the final video puts it right there, behind you."
+      "Layers in the right place: with the start of a take trimmed (before saving), audio, images and text show where they play.",
+      "Short blocks are easy to grab: drag them by the middle, and the playhead no longer steals a block drag."
     ]
   },
   "arquivos": {
@@ -37,9 +39,9 @@
     "assets/longform/tsconfig.json": "9711319fbf1045845e8129e9ee926e868c27730649c5ed0f14976b9e5a3c1cb3",
     "assets/montagens/drop-cedo.json": "4cb47b63b796a05e1bfc69bf817a6b494d4f93028163359f11e5502de5020f46",
     "assets/pacotes/catalogo.json": "003984b0e4e9705cff4cff10b83a51172e8961f7cc3aab2b633ea8a62381d0f8",
-    "assets/preview/celular.css": "503eb9934f69dbeee677716902fb920095ef7fd88da527b28cd51b347c85bf8e",
+    "assets/preview/celular.css": "531da3e36dd5e6be790e2655cc2b648e14f3da4fdbb3e0c145e78fcd2ab5cfae",
     "assets/preview/celular.html": "d25e69db158be1441f07006b7292f1148dd2a07c67f957077c4496c8c21bd2ee",
-    "assets/preview/celular.js": "362addccc60769d0b31e7cbe4568018dc644e2ce724b6dfcf068b1118923755e",
+    "assets/preview/celular.js": "962eb2b8a7e311274eb00d29789823cd21beec9afd2e180946d1d2f256f3dc2a",
     "assets/preview/celular.webmanifest": "bf58d21563dba777f93a62a09aa5169d83a94ea8aaf46d70f7068f7594bf4bd7",
     "assets/preview/cutmind-logo-white.png": "b3f7435d87d0d53b6b768e8b8abfe829b23b69baa9a6ddfcbb08f89e9271b1c4",
     "assets/preview/cutmind-logo.png": "23dc4e814c3ad65bb875f5ef52b26a4d8d36cf5ee78eddd0e2ae119220951110",

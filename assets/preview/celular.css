@@ -817,6 +817,8 @@ html:not(.desk) .pronto-btn .pronto-n { margin-left: 3px; padding: 0 4px; font-s
 .lh::after { content: ''; position: absolute; top: -6px; bottom: -6px; left: -10px; right: -10px; }
 .lh.l { left: -12px; border-radius: 3px 0 0 3px; }
 .lh.r { right: -12px; border-radius: 0 3px 3px 0; }
+.chip.estreito .lh.l::after { right: 0; }
+.chip.estreito .lh.r::after { left: 0; }
 .vol-range { width: calc(100% - 32px); margin: 16px 16px 8px; accent-color: var(--brand); }
 .vol-nota { margin: 0 16px 6px; font-size: 12px; line-height: 1.4; color: var(--dim); }
 /* Melhorar voz: o andamento do preparo e os dois reguladores */

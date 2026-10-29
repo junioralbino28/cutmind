@@ -577,7 +577,11 @@ function renderedToDraft(t, dl = draftLayout(), rl = renderedLayout()) {
       const s = Tempo.gravacaoEm(pedsR(i), jcutGeom(i).lead + (t - r.out));
       return d.out + Math.max(0, Math.min(Tempo.corteAte(pedsD(d), s) - (d.lead || 0), d.dur));
     }
-    return d.out + Math.min((t - r.out) * velR(i) / d.vel, d.dur); // velocidade nova: o trecho estica ou encolhe
+    // o instante da gravação que o cut.mp4 mostra em t, e onde ele cai na tomada do rascunho (o inverso do
+    // itemRendered): a ponta da frente aparada sem salvar desloca tudo. Antes a conta supunha a mesma ponta da
+    // frente, e uma camada aparecia tantos segundos depois de onde tocava (teste do Reels, 29/10)
+    const s = r.start + jcutGeom(i).lead * velR(i) + (t - r.out) * velR(i);
+    return d.out + Math.max(0, Math.min((s - d.start - (d.leadSrc || 0)) / d.vel, d.dur)); // velocidade nova: estica ou encolhe
   }
   return t;
 }
@@ -1611,7 +1615,10 @@ timeline.addEventListener('pointerdown', (e) => {
   G.x0 = e.clientX; G.t0 = S.t; G.moved = false; G.v00 = S.v0;
   // computador: a própria agulha, por cima das faixas, é agarrada só se ARRASTAR; o clique
   // parado continua escolhendo a tomada (ou o bloco) que está debaixo dela
-  G.agulha = agulhaAnda() && G.pts.size === 1 && Math.abs(xNaLinha(e) - xDaAgulha()) <= 4;
+  // em cima de um bloco ou de uma tomada, o arraste é deles (como no CapCut): uma camada que nasce na agulha
+  // ficava presa, porque pegar perto da ponta dela levava a agulha (teste do Reels, 29/10)
+  G.agulha = agulhaAnda() && G.pts.size === 1 && Math.abs(xNaLinha(e) - xDaAgulha()) <= 4
+    && !e.target.closest('.chip, .take');
   G.lastX = e.clientX; G.lastT = performance.now(); G.vel = 0;
   G.down = e.target;
   G.downAt = performance.now();
@@ -5564,6 +5571,9 @@ function renderLayerTrack(track, lane, f) {
     chip.dataset.id = it.id;
     chip.style.left = `${a * S.pps}px`;
     chip.style.width = `${Math.max((b - a) * S.pps, 8)}px`;
+    // estreito, as alças pegam só para fora: o miolo inteiro fica para arrastar (teste do Reels, 29/10: um
+    // áudio de 3 s quase não tinha onde pegar)
+    chip.classList.toggle('estreito', (b - a) * S.pps < 56);
     if (f.tipo === 'texto') { // a 1ª linha do texto, e as marcas de atrás e acompanhar
       el('span', 'l-ico', chip).innerHTML = ICON.texto;
       const linha = String(it.texto).split('\n')[0].slice(0, 60) || t('Texto');
