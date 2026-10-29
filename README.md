@@ -12,8 +12,6 @@ takes, cuts around the speech, adds captions and motion graphics, and hands you 
 Vertical (Reels, TikTok, Shorts) and horizontal (YouTube). Transcription runs on
 your own computer.
 
-> Under construction.
-
 ## Edit from your phone
 
 The same editor opens in your phone's browser, CapCut style: a touch-friendly
@@ -95,3 +93,19 @@ closed, ask the agent **"update CutMind"**.
 The check asks GitHub when the editor opens and every 6 hours, and sends nothing of
 yours. To turn it off, on the computer, open the editor's **?** button and untick
 **Check for updates**.
+
+## Like it? Help CutMind
+
+CutMind is made by one person, and feedback from the people who use it is what makes it
+better the most.
+
+- **Leave a star** at the top of this page. That is how other people find the project.
+- **Hit a bug?** [Tell what happened](https://github.com/junioralbino28/cutmind/issues/new?template=erro.yml). The form only asks what matters.
+- **Have an idea?** [Send the suggestion](https://github.com/junioralbino28/cutmind/issues/new?template=sugestao.yml).
+- In the editor, the **Like CutMind?** box (bottom of the left column on the computer, and on
+  the Projects screen) has the same three buttons.
+- **Using an AI assistant (Claude, Codex, Cursor)?** It can read this repository's
+  `AGENTS.md` to help you install, fix problems and write a bug report. Sending it is
+  still up to you.
+
+Opening an issue needs a GitHub account, which is free.

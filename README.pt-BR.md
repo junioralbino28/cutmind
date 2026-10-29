@@ -12,8 +12,6 @@ melhores tomadas, corta pela fala, legenda, anima e entrega o arquivo final.
 Vertical (Reels, TikTok, Shorts) e horizontal (YouTube). A transcrição roda na
 sua máquina.
 
-> Em construção.
-
 ## Editar pelo celular
 
 O mesmo editor abre no navegador do celular, no jeito do CapCut: linha do tempo
@@ -88,3 +86,18 @@ peça ao agente **"atualiza o CutMind"**.
 
 A procura pergunta ao GitHub ao abrir o editor e a cada 6 horas, e não manda nada seu.
 Para desligar, no computador, abra o botão **?** do editor e tire **Procurar atualizações**.
+
+## Gostou? Ajude o CutMind
+
+O CutMind é feito por uma pessoa só, e o retorno de quem usa é o que mais faz ele melhorar.
+
+- **Deixe uma estrela** no alto desta página. É assim que outras pessoas acham o projeto.
+- **Deu algum erro?** [Conte o que aconteceu](https://github.com/junioralbino28/cutmind/issues/new?template=erro.yml). O formulário pergunta só o que importa.
+- **Tem uma ideia?** [Mande a sugestão](https://github.com/junioralbino28/cutmind/issues/new?template=sugestao.yml).
+- No editor, o quadro **Gostou do CutMind?** (no pé da coluna da esquerda no computador e na
+  tela Projetos) tem os mesmos três botões.
+- **Usa um assistente de IA (Claude, Codex, Cursor)?** Ele pode ler o `AGENTS.md` deste
+  repositório para te ajudar a instalar, resolver problemas e escrever o relato de um erro.
+  O envio continua sendo seu.
+
+Para abrir issue é preciso ter conta no GitHub, que é grátis.
