@@ -41,6 +41,8 @@ Pedidos que funcionam bem:
 - "Legenda maior."
 - "Abaixa o volume de 1:02 a 1:10."
 - "Põe um preto e branco no vídeo todo."
+- "Voz de gás hélio do 0:20 ao 0:22."
+- "Um som de notificação quando aparece o comentário."
 
 No editor, o que você faz à mão não gasta nada. As marcações (tecla M) e os pedidos
 escritos esperam o botão **Pronto, Claude segue**, que acorda o agente uma vez só,

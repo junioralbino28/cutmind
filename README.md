@@ -46,6 +46,8 @@ Requests that work well:
 - "Bigger captions."
 - "Lower the volume from 1:02 to 1:10."
 - "Make the whole video black and white."
+- "Helium voice from 0:20 to 0:22."
+- "A notification sound when the comment pops up."
 
 In the editor, what you do by hand costs nothing. Markers (the M key) and written
 requests wait for the **Done, Claude takes over** button, which wakes the agent just
