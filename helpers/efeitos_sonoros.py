@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""A biblioteca de efeitos sonoros do kit: sons sintetizados aqui, sem gravação nem licença de ninguém.
+"""A biblioteca de efeitos sonoros do kit: os sons que o kit sintetiza e os virais.
 
-Os papéis são os dos sons que mais aparecem em Reels (impacto, notificação, dinheiro, brilho, ding,
-whoosh, clique, pop, risco de disco, digitação). Os virais de marca e de série não vão num kit público:
-o references/efeitos-sonoros.md diz onde a pessoa acha esses para os próprios vídeos.
+Os sintetizados (assets/sfx/, catalogo.json) são feitos aqui, sem gravação nem licença de ninguém:
+impacto, notificação, dinheiro, brilho, ding, whoosh, clique, pop, risco de disco, digitação. Podem
+ir até em anúncio.
+
+Os virais (meme, marca e série: Taco Bell, Discord, Dexter, cha-ching…) não moram no kit. A lista
+vem com ele (assets/sfx/virais.json) e o som fica numa Release do repositório de pacotes: baixa na
+primeira vez que alguém ouve ou usa, conferido por sha256, e fica no cache
+(~/.cutmind/pacotes/sons). Em anúncio pago podem reprovar o anúncio.
 
 Cada som começa no golpe (o ataque está no primeiro quadro: posto num segundo, ele cai NAQUELE
-segundo). O whoosh é a exceção, porque cresce até o meio: o catálogo dá o `golpe` dele (o instante
-do pico), e quem posiciona desconta.
+segundo). Quando não começa (o whoosh cresce até o meio; um viral pode ter um respiro antes), o
+catálogo dá o `golpe`, e quem posiciona desconta.
 
     uv run python -X utf8 helpers/efeitos_sonoros.py listar
     uv run python -X utf8 helpers/efeitos_sonoros.py usar <edit> <id>      (copia para <edit>/midia/)
@@ -20,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -29,10 +35,14 @@ from pathlib import Path
 
 import numpy as np
 
+import pacotes as pk  # mesma pasta deste arquivo
+
 SR = 44100
 PICO = 10 ** (-3 / 20)  # todo som sai com o pico em -3 dBFS
 PASTA = Path(__file__).resolve().parents[1] / "assets" / "sfx"
 CATALOGO = "catalogo.json"
+VIRAIS = "virais.json"  # a lista dos virais; o som vem da Release que ela diz
+CACHE_VIRAIS = 64 * 1024 ** 2  # os 11 de hoje somam ~0,4 MB: nada sai do cache
 
 
 def _t(seg: float) -> np.ndarray:
@@ -245,15 +255,43 @@ def catalogo(pasta: Path = PASTA) -> list[dict]:
     return json.loads((pasta / CATALOGO).read_text(encoding="utf-8"))
 
 
+def virais(pasta: Path = PASTA) -> list[dict]:
+    """Os virais, com os mesmos campos do catálogo e `viral: True` (o som não está no kit)."""
+    if not (pasta / VIRAIS).is_file():
+        return []
+    cat = json.loads((pasta / VIRAIS).read_text(encoding="utf-8"))
+    return [{k: x[k] for k in ("id", "nome", "nome_en", "uso", "duracao", "golpe", "volume")} | {"viral": True}
+            for x in cat["pacotes"]]
+
+
+def todos(pasta: Path = PASTA) -> list[dict]:
+    return catalogo(pasta) + virais(pasta)
+
+
+def _biblioteca_virais(pasta: Path = PASTA) -> pk.Pacotes:
+    cache = Path(os.environ.get("CUTMIND_PACOTES_DIR") or Path.home() / ".cutmind" / "pacotes") / "sons"
+    return pk.Pacotes(pk.ler_catalogo(pasta / VIRAIS), cache, CACHE_VIRAIS,
+                      base=os.environ.get("CUTMIND_PACOTES_BASE") or None)
+
+
+def arquivo(sid: str, pasta: Path = PASTA) -> Path:
+    """O arquivo do som: o do kit, na hora; o viral, do cache (baixa e confere na primeira vez).
+    KeyError se o id não existe; pk.PacoteErro se o viral não desceu."""
+    item = next((x for x in catalogo(pasta) if x["id"] == sid), None)
+    if item is not None:
+        return pasta / item["arquivo"]
+    if any(x["id"] == sid for x in virais(pasta)):
+        return _biblioteca_virais(pasta).obter(sid)
+    raise KeyError(f"efeito sonoro `{sid}` não existe; os que existem: {', '.join(x['id'] for x in todos(pasta))}")
+
+
 def usar(edit: Path, sid: str, pasta: Path = PASTA) -> Path:
     """Copia o som para `<edit>/midia/sfx-<id>.mp3` (a mesma pasta das camadas) e devolve o caminho."""
-    item = next((x for x in catalogo(pasta) if x["id"] == sid), None)
-    if item is None:
-        raise KeyError(f"efeito sonoro `{sid}` não existe; os que existem: {', '.join(x['id'] for x in catalogo(pasta))}")
+    origem = arquivo(sid, pasta)
     destino = Path(edit) / "midia" / f"sfx-{sid}.mp3"
     destino.parent.mkdir(parents=True, exist_ok=True)
-    if not destino.is_file() or destino.read_bytes() != (pasta / item["arquivo"]).read_bytes():
-        shutil.copyfile(pasta / item["arquivo"], destino)
+    if not destino.is_file() or destino.read_bytes() != origem.read_bytes():
+        shutil.copyfile(origem, destino)
     return destino
 
 
@@ -277,10 +315,17 @@ def main() -> int:
         except KeyError as e:
             print(e.args[0], file=sys.stderr)
             return 1
+        except pk.PacoteErro as e:
+            print(f"o som não desceu: {e}", file=sys.stderr)
+            return 1
         return 0
-    for x in catalogo():
-        golpe = f", golpe em {x['golpe']} s" if x["golpe"] else ""
-        print(f"{x['id']:<12} {x['duracao']:.2f} s{golpe} — {x['uso']}")
+    for grupo, itens in (("do kit (podem ir em anúncio)", catalogo()),
+                         ("virais (baixam na 1ª vez; em anúncio pago podem reprovar)", virais())):
+        if itens:
+            print(f"# {grupo}")
+        for x in itens:
+            golpe = f", golpe em {x['golpe']} s" if x["golpe"] else ""
+            print(f"{x['id']:<16} {x['duracao']:.2f} s{golpe} — {x['uso']}")
     return 0
 
 

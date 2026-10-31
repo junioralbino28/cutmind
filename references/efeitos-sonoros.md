@@ -1,8 +1,11 @@
-# Sound effects — the kit's library and where to find the viral ones
+# Sound effects — the kit's own and the viral ones
 
-The kit ships ten sound effects it **synthesizes itself** (`helpers/efeitos_sonoros.py`, files in
-`assets/sfx/`): no recording, no one's license, safe in a paid ad. They play the roles of the sounds
-that show up most in Reels.
+Two groups, side by side in the editor (Áudio → Efeitos sonoros) and in `listar`:
+
+- ten sound effects the kit **synthesizes itself** (`helpers/efeitos_sonoros.py`, files in
+  `assets/sfx/`): no recording, no one's license, safe in a paid ad. They play the roles of the
+  sounds that show up most in Reels;
+- eleven **viral** ones (meme, brand, series), further down: what everybody uses, not for a paid ad.
 
 | `id` | Name | Use it for | Golpe | Suggested volume |
 |---|---|---|---|---|
@@ -44,10 +47,37 @@ that show up most in Reels.
     (repeatable; the second is on the FINAL video's clock). Faster, but the user does not see them
     in the editor.
 
-## The viral ones (Taco Bell bong, Discord ping, meme sounds…)
+## The viral ones (Taco Bell bong, Discord ping, cha-ching, Dexter, meme sounds…)
 
-They are not in the kit: they belong to brands, series and their authors. Tell the user where to
-find them for their own videos:
+The sounds that show up in every Reels. The list ships with the kit (`assets/sfx/virais.json`); the
+audio lives in a Release of the packages repository and downloads the first time someone listens or
+uses one (checked by size and sha256, kept in `~/.cutmind/pacotes/sons`). Every id starts with `v-`.
+
+| `id` | Name | Use it for | Golpe | Suggested volume |
+|---|---|---|---|---|
+| `v-cha-ching` | Cha-ching | price, a monthly fee, money in or out | 0.13 | 0.36 |
+| `v-taco-bell` | Bong do Taco Bell | the punchline, the number that lands | 0.014 | 0.42 |
+| `v-discord` | Notificação do Discord | a comment, a message, a direct arriving | 0.023 | 0.32 |
+| `v-revelacao` | Revelação mágica | the background changing, AI at work, before/after | 0.008 | 0.23 |
+| `v-ding` | Ding (viral) | a right answer, an item entering, the idea | 0.02 | 0.21 |
+| `v-whoosh` | Whoosh (viral) | a card or text passing by | 0.049 | 0.19 |
+| `v-clique` | Clique (viral) | a button clicked, the cursor | 0.01 | 0.2 |
+| `v-core` | Core (TikTok) | the end of a block, the turn to the next one | 0.005 | 0.25 |
+| `v-faah` | Faah (meme) | the scare, the mistake, the "uh-oh" | 0.164 | 0.28 |
+| `v-dexter-curto` | Dexter (curto) | the objection, the "ok, but…" | 0.013 | 0.11 |
+| `v-dexter` | Dexter (completo) | suspense, the doubt left hanging (10.6 s) | 0.013 | 0.13 |
+
+- **Golpe**: a viral sound can breathe before its hit (the cha-ching's "cha", the faah's intake).
+  Start it at *t* − `golpe`; the editor's **Usar** already does.
+- **Volume**: these came from a mix approved by ear, converted to the trimmed files; start there.
+- They are used exactly like the kit's: `usar <edit> <id>` (it downloads), then a layer or
+  `mixar_final --sfx midia/sfx-<id>.mp3@<second>:<volume>`.
+- **No connection**: the first use needs the internet; after that it plays from the cache.
+
+**Paid ad:** a brand or series sound (and any meme-site file) can get the ad rejected and the video
+claimed. For an ad, use the kit's own effects above. In an organic post they are what everybody uses.
+
+### Others, for the user's own videos
 
 - **Inside the app when posting** (Instagram, TikTok): the sound library and the trending audios.
   For a sound that must sync with the cut, prefer the file.
@@ -60,6 +90,3 @@ find them for their own videos:
 
 Brought in by the editor (Áudio → Do celular / Do computador) or sent in the chat, they are layers
 like any other.
-
-**Paid ad:** a brand or series sound (and any meme-site file) can get the ad rejected and the video
-claimed. For an ad, use the kit's effects or the no-credit sites above.

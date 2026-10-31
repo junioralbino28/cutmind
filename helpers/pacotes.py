@@ -51,7 +51,9 @@ import camadas as cam  # mesma pasta deste arquivo
 
 KIT = Path(__file__).resolve().parent.parent
 CATALOGO_KIT = KIT / "assets" / "pacotes" / "catalogo.json"
-TIPOS = ("trilha", "efeito", "transicao", "filtro", "texto", "montagem")
+# "som": só na lista dos virais que vem com o kit (assets/sfx/virais.json), nunca no catálogo da
+# biblioteca, porque um kit antigo recusa o catálogo inteiro quando acha um tipo que não conhece
+TIPOS = ("trilha", "efeito", "transicao", "filtro", "texto", "montagem", "som")
 MAX_MODELO = 20_000  # o modelo de montagem vem escrito no catálogo (o painel lista sem baixar nada)
 TRILHA_VOLUME = 0.15  # trilha normalizada em -14 LUFS, embaixo da voz: ~16 dB abaixo
 LIMITE_PADRAO_GB = 2.0

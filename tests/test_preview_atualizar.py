@@ -39,6 +39,12 @@ def srv(tmp_path, monkeypatch):
     monkeypatch.setattr(ps, "ATUALIZACAO", {"resultado": None, "pedido": False})
     monkeypatch.setattr(ps, "copia_de_desenvolvimento", lambda: False)
     monkeypatch.setattr(ps.atu, "procurar", lambda *a, **k: dict(NOVA))
+    # a instalação de mentira na versão que NOVA diz ser a atual: sem isso o servidor compara com o
+    # versao.json deste repositório, e quando ele chega na 0.3.0 a "versão nova" deixa de ser nova
+    antiga = tmp_path / "instalacao-antiga"
+    antiga.mkdir()
+    ps.atu.vs._escrever(antiga, {"versao": NOVA["atual"], "notas": {}, "arquivos": {}})
+    monkeypatch.setattr(ps, "SKILL", antiga)
     falso = tmp_path / "atualizar_falso.py"
     falso.write_text(FALSO, encoding="utf-8")
     marca = tmp_path / "lancado.txt"

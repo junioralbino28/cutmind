@@ -8769,11 +8769,11 @@ PREV.addEventListener('error', () => {
   if (PREV.dataset.id && trAberto()) toast(t('A prévia não carregou. Confira a internet do computador.'), 3000);
 });
 
-/* ---------- efeitos sonoros do kit (helpers/efeitos_sonoros.py, assets/sfx/) ----------
- * Sons que o próprio kit sintetiza (podem ir até em anúncio): ouvir e Usar, que põe o som
- * na agulha como camada de áudio, com o volume sugerido do catálogo (todos no mesmo nível
- * embaixo da voz). O golpe está no começo do arquivo; o do whoosh, no `golpe`, e por isso
- * ele entra esse tanto antes da agulha, para o pico cair nela. */
+/* ---------- efeitos sonoros (helpers/efeitos_sonoros.py, assets/sfx/) ----------
+ * Os que o próprio kit sintetiza (podem ir até em anúncio) e, num grupo à parte, os virais
+ * (meme, marca, série), que o servidor baixa na primeira vez que alguém ouve. Ouvir e Usar,
+ * que põe o som na agulha como camada de áudio, com o volume sugerido do catálogo. O som
+ * entra `golpe` segundos antes da agulha, para o ataque (o pico, no whoosh) cair nela. */
 let sfxSel = null;
 const sfxAberto = () => $('sfxSheet').classList.contains('open');
 const nomeSfx = (s) => (IDIOMA === 'en' && s.nome_en) || s.nome;
@@ -8804,7 +8804,12 @@ function renderSfx() {
   box.innerHTML = '';
   el('p', 'sheet-hint', box).textContent = t('Sons feitos pelo próprio CutMind: podem ir até em anúncio. Entram na agulha, como camada de áudio.');
   const tocando = !PREV.paused && PREV.dataset.id;
-  for (const s of S.sfx || []) {
+  const virais = (S.sfx || []).filter((s) => s.viral);
+  for (const s of [...(S.sfx || []).filter((s) => !s.viral), ...virais]) {
+    if (s === virais[0]) {
+      el('div', 'tr-guia-grupo', box).textContent = t('Virais');
+      el('p', 'sheet-hint', box).textContent = t('Sons de meme, marca e série que circulam em todo Reels. Descem na primeira vez que você ouve. Em anúncio pago, podem reprovar o anúncio.');
+    }
     const row = el('div', `tr-row${sfxSel === s.id ? ' on' : ''}`, box);
     row.dataset.id = s.id;
     const play = el('button', 'tr-play', row);
@@ -8814,7 +8819,7 @@ function renderSfx() {
     play.setAttribute('aria-label', `${tocando === `sfx:${s.id}` ? t('Parar') : t('Ouvir')} ${nomeSfx(s)}`);
     const txt = el('div', 'tr-txt', row);
     el('b', null, txt).textContent = nomeSfx(s);
-    el('span', null, txt).textContent = [`${numLocal(s.duracao)} s`, IDIOMA === 'pt' ? s.uso : ''].filter(Boolean).join(' · ');
+    el('span', null, txt).textContent = [`${numLocal(Math.max(0.1, Math.round(s.duracao * 10) / 10))} s`, IDIOMA === 'pt' ? s.uso : ''].filter(Boolean).join(' · ');
     if (sfxSel === s.id) {
       const usar = el('button', 'tb-btn primary tr-usar', row);
       usar.type = 'button';
@@ -8829,7 +8834,10 @@ function ouvirSfx(id) {
   PREV.src = `/gen/sfx?id=${encodeURIComponent(id)}`;
   PREV.dataset.id = `sfx:${id}`;
   PREV.muted = S.mudoUsuario;
-  PREV.play().catch(() => {});
+  PREV.play().catch((e) => {
+    // o viral desce do servidor de pacotes na hora: sem conexão, o áudio não carrega
+    if (e && e.name === 'NotSupportedError') toast(t('Não deu para baixar esse som agora'), 3200);
+  });
   renderSfx();
 }
 async function usarSfx(id) {

@@ -1375,14 +1375,15 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/gen/voz-previa":
             self._voz_previa(query)
         elif path == "/api/sfx":
-            self._json({"itens": es.catalogo()})
+            self._json({"itens": es.todos()})
         elif path == "/gen/sfx":
             sid = (parse_qs(query).get("id") or [""])[0]
-            item = next((x for x in es.catalogo() if x["id"] == sid), None)
-            if item is None:
+            try:
+                self._send_file(es.arquivo(sid))
+            except KeyError:
                 self._json({"error": "efeito sonoro desconhecido"}, 404)
-            else:
-                self._send_file(es.PASTA / item["arquivo"])
+            except pk.PacoteErro as e:  # o viral não desceu (sem conexão, arquivo diferente)
+                self._json({"error": str(e)}, 502)
         elif path.startswith("/gen/pacote/"):
             self._pacote_arquivo(path[len("/gen/pacote/"):])
         else:
@@ -2096,11 +2097,15 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, json.JSONDecodeError):
             body = None
         sid = body.get("id") if isinstance(body, dict) else None
-        item = next((x for x in es.catalogo() if x["id"] == sid), None) if isinstance(sid, str) else None
+        item = next((x for x in es.todos() if x["id"] == sid), None) if isinstance(sid, str) else None
         if item is None:
             self._json({"error": "efeito sonoro desconhecido"}, 404)
             return
-        dest = es.usar(self.root, sid)
+        try:
+            dest = es.usar(self.root, sid)
+        except pk.PacoteErro as e:
+            self._json({"error": str(e)}, 502)
+            return
         self._json({"arquivo": f"{cam.MIDIA_DIR}/{dest.name}", "id": sid, "nome": item["nome"], "nomeEn": item["nome_en"],
                     "duracao": item["duracao"], "volume": item["volume"], "golpe": item["golpe"]})
 
