@@ -449,6 +449,7 @@ const S = {
   grade: [],          // as batidas das músicas no tempo da linha do tempo: [{t, forte, it}], em ordem
   ima: lerPref('cutmind.ima') !== '0', // ímã ligado: agulha e pontas grudam na batida (lembrado)
   zona: lerPref('cutmind.zona') === '1', // a régua da zona segura por cima do vídeo (lembrada)
+  tlUser: +lerPref('cutmind.tlAltura') || 0, // altura da linha do tempo escolhida no divisor, no computador (0 = automática; lembrada)
 };
 
 const fmt = (t) => {
@@ -1168,6 +1169,14 @@ const jcutAberto = () => S.jcutOpen && temJcut() && !S.posMode;
 const trilhaF2 = () => { const st = S.editData && S.editData.soundtrack; return st && st.enabled ? st : null; };
 // a linha do tempo cresce com as camadas até um teto; acima dele as faixas encolhem
 const TL_MIN = 178, TL_MAX = 292;
+const cssPx = (nome, padrao) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(nome)) || padrao;
+/* A altura do divisor que cabe na janela: nunca abaixo do `piso` (as faixas na metade do
+ * tamanho) e nunca tão alta que a parte de cima fique com menos de 140 px. No lado a lado os
+ * controles do vídeo moram na coluna dele, e não acima da barra de ferramentas. */
+function tlPermitida(h, piso) {
+  const teto = innerHeight - cssPx('--top-h', 56) - cssPx('--tool-h', 66) - (ladoAtivo() ? 0 : 48) - 140;
+  return Math.round(Math.max(96, Math.min(teto, Math.max(piso, h))));
+}
 
 const VIDEO_TRACK_H = 56;
 const MOVE_TILE = 60; // largura de cada tomada enquanto se move uma
@@ -1188,7 +1197,11 @@ function renderTimeline() {
   /* lado a lado: a linha do tempo fica com a altura que a prévia liberou, e as faixas crescem
      (até 1,6x) em vez de sobrar vão: menos apertadas e mais fáceis de pegar com o mouse */
   const soma = plan.reduce((a, t) => a + t.h, 0);
-  S.kFaixa = ladoAtivo() ? Math.min(1.6, Math.max(1, (innerHeight * 0.47 - 36 - vaos) / soma)) : 1;
+  // a altura escolhida no divisor manda, e as faixas crescem ou encolhem (até a metade) para caber nela
+  S.tlPiso = 36 + vaos + Math.ceil(soma * 0.5);
+  const tlUser = isDesk() && S.tlUser ? tlPermitida(S.tlUser, S.tlPiso) : 0;
+  S.kFaixa = tlUser ? Math.min(1.6, Math.max(0.5, (tlUser - 36 - vaos) / soma))
+    : ladoAtivo() ? Math.min(1.6, Math.max(1, (innerHeight * 0.47 - 36 - vaos) / soma)) : 1;
   for (const t of plan) t.h = Math.round(t.h * S.kFaixa);
   // régua (30) + respiro (6) + faixas e os vãos entre elas
   const need = 36 + plan.reduce((a, t) => a + t.h, 0) + vaos;
@@ -1196,7 +1209,7 @@ function renderTimeline() {
   const [tlMin, tlMax] = isDesk()
     ? [Math.min(260, Math.max(170, Math.round(innerHeight * 0.26))), Math.round(innerHeight * 0.45)]
     : [TL_MIN, TL_MAX];
-  const tlH = Math.min(tlMax, Math.max(tlMin, need));
+  const tlH = tlUser || Math.min(tlMax, Math.max(tlMin, need));
   timeline.style.height = `${tlH}px`;
   document.documentElement.style.setProperty('--tl-h', `${tlH}px`); // os painéis encaixados param acima dela
   for (const tr of plan) {
@@ -9823,6 +9836,12 @@ function renderFundo() {
   el('p', 'sheet-hint', box).id = 'fundoDica';
   const grade = el('div', 'mod-grade fundo-grade', box);
   fundoVars(grade);
+  // a fileira rola de lado: no computador a roda do mouse (para cima e para baixo) anda nela
+  grade.addEventListener('wheel', (e) => {
+    if (!isDesk() || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+    grade.scrollLeft += e.deltaY;
+    e.preventDefault();
+  }, { passive: false });
   const cartao = (f, nome) => {
     const b = el('button', 'mod-card fundo-card', grade);
     b.type = 'button';
@@ -10007,6 +10026,54 @@ window.addEventListener('resize', () => {
   // no computador a altura da linha do tempo segue a da janela: refaz quando ela para de mudar
   clearTimeout(deskResize);
   if (isDesk() && S.videoDuration) deskResize = setTimeout(renderTimeline, 120);
+});
+/* O divisor (computador): a linha logo acima da barra de ferramentas. Arrastar muda a altura da
+ * linha do tempo, e a parte de cima (prévia e painéis encaixados) fica com o resto, como nos
+ * editores de computador. A altura fica lembrada; dois cliques voltam à automática. Mudar a
+ * altura é mudar o leiaute: avisa como uma janela redimensionada, e quem mede refaz. */
+const divisor = el('div', 'divisor', document.body);
+divisor.id = 'divisor';
+divisor.tabIndex = 0;
+divisor.setAttribute('role', 'separator');
+divisor.setAttribute('aria-orientation', 'horizontal');
+divisor.title = t('Arraste para mudar a altura da linha do tempo. Dois cliques: altura automática.');
+let divArr = null;
+function divisorPara(h) {
+  S.tlUser = tlPermitida(h, S.tlPiso || 96);
+  timeline.style.height = `${S.tlUser}px`;
+  document.documentElement.style.setProperty('--tl-h', `${S.tlUser}px`);
+  window.dispatchEvent(new Event('resize'));
+}
+const divisorGuarda = () => gravaPref('cutmind.tlAltura', String(S.tlUser || 0));
+divisor.addEventListener('pointerdown', (e) => {
+  if (!isDesk() || e.button !== 0) return;
+  e.preventDefault();
+  divisor.setPointerCapture(e.pointerId);
+  divArr = { y: e.clientY, h: timeline.getBoundingClientRect().height };
+  divisor.classList.add('arrastando');
+});
+divisor.addEventListener('pointermove', (e) => { if (divArr) divisorPara(divArr.h + divArr.y - e.clientY); });
+const divisorSolta = () => {
+  if (!divArr) return;
+  divArr = null;
+  divisor.classList.remove('arrastando');
+  divisorGuarda();
+};
+divisor.addEventListener('pointerup', divisorSolta);
+divisor.addEventListener('pointercancel', divisorSolta);
+divisor.addEventListener('dblclick', () => {
+  S.tlUser = 0;
+  divisorGuarda();
+  if (S.videoDuration) renderTimeline();
+  window.dispatchEvent(new Event('resize'));
+  toast(t('Linha do tempo na altura automática'), 1800);
+});
+divisor.addEventListener('keydown', (e) => {
+  const passo = { ArrowUp: 24, ArrowDown: -24 }[e.key];
+  if (!passo) return;
+  e.preventDefault();
+  divisorPara(timeline.getBoundingClientRect().height + passo);
+  divisorGuarda();
 });
 poll();
 loop();

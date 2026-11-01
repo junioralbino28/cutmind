@@ -1,8 +1,9 @@
 {
-  "versao": "0.3.4",
+  "versao": "0.3.5",
   "data": "2026-11-01",
   "notas": {
     "pt": [
+      "No computador, a linha logo acima da barra de ferramentas se arrasta: para baixo, a prévia e os painéis ganham altura; para cima, a linha do tempo. A altura fica lembrada, e dois cliques voltam à automática. O Fundo mostra os cartões numa fileira do tamanho que sobra, e a roda do mouse anda nela.",
       "Salvar em segundos: a edição inteira acontece nas cópias leves das gravações e o corte é refeito em rascunho. No teste, um Salvar de 3 minutos de vídeo em 4K caiu de 10 minutos para 26 segundos. A qualidade da gravação entra uma vez só, no Baixar, com cada tomada nos mesmos quadros.",
       "Recuperar o que foi cortado: puxe a ponta de qualquer tomada para fora e o trecho cortado, por você ou pelo agente, aparece e toca na hora, até a tomada voltar inteira. O CutMind faz uma cópia leve de cada gravação em segundo plano, e a imagem da ponta enquanto você arrasta passou de vários segundos para menos de um quinto de segundo.",
       "Emendas mais limpas: quando o corte fica colado na fala, como ao aparar à mão para tirar um erro, as duas falas não tocam mais juntas na emenda. Na prévia, o começo que você aparou some na hora, sem esperar o corte ser refeito.",
@@ -15,6 +16,7 @@
       "Órbita: cards girando em volta de você, passando atrás da cabeça e depois na frente."
     ],
     "en": [
+      "On the computer, the line right above the toolbar can be dragged: down gives the preview and the panels more height, up gives it to the timeline. The height is remembered, and a double-click goes back to automatic. Background shows its cards in one row as tall as the space left, and the mouse wheel scrolls it.",
       "Save in seconds: all the editing happens on light copies of the recordings and the cut is redone as a draft. In the test, saving a 3-minute 4K video went from 10 minutes to 26 seconds. Full quality comes in once, when you download, with every take on the same frames.",
       "Bring back what was cut: drag the end of any take outward and the part that was cut, by you or by the agent, shows up and plays right away, all the way to the whole take. CutMind makes a light copy of each recording in the background, and the frame at the end you drag now shows in under a fifth of a second instead of several seconds.",
       "Cleaner joins: when a cut sits tight against speech, like a hand trim that removes a fumble, the two takes no longer play over each other at the join. In the preview, the start you trimmed goes silent right away, before the cut is redone.",
@@ -55,9 +57,9 @@
     "assets/longform/tsconfig.json": "9711319fbf1045845e8129e9ee926e868c27730649c5ed0f14976b9e5a3c1cb3",
     "assets/montagens/drop-cedo.json": "4cb47b63b796a05e1bfc69bf817a6b494d4f93028163359f11e5502de5020f46",
     "assets/pacotes/catalogo.json": "003984b0e4e9705cff4cff10b83a51172e8961f7cc3aab2b633ea8a62381d0f8",
-    "assets/preview/celular.css": "764e128d46b98c8421afa2ce595092a24b8f3b708e51c796d77b18d9fda794d7",
-    "assets/preview/celular.html": "f871b274c1a5f9d3a31d32c8b506d3b02c7a6f5906e57c5360d6c6341bf01031",
-    "assets/preview/celular.js": "d5e955cbbcd5f7113eedac0b20cf2ce8d6299900ebbffbaf88f03c783da0dfc2",
+    "assets/preview/celular.css": "4440553d2437dae49c986b7ec2ae32645d61cab81b39e3ca3edcf9cb6e572e1a",
+    "assets/preview/celular.html": "828831a3398a5665c98eaf131cf785f5ad446ad1e8b3e776166cf49e2bc19ebf",
+    "assets/preview/celular.js": "bdd33f9150cba19e6e17bf63ab62f778319dbc135fab4318f8bbbb8db41c0d8c",
     "assets/preview/celular.webmanifest": "bf58d21563dba777f93a62a09aa5169d83a94ea8aaf46d70f7068f7594bf4bd7",
     "assets/preview/cutmind-logo-white.png": "b3f7435d87d0d53b6b768e8b8abfe829b23b69baa9a6ddfcbb08f89e9271b1c4",
     "assets/preview/cutmind-logo.png": "23dc4e814c3ad65bb875f5ef52b26a4d8d36cf5ee78eddd0e2ae119220951110",
@@ -71,7 +73,7 @@
     "assets/preview/fundos/lousa.jpg": "4044be1594456f58b93c656e6dd2cf8b3458c145553b69284bed170cca731d96",
     "assets/preview/fundos/neon.jpg": "0a489f7b4a0cdfd79ad301c1980b15588ba165c6b627f796775782610eeac53f",
     "assets/preview/fundos/parede.jpg": "6fcc80dd3d966c9b7781d1edcf60d7568d2a7d499c6b6bd998b43496a33a1c1e",
-    "assets/preview/i18n-en.js": "ef8d95927d23a644a413c07b38ee2fe18a765bc116b7722c7c719ddbc074cee1",
+    "assets/preview/i18n-en.js": "1ec05bb2a115d981a590b2d700daae5e922a8cbc972ec595cebe949de8f30a68",
     "assets/preview/i18n.js": "4020dda6dbd66c085a1d2a0bb1d1e51b1b4ff244683a0c3a62a47dc809b9e030",
     "assets/preview/icone-192.png": "efaf78f4da6cc7db932d7a94c23d3d80338897d1c7252b6122ff17b8ec732b57",
     "assets/preview/icone-512.png": "1ca318a50076cbe3a3820121242ec1979f7b20e9da134d7211d5f74f94ece1ce",
