@@ -655,6 +655,13 @@ def concat_segments(segment_paths: list[Path], out_path: Path, edit_dir: Path) -
 # The tail trim is MEASURED, never blind. Cutting a fixed 2 frames off every take
 # would eventually decapitate a word on footage whose take ends tight — so the trim
 # is capped by the silence actually present at the end of that range, keeping 10ms.
+#
+# The lead is measured too: at most the silence on BOTH sides of the seam (what is
+# left of the outgoing tail + the incoming head), keeping 10ms. Inside that budget
+# the two takes' speech can never sound together. A fixed 5 frames was harmless on
+# cuts placed in silence (breath over breath) and summed two voices for ~170ms on a
+# cut made tight against speech — the hand trim that removes a fumble (31/10). Cut
+# tight on both sides, the lead is 0 and the takes just butt, with the 30ms fades.
 
 JCUT_LEAD_FRAMES = 5
 JCUT_TAIL_TRIM_FRAMES = 2
@@ -679,12 +686,10 @@ def jcut_settings(edl: dict, fps: int) -> dict | None:
     }
 
 
-def trailing_silence(source: Path, start: float, end: float,
-                     noise_db: int = -35) -> float:
-    """Seconds of silence at the END of a source range. 0.0 if it ends in speech.
-
-    This is what bounds the tail trim: we only ever remove what is already silent.
-    """
+def silencio_nas_pontas(source: Path, start: float, end: float,
+                        noise_db: int = -35) -> tuple[float, float]:
+    """Seconds of silence at the START and at the END of a source range (0.0 where it
+    is speech). The head bounds the J-cut lead; the tail bounds the tail trim and the lead."""
     dur = end - start
     r = subprocess.run(
         ["ffmpeg", "-hide_banner", "-nostats", "-ss", f"{start:.6f}",
@@ -705,24 +710,35 @@ def trailing_silence(source: Path, start: float, end: float,
             except (ValueError, IndexError):
                 pass
     if not starts:
-        return 0.0
+        return 0.0, 0.0
+    # the range starts in silence only if the first silence starts at its first instant
+    cabeca = 0.0
+    if starts[0] <= 0.02:
+        cabeca = min(dur, max(0.0, ends[0])) if ends else dur
     last = starts[-1]
     # the range ends in silence only if no speech resumed after `last`
     if any(e > last + 1e-6 and e < dur - 0.02 for e in ends):
-        return 0.0
-    return max(0.0, dur - last)
+        return cabeca, 0.0
+    return cabeca, max(0.0, dur - last)
+
+
+def trailing_silence(source: Path, start: float, end: float,
+                     noise_db: int = -35) -> float:
+    """Seconds of silence at the END of a source range. 0.0 if it ends in speech.
+
+    This is what bounds the tail trim: we only ever remove what is already silent.
+    """
+    return silencio_nas_pontas(source, start, end, noise_db)[1]
 
 
 def plan_jcut(edl: dict, edit_dir: Path, cfg: dict) -> list[dict]:
     """Work out each take's video range, audio range and output offsets."""
     fps = cfg["fps"]
-    lead = cfg["lead_frames"] / fps
     ranges = edl["ranges"]
     sources = edl["sources"]
     n = len(ranges)
 
     plan: list[dict] = []
-    a_off = v_off = 0.0
     for i, r in enumerate(ranges):
         src = resolve_path(sources[r["source"]], edit_dir)
         start, end = float(r["start"]), float(r["end"])
@@ -733,8 +749,14 @@ def plan_jcut(edl: dict, edit_dir: Path, cfg: dict) -> list[dict]:
         peds = tempo.pedacos(r)
         vel = peds[0][2] if len(peds) == 1 else None
 
+        # the head only matters where a lead can happen; the tail, wherever a take follows
+        cabeca, avail = 0.0, None
+        if n > 1 and (i > 0 and cfg["lead_frames"] or i < n - 1):
+            cabeca, avail = silencio_nas_pontas(src, start, end)
+            if i == n - 1:
+                avail = None
+
         tail = 0.0
-        avail = trailing_silence(src, start, end) if i < n - 1 else None
         if avail is not None and cfg["tail_trim_frames"]:
             budget = max(0.0, avail - 0.010)          # keep 10ms of room tone
             if vel is not None:
@@ -746,20 +768,34 @@ def plan_jcut(edl: dict, edit_dir: Path, cfg: dict) -> list[dict]:
                 tail = end - tempo.gravacao_em(peds, total - usable_frames / fps)
 
         a_in, a_out = start, end - tail
-        if vel is not None:
-            v_in = start + (lead * vel if i > 0 else 0.0)
-        else:
-            v_in = tempo.gravacao_em(peds, lead) if i > 0 else start
-        v_out = a_out
+        resto = (avail - tail) if avail is not None else 0.0  # the tail silence the trim left
         plan.append({
             "i": i, "src": src, "range": r, "vel": vel, "peds": peds,
-            "a_in": a_in, "a_out": a_out, "a_off": a_off,
-            "v_in": v_in, "v_out": v_out, "v_off": v_off,
+            "a_in": a_in, "a_out": a_out,
             "tail_frames": round(tail / vel * fps) if vel is not None else round(tempo.dur_trecho(peds, end - tail, end) * fps),
             "silence_avail_ms": round(avail * 1000) if avail is not None else None,
+            # both in CUT time: what the seam may overlap without summing two voices
+            "sil_cabeca": tempo.dur_trecho(peds, start, min(a_out, start + cabeca)),
+            "sil_cauda": tempo.dur_trecho(peds, a_out - resto, a_out) if resto > 0 else 0.0,
         })
-        v_off += tempo.dur_trecho(peds, v_in, v_out)
-        a_off += tempo.dur_trecho(peds, a_in, a_out) - lead
+
+    for i, p in enumerate(plan):
+        lead_frames = 0
+        if i > 0:
+            budget = plan[i - 1]["sil_cauda"] + p["sil_cabeca"] - 0.010  # keep 10ms between voices
+            lead_frames = min(cfg["lead_frames"], max(0, int(budget * fps + 1e-9)))
+        lead = lead_frames / fps
+        if i == 0:
+            a_off = v_off = 0.0
+        else:
+            q = plan[i - 1]
+            a_off = q["a_off"] + tempo.dur_trecho(q["peds"], q["a_in"], q["a_out"]) - lead
+            v_off = q["v_off"] + tempo.dur_trecho(q["peds"], q["v_in"], q["v_out"])
+        if p["vel"] is not None:
+            v_in = p["a_in"] + lead * p["vel"]
+        else:
+            v_in = tempo.gravacao_em(p["peds"], lead)
+        p.update({"lead_frames": lead_frames, "a_off": a_off, "v_in": v_in, "v_out": p["a_out"], "v_off": v_off})
     return plan
 
 
@@ -830,8 +866,8 @@ def extract_and_assemble_jcut(
         jobs = max(1, min(4, (os.cpu_count() or 4) // 3))
 
     lead_ms = round(cfg["lead_frames"] / cfg["fps"] * 1000)
-    print(f"J-cut: áudio entra {cfg['lead_frames']}f ({lead_ms}ms) antes da imagem"
-          f"  ({len(plan)} takes, {jobs} paralelos)")
+    print(f"J-cut: áudio entra até {cfg['lead_frames']}f ({lead_ms}ms) antes da imagem,"
+          f" só no silêncio de cada emenda  ({len(plan)} takes, {jobs} paralelos)")
 
     def work(p: dict) -> dict:
         i, r = p["i"], p["range"]
@@ -858,12 +894,16 @@ def extract_and_assemble_jcut(
                          f" (de {p['silence_avail_ms']}ms de silêncio)")
         elif p["silence_avail_ms"] is not None:
             tail_note = f"  cauda 0f (só {p['silence_avail_ms']}ms de silêncio)"
+        lead_note = ""
+        if i > 0 and p["lead_frames"] < cfg["lead_frames"]:
+            lead_note = (f"  voz antes {p['lead_frames']}f (emenda colada na fala)" if p["lead_frames"]
+                         else "  voz junto da imagem (emenda colada na fala)")
         gain_note = f"  gain: {gain_db:+.1f}dB" if abs(gain_db) > 0.05 else ""
         vel_note = (f"  curva {r['curva'].get('nome', '')}" if p["vel"] is None
                     else (f"  {p['vel']:g}x" if p["vel"] != 1.0 else ""))
         print(f"  [{i:02d}] {r['source']}  v {p['v_in']:7.2f}-{p['v_out']:7.2f}"
               f"  a {p['a_in']:7.2f}-{p['a_out']:7.2f}"
-              f"  {r.get('beat') or ''}{tail_note}{gain_note}{vel_note}", flush=True)
+              f"  {r.get('beat') or ''}{tail_note}{lead_note}{gain_note}{vel_note}", flush=True)
         return p
 
     if jobs == 1 or len(plan) == 1:
@@ -1483,6 +1523,7 @@ def main() -> None:
              "audio_start_in_output": round(p["a_off"], 6),
              "audio_duration": round(tempo.dur_trecho(p["peds"], p["a_in"], p["a_out"]), 6),
              "tail_trim_frames": p["tail_frames"],
+             "lead_frames": p["lead_frames"],
              **({"velocidade": p["vel"]} if p["vel"] not in (None, 1.0) else {}),
              **({"curva": p["range"]["curva"].get("nome", "")} if p["vel"] is None else {})}
             for p in plan

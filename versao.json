@@ -1,8 +1,9 @@
 {
-  "versao": "0.3.1",
+  "versao": "0.3.2",
   "data": "2026-10-31",
   "notas": {
     "pt": [
+      "Emendas mais limpas: quando o corte fica colado na fala, como ao aparar à mão para tirar um erro, as duas falas não tocam mais juntas na emenda. Na prévia, o começo que você aparou some na hora, sem esperar o corte ser refeito.",
       "Efeitos sonoros virais: Áudio → Efeitos sonoros ganhou o grupo Virais, com 11 sons que circulam em todo Reels (cha-ching, bong do Taco Bell, notificação do Discord, revelação mágica, Dexter, faah, core…). Descem na primeira vez que você ouve. Em anúncio pago, podem reprovar o anúncio.",
       "Zona segura do Reels: um botão no player mostra onde o Instagram corta ou cobre o vídeo, e os textos e efeitos do vídeo final já nascem fora dessas faixas.",
       "Dez gráficos animados para o vídeo final: palavras na batida da fala, botões clicados, palavra grande que cai ou é riscada, comentário de objeção, lista com X, selo da marca, linha do tempo sendo aparada, barra de progresso, o \"comenta\" com seta e direct, e um print dentro de um celular.",
@@ -12,6 +13,7 @@
       "Órbita: cards girando em volta de você, passando atrás da cabeça e depois na frente."
     ],
     "en": [
+      "Cleaner joins: when a cut sits tight against speech, like a hand trim that removes a fumble, the two takes no longer play over each other at the join. In the preview, the start you trimmed goes silent right away, before the cut is redone.",
       "Viral sound effects: Audio → Sound effects has a new Viral group with 11 sounds you hear in every Reels (cha-ching, Taco Bell bong, Discord notification, magic reveal, Dexter, faah, core…). They download the first time you listen. In a paid ad, they can get the ad rejected.",
       "Reels safe zone: a button on the player shows where Instagram crops or covers the video, and the final video's texts and effects already start outside those bands.",
       "Ten animated graphics for the final video: words on the beat of the speech, clicked buttons, a big word that lands or gets struck through, an objection comment, a list with X's, a brand badge, a timeline being trimmed, a progress bar, the \"comment\" CTA with an arrow and a direct, and a screenshot inside a phone.",
@@ -24,7 +26,7 @@
   "arquivos": {
     "README.md": "a6cf59def889fddc4399ccb926bc258e551163cb166533a79c4a90e6c6d7fbd7",
     "README.pt-BR.md": "1f0f42a07d61d580692f03793633892872d935ab49666e7b1cf5656974e78a83",
-    "SKILL.md": "6cdaa96f5e7f07dbeab9a1d88c03a7ba9fbdfdd6eb2cad40597657d3730c0380",
+    "SKILL.md": "673d168cec8763d14806c3cc1b311b0fbff96e18fc1ba70ef1c3b1dc5f492fdb",
     "agents/openai.yaml": "27bc121e08a18862714c53c1e16c842ccaa7cf9d4b8228e22c98ab5937b8734f",
     "assets/efeitos/motor.js": "aecf280ab978e8b83ac14b1290ea4b7ffde0f16a77c33b7e8c04055bca3f773e",
     "assets/efeitos/vendor/jsm/postprocessing/EffectComposer.js": "9936afeb9cf7743ad8263efe3d5e75fc3af487f21456797e93e8b9ed72237b42",
@@ -51,7 +53,7 @@
     "assets/pacotes/catalogo.json": "003984b0e4e9705cff4cff10b83a51172e8961f7cc3aab2b633ea8a62381d0f8",
     "assets/preview/celular.css": "7020e00b67f42296e74dc9220ddb1da80fa66f49b264a333a543191813841aa0",
     "assets/preview/celular.html": "916efd804cb8bb981bc9778bafe95e8b729562b092908b2df16fc3269bb4a349",
-    "assets/preview/celular.js": "b3bcad102801caa34cdb86305a1d1010cfa43f016f0021afcfe7de9fd84e4118",
+    "assets/preview/celular.js": "3cf8e26fe2d3b336472f0b15341d8def607a19830f6cc76feb013551534a8857",
     "assets/preview/celular.webmanifest": "bf58d21563dba777f93a62a09aa5169d83a94ea8aaf46d70f7068f7594bf4bd7",
     "assets/preview/cutmind-logo-white.png": "b3f7435d87d0d53b6b768e8b8abfe829b23b69baa9a6ddfcbb08f89e9271b1c4",
     "assets/preview/cutmind-logo.png": "23dc4e814c3ad65bb875f5ef52b26a4d8d36cf5ee78eddd0e2ae119220951110",
@@ -177,7 +179,7 @@
     "helpers/preview_server.py": "991ea183f6f16d3d0bf09adb92c61f1868980a3ac8a948ce2f3d995411b02366",
     "helpers/projetos.py": "c003e260b0ccbbed9538d72bfa21223cb18990dccc89438a43b3eac795323827",
     "helpers/remapear.py": "574ec091fbe91b8305bbc0cee33083a4fea01d10171e205a8f7d4ab78c59644f",
-    "helpers/render.py": "03c5489fd62a6cf36b199e2e0c96f26c75b7e9e13678966f4efbe109c6f1d72a",
+    "helpers/render.py": "d48bb0a0754e7966473efe1d231e3deb689dcf4518ee7f2bdc7a58bb01257796",
     "helpers/render_janelas.py": "352a681cb732afbc0c30269865d0a656ae1c6b80c16201c95019abb0b72a2c36",
     "helpers/speech_regions.py": "fe2087596f32b422b303667c78c72ab3f6270be928eef80dd3b5333fdc40bf2a",
     "helpers/start_preview.py": "636652b3ed8ad7beea45fe301f9390891406af3c56b8467ba3b6e3f4fcede140",

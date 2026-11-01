@@ -7539,13 +7539,30 @@ $('velMenos').addEventListener('click', () => {
 });
 $('velRedefinir').addEventListener('click', () => { const r = velTomada(); if (r && r.curva) aplicarCurva(r.curva.nome); });
 
+/* A sobra do J-cut: no cut.mp4, os últimos quadros da tomada i já trazem MISTURADA a voz do começo
+ * da tomada i+1 (ela entra antes da imagem). Se o rascunho mexeu nessa emenda (a seguinte aparada,
+ * tirada ou trocada de lugar, ou o fim desta aparado), esse pedaço fica mudo na prévia: senão toca um
+ * som que não vai mais existir, como o começo aparado de uma fala com erro ("mesmo que eu corte o
+ * vídeo, o início da outra fala continua pegando", 31/10). `rt` é o tempo do cut.mp4. */
+function sobraVelha(dl, k, rt) {
+  const d = dl[k];
+  const i = d.from, R = S.rendered[i], N = S.rendered[i + 1];
+  if (!R || !N) return false;
+  const lead = jcutGeom(i + 1).lead;
+  if (!(lead > 1e-6)) return false;
+  const emenda = renderedLayout()[i + 1].out; // onde a imagem da seguinte começa no cut.mp4
+  if (rt < emenda - lead - 1e-3 || rt > emenda + 1e-3) return false;
+  const n = dl[k + 1];
+  return !(d.end === R.end && n && n.from === i + 1 && n.start === N.start);
+}
+
 // no Final o vídeo já é o que o agente montou, com o volume de cada tomada dentro
 function syncVolTomada() {
   let v = 1;
   if (S.view === 'corte' && S.draft.length) {
     const dl = draftLayout();
     const k = itemAt(dl, S.t);
-    if (k >= 0) v = volPrevia(dl[k]);
+    if (k >= 0) v = sobraVelha(dl, k, video.currentTime) ? 0 : volPrevia(dl[k]);
   }
   if (video.volume !== v) video.volume = v;
 }

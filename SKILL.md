@@ -338,7 +338,7 @@ junction — the outgoing take keeps its trailing pad and the incoming one start
 with its own. Measured on a real 3-take edit: **130ms and 140ms**. Small on paper,
 a clear pause in the room. The J-cut removes it and the takes interlock.
 
-Defaults, in `render.py`: **lead 5 frames**, **tail trim up to 2 frames**.
+Defaults, in `render.py`: **lead up to 5 frames**, **tail trim up to 2 frames**.
 Override per project with `"jcut": {"lead_frames": N, "tail_trim_frames": N}`;
 turn it off with `"jcut": false` or `--no-jcut` (single-range EDLs skip it anyway).
 
@@ -352,6 +352,13 @@ Three things that are not obvious:
 - **The tail trim is measured, never blind.** `render.py` reads the silence
   actually present at the end of each range and trims at most that (keeping 10ms).
   A fixed 2 frames would eventually decapitate a word on a take that ends tight.
+- **The lead is measured too.** At each seam it is capped by the silence on BOTH
+  sides (what the tail trim left of the outgoing take + the incoming take's head,
+  keeping 10ms), so two takes' speech never sound together. On a seam in silence
+  it stays 5f; on a seam cut tight against speech on both sides (a hand trim that
+  removes a fumble) it drops to 0 and the takes just butt, with the 30ms fades. A
+  fixed 5f summed both voices for ~170ms there. Each take's lead is in
+  `jcut_timeline[].lead_frames`; the render log says "emenda colada na fala".
 - **Sync is by construction:** `video_in = audio_in + lead` and
   `video_offset = audio_offset + lead`. Break that pairing and the take drifts.
 
@@ -466,8 +473,8 @@ For a single long source (longform), the main context can pick cuts directly fro
 `grade`: preset name, raw filter, or `"auto"` — normally whatever `detect_color.py`
 returned. `chapter` fields feed `chapters.py` (longform).
 
-`jcut`: optional. **Omit it and the J-cut runs with the defaults** (lead 5f, tail
-trim up to 2f); `false` butt-joins instead. After a render, `render.py` adds a
+`jcut`: optional. **Omit it and the J-cut runs with the defaults** (lead up to 5f,
+tail trim up to 2f, both measured on the silence of each seam); `false` butt-joins instead. After a render, `render.py` adds a
 `jcut_timeline` array — the real per-take video/audio offsets in the output. That
 block, not `Σ(end−start)`, is the timeline Phase 2 and the preview must use.
 
