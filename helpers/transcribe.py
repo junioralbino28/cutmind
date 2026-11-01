@@ -245,10 +245,15 @@ def transcribe_one(
     transcripts_dir.mkdir(parents=True, exist_ok=True)
     out_path = transcripts_dir / f"{video.stem}.json"
 
-    if out_path.exists():
+    # The cache is by NAME, so a cut.mp4 rendered again would come back with the old cut's words: the
+    # caption made from them drifts from the voice (a real edit, 01/11). A transcript older than
+    # its video is stale.
+    if out_path.exists() and out_path.stat().st_mtime >= video.stat().st_mtime - 1:
         if verbose:
             print(f"cached: {out_path.name}")
         return out_path
+    if out_path.exists() and verbose:
+        print(f"stale: {out_path.name} is older than {video.name}; transcribing again")
 
     duration = _probe_duration(video)
     if verbose:

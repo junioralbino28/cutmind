@@ -72,19 +72,23 @@ def mapa(edl_velho: dict, edl_novo: dict, origem: list[int | None]) -> Levar:
 
     def janela(ini: float, fim: float) -> tuple[float, float] | None:
         """A janela [ini, fim] do corte velho no novo: a parte dela que ainda está no corte, de cada
-        tomada velha por onde ela passa (na 1ª tomada nova que veio de cada uma). None = nada ficou."""
+        tomada velha por onde ela passa, em TODAS as tomadas novas que vieram de cada uma (uma tomada
+        dividida vira duas, e o item que atravessa a divisão fica nas duas). Um trecho da gravação que
+        aparece de novo (a cópia de uma tomada duplicada) conta só na primeira. None = nada ficou."""
         pedacos = []
         for k, sv in enumerate(velhas):
             a, b = max(ini, sv["out"]), min(fim, sv["out"] + sv["dur"])
             if b - a <= FOLGA:
                 continue
             ga, gb = _na_gravacao(sv, a), _na_gravacao(sv, b)
+            usados: list[tuple[float, float]] = []
             for j in _da(k):
                 n = novas[j]
                 x, y = max(ga, n["v_in"]), min(gb, n["v_out"])
-                if y - x > FOLGA:
-                    pedacos.append((tempo.no_corte(n, x), tempo.no_corte(n, y)))
-                    break
+                if y - x <= FOLGA or any(min(y, q) - max(x, p) > FOLGA for p, q in usados):
+                    continue
+                usados.append((x, y))
+                pedacos.append((tempo.no_corte(n, x), tempo.no_corte(n, y)))
         if not pedacos:
             return None
         return max(0.0, min(p[0] for p in pedacos)), max(p[1] for p in pedacos)
@@ -154,7 +158,7 @@ def efeitos(ef: dict, levar: Levar, emendas: list[float], total: float, fps: flo
         else:
             j = _janela(levar, float(it.get("inicio", 0)), float(it.get("duracao", 0)), total)
             if j is None:
-                fora.append(_fora(str(it.get("tipo")), str(it.get("pacote") or ""), it.get("inicio", 0)))
+                fora.append(_fora(str(it.get("tipo")), str(it.get("pacote") or it.get("efeito") or ""), it.get("inicio", 0)))
                 continue
             it["inicio"], it["duracao"] = round(j[0], 3), round(j[1], 3)
         manter.append(it)

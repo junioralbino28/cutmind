@@ -52,6 +52,7 @@ from typing import Callable
 import numpy as np
 
 import render  # mesma pasta deste arquivo: o loudnorm do kit
+import sonda  # mesma pasta deste arquivo
 
 SR = 48000
 SR_SIDON = 16000
@@ -238,10 +239,8 @@ def ler_audio(arq: Path) -> np.ndarray:
     Nunca pedir `-ac` ao ffmpeg aqui: ele abre um arquivo mono em estéreo a −3 dB por canal, e a voz
     limpa (mono, do DeepFilterNet) chegava 3 dB abaixo do original estéreo, deixando 29% da voz no
     fundo (medido em 23/10 contra as faixas da página aprovada)."""
-    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=channels",
-                        "-of", "csv=p=0", str(arq)], capture_output=True, text=True)
     try:
-        canais = int(r.stdout.strip().splitlines()[0])
+        canais = int(sonda.valor(arq, "stream=channels", "a:0"))
     except (ValueError, IndexError):
         raise VozErro(f"não consegui ler o som de {Path(arq).name}") from None
     b = _ffmpeg(["-i", str(arq), "-map", "0:a:0", "-ar", str(SR), "-f", "f32le", "-"])

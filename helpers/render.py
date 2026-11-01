@@ -513,6 +513,14 @@ def extract_segment(
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
 
+def _folga_milesimos(fps: float, k: float) -> float:
+    """Quantos quadros do corte cabem no arredondamento das pontas para 3 casas (o agente e o editor até a
+    0.3.6 escrevem assim): ±0,5 ms em cada ponta. Uma sobra desse tamanho é do arredondamento, não da
+    tomada; arredondar para cima por ela fazia cada Salvar empurrar o fim +1 quadro (edição real
+    de 01/11: 10,676667 → 10,677 → 178,009 quadros → 179). Teto de meio quadro."""
+    return min(0.5, 0.0011 * fps * k)
+
+
 def snap_ranges_to_frames(edl: dict, fps: int) -> int:
     """Round every range's DURATION up to a whole number of frames.
 
@@ -533,7 +541,7 @@ def snap_ranges_to_frames(edl: dict, fps: int) -> int:
         if tempo.curva(r) is not None:
             # a curva é relativa à tomada: a duração no corte é (end − start) × K, K fixo
             k = tempo.segundos_de_corte_por_segundo(r)
-            frames = math.ceil(round((r["end"] - r["start"]) * k * fps, 4))
+            frames = math.ceil(round((r["end"] - r["start"]) * k * fps - _folga_milesimos(fps, k), 4))
             snapped = r["start"] + frames / fps / k
             if abs(snapped - r["end"]) > 1e-6:
                 r["end"] = round(snapped, 6)
@@ -547,7 +555,7 @@ def snap_ranges_to_frames(edl: dict, fps: int) -> int:
         # into 57. That made the snap non-idempotent: every re-render of the same
         # EDL grew the affected ranges by one more frame, and since this function
         # rewrites edl.json the drift persisted.
-        frames = math.ceil(round(dur * fps, 4))
+        frames = math.ceil(round(dur * fps - _folga_milesimos(fps, 1 / vel), 4))
         snapped = r["start"] + frames * vel / fps
         if abs(snapped - r["end"]) > 1e-6:
             r["end"] = round(snapped, 6)
@@ -633,17 +641,28 @@ def extract_all_segments(
 # -------- Lossless concat ----------------------------------------------------
 
 
+# O som de cada trecho AAC traz o preparo do codificador (~1024 amostras); emendado por cópia, ele
+# vem junto e o som corrido cresce ~25 ms por emenda (edição real de 01/11: 26 emendas, 0,8 s no
+# fim). Pelos carimbos de tempo, o aresample tira o que sobra e o som volta ao tamanho da imagem.
+SOM_PELOS_TEMPOS = "aresample=async=1:min_hard_comp=0.01:first_pts=0"
+
+
 def concat_segments(segment_paths: list[Path], out_path: Path, edit_dir: Path) -> None:
-    """Lossless concat via the concat demuxer. No re-encode."""
+    """Concat via the concat demuxer: the picture is copied (no re-encode); the sound is re-encoded once,
+    placed by its timestamps (SOM_PELOS_TEMPOS), so it ends with the picture."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     concat_list = edit_dir / "_concat.txt"
     concat_list.write_text("".join(f"file '{p.resolve()}'\n" for p in segment_paths))
 
+    tem_som = bool(segment_paths) and bool(subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
+         "-of", "default=nw=1:nk=1", str(segment_paths[0])], capture_output=True, text=True).stdout.strip())
     cmd = [
         "ffmpeg", "-y",
         "-f", "concat", "-safe", "0",
         "-i", str(concat_list),
-        "-c", "copy",
+        "-map", "0:v", "-c:v", "copy",
+        *(["-map", "0:a", "-af", SOM_PELOS_TEMPOS, "-c:a", "aac", "-b:a", "192k", "-ar", "48000"] if tem_som else []),
         "-movflags", "+faststart",
         str(out_path),
     ]

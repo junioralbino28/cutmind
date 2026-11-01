@@ -4996,7 +4996,7 @@ function edlPayload() {
   const ordem = S.draft.filter((r) => r.orig).map((r) => r.from);
   return {
     // `volume` só quando não é 100%: sem ele, a tomada sai como está (o agente não herda o do edl.json)
-    ranges: S.draft.map((r) => ({ source: r.source, start: +r.start.toFixed(3), end: +r.end.toFixed(3), beat: r.beat, take: r.from,
+    ranges: S.draft.map((r) => ({ source: r.source, start: +r.start.toFixed(6), end: +r.end.toFixed(6), beat: r.beat, take: r.from,
       ...(r.vaga != null ? { vaga: r.vaga } : {}), // sem ele, o primeiro Salvar apagaria os lugares da montagem
       ...(r.vol !== 1 ? { volume: r.vol } : {}),
       ...(r.enq ? { enquadre: copiaEnq(r.enq) } : {}),
@@ -5006,7 +5006,7 @@ function edlPayload() {
     changes: S.draft.filter((r) => r.orig && (r.start !== r.orig.start || r.end !== r.orig.end)).map((r) => ({
       source: r.source, beat: r.beat, take: r.from,
       from: { start: r.orig.start, end: r.orig.end },
-      to: { start: +r.start.toFixed(3), end: +r.end.toFixed(3) },
+      to: { start: +r.start.toFixed(6), end: +r.end.toFixed(6) },
     })),
     ops: {
       divisoes: novos.filter((r) => r.kind === 'split').length,

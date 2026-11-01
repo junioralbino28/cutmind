@@ -106,6 +106,11 @@ when the user reopens Posição), clear `awaitingStyle`, delete `preview_style.j
    - `transcribe.py cut.mp4 --edit-dir <edit>` → `transcripts/cut.json`
      (cut times are already on the output timeline — never map the source EDL)
    - `captions_for_remotion.py --transcript transcripts/cut.json -o public/captions.json`
+   - `conferir_legenda.py public/cut.mp4 public/captions.json` — the caption against the
+     voice, per 20 s window; exit 1 means the words drifted from the speech (a cut.mp4 whose
+     sound was emended wrong, or a stale `transcripts/cut.json`: the cache is by NAME). Fix the
+     source and transcribe again before anything is placed "on the word": every text, photo and
+     effect timed by the caption inherits its drift.
    - **Caption style** — from the Estilo panel pick. `stacked` ALSO needs
      `caption_style.py --transcript transcripts/cut.json -o public/caption-cues.json`
      plus `captions.style:"stacked"` (see the "Caption style" section).
@@ -162,11 +167,12 @@ when the user reopens Posição), clear `awaitingStyle`, delete `preview_style.j
          sys.exit(f"segments sum {t}f != cut.mp4 {real}f — do not ship this file")
      fps = 30  # match cut.mp4
      # videoLag: how many frames the picture trails the composition in Remotion —
-     # the cut's VIDEO start time in frames, rounded UP (OffthreadVideo draws the
-     # frame at or before frame/fps). 0 when the video starts at zero.
+     # the VIDEO start time, in frames rounded UP, of the file Remotion PLAYS
+     # (remotion/public/cut.mp4, not edit/cut.mp4: efeitos_render.py re-encodes it
+     # from zero when there are filters). 0 when the video starts at zero.
      st = float(subprocess.run(["ffprobe","-v","error","-select_streams","v:0",
-         "-show_entries","stream=start_time","-of","default=nw=1:nk=1","cut.mp4"],
-         capture_output=True, text=True).stdout.strip() or 0)
+         "-show_entries","stream=start_time","-of","default=nw=1:nk=1","remotion/public/cut.mp4"],
+         capture_output=True, text=True).stdout.strip().strip(",") or 0)
      lag = max(0, math.ceil(st * fps - 1e-3))
      json.dump({"segments": [{"start": round(cum[i]/fps,4),
                               "dur": round((cum[i+1]-cum[i])/fps,4)}
@@ -183,9 +189,11 @@ when the user reopens Posição), clear `awaitingStyle`, delete `preview_style.j
        -an -f null - 2>&1 | grep scd.score
      ```
      In the RENDER the same cut lands `videoLag` frames later (segments.json,
-     written above): 0 when cut.mp4's video starts at zero — what the kit's
-     render.py writes — and 1 for cut.mp4 files whose video starts a fraction of
-     a frame late (0.021s and 0.033s measured on older projects). Everything
+     written above): 0 when the played file's video starts at zero (what
+     efeitos_render.py writes when there are filters) and 1 when it starts a
+     fraction of a frame late (render.py's cut.mp4 starts 0.021s late, the AAC
+     priming of the first take; a plain copy keeps that). The Baixar (gerar.py)
+     measures it again on public/cut.mp4 every time. Everything
      that must change with the picture adds it (`src/videoLag.ts`: zoom steps,
      split windows, the caption seam, mattes) and mixar_final.py delays the
      voice by it. Proof: cut spike at frame F in cut.mp4, at F+videoLag in the
@@ -1002,7 +1010,7 @@ skill prompt is resent every turn.
 
 ## Helpers de Fase 2/3
 
-- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte, ONNX Runtime; `--motor torch` and resnet50 need `uv sync --extra matting`) · **`cenas_edit_data.py`** (prepares `cenas[]`: cut-out, measurement, `layout`, backgrounds; `references/cenas.md`) · **`voz_efeitos.py`** (the `voz` items of `efeitos.json`: helium, echo, robot, deep, radio; `mixar_final.py` calls it; `--previa` to hear one) · **`corte_alta.py`** (4K cut under the Remotion zoom, `cut-alta.mp4`; `gerar.py` calls it) · **`efeitos_sonoros.py`** (the kit's sound effects and the viral `v-*` ones: `listar`, `usar <edit> <id>` → `midia/sfx-<id>.mp3`; `references/efeitos-sonoros.md`) · **`graficos.py`** (checks `graficos[]` before the render: fields, beats in the window, icons, images in `public/`, an older template; `references/graficos.md`) · **`render_janelas.py`** (re-renders only some windows and splices them into `out/render.mp4`; then `mixar_final.py`) · **`atualizar_template.py`** (a project scaffolded with an older kit gets this kit's template code; `public/` and `CustomGraphics.tsx` stay) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`pacotes.py`** (kit library: `listar --tipo trilha`, `camada <edit> <id>`, `abrir <id>`) · **`efeitos_render.py`** (filters and transitions from the editor into `public/cut.mp4`) · **`velocidade_final.py`** (the editor's speed spans on the finished video → `final-entrega.mp4`) · **`legenda_tempos.py`** (caption pieces the user dragged in time → `captions.json`) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental).
+- **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte, ONNX Runtime; `--motor torch` and resnet50 need `uv sync --extra matting`) · **`cenas_edit_data.py`** (prepares `cenas[]`: cut-out, measurement, `layout`, backgrounds; `references/cenas.md`) · **`voz_efeitos.py`** (the `voz` items of `efeitos.json`: helium, echo, robot, deep, radio; `mixar_final.py` calls it; `--previa` to hear one) · **`corte_alta.py`** (4K cut under the Remotion zoom, `cut-alta.mp4`; `gerar.py` calls it) · **`efeitos_sonoros.py`** (the kit's sound effects and the viral `v-*` ones: `listar`, `usar <edit> <id>` → `midia/sfx-<id>.mp3`; `references/efeitos-sonoros.md`) · **`graficos.py`** (checks `graficos[]` before the render: fields, beats in the window, icons, images in `public/`, an older template; `references/graficos.md`) · **`render_janelas.py`** (re-renders only some windows and splices them into `out/render.mp4`; then `mixar_final.py`) · **`atualizar_template.py`** (a project scaffolded with an older kit gets this kit's template code; `public/` and `CustomGraphics.tsx` stay) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`pacotes.py`** (kit library: `listar --tipo trilha`, `camada <edit> <id>`, `abrir <id>`) · **`efeitos_render.py`** (filters and transitions from the editor into `public/cut.mp4`) · **`velocidade_final.py`** (the editor's speed spans on the finished video → `final-entrega.mp4`) · **`legenda_tempos.py`** (caption pieces the user dragged in time → `captions.json`) · **`conferir_legenda.py`** (caption × voice drift per 20 s window; run after every new `captions.json`) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental).
 
 ---
 

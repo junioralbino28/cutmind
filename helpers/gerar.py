@@ -40,6 +40,7 @@ import melhorar_voz as mv  # mesma pasta deste arquivo
 import montagem as mt  # mesma pasta deste arquivo
 import pacotes as pk  # mesma pasta deste arquivo
 import pendente as pend  # mesma pasta deste arquivo
+import sonda  # mesma pasta deste arquivo
 import tempo  # mesma pasta deste arquivo
 import trabalhos  # mesma pasta deste arquivo
 import velocidade as vel  # mesma pasta deste arquivo
@@ -254,10 +255,8 @@ def preparar_remotion_fala(edit: Path) -> Path:
 
 def _atraso(video: Path, fps: float) -> int:
     """Quadros que a imagem do Remotion fica atrás do vídeo: o começo dele arredondado para cima."""
-    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=start_time",
-                        "-of", "csv=p=0", str(video)], capture_output=True, text=True)
     try:
-        inicio = float(r.stdout.strip() or 0)
+        inicio = float(sonda.valor(video, "stream=start_time") or 0)
     except ValueError:
         inicio = 0.0
     return max(0, math.ceil(inicio * fps - 1e-3))
@@ -271,6 +270,7 @@ def preparar_remotion_fase2(edit: Path) -> Path:
     # o public/cut.mp4 só é refeito quando o corte ou os efeitos mudaram: desenhar os filtros leva minutos
     if _mtime(pub / "cut.mp4") < max(_mtime(_video(edit)), _mtime(edit / "efeitos.json")):
         efeitos_render.aplicar(edit, rem)
+    _acertar_atraso(pub)
     corte_alta.aplicar(edit, rem, edit_data=pub / "edit-data.json")  # zoom nítido (gravação 4K)
     _refazer_rastreio(edit, pub)
     _refazer_recortes(edit, pub)
@@ -286,6 +286,21 @@ def preparar_remotion_fase2(edit: Path) -> Path:
         raise ErroGerar("o projeto do vídeo final é de um kit anterior e não desenha a imagem no lugar, no tamanho "
                         "ou no recorte que você pôs: aperte Pronto para o Claude atualizar") from None
     return rem
+
+
+def _acertar_atraso(pub: Path) -> None:
+    """O atraso da imagem (`videoLag`) medido no vídeo que o Remotion toca, o public/cut.mp4 de agora. O
+    Salvar mede o edit/cut.mp4, que começa em 0,021 s (1 quadro); com filtro, o efeitos_render regrava o
+    public/cut.mp4 começando em 0, e a voz saía 1 quadro atrasada (edição real de 01/11)."""
+    seg_p, ed_p = pub / "segments.json", pub / "edit-data.json"
+    if not seg_p.is_file() or not (pub / "cut.mp4").is_file():
+        return
+    lag = _atraso(pub / "cut.mp4", _sondar(pub / "cut.mp4")[0] or 30)
+    for arq, sempre in ((seg_p, True), (ed_p, False)):
+        d = _ler(arq)
+        if d and (sempre or d.get("videoLag") is not None) and d.get("videoLag") != lag:
+            d["videoLag"] = lag
+            arq.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _refazer_rastreio(edit: Path, pub: Path) -> None:

@@ -44,6 +44,26 @@ def test_ajuste_a_quadros_conta_no_tempo_do_corte():
     assert render.snap_ranges_to_frames(edl, FPS) == 0  # de novo não mexe
 
 
+@pytest.mark.parametrize("vel", [None, 1.1, 0.5, 2.0])
+def test_cinco_salvar_seguidos_nao_mudam_ponta_nenhuma(vel):
+    """Edição real de 01/11: o editor (até a 0.3.6) e o agente escrevem as pontas com 3 casas;
+    10,676667 virava 10,677, 178,009 quadros, e o ceil fazia 179. A cada Salvar o fim andava +1 quadro."""
+    edl = {"ranges": []}
+    for i in range(40):  # pontas que caem em qualquer lugar entre dois milésimos
+        r = {"source": "F", "start": round(0.37 * i + 0.0123 * (i % 7), 6), "end": 0.0}
+        r["end"] = round(r["start"] + (60 + 7 * i) * (vel or 1.0) / FPS, 6)
+        if vel:
+            r["velocidade"] = vel
+        edl["ranges"].append(r)
+    render.snap_ranges_to_frames(edl, FPS)
+    quadros = [round(tempo.dur_no_corte(r) * FPS) for r in edl["ranges"]]
+    for _ in range(5):
+        for r in edl["ranges"]:  # o que o Salvar manda: 3 casas
+            r["start"], r["end"] = round(r["start"], 3), round(r["end"], 3)
+        render.snap_ranges_to_frames(edl, FPS)
+        assert [round(tempo.dur_no_corte(r) * FPS) for r in edl["ranges"]] == quadros
+
+
 @pytest.fixture(scope="module")
 def fonte(tmp_path_factory):
     p = tmp_path_factory.mktemp("vel") / "fonte.mkv"  # PCM: sem o atraso do AAC entre flash e bipe

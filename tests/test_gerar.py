@@ -310,6 +310,25 @@ def test_fase1_com_imagem_e_filtro_pelo_remotion(corte):
 
 # ---- o que o re-corte deixou para o Baixar refazer ----
 
+def test_atraso_da_imagem_vem_do_video_que_o_remotion_toca(edit, monkeypatch):
+    """Edição real de 01/11: o Salvar gravou videoLag 1 (medido no edit/cut.mp4, que começa em
+    0,021 s); com filtro o public/cut.mp4 é regravado começando em 0, e a voz saía 1 quadro atrasada."""
+    pub = edit / "remotion" / "public"
+    _grava(pub / "cut.mp4", b"x", T0)
+    _grava(pub / "segments.json", {"segments": [{"start": 0, "dur": 10}], "videoLag": 1}, T0)
+    _grava(pub / "edit-data.json", {"fps": 30, "videoLag": 1}, T0)
+    medidos = []
+    monkeypatch.setattr(gerar, "_sondar", lambda v: (30.0, 1080, 1920, 300))
+    monkeypatch.setattr(gerar, "_atraso", lambda v, fps: medidos.append(Path(v)) or 0)
+    gerar._acertar_atraso(pub)
+    assert medidos == [pub / "cut.mp4"]
+    assert json.loads((pub / "segments.json").read_text(encoding="utf-8"))["videoLag"] == 0
+    assert json.loads((pub / "edit-data.json").read_text(encoding="utf-8"))["videoLag"] == 0
+    _grava(pub / "edit-data.json", {"fps": 30}, T0)  # sem videoLag no edit-data: vale o do segments.json
+    gerar._acertar_atraso(pub)
+    assert "videoLag" not in json.loads((pub / "edit-data.json").read_text(encoding="utf-8"))
+
+
 def test_rastreio_do_rosto_mais_velho_que_o_corte_e_refeito(edit, monkeypatch):
     pub = edit / "remotion" / "public"
     feitos = []

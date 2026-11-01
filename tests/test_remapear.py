@@ -100,6 +100,37 @@ def test_janela_da_tomada_aparada_encolhe_com_ela():
     assert not fora and (novo["itens"][0]["inicio"], novo["itens"][0]["duracao"]) == (0.0, 8.0)
 
 
+def test_dividir_a_tomada_mantem_o_que_atravessa_a_divisao():
+    """Edição real de 01/11: dividir a 1ª tomada em 3,533 s apagou o texto, o filtro e o efeito de
+    voz que começavam 15 ms antes, porque a janela só olhava o 1º pedaço que veio de cada tomada velha."""
+    uma = {"ranges": [{"source": "A", "start": 0.0, "end": 10.0}]}
+    dividida = {"ranges": [{"source": "A", "start": 0.0, "end": 3.533}, {"source": "A", "start": 3.533, "end": 10.0}]}
+    levar = rm.mapa(uma, dividida, [0, 0])
+    assert levar.janela(3.518, 5.518) == (3.518, 5.518)
+    cam = {"versao": 1, "faixas": [{"tipo": "texto", "itens": [
+        {"id": "t", "texto": "OFERTA", "inicio": 3.518, "duracao": 2.0, "x": 0.5, "y": 0.3, "atras": True}]}]}
+    novo, fora = rm.camadas(cam, levar, total=10.0)
+    it = novo["faixas"][0]["itens"][0]
+    assert not fora and (it["inicio"], it["duracao"], it["x"], it["atras"]) == (3.518, 2.0, 0.5, True)
+    ef = {"versao": 1, "itens": [{"tipo": "filtro", "pacote": "f-pb", "inicio": 3.518, "duracao": 2.0},
+                                 {"tipo": "voz", "efeito": "eco", "inicio": 3.518, "duracao": 2.0}]}
+    novo, fora = rm.efeitos(ef, levar, emendas=[3.533], total=10.0)
+    assert not fora and [(i["inicio"], i["duracao"]) for i in novo["itens"]] == [(3.518, 2.0)] * 2
+
+
+def test_tomada_duplicada_nao_estica_a_janela_pelas_duas_copias():
+    """A cópia mostra a mesma gravação: a janela fica na primeira, não vai de uma cópia até a outra."""
+    uma = {"ranges": [{"source": "A", "start": 0.0, "end": 10.0}]}
+    dup = {"ranges": [{"source": "A", "start": 0.0, "end": 10.0}, {"source": "A", "start": 0.0, "end": 10.0}]}
+    assert rm.mapa(uma, dup, [0, 0]).janela(2.0, 4.0) == (2.0, 4.0)
+
+
+def test_o_aviso_diz_qual_efeito_de_voz_saiu():
+    ef = {"versao": 1, "itens": [{"tipo": "voz", "efeito": "eco", "inicio": 0.5, "duracao": 1.0}]}
+    _, fora = rm.efeitos(ef, rm.mapa(VELHO, NOVO, [0, 1]), emendas=[8.0], total=18.0)
+    assert fora == [{"item": "voz", "nome": "eco", "inicio": 0.5}]
+
+
 def test_janela_toda_no_trecho_tirado_sai():
     assert rm.mapa(VELHO, NOVO, [0, 1]).janela(0.5, 1.5) is None
 

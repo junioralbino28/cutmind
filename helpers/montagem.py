@@ -102,6 +102,7 @@ import efeitos
 import idioma as idm
 import pendente as pend
 import render
+import sonda
 import tempo
 
 AQUI = Path(__file__).resolve().parent
@@ -415,10 +416,8 @@ def sondar(arquivo: Path) -> dict:
 
 
 def _quadros(arquivo: Path) -> int:
-    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=nb_frames",
-                        "-of", "csv=p=0", str(arquivo)], capture_output=True, text=True)
     try:
-        return int(r.stdout.strip())
+        return int(sonda.valor(arquivo, "stream=nb_frames"))
     except ValueError:
         return 0
 
@@ -831,10 +830,8 @@ def imagem_do_zero(video: Path) -> None:
 def atraso_da_imagem(video: Path) -> int:
     """Quadros que a imagem do Remotion fica atrás do vídeo: o começo do vídeo arredondado PARA CIMA
     (references/shortform.md, segments.json). 0 depois do imagem_do_zero."""
-    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=start_time",
-                        "-of", "csv=p=0", str(video)], capture_output=True, text=True)
     try:
-        inicio = float(r.stdout.strip() or 0)
+        inicio = float(sonda.valor(video, "stream=start_time") or 0)
     except ValueError:
         inicio = 0.0
     return max(0, math.ceil(inicio * FPS - 1e-3))
