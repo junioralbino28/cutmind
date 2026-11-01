@@ -142,6 +142,10 @@ def test_atualizar_pelo_celular_fecha_o_editor_e_nao_a_porta_do_tunel(srv, monke
     monkeypatch.setattr(ps, "comecar_atualizacao", lambda servidor, root, r: fechados.append(servidor))
     r, corpo = pedir(srv.tunel, "POST", "/api/atualizar", cookie=CODIGO_TUNEL, corpo=b"{}")
     assert r.status == 200, corpo
+    # o servidor responde antes e só então começa (a atualização fecha ele): a chamada vem logo depois
+    fim = time.time() + 3
+    while not fechados and time.time() < fim:
+        time.sleep(0.02)
     assert fechados == [srv.servidor_editor]
 
 
