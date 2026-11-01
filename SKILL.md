@@ -203,13 +203,20 @@ own, so a small fix costs no tokens:
   a progress card). First it checks what would misalign (an edge inside a word, a long
   silence at a join, a layer, effect or speed span on a stretch that left) and the user
   answers **Manter assim** or **Voltar e ajustar**. Then `edl.json` by the rules of the
-  `edl.ranges` key below, `render.py --como-antes`, `verify_cut.py`, and
+  `edl.ranges` key below, `render.py --como-antes --leve`, `verify_cut.py`, and
   `camadas.json`, `efeitos.json` and `velocidade.json` carried to the new cut (`remapear.py`).
   With your Phase 2 on the cut that was on screen, it goes along too: `edit-data.json` (blocks,
   effects with their `at`/`*At` instants, hook, caption windows and phrase spots, each take's
   zoom by the take it came from, `durationSec`), `captions.json` and `transcripts/cut.json`
   (same words, new places), `caption-cues.json` redone, `segments.json` by frames and a
   neutral `track.json` resized. A Phase 2 item on a stretch that left is in the question.
+  **The re-cut is LIGHT** (`--leve`): picture and sound from the light copies of the recordings
+  (`proxy.py`), in draft quality (720p), with the timing still measured on the recordings — every
+  take on the same frames as the full cut. ~26 s for a 3-min cut of 4K HEVC that took ~10 min.
+  `edl.json` then carries `"corte_leve": true`: `cut.mp4` is a draft to edit on, never to deliver,
+  grade-check or track a face on. The **Baixar** makes the full cut first (step `alta`); before
+  Phase 2 work that looks at the picture, run `render.py edl.json -o cut.mp4 --no-subtitles
+  --como-antes` yourself (it drops the mark).
 - **Salvar** with layers, effects or speed: the files. With Phase 2 data (`editData`:
   blocks, effects, hook, numbers, zoom, captions): `edit-data.json` and `captions.json`
   (`editdata_aplicar.py`).

@@ -128,10 +128,17 @@ def _voz_velha(edit: Path) -> bool:
     return bool(mv.situacao(edit).get("reaplicar"))
 
 
+def corte_leve(edit: Path) -> bool:
+    """O cut.mp4 é o do Salvar do editor: das cópias leves, em rascunho (render.py --leve)."""
+    return bool(_ler(Path(edit) / "edl.json").get("corte_leve"))
+
+
 def o_que_falta(edit: Path) -> list[str]:
-    """Os passos que o Baixar tem de rodar antes de entregar: voz, remotion, final, entrega ou montagem.
-    Vazio = o que está no disco já é o vídeo de agora."""
+    """Os passos que o Baixar tem de rodar antes de entregar: alta, voz, remotion, final, entrega ou
+    montagem. Vazio = o que está no disco já é o vídeo de agora."""
     edit = Path(edit)
+    if corte_leve(edit):  # o corte cheio vem primeiro; o resto se mede depois dele (o cut.mp4 muda)
+        return ["alta"]
     final = edit / FINAL
     if eh_montagem(edit):
         salvo = _montagem_salva(edit)
@@ -204,8 +211,9 @@ def _sondar(video: Path) -> tuple[float, int, int, int]:
 
 
 def _clipes(edit: Path) -> list[Path]:
-    """Os trechos de imagem do último render do corte, na ordem (seg_NN, com NN podendo passar de 99)."""
-    pasta = edit / "clips_graded"
+    """Os trechos de imagem do último render do corte, na ordem (seg_NN, com NN podendo passar de 99). O
+    corte leve (o Salvar do editor) é rascunho e grava em clips_draft, nos mesmos quadros do cheio."""
+    pasta = edit / ("clips_draft" if corte_leve(edit) else "clips_graded")
     fs = list(pasta.glob("seg_*_v.mp4")) or list(pasta.glob("seg_*.mp4"))
     return sorted(fs, key=lambda f: int(re.match(r"seg_(\d+)", f.name).group(1)))
 
@@ -356,6 +364,18 @@ def gerar(edit: Path, andamento=_sem_andamento) -> dict:
     if not falta:
         andamento("pronto", "Vídeo pronto", 1.0, entrega=entrega(edit))
         return {"falta": [], "entrega": entrega(edit)}
+    if falta == ["alta"]:
+        # a edição inteira foi nas cópias leves: o corte na qualidade da gravação sai aqui, uma vez, nos
+        # mesmos quadros (legenda, camadas e efeitos não saem do lugar)
+        andamento("alta", "Montando o corte na qualidade da gravação", 0.02)
+        if _passo([AQUI / "render.py", edit / "edl.json", "-o", _video(edit), "--no-subtitles", "--como-antes"]) != 0:
+            raise ErroGerar("o corte na qualidade da gravação não saiu (a saída está no registro do trabalho)")
+        if corte_leve(edit):
+            raise ErroGerar("o corte na qualidade da gravação não ficou marcado como pronto")
+        falta = ["alta"] + o_que_falta(edit)
+        if falta == ["alta"]:
+            andamento("pronto", "Vídeo pronto", 1.0, entrega=entrega(edit))
+            return {"falta": falta, "entrega": entrega(edit)}
     if "remotion" in falta and tem_estilo(edit) and not fase2_do_corte(edit):
         raise ErroGerar("o corte mudou depois da legenda e dos efeitos do vídeo final: aperte Pronto para o "
                         "Claude refazer essa parte")

@@ -310,6 +310,23 @@ def _som_da_curva(source: Path, seg_start: float, duration: float, peds: list[tu
                     "-c:a", "pcm_s16le", str(out_wav)], input=y.astype(np.float32).tobytes(), check=True)
 
 
+# -------- Corte leve (o Salvar do editor) -------------------------------------
+#
+# O Salvar do editor refaz o corte a cada mexida; das gravações em 4K HEVC isso levava ~10 min num PC
+# comum (3 min de vídeo, 26 tomadas). No corte leve a imagem e o som saem das cópias leves (proxy.py: o
+# mesmo relógio da gravação, a cor já em Rec.709) em qualidade de rascunho, e o que decide o TEMPO (os
+# quadros por segundo, o silêncio das emendas do J-cut) continua medido nas gravações: cada tomada cai
+# nos mesmos quadros do corte cheio, que o Baixar (gerar.py) faz uma vez, no fim. O edl.json fica com
+# "corte_leve": true até um render cheio do cut.mp4.
+
+_LEVES: dict[str, Path] = {}  # gravação (resolvida) → cópia leve, só com --leve
+
+
+def fonte_de_trabalho(src: Path) -> Path:
+    """De onde sai a imagem e o som de uma tomada: a cópia leve no corte leve, senão a gravação."""
+    return _LEVES.get(str(Path(src).resolve()), Path(src))
+
+
 def extract_segment(
     source: Path,
     seg_start: float,
@@ -585,6 +602,7 @@ def extract_all_segments(
         duration = end - start
         out_path = clips_dir / f"seg_{i:02d}_{src_name}.mp4"
 
+        src_path = fonte_de_trabalho(src_path)  # a cópia leve no corte leve (o relógio é o mesmo)
         if is_auto:
             seg_filter, _stats = auto_grade_for_clip(src_path, start=start, duration=duration, verbose=False)
         else:
@@ -871,18 +889,19 @@ def extract_and_assemble_jcut(
 
     def work(p: dict) -> dict:
         i, r = p["i"], p["range"]
-        seg_filter = (auto_grade_for_clip(p["src"], start=p["v_in"],
+        src = fonte_de_trabalho(p["src"])  # o silêncio da emenda foi medido na gravação; a imagem sai daqui
+        seg_filter = (auto_grade_for_clip(src, start=p["v_in"],
                                           duration=p["v_out"] - p["v_in"],
                                           verbose=False)[0]
                       if is_auto else resolved)
         gain_db = float(r.get("gain_db", 0.0) or 0.0)
         vpath = clips_dir / f"seg_{i:02d}_{r['source']}_v.mp4"
         apath = clips_dir / f"seg_{i:02d}_{r['source']}_a.wav"
-        extract_segment(p["src"], p["v_in"], p["v_out"] - p["v_in"], seg_filter,
+        extract_segment(src, p["v_in"], p["v_out"] - p["v_in"], seg_filter,
                         vpath, preview=preview, draft=draft,
                         keep_resolution=keep_resolution, streams="v",
                         pedacos=tempo.recorte(p["peds"], p["v_in"], p["v_out"]))
-        extract_segment(p["src"], p["a_in"], p["a_out"] - p["a_in"], "",
+        extract_segment(src, p["a_in"], p["a_out"] - p["a_in"], "",
                         apath, preview=preview, draft=draft,
                         keep_resolution=keep_resolution, gain_db=gain_db,
                         streams="a", pedacos=tempo.recorte(p["peds"], p["a_in"], p["a_out"]))
@@ -1388,6 +1407,13 @@ def main() -> None:
         help="Draft mode: 720p, ultrafast, CRF 28 — cut-point verification only.",
     )
     ap.add_argument(
+        "--leve",
+        action="store_true",
+        help="The editor's Save: picture and sound from the light copies (proxy.py) in draft quality, "
+             "timing measured on the recordings (same frames as the full render). Marks the EDL "
+             '"corte_leve"; the full cut comes once, at the end (gerar.py).',
+    )
+    ap.add_argument(
         "--build-subtitles",
         action="store_true",
         help="Build master.srt from transcripts + EDL offsets before compositing",
@@ -1469,6 +1495,18 @@ def main() -> None:
     out_path = args.output.resolve()
     if args.como_antes:
         aplicar_como_antes(args, edl, out_path)
+    if args.leve:
+        import proxy  # mesma pasta deste arquivo
+        args.draft = True
+        for nome, rel in (edl.get("sources") or {}).items():
+            src = resolve_path(rel, edit_dir)
+            copia = proxy.pronto(edit_dir, src) if src.is_file() else None
+            if copia:
+                _LEVES[str(src.resolve())] = copia
+        sem = [n for n, rel in (edl.get("sources") or {}).items()
+               if str(resolve_path(rel, edit_dir).resolve()) not in _LEVES]
+        print(f"corte leve: {len(_LEVES)} gravação(ões) pela cópia leve"
+              + (f"; sem cópia ainda (da gravação, em rascunho): {', '.join(sem)}" if sem else ""))
     opcoes = opcoes_da_linha(args)
     if edl.get("render") != opcoes:
         edl["render"] = opcoes
@@ -1599,6 +1637,19 @@ def main() -> None:
 
     # 5. Volume de cada tomada (régua do editor do celular): por último, sobre o normalizado
     aplicar_volume_das_tomadas(out_path, janelas)
+
+    # 6. O corte do projeto é leve ou cheio (o Baixar refaz o leve na qualidade da gravação). Só o
+    # cut.mp4 do projeto conta: um render de conferência em outro arquivo não muda a marca.
+    try:
+        do_projeto = json.loads((edit_dir / "state.json").read_text(encoding="utf-8")).get("video") or "cut.mp4"
+    except (OSError, json.JSONDecodeError):
+        do_projeto = "cut.mp4"
+    if out_path == (edit_dir / do_projeto).resolve() and bool(edl.get("corte_leve")) != args.leve:
+        if args.leve:
+            edl["corte_leve"] = True
+        else:
+            edl.pop("corte_leve", None)
+        edl_path.write_bytes(json.dumps(edl, ensure_ascii=False, indent=2).encode("utf-8"))
 
     size_mb = out_path.stat().st_size / (1024 * 1024)
     print(f"\ndone: {out_path} ({size_mb:.1f} MB)")

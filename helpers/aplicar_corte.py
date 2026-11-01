@@ -458,8 +458,10 @@ def aplicar(edit: Path, pedido: dict, confirmado: bool = False, andamento=_sem_a
             raise PrecisaConfirmar(avisos)
     _grava_json(edl_p, novo)
     andamento("corte", "Refazendo o corte", 0.1)
+    # leve: das cópias leves das gravações, em rascunho e nos mesmos quadros do corte cheio, que o Baixar
+    # faz uma vez no fim (das gravações em 4K, cada Salvar levava ~10 min num PC comum)
     r = subprocess.run([sys.executable, "-X", "utf8", str(AQUI / "render.py"), str(edl_p), "-o", str(edit / "cut.mp4"),
-                        "--no-subtitles", "--como-antes"], capture_output=True, text=True, encoding="utf-8",
+                        "--no-subtitles", "--como-antes", "--leve"], capture_output=True, text=True, encoding="utf-8",
                        errors="replace")
     if r.returncode != 0:
         _grava_json(edl_p, edl_velho)

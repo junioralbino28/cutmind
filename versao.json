@@ -1,8 +1,9 @@
 {
-  "versao": "0.3.3",
+  "versao": "0.3.4",
   "data": "2026-11-01",
   "notas": {
     "pt": [
+      "Salvar em segundos: a edição inteira acontece nas cópias leves das gravações e o corte é refeito em rascunho. No teste, um Salvar de 3 minutos de vídeo em 4K caiu de 10 minutos para 26 segundos. A qualidade da gravação entra uma vez só, no Baixar, com cada tomada nos mesmos quadros.",
       "Recuperar o que foi cortado: puxe a ponta de qualquer tomada para fora e o trecho cortado, por você ou pelo agente, aparece e toca na hora, até a tomada voltar inteira. O CutMind faz uma cópia leve de cada gravação em segundo plano, e a imagem da ponta enquanto você arrasta passou de vários segundos para menos de um quinto de segundo.",
       "Emendas mais limpas: quando o corte fica colado na fala, como ao aparar à mão para tirar um erro, as duas falas não tocam mais juntas na emenda. Na prévia, o começo que você aparou some na hora, sem esperar o corte ser refeito.",
       "Efeitos sonoros virais: Áudio → Efeitos sonoros ganhou o grupo Virais, com 11 sons que circulam em todo Reels (cha-ching, bong do Taco Bell, notificação do Discord, revelação mágica, Dexter, faah, core…). Descem na primeira vez que você ouve. Em anúncio pago, podem reprovar o anúncio.",
@@ -14,6 +15,7 @@
       "Órbita: cards girando em volta de você, passando atrás da cabeça e depois na frente."
     ],
     "en": [
+      "Save in seconds: all the editing happens on light copies of the recordings and the cut is redone as a draft. In the test, saving a 3-minute 4K video went from 10 minutes to 26 seconds. Full quality comes in once, when you download, with every take on the same frames.",
       "Bring back what was cut: drag the end of any take outward and the part that was cut, by you or by the agent, shows up and plays right away, all the way to the whole take. CutMind makes a light copy of each recording in the background, and the frame at the end you drag now shows in under a fifth of a second instead of several seconds.",
       "Cleaner joins: when a cut sits tight against speech, like a hand trim that removes a fumble, the two takes no longer play over each other at the join. In the preview, the start you trimmed goes silent right away, before the cut is redone.",
       "Viral sound effects: Audio → Sound effects has a new Viral group with 11 sounds you hear in every Reels (cha-ching, Taco Bell bong, Discord notification, magic reveal, Dexter, faah, core…). They download the first time you listen. In a paid ad, they can get the ad rejected.",
@@ -28,7 +30,7 @@
   "arquivos": {
     "README.md": "a6cf59def889fddc4399ccb926bc258e551163cb166533a79c4a90e6c6d7fbd7",
     "README.pt-BR.md": "1f0f42a07d61d580692f03793633892872d935ab49666e7b1cf5656974e78a83",
-    "SKILL.md": "cc6631f24cd16b8041cc7c50bf786cd3f4d286d31b3c2290e451d2bebfdd9df9",
+    "SKILL.md": "01482b9c082cadffae23fb60ca07ca84b24187e3dd7d5601c28e4e95ae08eaee",
     "agents/openai.yaml": "27bc121e08a18862714c53c1e16c842ccaa7cf9d4b8228e22c98ab5937b8734f",
     "assets/efeitos/motor.js": "aecf280ab978e8b83ac14b1290ea4b7ffde0f16a77c33b7e8c04055bca3f773e",
     "assets/efeitos/vendor/jsm/postprocessing/EffectComposer.js": "9936afeb9cf7743ad8263efe3d5e75fc3af487f21456797e93e8b9ed72237b42",
@@ -38,7 +40,7 @@
     "assets/efeitos/vendor/jsm/postprocessing/ShaderPass.js": "e1127e62e93a629106702697311098863b71c69311ddf1a67aa2975cf4232413",
     "assets/efeitos/vendor/jsm/shaders/CopyShader.js": "4e3346db194db56a596cd074e9bdb39fb5eb52040c333e0d29dc4eb1324d3b1d",
     "assets/efeitos/vendor/three.module.min.js": "c8f0efb99adcb9826c604e859851501ab6b78bce634b012822878c7b9656d83c",
-    "assets/i18n/scripts-en.json": "82518135441c6bdeb106cd3987ed7626df75fa40d470d2328dbbcb145e9e87fb",
+    "assets/i18n/scripts-en.json": "02f7085e5d609ab3cf6de08c3caa7572027a98d986982d3b02f86ff69567c38c",
     "assets/longform/README.md": "e2e545e198259ea3a6937d5d68ec6efea081330e286eb537ee6ca5ff7fc3dbd9",
     "assets/longform/package.json": "85c782ad6fc9ae548fde1bef8921b144d64992c251831022828be7188ef45fac",
     "assets/longform/public/edit-data.json": "35afca7753c35ce8c30598652ffbee82ace18472229c1b304afe089ba65d965e",
@@ -132,7 +134,7 @@
     "assets/shortform/tsconfig.json": "9711319fbf1045845e8129e9ee926e868c27730649c5ed0f14976b9e5a3c1cb3",
     "cutmind_install.py": "f51ede59e1fe7ff00047a17e39f9b3afb0ad195d070f23661db76f7b9a1d780a",
     "helpers/agente.py": "e7d18da2496770dad3be0e809fe5a0fa854b06b4e31fdf8a4f6957f20e3a7fe0",
-    "helpers/aplicar_corte.py": "d280f7c29a4e8594c1bbe01c97d23a91c9bffd1c1359fd9f84aa357706aa17df",
+    "helpers/aplicar_corte.py": "8b4c6d750f4412ce367e65f9e0fe091f4334666acc4ea9eead9f52df0de4f329",
     "helpers/aprender.py": "4af80ffc610badb0cc70c6da98937dc507560d7d50e1efd33fd67a16c58097d7",
     "helpers/aquecer_navegador.py": "2c36845ef51162a2ab1be534854ca304f736647a1daff58cce11be5d4464420f",
     "helpers/atualizar.py": "5f42ebf23b27dbe8105ac7073e68b26565761c61d360d0ec88afdbfb0b932f70",
@@ -158,7 +160,7 @@
     "helpers/efeitos_sonoros.py": "838df623337bd58f26f48711ed98710577c5ca741f86621b0f3ee4f284115e67",
     "helpers/esticar.py": "ef36bef135d434d9c9aeac233b61f43d65520e1e674478ed26ec6762c95945bb",
     "helpers/face_track.py": "f1443c1dedf598eff7d28cb7cad061207f92ca88598c7caef1b70379f9ac21da",
-    "helpers/gerar.py": "2b8ecc158f87864639c9ac01421448c3f943bd9d149c4d5f4213151b4510b460",
+    "helpers/gerar.py": "a0930895abf8bf85aa441ca081521c13a6cb57b5f72bba09c669abb1ee17b225",
     "helpers/google_images.py": "05a334933b5f853fefc77cce5002d64c9fd693cf2679a8dd429ebfb53061e540",
     "helpers/grade.py": "906f0e88b178dd0120b11df7fd7e4e38accd88137fe3d2a2f2b3a883f804a0a3",
     "helpers/graficos.py": "b2ffaefc47eb56e138c7d614f7a30df4529d83a981180722f238f68b6e750298",
@@ -182,7 +184,7 @@
     "helpers/projetos.py": "c003e260b0ccbbed9538d72bfa21223cb18990dccc89438a43b3eac795323827",
     "helpers/proxy.py": "4b4869cf934d5672544db950bf6c3963996a7898b86507bc0fa03757d544e488",
     "helpers/remapear.py": "574ec091fbe91b8305bbc0cee33083a4fea01d10171e205a8f7d4ab78c59644f",
-    "helpers/render.py": "d48bb0a0754e7966473efe1d231e3deb689dcf4518ee7f2bdc7a58bb01257796",
+    "helpers/render.py": "c7732dfc9b6b6533197c7e714ea77160adc3a91d942c46b09f56f291792b551c",
     "helpers/render_janelas.py": "352a681cb732afbc0c30269865d0a656ae1c6b80c16201c95019abb0b72a2c36",
     "helpers/speech_regions.py": "fe2087596f32b422b303667c78c72ab3f6270be928eef80dd3b5333fdc40bf2a",
     "helpers/start_preview.py": "636652b3ed8ad7beea45fe301f9390891406af3c56b8467ba3b6e3f4fcede140",

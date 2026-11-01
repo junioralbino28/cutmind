@@ -337,5 +337,7 @@
  "a prévia da voz não saiu: {e}": "the voice preview didn't come out: {e}",
  "a cópia leve ainda não está pronta": "the light copy isn't ready yet",
  "a cópia leve de {name} falhou (ffmpeg {rc})": "the light copy of {name} failed (ffmpeg {rc})",
- "não deu para gravar {name}": "couldn't save {name}"
+ "não deu para gravar {name}": "couldn't save {name}",
+ "o corte na qualidade da gravação não saiu (a saída está no registro do trabalho)": "the cut at the recording's quality didn't come out (the output is in the job log)",
+ "o corte na qualidade da gravação não ficou marcado como pronto": "the cut at the recording's quality wasn't marked as done"
 }
