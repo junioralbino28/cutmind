@@ -69,6 +69,8 @@
     <!-- .comp: a mesma composição dos cartões do Estilo (faixa, janela do vídeo, headline, legenda) -->
     <div class="player comp" id="player">
       <div class="win"><video class="media" id="video" playsinline webkit-playsinline preload="auto"></video>
+        <!-- a cópia leve da gravação inteira: toca a tomada esticada para além do que o corte tem -->
+        <video class="media origem hidden" id="videoOrig" playsinline webkit-playsinline preload="auto"></video>
         <!-- filtro e transição debaixo da agulha, pelo mesmo motor do vídeo final (assets/efeitos/motor.js) -->
         <canvas class="media fx-canvas hidden" id="fxCanvas"></canvas></div>
       <!-- prévia de outro formato da montagem: o lugar da agulha no quadro novo, sem render -->

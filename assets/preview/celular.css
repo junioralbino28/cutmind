@@ -454,6 +454,8 @@ html:not(.desk) .pronto-btn .pronto-n { margin-left: 3px; padding: 0 4px; font-s
   display: block; object-fit: cover; object-position: 50% 30%;
   background: center / cover no-repeat;
 }
+/* tocando da cópia leve da gravação (a tomada passou do que o corte tem): o corte fica escondido debaixo */
+.comp .media.sob-origem { visibility: hidden; }
 .comp .band { position: absolute; left: 0; right: 0; top: var(--band-top); height: var(--band-h); overflow: hidden; background: #151a22 center / cover no-repeat; display: none; }
 .comp.is-split .band { display: block; }
 .comp .band > img, .comp .band > video { width: 100%; height: 100%; object-fit: cover; display: block; }

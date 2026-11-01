@@ -954,6 +954,7 @@ async function applyState(data) {
   aplicaQuadro();
   carregaMontMidias().then(() => { if (S.selected >= 0) renderToolbar(); }); // o Trecho precisa saber quem é clipe
   S.draft = S.rendered.map((r, i) => ({ ...r, uid: `o${i}`, from: i, orig: { start: r.start, end: r.end } }));
+  proxyEstado(); // as cópias leves das gravações começam a ser feitas (uma vez por gravação)
   // os lugares já salvos que o agente ainda não refez seguem marcados com a mídia nova (não contam
   // como por salvar); quando o edl.json passa a ter a mídia e o trecho pedidos, a marca sai sozinha
   for (const p of (S.montagem && data.montagemPendente) || []) {
@@ -1636,6 +1637,7 @@ timeline.addEventListener('pointerdown', (e) => {
     G.mode = 'trim';
     G.trim = { i, side: h.dataset.side, x0: e.clientX, ultX: e.clientX, px: 0, r: { ...S.draft[i] }, before: snap() };
     video.pause();
+    if (!ORIG.prontos[S.draft[i].source]) proxyEstado(S.draft[i].source); // a cópia desta gravação passa na frente
     requestPeek(S.draft[i].source, edgeT(S.draft[i], h.dataset.side));
     return;
   }
@@ -1848,6 +1850,10 @@ function endPointer(e) {
     G.mode = null;
     const T = G.trim, r = S.draft[T.i];
     if (r.start !== T.r.start || r.end !== T.r.end) remember(T.before); // tocar na alça sem arrastar não conta
+    if (foraDoCorte(r) && !ORIG.prontos[r.source]) { // recuperou um trecho e a cópia ainda está sendo feita
+      const pct = ORIG.fazendo === r.source && ORIG.fracao != null ? ` (${Math.round(ORIG.fracao * 100)}%)` : '';
+      toast(t('Preparando a gravação original para tocar o trecho recuperado{p0}. Ele já entra no corte quando você salvar.', { p0: pct }), 4200);
+    }
     renderTimeline(); renderToolbar(); refreshHeader(); // o "Original" acende depois de aparar
     return;
   }
@@ -2298,21 +2304,112 @@ function loop() {
       S.t = clampT(renderedToDraft(video.currentTime)); positionTimeline();
     }
   }
+  syncOrigem();
   syncLayers();
   syncVolTomada();
   if (!video.requestVideoFrameCallback) fxDesenhar(video.currentTime, false); // sem o aviso de quadro: a cada volta
   requestAnimationFrame(loop);
 }
 
+/* ---------- a gravação original (cópia leve) para o que o cut.mp4 não tem ----------
+ * O cut.mp4 só tem o que ficou no corte. Puxar a ponta de uma tomada para recuperar uma fala cortada
+ * (pela pessoa ou pelo agente) mostrava o último quadro parado e tocava a tomada seguinte. Como no
+ * CapCut, a tomada que passa do que o corte tem toca INTEIRA da gravação: uma cópia leve que o
+ * servidor faz uma vez por gravação (proxy.py, /gen/proxy), no mesmo relógio dela. O vídeo do corte
+ * continua sendo quem diz "tocando" (play, pausa, fim): fica escondido, mudo e quase parado. */
+const ORIG = { el: $('videoOrig'), src: '', prontos: {}, fazendo: null, fracao: null, ativo: false, poll: 0, avisou: false };
+function proxyEstado(primeiro) {
+  const q = primeiro ? `?primeiro=${encodeURIComponent(primeiro)}` : '';
+  return fetch(`/api/proxies${q}`).then((r) => r.json()).then((st) => {
+    ORIG.prontos = st.fontes || {};
+    ORIG.fazendo = st.fazendo || null;
+    ORIG.fracao = st.fracao;
+    clearTimeout(ORIG.poll);
+    if (st.vivo && Object.values(ORIG.prontos).some((v) => !v)) ORIG.poll = setTimeout(() => proxyEstado(), 3000);
+    return st;
+  }).catch(() => null);
+}
+// a tomada mostra um pedaço da gravação que o cut.mp4 não tem (uma ponta puxada para fora)
+function foraDoCorte(d) {
+  const R = S.rendered[d.from];
+  return !!R && (d.start < R.start - 0.02 || d.end > R.end + 0.02);
+}
+const usaOrigem = (d) => S.view === 'corte' && !!d && foraDoCorte(d) && !!ORIG.prontos[d.source];
+// o instante da gravação que a tomada `d` do rascunho mostra no instante `t` (a conta do itemRendered),
+// e o contrário
+const naGravacao = (d, t) => Tempo.gravacaoEm(pedsD(d), (d.lead || 0) + (t - d.out));
+const noRascunho = (d, s) => d.out + Tempo.corteAte(pedsD(d), s) - (d.lead || 0);
+const LENTO = 0.0625; // o menor ritmo do <video>: o corte escondido quase não anda enquanto a cópia toca
+function syncOrigem() {
+  let d = null, dl = null, k = -1;
+  if (S.view === 'corte' && S.draft.length) {
+    dl = draftLayout();
+    k = itemAt(dl, S.t);
+    if (k >= 0 && usaOrigem(dl[k])) d = dl[k];
+  }
+  const el = ORIG.el;
+  if (!d) {
+    if (ORIG.ativo) { ORIG.ativo = false; el.pause(); el.classList.add('hidden'); video.classList.remove('sob-origem'); }
+    return;
+  }
+  const url = `/gen/proxy?src=${encodeURIComponent(d.source)}`;
+  if (ORIG.src !== url) { ORIG.src = url; el.src = url; }
+  if (!ORIG.ativo) {
+    ORIG.ativo = true;
+    el.classList.remove('hidden');
+    video.classList.add('sob-origem');
+    if (!ORIG.avisou) { ORIG.avisou = true; toast(t('Tocando da gravação original: o trecho recuperado entra no corte quando você salvar'), 3600); }
+  }
+  const s = naGravacao(d, S.t);
+  const ritmo = Math.min(16, Math.max(0.0625, Tempo.velEm(pedsD(d), s)));
+  if (el.playbackRate !== ritmo) el.playbackRate = ritmo;
+  el.muted = !!S.mudoUsuario;
+  el.volume = Math.max(0, Math.min(1, d.vol == null ? 1 : d.vol)); // a cópia já vem no nível do corte
+  if (video.paused || G.mode) { // parado, ou arrastando: o quadro da agulha
+    if (!el.paused) el.pause();
+    if (!el.seeking && Math.abs(el.currentTime - s) > 0.02) el.currentTime = s;
+  } else if (el.paused && !el.seeking) {
+    el.currentTime = s;
+    el.play().catch(() => {});
+    // o corte, escondido, espera onde a próxima tomada começa (nesse ritmo ele praticamente não anda,
+    // medido): a volta para ele não precisa de busca (a busca no cut.mp4 engasgava ~0,75 s). Sem
+    // próxima, no começo desta: tem chão para não acabar
+    const nx = dl[k + 1];
+    const alvo = nx && !usaOrigem(nx) ? itemRendered(nx, nx.out) : renderedLayout()[d.from].out;
+    video.playbackRate = LENTO;
+    if (Math.abs(video.currentTime - alvo) > 0.05) video.currentTime = Math.max(0, alvo);
+  }
+}
+// tocando uma tomada da cópia: a agulha anda pelo relógio dela; no fim, passa para a próxima
+function seguirOrigem(dl, k, d) {
+  const el = ORIG.el;
+  if (video.playbackRate !== LENTO) video.playbackRate = LENTO;
+  if (!ORIG.ativo || el.paused || el.seeking) return; // o syncOrigem liga e dá o play
+  const t = noRascunho(d, el.currentTime);
+  if (t >= d.out + d.dur - 0.02) {
+    const nx = dl[k + 1];
+    if (!nx) { video.pause(); el.pause(); S.t = totalT(); positionTimeline(); return; }
+    S.t = nx.out;
+    el.pause(); // a próxima recomeça do lugar dela (no syncOrigem) ou volta para o corte
+    const alvo = itemRendered(nx, nx.out);
+    if (Math.abs(video.currentTime - alvo) > 0.08) video.currentTime = alvo; // estacionado ali, não busca
+  } else {
+    S.t = Math.max(d.out, t);
+  }
+  positionTimeline();
+}
+
 /* No corte, tocar segue a ORDEM DO RASCUNHO: dentro de uma tomada o vídeo anda sozinho;
  * no fim dela, salta para onde a próxima está no cut.mp4. Assim o que foi dividido,
  * copiado ou movido já toca na ordem nova, antes de o agente refazer o corte. */
 function followDraft() {
-  if (video.seeking) return;
   const dl = draftLayout();
   const k = itemAt(dl, S.t);
   if (k < 0) return;
   const d = dl[k];
+  // a cópia manda na agulha: o corte escondido buscando posição não pode segurar ela (passava ~0,5 s do fim)
+  if (usaOrigem(d)) { seguirOrigem(dl, k, d); return; }
+  if (video.seeking) return;
   // tomada com velocidade nova: o cut.mp4 toca mais rápido ou mais devagar (o tom fica).
   // Com curva, o ritmo muda dentro da tomada: a razão entre as duas curvas naquele ponto.
   let ritmo, t;
@@ -7563,6 +7660,7 @@ function syncVolTomada() {
     const dl = draftLayout();
     const k = itemAt(dl, S.t);
     if (k >= 0) v = sobraVelha(dl, k, video.currentTime) ? 0 : volPrevia(dl[k]);
+    if (ORIG.ativo) v = 0; // quem toca é a cópia da gravação
   }
   if (video.volume !== v) video.volume = v;
 }
@@ -9122,7 +9220,7 @@ function fxNumero(tempo, exato, fps) {
 function fxDesenhar(tempo, exato) {
   const cv = $('fxCanvas');
   const esconder = () => { if (!cv.classList.contains('hidden')) cv.classList.add('hidden'); };
-  if (S.view !== 'corte' || S.posMode || S.styling || !video.videoWidth || G.mode === 'move') { esconder(); return; }
+  if (S.view !== 'corte' || S.posMode || S.styling || !video.videoWidth || G.mode === 'move' || ORIG.ativo) { esconder(); return; }
   const fps = S.fps || 30;
   const n = fxNumero(tempo, exato, fps); // o quadro do cut.mp4 que está na tela
   const t = n / fps;

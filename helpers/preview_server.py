@@ -174,6 +174,7 @@ import aplicar_corte as ac  # mesma pasta deste arquivo
 import trabalhos as tb  # mesma pasta deste arquivo
 import gerar as gr  # mesma pasta deste arquivo
 import editdata_aplicar as eda  # mesma pasta deste arquivo
+import proxy as prx  # mesma pasta deste arquivo
 import efeitos_sonoros as es  # mesma pasta deste arquivo
 import voz_efeitos as vze  # mesma pasta deste arquivo
 import pendente as pend  # mesma pasta deste arquivo
@@ -283,6 +284,8 @@ _recorte_lock = threading.Lock()  # um recorte da pessoa por vez: o modelo usa t
 RECORTE_CACHE = 30  # recortes guardados em .preview_cache/recorte (um por quadro pedido)
 _voz_lock = threading.Lock()
 _voz_jobs: dict[str, subprocess.Popen] = {}  # pasta edit → o processo do preparo da voz
+_proxy_lock = threading.Lock()
+_proxy_jobs: dict[str, subprocess.Popen] = {}  # pasta edit → o processo que faz as cópias leves
 _batida_lock = threading.Lock()
 _batida_jobs: dict[str, subprocess.Popen] = {}  # música → o processo que analisa a batida dela
 _sha_musicas: dict[tuple[str, int, int], str] = {}
@@ -448,6 +451,39 @@ def comando_preparo(edit: Path) -> list[str]:
     memória) e a memória volta quando ele termina. Os testes trocam por um falso."""
     return [sys.executable, "-X", "utf8", str(Path(__file__).resolve().parent / "melhorar_voz.py"),
             "preparar", str(edit)]
+
+
+def comando_proxies(edit: Path, primeiro: str | None) -> list[str]:
+    """As cópias leves das gravações (proxy.py) num processo à parte, uma por vez, com prioridade
+    baixa. Os testes trocam por um falso."""
+    return [sys.executable, "-X", "utf8", str(Path(__file__).resolve().parent / "proxy.py"), "gerar", str(edit),
+            *(["--primeiro", primeiro] if primeiro else [])]
+
+
+def iniciar_proxies(edit: Path, primeiro: str | None = None) -> dict:
+    """O estado das cópias leves; se falta alguma e ninguém está fazendo, começa. `primeiro` (a
+    gravação da tomada que a pessoa mexeu) passa na frente, também com o processo já rodando."""
+    edit = edit.resolve()
+    if primeiro and primeiro not in prx.fontes(edit):  # só um nome que o edl.json dá
+        primeiro = None
+    with _proxy_lock:
+        if primeiro:
+            pasta = edit / prx.PASTA
+            pasta.mkdir(parents=True, exist_ok=True)
+            (pasta / "prioridade.txt").write_text(primeiro, encoding="utf-8")
+        st = prx.estado(edit)
+        p = _proxy_jobs.get(str(edit))
+        vivo = p is not None and p.poll() is None
+        if not vivo and not all(st["fontes"].values()):
+            pasta = edit / prx.PASTA
+            pasta.mkdir(parents=True, exist_ok=True)
+            with open(pasta / "proxy.log", "ab") as log:
+                _proxy_jobs[str(edit)] = subprocess.Popen(
+                    comando_proxies(edit, primeiro), stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            vivo = True
+        st["vivo"] = vivo
+        return st
 
 
 def iniciar_preparo(edit: Path) -> bool:
@@ -1303,6 +1339,10 @@ class Handler(BaseHTTPRequestHandler):
             self._celular_info()
         elif path == "/gen/frame":
             self._frame(query)
+        elif path == "/gen/proxy":
+            self._proxy(query)
+        elif path == "/api/proxies":
+            self._json(iniciar_proxies(self.root, (parse_qs(query).get("primeiro") or [None])[0]))
         elif path == "/gen/recorte":
             self._recorte(query)
         elif path == "/gen/frases":
@@ -1652,7 +1692,18 @@ class Handler(BaseHTTPRequestHandler):
         if not path:
             self._json({"error": f"fonte desconhecida: {src}"}, 404)
             return
-        self._quadro_jpg(path, t, h)
+        # da cópia leve, quando ela existe: o mesmo relógio, ~50 ms contra 9-13 s de um 4K HEVC ocupado
+        self._quadro_jpg(prx.pronto(self.root, path) or path, t, h)
+
+    def _proxy(self, query: str) -> None:
+        """A cópia leve de uma gravação (pelo nome do edl.json), para o editor tocar o que o corte não tem."""
+        src = (parse_qs(query).get("src") or [""])[0]
+        path = self._source_path(src)
+        p = prx.pronto(self.root, path) if path else None
+        if not p:
+            self._json({"error": "a cópia leve ainda não está pronta", "pronto": False}, 404)
+            return
+        self._send_file(p)
 
     def _quadro_jpg(self, path: Path, t: float, h: int, guardar: bool = False) -> None:
         """Um quadro em JPEG. `guardar`: as miniaturas do Trocar e da tira do Trecho voltam a cada

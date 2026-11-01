@@ -829,5 +829,7 @@ window.I18N_EN = {
   "Vale para a tomada debaixo da agulha; depois, puxe as pontas do bloco até o trecho exato. O efeito entra no vídeo final.": "It goes on the take under the playhead; then drag the block's ends to the exact part. The effect goes into the final video.",
   "\"{nome}\" entrou na tomada: puxe as pontas até o trecho da fala": "\"{nome}\" is on the take: drag the ends to the part of the speech",
   "A prévia da voz não saiu agora": "The voice preview didn't come out right now",
-  "O efeito de voz": "The voice effect"
+  "O efeito de voz": "The voice effect",
+  "Tocando da gravação original: o trecho recuperado entra no corte quando você salvar": "Playing from the original recording: the part you brought back goes into the cut when you save",
+  "Preparando a gravação original para tocar o trecho recuperado{p0}. Ele já entra no corte quando você salvar.": "Getting the original recording ready to play the part you brought back{p0}. It already goes into the cut when you save."
 };

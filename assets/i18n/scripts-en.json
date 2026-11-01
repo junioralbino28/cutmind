@@ -334,5 +334,8 @@
  "efeito sonoro `{sid}` não existe; os que existem: {p1}": "sound effect `{sid}` doesn't exist; available: {p1}",
  "efeito de voz desconhecido": "unknown voice effect",
  "trecho da voz inválido": "invalid voice span",
- "a prévia da voz não saiu: {e}": "the voice preview didn't come out: {e}"
+ "a prévia da voz não saiu: {e}": "the voice preview didn't come out: {e}",
+ "a cópia leve ainda não está pronta": "the light copy isn't ready yet",
+ "a cópia leve de {name} falhou (ffmpeg {rc})": "the light copy of {name} failed (ffmpeg {rc})",
+ "não deu para gravar {name}": "couldn't save {name}"
 }
