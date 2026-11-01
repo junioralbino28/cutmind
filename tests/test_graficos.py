@@ -137,6 +137,15 @@ def test_o_editor_mostra_os_graficos_como_blocos_da_fase_2():
         assert f"{nome}: t('" in js, nome  # o nome de cada tipo no bloco
 
 
+def test_grafico_sem_janela_nao_vira_bloco_nem_trava_o_salvar():
+    """Os gráficos feitos à mão antes da 0.3.0 não têm `start`/`end`. Como bloco, NaN nunca é igual a NaN:
+    o editor os achava mudados, mandava sem tempo em todo Salvar e o servidor recusava o Salvar inteiro
+    ("número inválido: None"), na cópia do Reels 1."""
+    js = (PREVIEW / "celular.js").read_text(encoding="utf-8")
+    trecho = js.split("(d.graficos || []).forEach")[1].split("\n  });")[0]
+    assert "Number.isFinite(+g.start) && Number.isFinite(+g.end)" in trecho
+
+
 @pytest.mark.parametrize("arquivo", ["helpers/preview_server.py", "helpers/watch_edits.py"])
 def test_o_servidor_e_o_vigia_sabem_que_graficos_e_bloco_da_fase_2(arquivo):
     assert '"graficos"' in (RAIZ / arquivo).read_text(encoding="utf-8")

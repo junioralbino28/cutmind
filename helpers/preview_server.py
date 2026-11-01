@@ -623,17 +623,56 @@ class CenasInvalidas(ValueError):
     pass
 
 
+# o que um efeito novo do painel Cenas pode trazer: os textos dele (em `textos`) e as listas e números
+# (em `campos`). O resto do item (o recorte, o lugar medido, as fotos e os cartões) é do helper e do agente.
+NOVA_TEXTOS = {"vidro": ("palavra",), "capa": ("nome", "selo"), "mural": (), "parede": ("pequeno", "gigante"),
+               "grafico": ("etiqueta",), "chroma": ("titulo", "frase", "botao"), "orbita": ("titulo",)}
+NOVA_CAMPOS = {"mural": ("manchetes", "circulo", "circuloAt"), "grafico": ("valores",)}
+_TEXTO_MAX = 200
+
+
+def _conferir_cena_nova(i: int, c: dict) -> None:
+    """Um efeito novo do painel Cenas, como o editdata_aplicar.py vai gravar: só os campos do tipo, textos
+    curtos, e o item tem de passar na conferência do cenas.py (o Baixar desenha com ele como chegou)."""
+    tipo, textos, campos = c["tipo"], c.get("textos") or {}, c.get("campos") or {}
+    if tipo not in NOVA_TEXTOS:
+        raise CenasInvalidas(f"cenas[{i}]: o editor não cria o efeito `{tipo}`")
+    if not isinstance(textos, dict) or not isinstance(campos, dict):
+        raise CenasInvalidas(f"cenas[{i}]: `textos` e `campos` são objetos")
+    fora = [k for k in textos if k not in NOVA_TEXTOS[tipo]]
+    fora += [k for k in campos if k not in (*NOVA_CAMPOS.get(tipo, ()), "textoAuto")]
+    if fora:
+        raise CenasInvalidas(f"cenas[{i}]: o efeito `{tipo}` novo não leva {', '.join(fora)}")
+    if not all(isinstance(v, str) and len(v) <= _TEXTO_MAX for v in textos.values()):
+        raise CenasInvalidas(f"cenas[{i}]: os textos são frases de até {_TEXTO_MAX} letras")
+    if campos.get("textoAuto", True) is not True:
+        raise CenasInvalidas(f"cenas[{i}]: `textoAuto` só vem como true")
+    for m in campos.get("manchetes") or []:
+        if not (isinstance(m, dict) and set(m) <= {"kicker", "t", "at"}
+                and all(isinstance(m.get(k, ""), str) and len(m.get(k, "")) <= _TEXTO_MAX for k in ("kicker", "t"))):
+            raise CenasInvalidas(f"cenas[{i}]: cada manchete leva só `kicker`, `t` e `at`, com textos curtos")
+    item = {"tipo": tipo, "start": c.get("start"), "end": c.get("end"), **textos,
+            **{k: v for k, v in campos.items() if k != "textoAuto"}}
+    erros = cn.validar(item)
+    if erros:
+        raise CenasInvalidas(f"cenas[{i}]: {'; '.join(erros)}")
+
+
 def conferir_cenas(root: Path, itens: list) -> list:
-    """Os efeitos que o editor manda no Salvar. Ele só CRIA o Fundo (`nova: true`) e, num Fundo, muda
-    os `campos` (`fundo`, `escurecer`, `desfoque`); o resto (ligar, texto, lugar, estilo) é por `ref`.
-    O fundo vem dos prontos do kit ou da mídia do projeto, que precisa existir."""
+    """Os efeitos que o editor manda no Salvar. Ele CRIA (`nova: true`) o Fundo, com os `campos` dele
+    (`fundo`, `escurecer`, `desfoque`), e os efeitos do painel Cenas (`NOVA_TEXTOS`, `NOVA_CAMPOS`); o
+    resto (ligar, texto, lugar, estilo) é por `ref`. O fundo vem dos prontos do kit ou da mídia do
+    projeto, que precisa existir."""
     if not isinstance(itens, list):
         raise CenasInvalidas("cenas: uma lista")
     for i, c in enumerate(itens):
         if not isinstance(c, dict):
             raise CenasInvalidas(f"cenas[{i}]: um objeto")
-        if c.get("nova") and c.get("tipo") != "fundo":
-            raise CenasInvalidas(f"cenas[{i}]: o editor só cria o efeito Fundo (veio `{c.get('tipo')}`)")
+        if c.get("nova") and c.get("tipo") not in cn.TIPOS:
+            raise CenasInvalidas(f"cenas[{i}]: o efeito `{c.get('tipo')}` não existe no modelo do vídeo final")
+        if c.get("nova") and c["tipo"] != "fundo":
+            _conferir_cena_nova(i, c)
+            continue
         if not c.get("nova") and not isinstance(c.get("ref"), int):
             raise CenasInvalidas(f"cenas[{i}]: falta o `ref` do efeito")
         campos = c.get("campos")

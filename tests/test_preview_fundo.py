@@ -105,8 +105,33 @@ def test_salvar_aceita_o_fundo_novo_e_a_imagem_do_projeto(srv):
     assert not (srv.edit / "preview_edits.json").exists()  # nada para o agente
 
 
+def test_salvar_aceita_os_efeitos_do_painel_cenas(srv):
+    """Vidro e Mural escolhidos no painel Cenas entram direto no edit-data.json, como o Fundo; o Vidro com
+    a palavra que veio da fala leva `textoAuto` (o agente pode melhorar), o Mural escrito à mão não."""
+    ed_p = srv.edit / "remotion" / "public" / "edit-data.json"
+    ed_p.parent.mkdir(parents=True)
+    ed_p.write_text(json.dumps({"cenas": []}), encoding="utf-8")
+    st = json.loads((srv.edit / "state.json").read_text(encoding="utf-8"))
+    (srv.edit / "state.json").write_text(json.dumps({**st, "editData": "remotion/public/edit-data.json"}),
+                                         encoding="utf-8")
+    vidro = _fundo(tipo="vidro", textos={"palavra": "GRÁTIS"}, campos={"textoAuto": True})
+    mural = _fundo(tipo="mural", start=9.0, end=12.0, textos={},
+                   campos={"manchetes": [{"kicker": "", "t": "A notícia do dia", "at": 9.3}], "circulo": 0, "circuloAt": 11.1})
+    st, _, dados = _salvar(srv, [vidro, mural])
+    assert st == 200 and json.loads(dados)["ok"], dados
+    cenas = json.loads(ed_p.read_text(encoding="utf-8"))["cenas"]
+    assert [(c["tipo"], c.get("palavra"), c.get("textoAuto")) for c in cenas] == [("vidro", "GRÁTIS", True), ("mural", None, None)]
+    assert cenas[1]["manchetes"][0]["t"] == "A notícia do dia"
+
+
 @pytest.mark.parametrize("ruim, motivo", [
-    (_fundo(tipo="capa"), "só cria o efeito Fundo"),
+    (_fundo(tipo="capa"), "não leva fundo, escurecer, desfoque"),
+    (_fundo(tipo="revelacao", campos={}), "não existe no modelo"),
+    (_fundo(tipo="vidro", campos={}, textos={"palavra": "OI", "matte": "x.mov"}), "não leva matte"),
+    (_fundo(tipo="vidro", campos={}, textos={}), "falta `palavra`"),
+    (_fundo(tipo="mural", textos={}, campos={"manchetes": [{"t": "Oi", "at": 4.5, "src": "c:/x"}]}), "cada manchete"),
+    (_fundo(tipo="grafico", textos={}, campos={"valores": [2, 3]}), "valores"),
+    (_fundo(tipo="vidro", campos={"textoAuto": "sim"}, textos={"palavra": "OI"}), "textoAuto"),
     (_fundo(campos={"fundo": "fundos/praia"}), "fundos/<"),
     (_fundo(campos={"fundo": "midia/sumiu.jpg"}), "não está no projeto"),
     (_fundo(campos={"fundo": "fundos/lousa", "escurecer": 0.9}), "escurecer"),

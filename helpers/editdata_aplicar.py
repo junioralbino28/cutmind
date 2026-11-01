@@ -78,7 +78,10 @@ def _cena(c: dict, v: dict) -> None:
         else:
             c.pop("desligada", None)
     _posicao_e_estilo(c, v)
-    for k, x in (v.get("textos") or {}).items():
+    textos = v.get("textos") or {}
+    if c.get("textoAuto") and any(c.get(k) != x for k, x in textos.items() if k != "batidas"):
+        c.pop("textoAuto")  # a pessoa escreveu: o texto é dela, e o agente não troca mais
+    for k, x in textos.items():
         if k == "batidas" and isinstance(c.get("batidas"), list) and isinstance(x, list):
             for b, palavra in zip(c["batidas"], x):  # só a palavra de cada batida; o tempo é do agente
                 if isinstance(b, dict):

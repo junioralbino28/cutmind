@@ -229,8 +229,24 @@ the text, drags the block and changes the font and colour (`references/pelo-chat
 tools). The Salvar brings those changes by `ref`; write them into `cenas[ref]`, run
 `cenas_edit_data.py` and render.
 
-The Fundo is the one effect the user can also CREATE there (Efeitos → Fundo): each card shows them
-cut out on the needle's frame over a background, with Escurecer and Desfoque. It comes in the
-Salvar as `nova: true`, without `ref`, with the take's window and `campos` (`fundo`, `escurecer`,
-`desfoque`): append it to `cenas[]` and run the same two steps. The other six types are still
-created from the chat.
+The user can also CREATE effects there, on the take under the needle:
+
+- **Efeitos → Fundo:** each card shows them cut out on the needle's frame over a background, with
+  Escurecer and Desfoque. It comes in the Salvar as `nova: true`, without `ref`, with the take's
+  window and `campos` (`fundo`, `escurecer`, `desfoque`).
+- **Efeitos → Cenas** (since 0.3.6): one card per other type (Vidro, Capa, Mural, Parede, Gráfico,
+  Site, Órbita), each a sketch of the effect around the user cut out on the needle's frame, with the
+  texts already taken from the take's speech (no AI: the longest word, the first words, chunks of
+  up to 6 words for headlines, a number said for the chart tag). It comes as `nova: true` with the
+  texts in `textos` (only the type's own: `palavra`; `nome`, `selo`; `pequeno`, `gigante`;
+  `etiqueta`; `titulo`, `frase`, `botao`; `titulo`) and the lists in `campos` (Mural `manchetes`
+  with `at` spread in the window, `circulo`, `circuloAt`; Gráfico `valores`). The server checks it
+  against this file's rules and writes it into `cenas[]` by itself, so the Baixar draws it with no
+  agent at all.
+- **`textoAuto: true`** marks texts the panel took from the speech and the user never touched. When
+  the user presses "Pronto, Claude segue", improve those texts from the transcript (the word or
+  headline that really carries the take) and remove the flag; an item without the flag has the
+  user's own words, so never rewrite it. The flag also goes away by itself when the user edits the
+  text later (editor and `editdata_aplicar.py`).
+
+Either way: run `cenas_edit_data.py` and render, as for any effect.

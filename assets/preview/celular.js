@@ -127,6 +127,7 @@ const ICON = {
   pessoa: sv('<path d="M3 8.5h18" stroke-dasharray="2.2 2"/><circle cx="12" cy="9" r="3.1"/><path d="M5.8 20.5c.7-3.6 3.2-5.6 6.2-5.6s5.5 2 6.2 5.6"/>'),
   // o Fundo: a pessoa na frente de uma paisagem nova
   fundo: sv('<rect x="3" y="4" width="18" height="16" rx="2.6"/><path d="M3.5 14.2l4-3.6 2.8 2.4"/><circle cx="16.8" cy="8.2" r="1.4"/><circle cx="12.6" cy="12.2" r="2.3"/><path d="M8.3 19.8c.6-2.5 2.2-3.8 4.3-3.8s3.7 1.3 4.3 3.8"/>'),
+  cenas: sv('<rect x="3" y="4" width="18" height="16" rx="2.6"/><path d="M7 8.2h4M7 10.6h2.6"/><path d="M16.6 6.6l.7 1.5 1.6.2-1.2 1.1.3 1.6-1.4-.8-1.4.8.3-1.6-1.2-1.1 1.6-.2z"/><circle cx="12" cy="13.1" r="2.2"/><path d="M8 19.8c.6-2.3 2.1-3.5 4-3.5s3.4 1.2 4 3.5"/>'),
   // texto que acompanha a pessoa: a mira
   alvo: sv('<circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/>'),
   // seleção em massa: a caixa tracejada; "tudo": as duas pontas do vídeo
@@ -620,7 +621,11 @@ function buildInsertsDraft() {
   // o número que conta (numeros[]: at → end) anda e apara como as palavras
   (d.numeros || []).forEach((n, i) => list.push({ kind: 'numero', label: `${n.prefixo || ''}${n.valor}${n.sufixo || ''}`, start: +n.at, end: +(n.end ?? +n.at + 2.4), ref: i }));
   // os gráficos animados (graficos[]): andam e aparam como as palavras; os instantes de dentro vão junto
-  (d.graficos || []).forEach((g, i) => list.push({ kind: 'grafico', label: rotuloGrafico(g), start: +g.start, end: +g.end, ref: i }));
+  // um gráfico sem janela (`start`/`end`), como os feitos à mão antes da 0.3.0, não vira bloco: com NaN
+  // ele parecia sempre mudado, ia sem tempo em todo Salvar e o servidor recusava o Salvar inteiro
+  (d.graficos || []).forEach((g, i) => {
+    if (Number.isFinite(+g.start) && Number.isFinite(+g.end) && +g.end > +g.start) list.push({ kind: 'grafico', label: rotuloGrafico(g), start: +g.start, end: +g.end, ref: i });
+  });
   S.insertsDraft = list.map((c) => ({ ...c, orig: { start: c.start, end: c.end } }));
   S.insSel = -1;
   buildCenasDraft(d);
@@ -2089,7 +2094,7 @@ function passo(seg) {
 // os de régua no Pronto (a régua já mudou ao vivo)
 const FECHA_PAINEL = { sheet: 'sheetClose', noteSheet: 'noteCancel', volSheet: 'volOk', velSheet: 'velOk', ajSheet: 'ajOk',
   fxIntSheet: 'fxIntOk', trilhaSheet: 'trilhaClose', fxSheet: 'fxClose', tomZoomSheet: 'tomZoomOk', cenaSheet: 'cenaCancel',
-  modeloSheet: 'modeloClose', fundoSheet: 'fundoClose', lugarSheet: 'lugarClose', trechoSheet: 'trechoCancel', montSheet: 'montClose' };
+  modeloSheet: 'modeloClose', fundoSheet: 'fundoClose', cnSheet: 'cnClose', lugarSheet: 'lugarClose', trechoSheet: 'trechoCancel', montSheet: 'montClose' };
 function fechaPainel() {
   const aberto = document.querySelector('.sheet.open');
   if (!aberto || !FECHA_PAINEL[aberto.id]) return false;
@@ -2464,6 +2469,7 @@ const DICA = { volume: t('Volume'), velocidade: t('Velocidade e curva'), intensi
   tudo: t('O vídeo inteiro'),
   'melhorar-voz': t('A voz do vídeo mais limpa ou com som de estúdio, e quanto do ambiente fica'),
   fundo: t('Um fundo novo atrás de você, na tomada debaixo da agulha'),
+  cenas: t('Vidro, capa de revista, mural, parede de fotos, gráfico, site e órbita, na tomada debaixo da agulha'),
   'lugar-trocar': t('Outra foto ou vídeo neste lugar, com a mesma duração'), 'lugar-trecho': t('Que parte do clipe entra neste lugar'),
   'lugar-original': t('O lugar volta à mídia e ao trecho do vídeo'),
   'modelos-montagem': t('Os modelos de montagem: o ritmo, a música e as fotos e clipes; ou guardar esta montagem como modelo'),
@@ -2556,6 +2562,7 @@ function renderToolbar() {
     tool(ctx, 'transicoes', t('Transições'), { icon: ICON.transicao });
     tool(ctx, 'voz', t('Voz'), { icon: ICON.voz, disabled: !hasVideo });
     tool(ctx, 'fundo', t('Fundo'), { icon: ICON.fundo, disabled: !fundoPode() });
+    tool(ctx, 'cenas', t('Cenas'), { icon: ICON.cenas, disabled: !fundoPode() });
     return;
   }
   if (bsel) { // a seleção em massa: o trecho de todas as faixas
@@ -2586,6 +2593,7 @@ function renderToolbar() {
   if (csel) { // um efeito: o tempo segue a tomada; o bloco se arrasta na prévia; o Fundo troca a imagem
     tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
     if (csel.tipo === 'fundo') tool(ctx, 'fundo', t('Fundo'), { icon: ICON.fundo });
+    if (csel.nova && CENAS_NOVAS.includes(csel.tipo)) tool(ctx, 'cenas', t('Trocar efeito'), { icon: ICON.cenas, disabled: csel.desligada });
     tool(ctx, 'cena-liga', csel.desligada ? t('Ligar') : t('Desligar'), { icon: csel.desligada ? ICON.olhoFechado : ICON.olho });
     if (Object.keys(csel.textos).length) tool(ctx, 'cena-texto', t('Texto'), { icon: ICON.texto, disabled: csel.desligada });
     if (CENA_BLOCO[csel.tipo]) tool(ctx, 'cena-lugar', t('Centralizar'), { icon: ICON.mover, disabled: csel.desligada || Math.round(blocoDaCena(csel).x) === FRAME_W / 2 });
@@ -2688,6 +2696,12 @@ document.addEventListener('click', (e) => {
       const c = S.cenaSel >= 0 ? S.cenasDraft[S.cenaSel] : null;
       S.fxMenu = false; renderToolbar();
       openFundo(c && c.tipo === 'fundo' ? S.cenaSel : null);
+      break;
+    }
+    case 'cenas': { // do menu Efeitos (a tomada da agulha) ou do efeito novo escolhido na faixa
+      const c = S.cenaSel >= 0 ? S.cenasDraft[S.cenaSel] : null;
+      S.fxMenu = false; renderToolbar();
+      openCenas(c && c.nova && CENAS_NOVAS.includes(c.tipo) ? S.cenaSel : null);
       break;
     }
     case 'intensidade': openIntensidade(); break;
@@ -6006,6 +6020,8 @@ const CENA_NOME = {
   capa: t('Capa de revista'), grafico: t('Gráfico'), app: t('App'), checklist: t('Checklist'), zoomDigital: t('Zoom digital'),
   saindo: t('Saindo da tela'), rabisco: t('Rabisco'), vertigem: t('Vertigem'), celular: t('Celular'), vidro: t('Vidro'), orbita: t('Órbita'), chroma: t('Site'),
 };
+// os efeitos que o modelo desenha e que a pessoa escolhe no painel Cenas (o Fundo tem painel próprio)
+const CENAS_NOVAS = ['vidro', 'capa', 'mural', 'parede', 'grafico', 'chroma', 'orbita'];
 // o véu e o desfoque do Fundo quando o item não diz (src/cenas/fundo.tsx): mudou lá, muda aqui
 const FUNDO_PADRAO = { escurecer: 0.25, desfoque: 0 };
 // os campos de texto que a pessoa pode trocar (texto solto ou uma lista de linhas)
@@ -6101,8 +6117,12 @@ function estiloEfetivo(c) {
 function cenaValor(v) {
   const est = v.estilo && typeof v.estilo === 'object' && Object.keys(v.estilo).length ? JSON.parse(JSON.stringify(v.estilo)) : null;
   const out = { desligada: !!v.desligada, texto: v.texto ? { x: +v.texto.x, y: +v.texto.y } : null, textos: JSON.parse(JSON.stringify(v.textos || {})), estilo: est };
-  // só o Fundo tem `campos`: a imagem, o véu e o desfoque (os outros efeitos saem como sempre saíram)
-  if (v.campos) out.campos = { fundo: String(v.campos.fundo), escurecer: +v.campos.escurecer, desfoque: +v.campos.desfoque };
+  // `campos`: no Fundo, a imagem, o véu e o desfoque; num efeito novo do painel Cenas, as listas e os
+  // números dele (as manchetes do Mural, os valores do Gráfico) e a marca `textoAuto`
+  if (v.campos) {
+    out.campos = 'fundo' in v.campos ? { fundo: String(v.campos.fundo), escurecer: +v.campos.escurecer, desfoque: +v.campos.desfoque }
+      : JSON.parse(JSON.stringify(v.campos));
+  }
   return out;
 }
 function cenaValores(c) {
@@ -6462,6 +6482,8 @@ function openCenaTexto() {
     else inp.type = 'text';
     inp.value = lista ? v.join('\n') : v;
     inp.addEventListener('input', () => textoMuda((x) => {
+      // a pessoa escreveu: o texto é dela, e o agente não troca mais (o efeito novo perde a marca)
+      if (x.campos && x.campos.textoAuto) { const { textoAuto, ...resto } = x.campos; x.campos = resto; }
       if (!lista) { x.textos = { ...x.textos, [k]: inp.value }; return; }
       const ls = inp.value.split('\n').map((t) => t.trim());
       const velho = painel.valor.textos[k] || [];
@@ -9899,6 +9921,16 @@ function fundoPrevia() {
   $('ovFundoBg').style.backgroundImage = `url("${fundoUrl(FU.escolha)}")`;
   if ($('ovFundoPessoa').getAttribute('src') !== FU.recorte) $('ovFundoPessoa').src = FU.recorte;
 }
+// a pessoa recortada num quadro do corte (/gen/recorte), como imagem: o Fundo e o painel Cenas
+async function buscaRecorte(tq, signal) {
+  const r = await fetch(`/gen/recorte?t=${tq.toFixed(3)}&v=${S.mtimes.video || 0}`, { signal });
+  if (!r.ok) {
+    let msg = t('erro {status}', { status: r.status });
+    try { msg = (await r.json()).error || msg; } catch (e) { /* sem JSON */ }
+    throw new Error(msg);
+  }
+  return URL.createObjectURL(await r.blob());
+}
 // a pessoa recortada no quadro da agulha (dentro da janela), no relógio do corte
 async function fundoRecorte() {
   const fps = S.state.fps || 30;
@@ -9910,13 +9942,7 @@ async function fundoRecorte() {
   const pedido = new AbortController();
   FU.pedido = pedido;
   try {
-    const r = await fetch(`/gen/recorte?t=${t.toFixed(3)}&v=${S.mtimes.video || 0}`, { signal: pedido.signal });
-    if (!r.ok) {
-      let msg = t('erro {status}', { status: r.status });
-      try { msg = (await r.json()).error || msg; } catch (e) { /* sem JSON */ }
-      throw new Error(msg);
-    }
-    const url = URL.createObjectURL(await r.blob());
+    const url = await buscaRecorte(t, pedido.signal);
     if (FU.pedido !== pedido || !FU.aberto) { URL.revokeObjectURL(url); return; }
     if (FU.recorte) URL.revokeObjectURL(FU.recorte);
     FU.recorte = url;
@@ -10000,6 +10026,304 @@ $('fileFundo').addEventListener('change', (e) => {
   fundoPrevia();
   clearTimeout(FU.espera);
   if (ev !== 'play') FU.espera = setTimeout(() => { if (FU.aberto && video.paused && naJanela()) fundoRecorte(); }, 450);
+}));
+
+/* ---------- Cenas: escolher um efeito de cena para a tomada (Vidro, Capa, Mural, Parede, Gráfico, Site, Órbita) ----------
+ * Como o Fundo: vale para a tomada debaixo da agulha, ou para o efeito novo escolhido na faixa. Cada
+ * cartão é o efeito desenhado atrás da pessoa recortada no quadro da agulha (o mesmo /gen/recorte do
+ * Fundo), com o texto já tirado da fala da tomada. Tocar num cartão mostra os campos dele; Pronto põe
+ * o efeito na tomada. Nada aqui usa IA: o Baixar desenha com os textos como estão, e os que a pessoa
+ * não mexeu vão marcados (`textoAuto`) para o agente melhorar quando ela apertar "Pronto, Claude segue". */
+const CENA_DICA = {
+  vidro: t('Uma palavra gigante de vidro atrás de você'),
+  capa: t('O quadro vira capa de revista, com o nome atrás da sua cabeça'),
+  mural: t('Manchetes de jornal batendo na parede atrás de você'),
+  parede: t('A parede atrás de você enchendo de fotos'),
+  grafico: t('Um gráfico de barras crescendo atrás de você'),
+  chroma: t('Você no canto de uma página de site'),
+  orbita: t('Cartões girando em volta de você'),
+};
+// os campos de cada efeito no painel: `k` é o campo do item (references/cenas.md); `linhas` = uma por linha
+const CN_CAMPOS = {
+  vidro: [{ k: 'palavra', rotulo: t('Palavra'), max: 12 }],
+  capa: [{ k: 'nome', rotulo: t('Nome da capa'), max: 14 }, { k: 'selo', rotulo: t('Selo (opcional)'), max: 16 }],
+  mural: [{ k: 'manchetes', rotulo: t('Manchetes, uma por linha (até 4)'), linhas: 4, max: 60 }],
+  parede: [{ k: 'pequeno', rotulo: t('Faixa de cima'), max: 24 }, { k: 'gigante', rotulo: t('Palavra grande'), max: 12 }],
+  grafico: [{ k: 'etiqueta', rotulo: t('Etiqueta (o número dito)'), max: 10 }],
+  chroma: [{ k: 'titulo', rotulo: t('Título'), max: 40 }, { k: 'frase', rotulo: t('Frase'), max: 70 }, { k: 'botao', rotulo: t('Botão'), max: 24 }],
+  orbita: [{ k: 'titulo', rotulo: t('Título (opcional)'), max: 40 }],
+};
+const CN = { aberto: false, alvo: -1, a: 0, b: 0, tipo: '', textos: {}, mexeu: false, recorte: null, quadro: null,
+  erro: null, pedido: null, espera: null, t: -1, outro: null };
+
+// a fala da tomada (a legenda do vídeo final, no relógio do corte), sem pontuação nas pontas
+function falaDaJanela(a, b) {
+  return S.captions.filter((c) => c.end > a + 0.02 && c.start < b - 0.02).map((c) => c.text).join(' ').replace(/\s+/g, ' ').trim();
+}
+const PALAVRA_FRACA = /^(que|com|para|pra|pro|uma|uns|umas|isso|esse|essa|este|esta|isto|você|voce|vocês|como|mais|muito|muita|mesmo|ainda|então|entao|porque|quando|onde|aqui|agora|tudo|nada|sobre|depois|antes|também|tambem|tipo|coisa|gente|está|esta|estou|vai|vou|tem|ter|ser|foi|era|são|the|and|that|this|with|your|you|what|just|have|from|they|there)$/i;
+const limpaPalavra = (w) => w.replace(/[^\p{L}\p{N}%]/gu, '');
+// a palavra que carrega a tomada: a mais longa que não é palavra de ligação
+function palavraForte(fala) {
+  return fala.split(/\s+/).map(limpaPalavra).filter((w) => w.length >= 3 && !PALAVRA_FRACA.test(w))
+    .reduce((m, w) => (w.length > m.length ? w : m), '');
+}
+const primeiras = (ws, n) => ws.slice(0, n).join(' ').replace(/[,.;:!?…]+$/, '');
+// os textos de cada efeito tirados da fala: sem IA, só para o efeito nascer com o assunto da tomada
+function textosDaFala(tipo, a, b) {
+  const fala = falaDaJanela(a, b);
+  const ws = fala.split(/\s+/).filter(Boolean);
+  const forte = palavraForte(fala).toUpperCase();
+  const numero = (fala.match(/\d+(?:[.,]\d+)?\s?(?:%|x\b|mil\b|k\b)?/i) || [''])[0].replace(/\s+/g, '');
+  if (tipo === 'vidro') return { palavra: forte.slice(0, 12) || t('IDEIA') };
+  if (tipo === 'capa') return { nome: forte.slice(0, 14) || t('DESTAQUE'), selo: '' };
+  if (tipo === 'mural') {
+    const n = Math.max(1, Math.min(3, Math.ceil(ws.length / 6)));
+    const linhas = Array.from({ length: n }, (_, k) => primeiras(ws.slice(k * 6), 6)).filter(Boolean);
+    return { manchetes: (linhas.length ? linhas : [t('A notícia do dia')]).join('\n') };
+  }
+  if (tipo === 'parede') return { pequeno: primeiras(ws, 2).toUpperCase(), gigante: forte.slice(0, 12) || t('TODO DIA') };
+  if (tipo === 'grafico') return { etiqueta: numero };
+  if (tipo === 'chroma') return { titulo: primeiras(ws, 5) || t('Seu título aqui'), frase: primeiras(ws.slice(5), 8), botao: t('Quero saber mais') };
+  if (tipo === 'orbita') return { titulo: primeiras(ws, 4) };
+  return {};
+}
+/* O item do edit-data que os campos do painel viram. Textos soltos vão em `textos` (o painel de Texto
+ * da faixa troca eles depois); listas e números vão em `campos` (manchetes com o instante de cada uma
+ * espalhado na janela, os valores das barras). */
+function cnItem(tipo, a, b, tx, auto) {
+  const textos = {}, campos = {};
+  for (const f of CN_CAMPOS[tipo]) {
+    const v = String(tx[f.k] || '').trim();
+    if (f.k === 'manchetes') continue;
+    if (v) textos[f.k] = v;
+  }
+  if (tipo === 'mural') {
+    const ls = String(tx.manchetes || '').split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 4);
+    const d = b - a;
+    campos.manchetes = ls.map((s, k) => ({ kicker: '', t: s, at: +(a + Math.min(d - 0.1, 0.25 + k * Math.max(0.3, (d - 1.2) / Math.max(1, ls.length)))).toFixed(3) }));
+    campos.circulo = 0;
+    campos.circuloAt = +Math.max(a + d * 0.7, b - 0.9).toFixed(3);
+  }
+  if (tipo === 'grafico') campos.valores = [0.28, 0.46, 0.64, 0.85];
+  if (auto) campos.textoAuto = true;
+  return { textos, campos };
+}
+// outro efeito ligado na janela (que não é o que o painel está trocando): uma tomada, um efeito de cena
+const cnCruza = (x) => x.start < CN.b - 0.01 && x.end > CN.a + 0.01;
+const cnBloqueio = () => (CN.outro ? t('Esta tomada já tem o efeito {nome}: desligue ele na faixa de efeitos para pôr outro aqui.', { nome: CN.outro.nome })
+  : CN.b - CN.a < 0.3 ? t('Esta tomada é curta demais para um efeito.') : null);
+async function openCenas(i) {
+  if (!fundoPode()) { toast(t('Os efeitos entram no vídeo final: eles aparecem depois que o agente fizer a Fase 2'), 3200); return; }
+  if (S.view !== 'final') switchView('final');
+  video.pause();
+  let c = i != null ? S.cenasDraft[i] : null;
+  if (c && !(c.nova && CENAS_NOVAS.includes(c.tipo))) c = null; // os do agente mudam no painel de Texto
+  if (c) { CN.a = c.start; CN.b = c.end; } else {
+    const tk = tomadaEm(draftToRendered(S.t));
+    if (!tk) return;
+    CN.a = +tk.out.toFixed(3); CN.b = +(tk.out + tk.dur).toFixed(3);
+    i = S.cenasDraft.findIndex((x) => x.nova && !x.desligada && CENAS_NOVAS.includes(x.tipo) && cnCruza(x));
+    c = i >= 0 ? S.cenasDraft[i] : null;
+    if (c) { CN.a = c.start; CN.b = c.end; }
+  }
+  CN.alvo = c ? i : -1;
+  CN.tipo = c ? c.tipo : '';
+  CN.textos = c ? cnDoItem(c) : {};
+  CN.mexeu = c ? !(c.campos && c.campos.textoAuto) : false;
+  CN.outro = S.cenasDraft.find((x, k) => k !== CN.alvo && !x.desligada && cnCruza(x)) || null;
+  CN.quadro = captureFrame();
+  CN.t = -1;
+  CN.erro = null;
+  CN.aberto = true;
+  $('cnTitulo').textContent = c ? t('Efeito da tomada') : t('Efeitos de cena');
+  app.classList.add('efeitando');
+  showSheet($('cnSheet'), true);
+  cnRender();
+  cnRecorte();
+}
+function closeCenas() {
+  CN.aberto = false;
+  clearTimeout(CN.espera);
+  if (CN.pedido) { CN.pedido.abort(); CN.pedido = null; }
+  if (CN.recorte) { URL.revokeObjectURL(CN.recorte); CN.recorte = null; }
+  app.classList.remove('efeitando');
+  showSheet($('cnSheet'), false);
+  sizeCanvases(); positionTimeline();
+}
+// os campos do painel a partir de um efeito novo que já está na faixa (para trocar)
+function cnDoItem(c) {
+  const tx = { ...(c.textos || {}) };
+  if (c.tipo === 'mural') tx.manchetes = ((c.campos && c.campos.manchetes) || []).map((m) => m.t).join('\n');
+  return tx;
+}
+// o que falta para o efeito desenhar (os obrigatórios do cenas.py)
+function cnFalta() {
+  const tx = CN.textos, v = (k) => String(tx[k] || '').trim();
+  if (CN.tipo === 'vidro' && !v('palavra')) return t('Escreva a palavra.');
+  if (CN.tipo === 'capa' && !v('nome')) return t('Escreva o nome da capa.');
+  if (CN.tipo === 'mural' && !v('manchetes')) return t('Escreva pelo menos uma manchete.');
+  if (CN.tipo === 'chroma' && !v('titulo')) return t('Escreva o título.');
+  return null;
+}
+/* O desenho de cada efeito no cartão, em volta da pessoa recortada: `atras` fica atrás dela e `frente`
+ * na frente, nas medidas do cartão (cqw/cqh, o cartão é o container). É uma ideia do efeito, não o
+ * quadro final: o vídeo sai do modelo do Remotion no Baixar. */
+function cnDesenho(b, tipo, tx) {
+  const atras = el('div', 'cn-atras', b);
+  const txt = (cls, pai, s) => { const e = el('div', cls, pai); e.textContent = s; return e; };
+  if (tipo === 'vidro') txt('cn-vidro-palavra', atras, tx.palavra || '');
+  if (tipo === 'capa') txt('cn-capa-nome', atras, tx.nome || '');
+  if (tipo === 'mural') {
+    String(tx.manchetes || '').split('\n').filter((s) => s.trim()).slice(0, 3).forEach((s, k) => {
+      const r = txt(`cn-recorte cn-r${k}`, atras, s.trim());
+      if (k === 0) el('i', 'cn-circulo', r);
+    });
+  }
+  if (tipo === 'parede') for (let k = 0; k < 6; k++) el('div', `cn-polaroide cn-p${k}`, atras);
+  if (tipo === 'grafico') [0.28, 0.46, 0.64, 0.85].forEach((h, k) => { el('div', `cn-barra cn-b${k}`, atras).style.height = `${h * 46}cqh`; });
+  if (tipo === 'chroma') {
+    txt('cn-site-titulo', atras, tx.titulo || '');
+    txt('cn-site-frase', atras, tx.frase || '');
+    if (tx.botao) txt('cn-site-botao', atras, tx.botao);
+  }
+  if (tipo === 'orbita') {
+    if (CN.quadro) atras.style.backgroundImage = `url("${CN.quadro}")`;
+    el('div', 'cn-anel', atras);
+    for (let k = 0; k < 3; k++) el('div', `cn-orb cn-o${k}`, atras);
+  }
+  if (CN.recorte) { const im = el('img', 'fundo-pessoa cn-pessoa', b); im.src = CN.recorte; im.alt = ''; }
+  const frente = el('div', 'cn-frente', b);
+  if (tipo === 'capa') { el('div', 'cn-capa-barras', frente); if (tx.selo) txt('cn-capa-selo', frente, tx.selo); }
+  if (tipo === 'parede') { if (tx.pequeno) txt('cn-fita', frente, tx.pequeno); txt('cn-gigante', frente, tx.gigante || ''); }
+  if (tipo === 'grafico' && tx.etiqueta) txt('cn-etiqueta', frente, tx.etiqueta);
+  if (tipo === 'orbita') { for (let k = 3; k < 5; k++) el('div', `cn-orb cn-o${k}`, frente); if (tx.titulo) txt('cn-orb-titulo', frente, tx.titulo); }
+}
+function cnCartao(grade, tipo, antes) {
+  const b = el('button', `mod-card cn-card cn-${tipo}`, grade);
+  b.type = 'button';
+  b.dataset.tipo = tipo;
+  if (antes) grade.insertBefore(b, antes);
+  cnDesenho(b, tipo, CN.tipo === tipo ? CN.textos : textosDaFala(tipo, CN.a, CN.b));
+  el('span', 'mod-nome', b).textContent = CENA_NOME[tipo];
+  return b;
+}
+function cnRender() {
+  const box = $('cnLista');
+  box.innerHTML = '';
+  el('p', 'sheet-hint', box).id = 'cnDica';
+  const grade = el('div', 'mod-grade fundo-grade cn-grade', box);
+  grade.addEventListener('wheel', (e) => {
+    if (!isDesk() || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+    grade.scrollLeft += e.deltaY;
+    e.preventDefault();
+  }, { passive: false });
+  for (const tipo of CENAS_NOVAS) cnCartao(grade, tipo);
+  renderCnCampos();
+  cnEstado();
+}
+// os campos do efeito escolhido, já com o texto da fala; mexer num deles redesenha só o cartão dele
+function renderCnCampos() {
+  const box = $('cnCampos');
+  box.innerHTML = '';
+  box.classList.toggle('hidden', !CN.tipo);
+  if (!CN.tipo) return;
+  el('p', 'cn-dica-tipo', box).textContent = CENA_DICA[CN.tipo];
+  for (const f of CN_CAMPOS[CN.tipo]) {
+    const lab = el('label', 'cn-campo', box);
+    el('span', '', lab).textContent = f.rotulo;
+    const inp = el(f.linhas ? 'textarea' : 'input', '', lab);
+    if (f.linhas) inp.rows = Math.min(f.linhas, 3); else inp.type = 'text';
+    inp.maxLength = f.max * (f.linhas || 1) + (f.linhas || 1);
+    inp.value = CN.textos[f.k] || '';
+    inp.dataset.k = f.k;
+  }
+}
+function cnEstado() {
+  for (const b of $('cnLista').querySelectorAll('.cn-card')) b.classList.toggle('on', b.dataset.tipo === CN.tipo);
+  const bloqueio = cnBloqueio(), falta = CN.tipo ? cnFalta() : null;
+  const dica = $('cnDica');
+  if (dica) {
+    dica.textContent = bloqueio || falta || (CN.erro ? t('Os cartões estão sem você: {erro}', { erro: CN.erro })
+      : !CN.recorte ? t('Recortando você do quadro da agulha…')
+        : t('Toque num efeito: os textos já vêm da sua fala nesta tomada, e dá para mudar embaixo.'));
+  }
+  $('cnOk').disabled = !CN.tipo || !!bloqueio || !!falta;
+}
+async function cnRecorte() {
+  const fps = S.state.fps || 30;
+  const rt = Math.min(Math.max(draftToRendered(S.t), CN.a), CN.b - 1 / fps);
+  const tq = Math.round(rt * fps) / fps;
+  if (tq === CN.t && (CN.recorte || CN.pedido)) return;
+  CN.t = tq;
+  if (CN.pedido) CN.pedido.abort();
+  const pedido = new AbortController();
+  CN.pedido = pedido;
+  try {
+    const url = await buscaRecorte(tq, pedido.signal);
+    if (CN.pedido !== pedido || !CN.aberto) { URL.revokeObjectURL(url); return; }
+    if (CN.recorte) URL.revokeObjectURL(CN.recorte);
+    CN.recorte = url;
+    CN.erro = null;
+  } catch (e) {
+    if (e.name === 'AbortError' || CN.pedido !== pedido) return;
+    CN.erro = e.message;
+  }
+  CN.pedido = null;
+  if (CN.aberto) cnRender();
+}
+function cnPronto() {
+  if (!CN.tipo || cnBloqueio() || cnFalta()) return;
+  const antes = snap(), sig = cenasSig();
+  const { textos, campos } = cnItem(CN.tipo, CN.a, CN.b, CN.textos, !CN.mexeu);
+  const cena = { tipo: CN.tipo, start: CN.a, end: CN.b, ...textos, ...campos };
+  const c = CN.alvo >= 0 ? S.cenasDraft[CN.alvo] : null;
+  let sel;
+  if (c && !c.orig) { // um efeito novo nunca salvo: troca no lugar (o mesmo tipo guarda o lugar e o estilo dele)
+    const mesmo = c.tipo === CN.tipo;
+    Object.assign(c, { tipo: CN.tipo, nome: CENA_NOME[CN.tipo], cena, textos, campos, desligada: false,
+      texto: mesmo ? c.texto : null, estilo: mesmo ? c.estilo : null });
+    sel = CN.alvo;
+  } else {
+    if (c) c.desligada = true; // o novo já enviado sai desligado, e entra o outro
+    S.cenasDraft.push({ ref: null, nova: true, tipo: CN.tipo, start: CN.a, end: CN.b, nome: CENA_NOME[CN.tipo], cena,
+      desligada: false, texto: null, textos, estilo: null, campos, orig: null });
+    sel = S.cenasDraft.length - 1;
+  }
+  const mudou = cenasSig() !== sig;
+  if (mudou) remember(antes);
+  const nome = CENA_NOME[CN.tipo];
+  closeCenas();
+  S.cenaSel = sel;
+  S.zoomSel = -1; S.insSel = -1; S.selected = -1; S.layerSel = null; S.fxSel = null; S.legSel = false;
+  renderTimeline(); renderToolbar(); refreshHeader(); drawCenaBox();
+  if (mudou) toast(t('{nome} nesta tomada. Salve e baixe para ver no vídeo, ou aperte Pronto, Claude segue para o agente caprichar nos textos.', { nome }), 4500);
+}
+$('cnClose').innerHTML = ICON.fechar;
+$('cnClose').addEventListener('click', closeCenas);
+$('cnOk').addEventListener('click', cnPronto);
+$('cnLista').addEventListener('click', (e) => {
+  const b = e.target.closest('.cn-card');
+  if (!b || b.dataset.tipo === CN.tipo) return;
+  CN.tipo = b.dataset.tipo;
+  CN.textos = textosDaFala(CN.tipo, CN.a, CN.b);
+  CN.mexeu = false;
+  renderCnCampos();
+  cnEstado();
+});
+$('cnCampos').addEventListener('input', (e) => {
+  const k = e.target.dataset && e.target.dataset.k;
+  if (!k) return;
+  CN.textos[k] = e.target.value;
+  CN.mexeu = true;
+  const velho = $('cnLista').querySelector(`.cn-card[data-tipo="${CN.tipo}"]`);
+  if (velho) { cnCartao(velho.parentNode, CN.tipo, velho); velho.remove(); }
+  cnEstado();
+});
+// parar ou mover a agulha com o painel aberto: o recorte do quadro novo (um pedido por parada)
+['pause', 'seeked'].forEach((ev) => video.addEventListener(ev, () => {
+  if (!CN.aberto) return;
+  clearTimeout(CN.espera);
+  CN.espera = setTimeout(() => { if (CN.aberto && video.paused) cnRecorte(); }, 450);
 }));
 
 // ---------- avisos ----------
