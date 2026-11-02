@@ -1294,7 +1294,7 @@ function renderTakes(lane) {
     c.style.left = movendo ? `${i * MOVE_TILE + 2}px` : `${r.out * S.pps}px`;
     c.style.width = movendo ? `${MOVE_TILE - 4}px` : `${Math.max(r.dur * S.pps, 6)}px`;
     if (isChanged(r)) c.classList.add('dirty');
-    if (i === S.selected) c.classList.add('sel');
+    if (i === S.selected || todasAtivas()) c.classList.add('sel');
     if (S.thumbCount > 0 && rl[r.from]) {
       /* Quadros no tamanho natural, como no CapCut: com zoom alto o mesmo quadro
        * se repete (só existe 1 miniatura a cada 2 s); esticar um quadro de 2 s
@@ -2462,6 +2462,7 @@ const DICA = { volume: t('Volume'), velocidade: t('Velocidade e curva'), intensi
   texto: t('Texto solto ou modelo'), 'texto-novo': t('Texto novo na agulha'), modelos: t('Dois ou três textos de uma vez, em fontes misturadas'),
   'texto-editar': t('Texto, fonte, cor, tamanho, contorno, curva e altura'),
   atras: t('No vídeo final, a camada passa atrás da pessoa'), 'texto-segue': t('No vídeo final, o texto anda junto com a pessoa'),
+  'leg-oculta': t('No vídeo final, a legenda some enquanto este texto está na tela'),
   'leg-texto': t('Fonte, cor, tamanho e contorno de todas as frases'), 'leg-segue': t('No vídeo final, a legenda anda junto com a pessoa'),
   'leg-posicao': t('O lugar de cada frase da legenda'), 'leg-original': t('A legenda como o agente fez'),
   selecionar: t('Escolhe o vídeo todo (imagem, som, legenda e efeitos juntos); no computador, arrastar no vão escolhe um trecho'),
@@ -2491,7 +2492,9 @@ function renderToolbar() {
   const zsel = !lsel && !fsel && !isel && !csel && S.view === 'final' && S.zoomDraft && S.zoomSel >= 0;
   const lgsel = !lsel && !fsel && !isel && !csel && !zsel && S.view === 'final' && S.legSel && !!S.legenda;
   const bsel = !lsel && !fsel && !isel && !csel && !zsel && !lgsel && S.view === 'final' && S.faixa ? S.faixa : null;
-  const algum = !!(sel || lsel || fsel || isel || csel || zsel || lgsel || bsel);
+  if (sel || lsel || fsel) S.todas = false; // escolheu outra coisa: sai de todas as tomadas
+  const tsel = !lsel && !fsel && !sel && todasAtivas(); // Ctrl+A na vista Corte: todas as tomadas
+  const algum = !!(sel || lsel || fsel || isel || csel || zsel || lgsel || bsel || tsel);
   if (algum) { S.audioMenu = false; S.importMenu = false; S.fxMenu = false; S.textMenu = false; }
   const amenu = S.audioMenu, imenu = S.importMenu, fmenu = S.fxMenu, tmenu = S.textMenu;
   tb.classList.toggle('hidden', !!(algum || amenu || imenu || fmenu || tmenu));
@@ -2625,6 +2628,7 @@ function renderToolbar() {
       tool(ctx, 'texto-editar', t('Editar'), { icon: ICON.texto });
       tool(ctx, 'atras', t('Atrás da pessoa'), { icon: ICON.pessoa, on: lsel.it.atras });
       tool(ctx, 'texto-segue', t('Acompanhar'), { icon: ICON.alvo, on: lsel.it.acompanhar });
+      if (temLegenda()) tool(ctx, 'leg-oculta', t('Esconder a legenda'), { icon: ICON.legenda, on: ocultaLegenda(lsel.it) });
     }
     if (lsel.f.tipo === 'imagem' && ehVideoArq(lsel.it.arquivo)) {
       tool(ctx, 'recortar', t('Recortar'), { on: !!lsel.it.recorte });
@@ -2656,6 +2660,14 @@ function renderToolbar() {
     const outras = outrasVezes(sel).length;
     tool(ctx, 'lugar-repetir', outras ? t('Repetir ({outras})', { outras }) : t('Repetir'), { icon: ICON.formato, disabled: !outras });
     tool(ctx, 'lugar-original', t('Original'), { icon: ICON.original, disabled: !sel.troca });
+    return;
+  }
+  if (tsel) { // todas as tomadas: o que vale para todas de uma vez
+    const v0 = S.draft[0].vel, mesma = S.draft.every((r) => r.vel === v0 && !r.curva);
+    const vol0 = S.draft[0].vol, mesmoVol = S.draft.every((r) => r.vol === vol0);
+    tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
+    tool(ctx, 'velocidade', mesma ? fmtVel(v0) : t('Velocidade'));
+    tool(ctx, 'volume', mesmoVol ? `${Math.round(vol0 * 100)}%` : t('Volume'));
     return;
   }
   if (sel) {
@@ -2734,6 +2746,7 @@ document.addEventListener('click', (e) => {
     case 'recortar': if (S.layerSel) recortaImagemSel(); else recortaTomadaSel(); break;
     case 'enq-original': { const r = S.draft[S.selected]; if (r && r.enq) { remember(); r.enq = null; enqSig = '-'; syncLayers(); renderTimeline(); renderToolbar(); refreshHeader(); } break; }
     case 'texto-segue': textoLiga('acompanhar'); break;
+    case 'leg-oculta': legendaOcultaLiga(); break;
     case 'leg-texto': openLegendaTexto(); break;
     case 'leg-segue': legendaSegue(); break;
     case 'leg-posicao': soltaEscolha(); enterPosMode(); break;
@@ -2787,7 +2800,7 @@ document.addEventListener('click', (e) => {
 
 function soltaEscolha() {
   S.selected = -1; S.layerSel = null; S.fxSel = null; S.insSel = -1; S.cenaSel = -1; S.zoomSel = -1; S.legSel = false;
-  S.faixa = null;
+  S.faixa = null; S.todas = false;
   S.audioMenu = false; S.importMenu = false; S.fxMenu = false; S.textMenu = false;
   renderTimeline(); renderToolbar(); drawCenaBox();
 }
@@ -5188,7 +5201,7 @@ $('btnPronto').addEventListener('click', () => pronto());
 // com o agente trabalhando num Pronto, a barra de cima diz isso no lugar da mensagem dele
 function mostraAgente() {
   if (S.agenteTrabalhando) {
-    $('agentMsg').textContent = t('O agente está trabalhando: espere ele terminar para mexer no corte.');
+    $('agentMsg').textContent = t('O agente está trabalhando: espere ele terminar para salvar.');
   } else if (S.state) {
     $('agentMsg').textContent = avisoNoIdioma(S.state.message, S.state.messageKey, S.state.messageVals);
   }
@@ -5305,7 +5318,9 @@ const TRAB_TEXTO = { comecando: () => t('Começando'), conferindo: () => t('Conf
   fase2: () => t('Levando a legenda e os efeitos do vídeo final'),
   voz: () => t('Pondo a voz melhorada de volta'), preparando: () => t('Preparando o vídeo'),
   som: () => t('Montando o som'), velocidade: () => t('Aplicando a velocidade'),
-  montagem: () => t('Montando o vídeo'), batida: () => t('Conferindo as trocas na batida') };
+  montagem: () => t('Montando o vídeo'), batida: () => t('Conferindo as trocas na batida'),
+  // outro render no computador (outra conversa, outro projeto): um por vez, para não travar (helpers/vez.py)
+  esperando: () => t('Esperando outro render terminar') };
 const TRAB = {
   corte: { ico: 'corte', nome: () => t('Refazendo o corte'), feito: () => t('Corte refeito'),
     falhou: () => t('O corte não foi refeito; o de antes continua.') },
@@ -6729,6 +6744,22 @@ function textoLiga(k) {
   renderTimeline(); renderToolbar(); refreshHeader();
 }
 
+// a legenda some no vídeo final enquanto o texto está na tela: o que a pessoa escolheu ou, sem escolha,
+// do tamanho padrão para cima (helpers/camadas.py, oculta_legenda: as duas contas têm de bater)
+const TAMANHO_DESTAQUE = 1.0;
+const ocultaLegenda = (it) => (it.ocultaLegenda != null ? !!it.ocultaLegenda
+  : (+((it.estilo || {}).tamanho ?? 1)) >= TAMANHO_DESTAQUE);
+const temLegenda = () => S.captions.length > 0 || !!(S.editData && S.editData.captions && S.editData.captions.enabled);
+function legendaOcultaLiga() {
+  const hit = camItem(S.layerSel);
+  if (!hit || hit.f.tipo !== 'texto') return;
+  remember();
+  hit.it.ocultaLegenda = !ocultaLegenda(hit.it);
+  toast(hit.it.ocultaLegenda ? t('No vídeo final a legenda some enquanto este texto está na tela')
+    : t('A legenda continua aparecendo junto com este texto'), 2800);
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+
 // o rosto rastreado no corte (rastreio.json, ao lado do edit-data): a prévia de "Acompanhar"
 async function loadRastreio() {
   S.rastreio = null;
@@ -7214,6 +7245,8 @@ let volBefore = null;
 function volAlvo() {
   const hit = S.layerSel ? camItem(S.layerSel) : null;
   if (hit) return { max: 200, nome: t('Volume da camada'), get: () => hit.it.volume, set: (v) => { hit.it.volume = v; } };
+  if (todasAtivas()) return { max: 400, nome: t('Volume de todas as tomadas'), get: () => S.draft[0].vol,
+    set: (v) => { for (const x of S.draft) x.vol = v; }, tomada: S.draft[0] };
   const r = S.selected >= 0 && S.view === 'corte' ? S.draft[S.selected] : null;
   if (r) return { max: 400, nome: t('Volume da tomada'), get: () => r.vol, set: (v) => { r.vol = v; }, tomada: r };
   return null;
@@ -7265,9 +7298,16 @@ const VEL_MARCAS = [0.5, 1, 1.5, 2];
 const fmtVel = (v) => `${String(+v.toFixed(2)).replace('.', ',')}×`;
 const fmtSeg = (t) => `${t.toFixed(1).replace('.', ',')} s`;
 let velBefore = null;
-function velTomada() { return S.selected >= 0 && S.view === 'corte' ? S.draft[S.selected] : null; }
+function velTomada() { return todasAtivas() ? S.draft[0] : S.selected >= 0 && S.view === 'corte' ? S.draft[S.selected] : null; }
 function velMostrar(r) {
   $('velVal').textContent = r.curva ? nomeCurva(r.curva.nome) : fmtVel(r.vel);
+  if (todasAtivas()) { // o vídeo inteiro: a soma de todas
+    const dl = draftLayout();
+    const antes = S.draft.reduce((s, x, k) => s + x.end - x.start - ((dl[k] && dl[k].leadSrc) || 0) - ((dl[k] && dl[k].tailSrc) || 0), 0);
+    const depois = dl.reduce((s, x) => s + x.dur, 0);
+    $('velDur').textContent = r.vel === 1 ? t('Duração: {p0}', { p0: fmtSeg(antes) }) : t('Duração: {p0} → {p1}', { p0: fmtSeg(antes), p1: fmtSeg(depois) });
+    return;
+  }
   const d = draftLayout()[S.selected];
   const orig = d ? r.end - r.start - (d.leadSrc || 0) - (d.tailSrc || 0) : 0; // o trecho da gravação que aparece, a 1×
   const igual = r.vel === 1 && !r.curva;
@@ -7278,7 +7318,8 @@ function openVelocidade() {
   if (!r) return;
   video.pause();
   velBefore = snap();
-  const d = draftLayout()[S.selected];
+  const d = todasAtivas() ? { out: 0 } : draftLayout()[S.selected];
+  $('velModos').hidden = todasAtivas(); // a curva é de uma tomada só
   S.t = d.out; // a agulha no começo da tomada: ele não anda quando a tomada estica
   positionTimeline();
   preciseSeek();
@@ -7296,6 +7337,7 @@ $('velRange').addEventListener('input', () => {
   const marca = VEL_MARCAS.find((m) => Math.abs(Math.log2(m) - p) < 0.06); // perto de uma marca: encosta nela
   r.vel = marca || +Math.pow(2, p).toFixed(2);
   r.curva = null; // velocidade normal e curva não convivem
+  if (todasAtivas()) for (const x of S.draft) { x.vel = r.vel; x.curva = null; }
   velMostrar(r);
   velDesenhar();
   if (!G.velQueued) {
@@ -7306,6 +7348,7 @@ $('velRange').addEventListener('input', () => {
 $('velOk').addEventListener('click', () => {
   if (VF.on) { fechaVelFaixa(); return; }
   showSheet($('velSheet'), false);
+  $('velModos').hidden = false;
   if (velBefore && velBefore.draft.some((r, k) => S.draft[k] && (r.vel !== S.draft[k].vel || curvaKey(r) !== curvaKey(S.draft[k])))) remember(velBefore);
   velBefore = null;
   renderTimeline(); renderToolbar(); refreshHeader();
@@ -7390,7 +7433,17 @@ function escolheFaixa(a, b) {
   const lo = Math.max(0, noQuadro(Math.min(a, b))), hi = Math.min(fimFinal(), noQuadro(Math.max(a, b)));
   S.faixa = hi - lo >= VEL_MIN_FAIXA ? { a: lo, b: hi } : null;
 }
+// Ctrl+A na vista Corte: todas as tomadas (Velocidade e Volume valem para todas). Vale enquanto nada
+// mais está escolhido; tocar numa tomada ou em Voltar sai.
+function todasAtivas() { return !!S.todas && S.view === 'corte' && S.selected < 0 && !S.layerSel && !S.fxSel && S.draft.length > 0; }
 function selecionaTudo() {
+  if (S.view === 'corte' && S.draft.length) {
+    soltaEscolha();
+    S.todas = true;
+    renderTimeline(); renderToolbar();
+    flashName(`<span>${t('Todas as tomadas escolhidas: Velocidade e Volume valem para todas')}</span>`, 2600);
+    return;
+  }
   if (!hasFinal()) { toast(t('A seleção de tudo é no vídeo final, que ainda não existe'), 2600); return; }
   if (S.view !== 'final') switchView('final');
   soltaEscolha();

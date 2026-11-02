@@ -44,6 +44,7 @@ import {CATALOGO, carregarFontesUsadas, familiaCss, useFontesProntas} from './fo
 import {CamadasTexto, rostoNaTela, type Texto} from './CamadasTexto';
 import {Cenas} from './cenas';
 import {Graficos} from './graficos';
+import {semAsOcultas, vazia} from './legendaOculta';
 import type {Cena} from './cenas/comum';
 
 const POPPINS = loadFont('normal', {weights: ['400', '600', '900']});
@@ -337,6 +338,12 @@ function buildLines(caps: Caption[], maxWords: number): Caption[][] {
   const lines: Caption[][] = [];
   let cur: Caption[] = [];
   for (const w of caps) {
+    if (vazia(w)) { // an empty item holds the screen with nothing (legendaOculta.ts): a line of its own
+      if (cur.length) lines.push(cur);
+      lines.push([w]);
+      cur = [];
+      continue;
+    }
     cur.push(w);
     if (cur.length >= maxWords || isBreak(w.text)) {
       lines.push(cur);
@@ -346,7 +353,8 @@ function buildLines(caps: Caption[], maxWords: number): Caption[][] {
   if (cur.length) lines.push(cur);
   return lines;
 }
-const LINES = buildLines(captions as Caption[], D.captions.maxWords);
+// LEGENDA_OCULTA: the caption steps aside where a highlighted text is on screen (legendaOculta.ts)
+const LINES = buildLines(semAsOcultas(captions as Caption[]), D.captions.maxWords);
 
 const Word: React.FC<{caption: Caption; lineFromFrame: number}> = ({caption, lineFromFrame}) => {
   const frame = useCurrentFrame();

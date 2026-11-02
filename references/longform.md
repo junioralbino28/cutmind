@@ -81,7 +81,7 @@ the four layers — graphics **punctuate, they don't saturate**:
 Reuse short-form extras sparingly if a moment calls for it (dynamic camera,
 behind-the-subject, SFX) — longform ≠ Reel density. Verify with ONE
 `contact_sheet.py` over the graphic moments, render
-`npx remotion render Longform out/render.mp4`, loudnorm → `edit/final.mp4`. On Windows, with the project in
+`uv run python -X utf8 helpers/vez.py --edit <edit> --cwd <edit>/remotion -- npx remotion render Longform out/render.mp4` (one render at a time, low priority: shortform.md, Render), loudnorm → `edit/final.mp4`. On Windows, with the project in
 a deep folder, add what `helpers/aquecer_navegador.py <edit>/remotion --flags` prints (shortform.md, scaffold).
 
 Never edit `src/Main.tsx` — it's data-driven; the JSON is the edit.

@@ -30,6 +30,7 @@ import cues from '../public/caption-cues.json';
 import editData from '../public/edit-data.json';
 import {PencilOutline} from './PencilOutline';
 import {seamAt, spotCentre, spotFor} from './captionPlace';
+import {tocaOculta} from './legendaOculta';
 
 const poppins = loadPoppins('normal', {weights: ['400', '700', '800', '900']});
 loadPoppins('italic', {weights: ['700', '900']});
@@ -297,7 +298,8 @@ const Cue: React.FC<{cue: CueData; cueDurationFrames: number; fromFrame: number}
 
 export const StackedCaptions: React.FC = () => {
   const {fps, durationInFrames} = useVideoConfig();
-  const CUES = cues as unknown as CueData[];
+  // a cue that touches a stretch where the caption steps aside is not drawn (legendaOculta.ts)
+  const CUES = (cues as unknown as CueData[]).filter((c) => !tocaOculta(c.startMs, c.endMs));
   return (
     <AbsoluteFill>
       {CUES.map((cue) => {

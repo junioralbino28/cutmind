@@ -682,7 +682,7 @@ def test_renderizar_so_o_remotion_um_quadro_por_vez(tmp_path, monkeypatch):
     class Feito:
         returncode = 0
 
-    monkeypatch.setattr(m.subprocess, "run", lambda cmd, cwd=None: cmds.append(cmd) or Feito())
+    monkeypatch.setattr(m.subprocess, "run", lambda cmd, cwd=None, **kw: cmds.append(cmd) or Feito())
     m.renderizar(tmp_path, concorrencia=1, so_remotion=True)
     assert passos == ["mixar_final.py"] and cmds[0][-1] == "--concurrency=1"  # o cut.mp4 fica
     passos.clear()

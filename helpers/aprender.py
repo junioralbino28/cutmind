@@ -141,32 +141,72 @@ def _itens(c: dict | None, tipo: str) -> dict:
     return {it["id"]: it for f in (c or {}).get("faixas") or [] if f.get("tipo") == tipo for it in f.get("itens") or []}
 
 
+# ligar e desligar o que vale no vídeo final (atrás da pessoa, acompanhar, esconder a legenda)
+_LIGA = ("atras", "acompanhar", "ocultaLegenda")
+
+
+def _tempo(x: dict, y: dict, assunto: str, onde: str) -> list[dict]:
+    """A camada mudou de lugar ou de tamanho NO TEMPO (começo e duração, em s), não só na tela."""
+    de = [_r(x.get("inicio", 0), 2), _r(x.get("duracao", 0), 2)]
+    para = [_r(y.get("inicio", 0), 2), _r(y.get("duracao", 0), 2)]
+    if max(abs(float(p) - float(d)) for d, p in zip(de, para)) < 0.05:  # menos de 50 ms: arredondamento
+        return []
+    return [_mud(assunto, f"{assunto}_tempo", de, para, onde)]
+
+
+def _liga(x: dict, y: dict, assunto: str, onde: str) -> list[dict]:
+    return [_mud(assunto, f"{assunto}_{k}", x.get(k), y.get(k), onde) for k in _LIGA if x.get(k) != y.get(k)]
+
+
 def _camadas(a: dict | None, b: dict | None) -> list[dict]:
     out: list[dict] = []
     ta, tb = _itens(a, "texto"), _itens(b, "texto")
     for iid, t in tb.items():
+        onde = t.get("texto", "")[:40]
         if iid not in ta:
-            out.append(_mud("texto", "texto_novo", None, {"estilo": t.get("estilo") or {}, "x": t.get("x"), "y": t.get("y")}, t.get("texto", "")[:40]))
+            out.append(_mud("texto", "texto_novo", None, {"estilo": t.get("estilo") or {}, "x": t.get("x"), "y": t.get("y")}, onde))
             continue
         ea, eb = ta[iid].get("estilo") or {}, t.get("estilo") or {}
         for k in sorted(set(ea) | set(eb)):
             if ea.get(k) != eb.get(k):
-                out.append(_mud("texto", f"texto_{k}", ea.get(k), eb.get(k), t.get("texto", "")[:40]))
+                out.append(_mud("texto", f"texto_{k}", ea.get(k), eb.get(k), onde))
         if (ta[iid].get("x"), ta[iid].get("y")) != (t.get("x"), t.get("y")):
-            out.append(_mud("texto", "texto_lugar", [ta[iid].get("x"), ta[iid].get("y")], [t.get("x"), t.get("y")], t.get("texto", "")[:40]))
+            out.append(_mud("texto", "texto_lugar", [ta[iid].get("x"), ta[iid].get("y")], [t.get("x"), t.get("y")], onde))
+        out += _liga(ta[iid], t, "texto", onde) + _tempo(ta[iid], t, "texto", onde)
     for iid in ta.keys() - tb.keys():
         out.append(_mud("texto", "texto_apagado", ta[iid].get("texto", "")[:40], None))
     ia, ib = _itens(a, "imagem"), _itens(b, "imagem")
     for iid, it in ib.items():
-        x = ia.get(iid) or {}
+        onde = it.get("arquivo", "")
+        if iid not in ia:
+            out.append(_mud("imagem", "imagem_nova", None, {k: it.get(k) for k in ("largura", "x", "y", "atras") if k in it}, onde))
+            continue
+        x = ia[iid]
         for k in ("largura", "x", "y", "recorte", "volume"):
-            if x.get(k) != it.get(k) and iid in ia:
-                out.append(_mud("imagem", f"imagem_{k}", x.get(k), it.get(k), it.get("arquivo", "")))
+            if x.get(k) != it.get(k):
+                out.append(_mud("imagem", f"imagem_{k}", x.get(k), it.get(k), onde))
+        out += _liga(x, it, "imagem", onde) + _tempo(x, it, "imagem", onde)
+    for iid in ia.keys() - ib.keys():
+        out.append(_mud("imagem", "imagem_apagada", ia[iid].get("arquivo", ""), None))
     aa, ab = _itens(a, "audio"), _itens(b, "audio")
     for iid, it in ab.items():
         x = aa.get(iid)
-        if it.get("trilha") and (not x or x.get("volume") != it.get("volume")):
-            out.append(_mud("trilha", "trilha_volume", x and x.get("volume"), it.get("volume"), it.get("trilha")))
+        if it.get("trilha"):
+            if not x or x.get("volume") != it.get("volume"):
+                out.append(_mud("trilha", "trilha_volume", x and x.get("volume"), it.get("volume"), it.get("trilha")))
+            if x:
+                out += _tempo(x, it, "trilha", it.get("trilha"))
+            continue
+        onde = it.get("arquivo", "")  # um som posto à mão (efeito sonoro, voz gravada)
+        if not x:
+            out.append(_mud("trilha", "som_novo", None, {"volume": it.get("volume"), "inicio": _r(it.get("inicio", 0), 2)}, onde))
+            continue
+        if x.get("volume") != it.get("volume"):
+            out.append(_mud("trilha", "som_volume", x.get("volume"), it.get("volume"), onde))
+        out += _tempo(x, it, "trilha", onde)
+    for iid in aa.keys() - ab.keys():
+        x = aa[iid]  # a trilha APAGADA (antes só o volume contava: apagar não aparecia)
+        out.append(_mud("trilha", "trilha_apagada" if x.get("trilha") else "som_apagado", x.get("trilha") or x.get("arquivo"), None))
     return out
 
 

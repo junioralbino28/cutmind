@@ -28,6 +28,7 @@ import {measureText} from '@remotion/layout-utils';
 import captions from '../public/captions.json';
 import editData from '../public/edit-data.json';
 import {seamAt, spotCentre, spotFor} from './captionPlace';
+import {semAsOcultas, vazia} from './legendaOculta';
 
 const {fontFamily} = loadFont('normal', {weights: ['400', '600']});
 loadFont('italic', {weights: ['400', '600']});
@@ -77,6 +78,12 @@ function buildCues(words: Word[]): Cue[] {
   const groups: Word[][] = [];
   let cur: Word[] = [];
   words.forEach((w, i) => {
+    if (vazia(w)) { // an empty item holds the screen with nothing (legendaOculta.ts): a cue of its own
+      if (cur.length) groups.push(cur);
+      groups.push([w]);
+      cur = [];
+      return;
+    }
     cur.push(w);
     const next = words[i + 1];
     const gap = next ? next.startMs - w.endMs : Infinity;
@@ -151,7 +158,7 @@ function buildCues(words: Word[]): Cue[] {
   });
 }
 
-const CUES = buildCues(captions as Word[]);
+const CUES = buildCues(semAsOcultas(captions as Word[]));
 
 const ENTER = 7; // frames — fade + drop
 const HI_ENTER = 10; // frames — blur resolve

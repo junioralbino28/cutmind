@@ -154,6 +154,7 @@ ED = {"durationSec": 20.0,
                 {"tipo": "corteZoom", "at": 1.0},
                 {"tipo": "capa", "start": 12.0, "end": 15.0}],
       "captions": {"enabled": True, "windows": [{"start": 10.0, "end": 20.0, "paddingBottom": 900}],
+                   "ocultar": [{"start": 12.0, "end": 13.0}, {"start": 0.5, "end": 1.5}],
                    "positions": {"all": None, "phrases": [{"at": 1.0, "x": 0.5, "y": 0.3}, {"at": 12.0, "x": 0.5, "y": 0.4}]}},
       "camera": {"zooms": [1.1, 1.3]}}
 
@@ -170,6 +171,7 @@ def test_fase2_leva_blocos_efeitos_e_instantes():
     assert [c["tipo"] for c in novo["cenas"]] == ["vidro", "capa"] and novo["cenas"][1]["start"] == 10.0
     assert novo["hook"]["endSec"] == 2.0
     assert novo["captions"]["windows"] == [{"start": 8.0, "end": 18.0, "paddingBottom": 900}]
+    assert novo["captions"]["ocultar"] == [{"start": 10.0, "end": 11.0}]  # o do trecho tirado sai
     assert [p["at"] for p in novo["captions"]["positions"]["phrases"]] == [0.0, 10.0]
     assert novo["camera"]["zooms"] == [1.1, 1.3]
     assert {(f["item"], f["nome"]) for f in fora} == {("insert", "b.png"), ("cena", "corteZoom")}

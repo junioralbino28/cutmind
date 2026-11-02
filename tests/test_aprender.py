@@ -142,3 +142,21 @@ def test_o_agente_guarda_ao_terminar_e_ve_o_que_a_pessoa_mudou_ao_comecar(edit, 
     r = _agente(edit, "livre", casa)
     assert "entrega 2 guardada" in r.stdout
     assert aprender.diferenca(edit) == []
+
+
+def test_a_diferenca_ve_atras_tempo_e_o_que_foi_apagado(edit):
+    """Edição real de 01/11: o texto que a pessoa passou para atrás de si, a trilha que ela APAGOU e as
+    camadas que ela mudou no tempo não apareciam na diferença, e não viravam aprendizado."""
+    aprender.guardar(edit)
+    c = json.loads(json.dumps(CAMADAS))
+    t = c["faixas"][0]["itens"][0]
+    t["atras"], t["inicio"] = True, 1.6
+    c["faixas"][1]["itens"] = []  # a trilha apagada
+    c["faixas"].append({"id": "a2", "tipo": "audio", "itens": [{"id": "a2-1", "arquivo": "midia/sfx-whoosh.mp3", "inicio": 3.0,
+                                                                "duracao": 0.5, "corte": 0, "volume": 0.67}]})
+    _grava(edit / "camadas.json", c)
+    mud = {(m["assunto"], m["chave"]): m for m in aprender.diferenca(edit)}
+    assert (mud[("texto", "texto_atras")]["de"], mud[("texto", "texto_atras")]["para"]) == (None, True)
+    assert mud[("texto", "texto_tempo")]["para"] == [1.6, 2.0]
+    assert mud[("trilha", "trilha_apagada")]["de"] == "lofi-1"
+    assert mud[("trilha", "som_novo")]["para"] == {"volume": 0.67, "inicio": 3.0}

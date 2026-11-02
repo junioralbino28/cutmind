@@ -43,6 +43,7 @@ from PIL import Image
 import aquecer_navegador  # mesma pasta deste arquivo
 import efeitos as ef  # mesma pasta deste arquivo
 import pacotes as pk  # mesma pasta deste arquivo
+import vez  # mesma pasta deste arquivo
 
 KIT = Path(__file__).resolve().parent.parent
 MOTOR = KIT / "assets" / "efeitos"
@@ -173,8 +174,9 @@ class Leitor:
 
 
 def _node(*args: str, projeto: Path) -> None:
-    r = subprocess.run(["node", str(NODE), *args], cwd=projeto, capture_output=True, text=True,
-                       encoding="utf-8", errors="replace", env={**os.environ, **aquecer_navegador.ambiente(projeto)})
+    with vez.vez(Path(projeto).parent, "os filtros e as transições") as v:  # um por vez, prioridade baixa
+        r = subprocess.run(["node", str(NODE), *args], cwd=projeto, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", env=v.env(aquecer_navegador.ambiente(projeto)), **v.criar)
     if r.returncode != 0:
         # o motivo inteiro vai para o registro (do trabalho, no Gerar do editor); a tela recebe uma frase
         print((r.stderr or r.stdout or "").strip()[-4000:], flush=True)

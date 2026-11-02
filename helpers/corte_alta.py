@@ -33,6 +33,8 @@ from pathlib import Path
 
 import numpy as np
 
+import vez  # mesma pasta deste arquivo
+
 HELPERS = Path(__file__).resolve().parent
 SAIDA = 1080  # o lado menor da saída vertical
 LADO_ALTO = 3840
@@ -149,8 +151,10 @@ def renderizar(edit: Path) -> Path:
     saida = edit / ARQUIVO
     tmp = edit / f".{ARQUIVO}.tmp.mp4"
     try:
-        subprocess.run([sys.executable, "-X", "utf8", str(HELPERS / "render.py"), str(pasta / "edl.json"), "-o", str(tmp),
-                        "--como-antes", "--no-subtitles", "--no-loudnorm", "--lado-maior", str(LADO_ALTO)], check=True)
+        with vez.vez(edit, "o corte em 4K") as v:  # um por vez, prioridade baixa, temporário próprio
+            subprocess.run([sys.executable, "-X", "utf8", str(HELPERS / "render.py"), str(pasta / "edl.json"), "-o", str(tmp),
+                            "--como-antes", "--no-subtitles", "--no-loudnorm", "--lado-maior", str(LADO_ALTO)],
+                           check=True, env=v.env(), **v.criar)
         tmp.replace(saida)
     finally:
         tmp.unlink(missing_ok=True)

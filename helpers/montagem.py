@@ -104,6 +104,7 @@ import pendente as pend
 import render
 import sonda
 import tempo
+import vez
 
 AQUI = Path(__file__).resolve().parent
 TEMPLATE = AQUI.parent / "assets" / "shortform"  # o modelo de Reels da Fase 2 (o Remotion)
@@ -1040,7 +1041,9 @@ def renderizar(edit: Path, concorrencia: int | None = None, so_remotion: bool = 
     cli = rem / "node_modules" / "@remotion" / "cli" / "remotion-cli.js"
     cmd = ["node", str(cli), "render", "Reels", "out/render.mp4"] + ([f"--concurrency={concorrencia}"] if concorrencia else []) \
         + aquecer_navegador.flags(rem)
-    if subprocess.run(cmd, cwd=rem).returncode != 0:
+    with vez.vez(edit, "o render da montagem") as vz:  # um por vez, prioridade baixa, temporário próprio
+        falhou = subprocess.run(cmd, cwd=rem, env=vz.env(), **vz.criar).returncode != 0
+    if falhou:
         raise ErroMontagem("o render do Remotion falhou (a saída dele está acima)")
     _passo([str(AQUI / "mixar_final.py"), str(edit), "--render", str(rem / "out" / "render.mp4")])
 

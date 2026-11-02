@@ -278,13 +278,16 @@ def fase2(ed: dict, levar: Levar, total: float, origem: list[int | None], n_velh
         h["endSec"] = _r(r[1]) if r else _r(min(float(h["endSec"]), total))
     cap = novo.get("captions")
     if isinstance(cap, dict):
-        if isinstance(cap.get("windows"), list):
+        # os lugares da legenda e os trechos em que ela some (o do agente e o dos textos, que o Baixar refaz)
+        for chave in ("windows", "ocultar", "ocultarTextos"):
+            if not isinstance(cap.get(chave), list):
+                continue
             ws = []
-            for w in cap["windows"]:
+            for w in cap[chave]:
                 j = _janela(levar, float(w.get("start", 0)), float(w.get("end", 0)) - float(w.get("start", 0)), total)
                 if j is not None:
                     ws.append({**w, "start": _r(j[0]), "end": _r(j[0] + j[1])})
-            cap["windows"] = ws
+            cap[chave] = ws
         pos = cap.get("positions")
         if isinstance(pos, dict) and isinstance(pos.get("phrases"), list):
             ph = []

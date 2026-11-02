@@ -208,8 +208,13 @@ when the user reopens Posição), clear `awaitingStyle`, delete `preview_style.j
 4. **Verify with stills, batched:** `npx remotion still Reels --frame=<n> f.png`
    for the hook still (user approval), then ONE contact sheet for spot checks:
    `contact_sheet.py <render> --times t1 t2 t3 -o sheet.png` — one image, not N.
-5. **Render:** `npx remotion render Reels out/render.mp4`, then loudnorm →
-   `edit/final.mp4` (see Phase 3).
+5. **Render:** `uv run python -X utf8 helpers/vez.py --edit <edit> --cwd <edit>/remotion -- npx remotion render Reels out/render.mp4`,
+   then loudnorm → `edit/final.mp4` (see Phase 3). `vez.py` is the kit's
+   render etiquette, never skip it: ONE heavy render at a time on the computer (a second conversation
+   waits for the first), low priority (the user's mouse and programs come first), a temp folder of its
+   own deleted at the end (Remotion copies the whole `public/` there, 3 GB on a real project, and the
+   copies used to pile up), and your `agente.py trabalhando` mark renewed while it runs. Two renders at
+   once froze a 4-core, 16 GB computer for the whole render.
 
 Never edit `src/Main.tsx`. Bespoke graphics go in `src/CustomGraphics.tsx`
 (the ONE editable file — read it only when the video needs a custom graphic).
@@ -494,6 +499,11 @@ Two consequences of the frame never being split, both easy to miss:
   layout (738 / ~920 for a seam that does not exist here). Under `limpa` the
   headline places against the frame, not a seam — start from the template default
   and render one still, rather than carrying a split value over.
+- **The caption steps aside for a highlighted text.** `captions.ocultar` (yours) and `captions.ocultarTextos`
+  (written by `camadas_edit_data.py` from the text layers, see `leg-oculta` in `pelo-chat.md`) are
+  `[{start, end}]` in seconds: the words spoken there are not drawn and the line before them closes,
+  in every caption style. Windows under 0.6 s apart become one. Do NOT delete words from
+  `captions.json` for this: the karaoke would hold the previous line on screen until the next one.
 - **`captions.windows` has nothing to dodge.** Those entries only exist to move
   the caption off a split seam. Leave the array empty; a stale window from a
   previous render shoves the caption up for no reason.

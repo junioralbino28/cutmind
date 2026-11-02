@@ -48,6 +48,7 @@ MARCA_RECORTE = "INSERT_RECORTE"  # ... e que desenha só o pedaço recortado de
 MARCA_VIDEO = "INSERT_VIDEO"  # ... e que desenha o vídeo posto por cima
 MARCA_ENQUADRE = "ENQUADRE_TOMADA"  # ... e que põe a gravação no lugar e no tamanho de cada tomada
 MARCA_ATRAS_LIVRE = "ATRAS_LIVRE"  # ... e que põe a imagem atrás da pessoa no lugar e no tamanho dela
+MARCA_LEGENDA_OCULTA = "LEGENDA_OCULTA"  # ... e que esconde a legenda enquanto um texto em destaque aparece
 
 
 class TemplateVelho(RuntimeError):
@@ -263,6 +264,17 @@ def aplicar(edit: Path, edit_data: Path | None = None, recortar: bool = True) ->
     textos = _textos(ed_p.parent, d, camadas, rec)
     if textos or "textos" in d:
         d["textos"] = textos
+    cap = d.get("captions")
+    if isinstance(cap, dict):  # a legenda some enquanto um texto em destaque está na tela
+        ocultas = cam.janelas_sem_legenda(camadas)
+        # o padrão (ligado nos textos grandes) não trava um projeto de kit anterior, que segue como era;
+        # só quem ligou à mão é avisado de que o vídeo sairia diferente do que escolheu
+        pediu = any(it.get("ocultaLegenda") is True for it in cam.textos(camadas))
+        if pediu and cap.get("enabled") and template_sem(ed_p, MARCA_LEGENDA_OCULTA):
+            raise TemplateVelho(f"o template deste projeto é de um kit anterior e não esconde a legenda enquanto o "
+                                f"texto em destaque aparece: rode `atualizar_template.py {edit}` e depois este de novo")
+        if ocultas or "ocultarTextos" in cap:
+            cap["ocultarTextos"] = ocultas
     tmp = ed_p.with_suffix(".tmp")
     tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(ed_p)

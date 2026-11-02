@@ -55,6 +55,10 @@ MAX_FAIXAS = 40
 MAX_ITENS = 200
 MAX_T = 6 * 3600.0
 MAX_TEXTO = 400
+# do tamanho padrão do texto (96 px) para cima ele é destaque: a legenda some enquanto ele está na tela,
+# a não ser que a pessoa desligue (`ocultaLegenda: false` no item)
+TAMANHO_DESTAQUE = 1.0
+VAO_LEGENDA = 0.6  # dois trechos sem legenda a menos que isso viram um: a legenda não pisca entre eles
 MAX_NOME = 40
 
 _ID = re.compile(r"[A-Za-z0-9_-]{1,40}")
@@ -192,6 +196,8 @@ def _item_texto(it: dict, iid: str) -> dict:
            "atras": bool(it.get("atras", False)),
            "acompanhar": bool(it.get("acompanhar", False)),
            "curva": _num(it.get("curva", 0), "curva", -100, 100)}
+    if it.get("ocultaLegenda") is not None:  # sem ele, vale o padrão pelo tamanho (oculta_legenda)
+        out["ocultaLegenda"] = bool(it["ocultaLegenda"])
     nome = it.get("nome")
     if nome is not None:  # o texto de um modelo de montagem ("Título"): o painel mostra
         if not isinstance(nome, str) or not nome.strip() or len(nome) > MAX_NOME or any(ord(ch) < 32 for ch in nome):
@@ -304,6 +310,27 @@ def aparecem(camadas: dict) -> list[dict]:
     """Os itens de imagem (e os vídeos postos por cima) que entram no vídeo: de faixa que não está escondida."""
     return [{**it, "faixa": f["id"]} for f in camadas["faixas"]
             if f["tipo"] == "imagem" and not f["oculto"] for it in f["itens"]]
+
+
+def oculta_legenda(it: dict) -> bool:
+    """A legenda some enquanto este texto está na tela: o que a pessoa escolheu ou, sem escolha, o
+    padrão (texto do tamanho padrão para cima)."""
+    if it.get("ocultaLegenda") is not None:
+        return bool(it["ocultaLegenda"])
+    return float((it.get("estilo") or {}).get("tamanho", 1.0)) >= TAMANHO_DESTAQUE
+
+
+def janelas_sem_legenda(camadas: dict) -> list[dict]:
+    """Os trechos (s, no relógio do corte) em que a legenda some: os dos textos que a escondem, com os
+    vizinhos a menos de VAO_LEGENDA juntos."""
+    js = sorted((it["inicio"], it["inicio"] + it["duracao"]) for it in textos(camadas) if oculta_legenda(it))
+    out: list[list[float]] = []
+    for a, b in js:
+        if out and a - out[-1][1] < VAO_LEGENDA:
+            out[-1][1] = max(out[-1][1], b)
+        else:
+            out.append([a, b])
+    return [{"start": round(a, 3), "end": round(b, 3)} for a, b in out]
 
 
 def textos(camadas: dict) -> list[dict]:

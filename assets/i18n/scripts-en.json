@@ -294,7 +294,7 @@
  "vídeo final: {e}": "final video: {e}",
  "o projeto ainda não tem o vídeo final da Fase 2 (state.json sem editData)": "the project doesn't have the Phase 2 final video yet (state.json without editData)",
  "número inválido: {v}": "invalid number: {v}",
- "o agente está trabalhando neste projeto: espere ele terminar para mexer no corte": "the agent is working on this project: wait for it to finish before changing the cut",
+ "o agente está trabalhando neste projeto: espere ele terminar para salvar (o que você mudou continua no editor)": "the agent is working on this project: wait for it to finish before saving (your changes stay in the editor)",
  "o agente está trabalhando neste projeto: espere ele terminar para gerar o vídeo": "the agent is working on this project: wait for it to finish before generating the video",
  "o agente já está trabalhando neste projeto: espere ele terminar": "the agent is already working on this project: wait for it to finish",
  "esta é uma cópia de desenvolvimento do CutMind: atualize com git": "this is a development copy of CutMind: update it with git",

@@ -30,6 +30,7 @@ from pathlib import Path
 import aquecer_navegador  # mesma pasta deste arquivo
 from camadas_edit_data import edit_data_do_projeto
 from mixar_final import atraso_da_imagem
+import vez  # mesma pasta deste arquivo
 
 FOLGA = 2  # quadros de cada lado da janela: o que entra e sai na borda dela também é refeito
 KIT = Path(__file__).resolve().parents[1]
@@ -134,7 +135,9 @@ def _rodar_partes(remotion: Path, pasta: Path, faixas: list[tuple[int, int]]) ->
     destino.parent.mkdir(exist_ok=True)
     shutil.copy2(PARTES_JS, destino)
     cmd = ["node", str(destino), str(pasta), *(f"{a}-{b}" for a, b in faixas)]
-    if subprocess.run(cmd, cwd=remotion, env={**os.environ, **aquecer_navegador.ambiente(remotion)}).returncode:
+    with vez.vez(remotion.parent, "o render das janelas") as v:  # um por vez, prioridade baixa, temporário próprio
+        falhou = subprocess.run(cmd, cwd=remotion, env=v.env(aquecer_navegador.ambiente(remotion)), **v.criar).returncode
+    if falhou:
         raise JanelaErro("o Remotion falhou renderizando as janelas (a saída dele está acima); o render ficou como estava")
 
 

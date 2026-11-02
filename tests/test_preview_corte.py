@@ -148,3 +148,20 @@ def test_a_marcacao_junto_do_corte_espera_o_pronto(srv):
     assert ps.pend.pedidos(srv.edit)[0]["text"] == "tira isso"
     assert not (srv.edit / "preview_edits.json").exists()  # nada para o agente até o Pronto
     esperar_trabalho(srv.port)
+
+
+def test_com_o_agente_trabalhando_so_os_pedidos_passam(srv):
+    """Edição real de 01/11: com o agente trabalhando, a pessoa salvou uma mudança de texto no camadas.json
+    que ele também gravava; o último a gravar ganhava sem aviso, e a mudança dela entrou na entrega do agente
+    e sumiu do aprendizado. Agora o Salvar que mexe no projeto espera; os pedidos (marcações) passam."""
+    (srv.edit / "state.json").write_text(json.dumps({"phase": 1, "video": "cut.mp4",
+                                                     "agente": {"trabalhando": True, "desde": time.time()}}), encoding="utf-8")
+    camadas = {"versao": 1, "video": {"mudo": False}, "faixas": [{"id": "t1", "tipo": "texto", "oculto": False, "travado": False,
+               "itens": [{"id": "t1-1", "texto": "OFERTA", "inicio": 1.0, "duracao": 2.0}]}]}
+    for corpo in ({"camadas": camadas}, {"edl": PEDIDO}, {"velocidade": {"versao": 1, "duracao": 10.0, "trechos": []}}):
+        r, d = pedir(srv.port, "POST", "/api/save", {"type": "timeline-edits", **corpo})
+        assert r.status == 409 and "agente está trabalhando" in d["error"] and "continua no editor" in d["error"], corpo
+    assert not (srv.edit / "camadas.json").exists()
+    nota = {"start": 1.0, "end": 2.0, "text": "tira isso", "phase": 1}
+    r, d = pedir(srv.port, "POST", "/api/save", {"type": "timeline-edits", "notes": [nota]})
+    assert r.status == 200 and d["ok"]

@@ -404,3 +404,83 @@ def test_o_template_do_kit_enquadra_a_gravacao():
     texto = main.read_text(encoding="utf-8")
     import camadas_edit_data as ced
     assert ced.MARCA_ENQUADRE in texto and "D.enquadres?.[idx]" in texto and "clipPath" in texto
+
+
+# ---- a legenda some enquanto o texto em destaque está na tela ----
+
+def _legenda(public, **cap):
+    ed = json.loads((public / "edit-data.json").read_text(encoding="utf-8"))
+    ed["captions"] = {"enabled": True, **cap}
+    (public / "edit-data.json").write_text(json.dumps(ed), encoding="utf-8")
+
+
+def _ocultas(public):
+    return json.loads((public / "edit-data.json").read_text(encoding="utf-8"))["captions"].get("ocultarTextos")
+
+
+def test_texto_em_destaque_esconde_a_legenda_e_os_vizinhos_viram_um_trecho(projeto):
+    """Edição real de 01/11: "nas partes que tem o texto em destaque tira a legenda e deixa só ele". Do
+    tamanho padrão para cima vem ligado; o texto pequeno não esconde; a pessoa desliga em qualquer um."""
+    edit, public, _ = projeto
+    _legenda(public, ocultar=[{"start": 20.0, "end": 21.0}])
+    _camadas(edit, [_txt("t1", {"texto": "PRIMEIRA?", "inicio": 2.0, "estilo": {"tamanho": 1.5}},
+                         {"texto": "SEGUNDA.", "inicio": 4.3},  # a 0,3 s do anterior: junta
+                         {"texto": "pequeno", "inicio": 9.0, "estilo": {"tamanho": 0.6}},
+                         {"texto": "grande sem", "inicio": 12.0, "ocultaLegenda": False},
+                         {"texto": "pequeno com", "inicio": 15.0, "estilo": {"tamanho": 0.6}, "ocultaLegenda": True})])
+    aplicar(edit)
+    assert _ocultas(public) == [{"start": 2.0, "end": 6.3}, {"start": 15.0, "end": 17.0}]
+    ed = json.loads((public / "edit-data.json").read_text(encoding="utf-8"))
+    assert ed["captions"]["ocultar"] == [{"start": 20.0, "end": 21.0}]  # o do agente fica como estava
+
+
+def test_sem_legenda_nao_ganha_trecho_e_texto_apagado_tira_o_trecho(projeto):
+    edit, public, _ = projeto
+    _camadas(edit, [_txt("t1", {"texto": "OI", "inicio": 2.0})])
+    aplicar(edit)
+    assert "captions" not in json.loads((public / "edit-data.json").read_text(encoding="utf-8"))
+    _legenda(public)
+    aplicar(edit)
+    assert _ocultas(public) == [{"start": 2.0, "end": 4.0}]
+    _camadas(edit, [])
+    aplicar(edit)
+    assert _ocultas(public) == []
+
+
+def test_template_antigo_so_trava_quem_ligou_a_mao(projeto):
+    edit, public, _ = projeto
+    src = edit / "remotion" / "src"
+    src.mkdir()
+    (src / "Main.tsx").write_text("// um Main.tsx de kit anterior", encoding="utf-8")
+    _legenda(public)
+    _camadas(edit, [_txt("t1", {"texto": "OI", "inicio": 2.0})])
+    aplicar(edit)  # o padrão não trava: o projeto antigo segue como era
+    _camadas(edit, [_txt("t1", {"texto": "OI", "inicio": 2.0, "ocultaLegenda": True})])
+    import camadas_edit_data as ced
+    with pytest.raises(ced.TemplateVelho):
+        aplicar(edit)
+
+
+def test_o_template_do_kit_esconde_a_legenda_em_todos_os_estilos():
+    src = Path(__file__).resolve().parents[1] / "assets" / "shortform" / "src"
+    import camadas_edit_data as ced
+    assert ced.MARCA_LEGENDA_OCULTA in (src / "Main.tsx").read_text(encoding="utf-8")
+    for arq in ("Main.tsx", "SimpleCaptions.tsx", "ScatterCaptions.tsx"):
+        s = (src / arq).read_text(encoding="utf-8")
+        assert "semAsOcultas(captions" in s and "if (vazia(w))" in s, arq
+    assert "tocaOculta(c.startMs, c.endMs)" in (src / "StackedCaptions.tsx").read_text(encoding="utf-8")
+    m = (src / "legendaOculta.ts").read_text(encoding="utf-8")
+    assert "C.ocultar" in m and "C.ocultarTextos" in m and "const VAO = 0.6" in m
+
+
+def test_o_editor_e_o_servidor_contam_o_destaque_do_mesmo_jeito():
+    """O botão "Esconder a legenda" mostra o padrão pelo tamanho; o servidor decide pelo mesmo número."""
+    import re
+    import camadas as cam
+    raiz = Path(__file__).resolve().parents[1] / "assets" / "preview"
+    js = (raiz / "celular.js").read_text(encoding="utf-8")
+    m = re.search(r"const TAMANHO_DESTAQUE = ([\d.]+);", js)
+    assert m and float(m.group(1)) == cam.TAMANHO_DESTAQUE
+    assert "tool(ctx, 'leg-oculta', t('Esconder a legenda')" in js and "case 'leg-oculta': legendaOcultaLiga()" in js
+    en = (raiz / "i18n-en.js").read_text(encoding="utf-8")
+    assert '"Esconder a legenda": "Hide captions"' in en

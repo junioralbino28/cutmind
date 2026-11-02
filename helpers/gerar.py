@@ -42,6 +42,7 @@ import pacotes as pk  # mesma pasta deste arquivo
 import pendente as pend  # mesma pasta deste arquivo
 import sonda  # mesma pasta deste arquivo
 import tempo  # mesma pasta deste arquivo
+import vez  # mesma pasta deste arquivo
 import trabalhos  # mesma pasta deste arquivo
 import velocidade as vel  # mesma pasta deste arquivo
 
@@ -341,7 +342,14 @@ def renderizar(rem: Path, andamento, de: float, ate: float) -> Path:
     cli = rem / "node_modules" / "@remotion" / "cli" / "remotion-cli.js"
     saida = rem / "out" / "render.mp4"
     cmd = ["node", str(cli), "render", "Reels", "out/render.mp4", f"--timeout={TIMEOUT_MS}", *aquecer_navegador.flags(rem)]
-    p = subprocess.Popen(cmd, cwd=rem, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    # um render por vez no computador, com prioridade baixa e temporário próprio (vez.py)
+    with vez.vez(rem.parent, "o vídeo final",
+                 ao_esperar=lambda o: andamento("esperando", "Esperando outro render terminar", de)) as v:
+        return _renderizar(rem, cmd, v, saida, andamento, de, ate)
+
+
+def _renderizar(rem: Path, cmd: list[str], v, saida: Path, andamento, de: float, ate: float) -> Path:
+    p = subprocess.Popen(cmd, cwd=rem, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=v.env(), **v.criar)
     resto = b""
     while True:
         bloco = p.stdout.read1(4096) if hasattr(p.stdout, "read1") else p.stdout.read(4096)

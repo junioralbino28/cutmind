@@ -24,6 +24,7 @@ import captions from '../public/captions.json';
 import editData from '../public/edit-data.json';
 import {seamAt, spotCentre, spotFor} from './captionPlace';
 import {CATALOGO, familiaCss, useFontesProntas} from './fontes';
+import {semAsOcultas, vazia} from './legendaOculta';
 
 const POPPINS = loadPoppins('normal', {weights: ['600']}).fontFamily;
 const BASKERVILLE = loadBaskerville('normal', {weights: ['700']}).fontFamily;
@@ -114,6 +115,12 @@ function buildCues(words: Word[], V: Variant): Word[][] {
   const cues: Word[][] = [];
   let cur: Word[] = [];
   words.forEach((w, i) => {
+    if (vazia(w)) { // an empty item holds the screen with nothing (legendaOculta.ts): a cue of its own
+      if (cur.length) cues.push(cur);
+      cues.push([w]);
+      cur = [];
+      return;
+    }
     const trial = [...cur, w];
     if (cur.length && (trial.length > V.maxWords || widthOf(trial, V) > budget)) {
       cues.push(cur);
@@ -168,7 +175,7 @@ export const SimpleCaptions: React.FC<{variant: string}> = ({variant}) => {
   const V: Variant = FONTE
     ? {...V0, family: familiaCss(FONTE), weight: Number(E.peso) || CATALOGO[FONTE].peso, size: V0.size * K}
     : {...V0, size: V0.size * K};
-  const cues = buildCues(captions as Word[], V);
+  const cues = buildCues(semAsOcultas(captions as Word[]), V);
 
   let idx = -1;
   for (let i = 0; i < cues.length; i++) {

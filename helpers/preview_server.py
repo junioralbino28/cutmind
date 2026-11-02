@@ -1594,8 +1594,14 @@ class Handler(BaseHTTPRequestHandler):
         if name == "preview_edits.json" and tb.vivo(self.root):
             self._ocupado(tb.vivo(self.root))
             return
-        if corte and agente_trabalhando(self.root):
-            self._json({"error": "o agente está trabalhando neste projeto: espere ele terminar para mexer no corte"}, 409)
+        # com o agente trabalhando, nada que ele também grava muda no meio (camadas, efeitos, velocidade, a
+        # Fase 2, o corte): o último a gravar ganhava sem aviso, e a mudança da pessoa entrava na entrega do
+        # agente e sumia do aprendizado. Só os pedidos (marcações) passam: são para ele mesmo, e esperam o Pronto
+        mexe = name == "preview_edits.json" and any(
+            k in body for k in ("edl", "camadas", "efeitos", "velocidade", "editData", "montagem", "melhorar"))
+        if mexe and agente_trabalhando(self.root):
+            self._json({"error": "o agente está trabalhando neste projeto: espere ele terminar para salvar (o que "
+                                 "você mudou continua no editor)"}, 409)
             return
         if corte:
             if not confirmado:
