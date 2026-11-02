@@ -71,7 +71,9 @@ export type CenaProps = {c: Cena; a: number; n: number};
 
 export const W = 1080;
 export const H = 1920;
-export const ACCENT = '#ff5200';
+const CORES = editData as unknown as {hook?: {accent?: string}; captions?: {accent?: string}};
+// the colour the user picked on the Estilo panel, never a literal; CENA_ESTILO in assets/preview/celular.js mirrors it
+export const ACCENT = CORES.hook?.accent || CORES.captions?.accent || '#ff5200';
 
 /** Centre of an effect's movable block (its text, card or page): edit-data `texto: {x, y}` in
  * frame pixels, which is what the user drags in the editor, or the `layout` default. The editor

@@ -13,6 +13,7 @@
     `corte`/`duracao`, com o volume dele, a cadeia do melhorar_audio.py quando `melhorar`,
     e no tempo `inicio` do corte + o mesmo quadro de atraso da voz;
   - efeitos sonoros (--sfx): no tempo do vídeo final, sem o atraso;
+  - os cliques da legenda Empilhado: no tempo em que a legenda os toca (cliques_da_legenda);
   - tudo somado (sem normalizar a soma) e o loudnorm obrigatório (-14 LUFS, pico -1).
 
     python mixar_final.py <edit> --render <out/render.mp4> [-o <edit>/final.mp4]
@@ -25,10 +26,10 @@ limitada) e o som entra sem o quadro de atraso do Remotion, que ali não existe.
 (edl.json com "montagem") a normalização é a linear, como com volume de tomada: o loudnorm
 dinâmico achataria o drop da música.
 
---base render usa o áudio do próprio Remotion no lugar da voz do corte (quando os
-efeitos da legenda estão embutidos nele: references/shortform.md). Ele já traz a trilha
+--base render usa o áudio do próprio Remotion no lugar da voz do corte. Ele já traz a trilha
 e os efeitos, então só as camadas são somadas; e como voz e efeitos vêm juntos, o
-"som do vídeo desligado" não tem como ser atendido nessa base.
+"som do vídeo desligado" não tem como ser atendido nessa base. Não é preciso para os cliques
+da legenda Empilhado, que a base do corte recoloca sozinha.
 """
 from __future__ import annotations
 
@@ -95,6 +96,54 @@ def atraso_da_imagem(ed: dict, public: Path) -> int:
     return int(seg["videoLag"]) if seg.get("videoLag") is not None else 1
 
 
+def _ocultas(cap: dict) -> list[tuple[float, float]]:
+    """Os trechos em que a legenda sai da frente (JANELAS_OCULTAS em legendaOculta.ts): a mesma junção."""
+    js = []
+    for j in [*(cap.get("ocultar") or []), *(cap.get("ocultarTextos") or [])]:
+        try:
+            a, b = float(j["start"]), float(j["end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if b > a:
+            js.append((a, b))
+    out: list[list[float]] = []
+    for a, b in sorted(js):
+        if out and a - out[-1][1] < 0.6:
+            out[-1][1] = max(out[-1][1], b)
+        else:
+            out.append([a, b])
+    return [(a, b) for a, b in out]
+
+
+def cliques_da_legenda(ed: dict, public: Path, fps: float, vd: float) -> list[tuple[Path, float, float]]:
+    """Os sons da legenda Empilhado, no tempo em que StackedCaptions.tsx os toca: um clique em cada palavra
+    sozinha e um risco, 2 quadros depois, na circulada. Eles moram no áudio do Remotion, que a base do corte
+    joga fora: o Baixar entregava a legenda muda (edição real de 01/11). Saem daqui, com a voz do corte."""
+    cap = ed.get("captions") or {}
+    sons = cap.get("sfx") or {}
+    if cap.get("style") != "stacked" or cap.get("enabled") is False or sons.get("enabled") is False:
+        return []
+    try:
+        cues = json.loads((public / "caption-cues.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    clique, risco = public / "sfx" / "caption-click.mp3", public / "sfx" / "caption-scratch.mp3"
+    ocultas = _ocultas(cap)
+    out = []
+    for c in cues:
+        if c.get("preset") not in ("SOLO_BIG", "SOLO_OUTLINE"):
+            continue
+        ini, fim = float(c["startMs"]) / 1000, float(c["endMs"]) / 1000
+        if any(ini < b and fim > a for a, b in ocultas):
+            continue  # a legenda não desenha esta palavra, e o som não toca (tocaOculta)
+        q = round(ini * fps)
+        if q / fps < vd and clique.is_file():
+            out.append((clique, q / fps, float(sons.get("clickVolume", 0.45))))
+        if c["preset"] == "SOLO_OUTLINE" and (q + 2) / fps < vd and risco.is_file():
+            out.append((risco, (q + 2) / fps, float(sons.get("scratchVolume", 0.16))))
+    return out
+
+
 def montar(edit: Path, render: Path, saida: Path, vd: float, base: str = "cut",
            sfx: list[tuple[Path, float, float]] = (), norma: str | None = None,
            medir: bool = False, imagem: str = "remotion") -> tuple[list[str], dict]:
@@ -121,7 +170,7 @@ def montar(edit: Path, render: Path, saida: Path, vd: float, base: str = "cut",
     soma = ["[base]"]  # silêncio do tamanho do vídeo: a soma nunca fica vazia nem mais curta
     porque = ("há tomada com volume próprio" if tem_volume_de_tomada(edit, state)
               else "montagem na batida, a música fica com o drop" if eh_montagem(edit, state) else "")
-    resumo = {"voz": "fora", "trilha": False, "camadas": 0, "biblioteca": 0, "efeitos": 0,
+    resumo = {"voz": "fora", "trilha": False, "camadas": 0, "biblioteca": 0, "efeitos": 0, "cliques": 0,
               "linear": bool(porque), "linear_porque": porque}
 
     def entrada(p: Path) -> int:
@@ -169,11 +218,16 @@ def montar(edit: Path, render: Path, saida: Path, vd: float, base: str = "cut",
         resumo["camadas"] += 1
         resumo["biblioteca"] += bool(it.get("trilha"))
 
+    if base != "render" and not corte:
+        cliques = cliques_da_legenda(ed, public, fps, vd)
+        sfx = [*sfx, *cliques]
+        resumo["cliques"] = len(cliques)
     for n, (arq, t, vol) in enumerate(sfx):
         k = entrada(arq)
         partes.append(f"[{k}:a]volume={_n(vol)},adelay={round(t * 1000)}:all=1,{FMT}[s{n}]")
         soma.append(f"[s{n}]")
         resumo["efeitos"] += 1
+    resumo["efeitos"] -= resumo["cliques"]
 
     fim = f"{LOUDNORM}:print_format=json" if medir else (norma or LOUDNORM)
     partes.append(f"{''.join(soma)}amix=inputs={len(soma)}:duration=first:normalize=0,{fim}[out]")
@@ -283,7 +337,8 @@ def main() -> int:
     subprocess.run(cmd, check=True)
     bib = f" ({resumo['biblioteca']} trilha(s) da biblioteca)" if resumo["biblioteca"] else ""
     print(f"{saida.name}: voz {resumo['voz']}, trilha do edit-data {'sim' if resumo['trilha'] else 'não'}, "
-          f"{resumo['camadas']} camada(s) de áudio{bib}, {resumo['efeitos']} efeito(s) · {verificar(saida)}")
+          f"{resumo['camadas']} camada(s) de áudio{bib}, {resumo['efeitos']} efeito(s), {resumo['cliques']} clique(s) da "
+          f"legenda · {verificar(saida)}")
     return 0
 
 

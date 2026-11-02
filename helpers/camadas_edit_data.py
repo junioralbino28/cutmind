@@ -36,6 +36,7 @@ import sys
 from pathlib import Path
 
 import camadas as cam  # mesma pasta deste arquivo
+import sonda  # mesma pasta deste arquivo
 
 PREFIXO = "camada-"
 RECORTE = "pessoa-"
@@ -48,6 +49,7 @@ MARCA_RECORTE = "INSERT_RECORTE"  # ... e que desenha só o pedaço recortado de
 MARCA_VIDEO = "INSERT_VIDEO"  # ... e que desenha o vídeo posto por cima
 MARCA_ENQUADRE = "ENQUADRE_TOMADA"  # ... e que põe a gravação no lugar e no tamanho de cada tomada
 MARCA_ATRAS_LIVRE = "ATRAS_LIVRE"  # ... e que põe a imagem atrás da pessoa no lugar e no tamanho dela
+MARCA_SECO = "INSERT_SECO"  # ... e que entra e sai sem fade
 MARCA_LEGENDA_OCULTA = "LEGENDA_OCULTA"  # ... e que esconde a legenda enquanto um texto em destaque aparece
 
 
@@ -91,6 +93,18 @@ def enquadres(edit: Path, ed_p: Path) -> list:
             item["crop"] = {k: e["recorte"][k] for k in ("x", "y", "w", "h")}
         out.append(item)
     return out
+
+
+def _proporcao(arq: Path) -> float | None:
+    """Altura ÷ largura do arquivo, como ele aparece na tela (vídeo de celular vem girado por metadado)."""
+    try:
+        larg, alt = int(sonda.valor(arq, "stream=width")), int(sonda.valor(arq, "stream=height"))
+    except ValueError:
+        return None
+    if not larg or not alt:
+        return None
+    giro = sonda.valor(arq, "stream_side_data=rotation")
+    return larg / alt if giro.lstrip("-") in ("90", "270") else alt / larg
 
 
 def template_sem(ed_p: Path, marca: str) -> bool:
@@ -239,12 +253,19 @@ def aplicar(edit: Path, edit_data: Path | None = None, recortar: bool = True) ->
                    **livre}
             if cam.eh_video(it["arquivo"]):  # o vídeo por cima: mudo no Remotion (o som vai no mixar_final)
                 ins.update({"video": True, "from": it.get("corte", 0.0)})
+            prop = _proporcao(origem) if it.get("corteSeco") is None and "largura" in it else None
+            if cam.corte_seco(it, prop, float(d.get("width") or 1080), float(d.get("height") or 1920)):
+                ins["seco"] = True
             inserts.append(ins)
     if any("w" in i for i in inserts) and template_sem_imagem_livre(ed_p):
         raise TemplateVelho(f"o template deste projeto é de um kit anterior e não desenha a imagem no lugar e no "
                             f"tamanho que você pôs: rode `atualizar_template.py {edit}` e depois este de novo")
     if any(i.get("video") for i in inserts) and template_sem(ed_p, MARCA_VIDEO):
         raise TemplateVelho(f"o template deste projeto é de um kit anterior e não desenha vídeo por cima: rode "
+                            f"`atualizar_template.py {edit}` e depois este de novo")
+    # só o pedido da pessoa para: o corte seco automático, num template velho, sai com o fade de antes
+    if any(it.get("corteSeco") for it in cam.aparecem(camadas)) and template_sem(ed_p, MARCA_SECO):
+        raise TemplateVelho(f"o template deste projeto é de um kit anterior e não faz o corte seco: rode "
                             f"`atualizar_template.py {edit}` e depois este de novo")
     if any("crop" in i for i in inserts) and template_sem(ed_p, MARCA_RECORTE):
         raise TemplateVelho(f"o template deste projeto é de um kit anterior e não recorta a imagem: rode "

@@ -88,7 +88,7 @@ when the user reopens Posição), clear `awaitingStyle`, delete `preview_style.j
    **Windows, project in a deep folder:** Node cannot launch Chrome or the compositor once the
    path passes ~260 characters (`spawn ... chrome-headless-shell.exe ENOENT`, even with long paths
    on in Windows). The kit's own renders (Gerar, montagem, efeitos, janelas) already run them from
-   short copies in `~/.cutmind/remotion-curto/`; for your own `npx remotion render`/`still`, add
+   short copies in `~/.cutmind/remotion-curto/`; for your own `npx remotion render`, add
    what `helpers/aquecer_navegador.py <edit>/remotion --flags` prints (empty when the path fits).
    Over a project the "Gerar e baixar" made (`"_gerar": "editor"`), it puts the template's data
    back in `public/`; over your own Phase 2 it never touches `public/` or `CustomGraphics.tsx`,
@@ -205,9 +205,12 @@ when the user reopens Posição), clear `awaitingStyle`, delete `preview_style.j
    `assets/shortform/README.md`): durationSec (exact ffprobe of cut.mp4),
    camera zooms, hook lines/logo/sign, captions config, inserts[], behind[],
    soundtrack (leave `enabled:false` until Phase 3).
-4. **Verify with stills, batched:** `npx remotion still Reels --frame=<n> f.png`
-   for the hook still (user approval), then ONE contact sheet for spot checks:
-   `contact_sheet.py <render> --times t1 t2 t3 -o sheet.png` — one image, not N.
+4. **Verify with stills, batched:** `uv run python -X utf8 helpers/quadros.py <edit> --quadros <n> <n> ...`
+   for the hook still (user approval) and spot checks: one bundle for all of them, one sheet
+   (`verify/quadros.png`) to look at instead of N images, and its temp folder deleted at the end.
+   Never `npx remotion still` directly: each one leaves ~210 MB in the system temp (with cut-outs in
+   `public/`; 16 of them took 3.4 GB on a real edit). On a finished render:
+   `contact_sheet.py <render> --times t1 t2 t3 -o sheet.png`.
 5. **Render:** `uv run python -X utf8 helpers/vez.py --edit <edit> --cwd <edit>/remotion -- npx remotion render Reels out/render.mp4`,
    then loudnorm → `edit/final.mp4` (see Phase 3). `vez.py` is the kit's
    render etiquette, never skip it: ONE heavy render at a time on the computer (a second conversation
@@ -266,8 +269,8 @@ optional logo row), **`realce`** (each line on a solid accent marker block),
 
 ### The accent colour (`accent` in preview_style.json)
 
-`realce`, `misto` and the `stacked` caption are the only things that paint an
-accent; the default is `#ff5200`. The user picks it on the Estilo panel and it
+`realce`, `misto` and the `stacked` caption are the only text styles that paint an
+accent (the animated graphics and the `parede` and `orbita` scenes follow it too); the default is `#ff5200`. The user picks it on the Estilo panel and it
 arrives as a hex — set it on **`hook.accent`** and **`captions.accent`** in
 edit-data.json so headline and caption stay the same colour. `preview_style.json`
 also carries `accentUsed`: when it is `false`, the picked styles have no accent
@@ -363,7 +366,7 @@ still there as a montage over real footage if a still is useful.)
     blur on the highlighted word only reads because everything else is still.
 - **`"stacked"`**: words stacked tight, mixing per line — Poppins bold-italic
   (white→gray gradient) / Poppins regular (smaller) / Playfair serif bold-italic
-  in ORANGE `#ff5200` / Poppins bold. Emphasis words appear solo; key ones get a
+  in the accent colour (`captions.accent`, orange `#ff5200` by default) / Poppins bold. Emphasis words appear solo; key ones get a
   hand-drawn green pencil ellipse. **Baked SFX** (no extra step, no Premiere): a
   **click** on every solo word, a **scratch** when a word is circled.
 
@@ -689,16 +692,12 @@ ffprobe -v error -select_streams v:0 \
   -of default=nw=1 ../final.mp4
 ```
 
-**Keeping Remotion's audio is sometimes the right call — measure, don't assume.**
-The re-mux above exists because Remotion's audio drifts, and on a 95s edit it does
-(+660ms by 78s). But the `stacked` caption bakes a click on nearly every word plus
-the flash clicks, and the re-mux throws all of that away — reconstructing ~20 SFX
-by hand from the cue file is guesswork. Correlate first (15s+ windows, or the whole
-clip when it is short): if the offset is CONSTANT across start/middle/end there is
-no drift, and Remotion's own audio keeps the SFX with the sync intact. Measured on
-a 7.6s edit: +42.7ms at the head, the tail and the whole — constant, and only ~10ms
-from the picture's own +33ms lag. There, `-map 0:a` through the same loudnorm beats
-the re-mux. Say which one you used and why.
+**The `stacked` caption's sounds: use `mixar_final.py`.** The re-mux above exists because
+Remotion's audio drifts (on a 95s edit, +660ms by 78s), and it throws away what the template
+baked there. `mixar_final.py` (below) puts the caption's click and scratch back on their own,
+from `caption-cues.json`, at the frame the caption plays them, with the voice from the cut. A
+hand-written `ffmpeg` line loses them. `--base render` is only for another sound baked in the
+template; then correlate first (15s+ windows, the offset must be CONSTANT) and say why.
 
 `adelay` is the picture's lag in ms (`videoLag` frames, 33 per frame at 30fps;
 `mixar_final.py` reads it from edit-data.json or segments.json): when cut.mp4's
@@ -708,8 +707,7 @@ the picture sits behind cut.mp4's timeline and the voice must follow it. With
 `-t "$VD"` keeps the audio from outliving the video. **Verify** by correlating the
 delivered voice against `cut.mp4` at three points — the offset must be CONSTANT
 (≈+33ms). Use 15s windows: short windows lock onto the wrong syllable and report
-a drift that is not there. Drop this re-mux ONLY if Phase 2 baked SFX into the
-audio (stacked captions' click/scratch), and then verify sync by hand.
+a drift that is not there.
 
 **A take with its own `volume` in `edl.json` (the phone editor's Volume) → use
 `mixar_final.py`, not these hand re-muxes** (it works with no layers). The one-pass
@@ -764,8 +762,9 @@ final video (or run `gerar.py <edit>`, which does the same).
    soundtrack) fades like music, 0.4 s in and 1.5 s out; the others keep 15 ms. Effects go in composition time with
    `--sfx <file>@<seconds>[:volume]`. Sum without normalizing, then loudnorm (linear
    when a take has its own `volume`, see above).
-   `--base render` keeps Remotion's own audio (the stacked captions' SFX, see
-   above) and only adds the layers; it refuses when the video's sound is off,
+   The `stacked` caption's click and scratch come back by themselves, from
+   `caption-cues.json`. `--base render` keeps Remotion's own audio
+   and only adds the layers; it refuses when the video's sound is off,
    because voice and SFX come mixed there. `--mostrar` prints the command. It
    prints the colour tags and the peak when done.
 3. **Verify** like any delivery: a still inside each image and text window, the layer

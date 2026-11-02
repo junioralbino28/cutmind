@@ -2466,6 +2466,7 @@ const ATALHO = { dividir: 'Ctrl+B', duplicar: 'Ctrl+D', excluir: 'Delete', marca
 const DICA = { volume: t('Volume'), velocidade: t('Velocidade e curva'), intensidade: t('Intensidade do filtro'),
   texto: t('Texto solto ou modelo'), 'texto-novo': t('Texto novo na agulha'), modelos: t('Dois ou três textos de uma vez, em fontes misturadas'),
   'texto-editar': t('Texto, fonte, cor, tamanho, contorno, curva e altura'),
+  'corte-seco': t('No vídeo final, a camada entra e sai de uma vez, sem fade'),
   atras: t('No vídeo final, a camada passa atrás da pessoa'), 'texto-segue': t('No vídeo final, o texto anda junto com a pessoa'),
   'leg-oculta': t('No vídeo final, a legenda some enquanto este texto está na tela'),
   'leg-texto': t('Fonte, cor, tamanho e contorno de todas as frases'), 'leg-segue': t('No vídeo final, a legenda anda junto com a pessoa'),
@@ -2652,6 +2653,7 @@ function renderToolbar() {
       tool(ctx, 'atras', t('Atrás da pessoa'), { icon: ICON.pessoa, on: !!lsel.it.atras });
       tool(ctx, 'recortar', t('Recortar'), { on: !!lsel.it.recorte });
     }
+    if (lsel.f.tipo === 'imagem' && !lsel.it.atras) tool(ctx, 'corte-seco', t('Corte seco'), { icon: ICON.corte, on: corteSeco(lsel.it) });
     if (aud) {
       tool(ctx, 'volume', `${Math.round(lsel.it.volume * 100)}%`);
       // Melhorar é a cadeia de voz (tira ruído): numa música da biblioteca só estragaria
@@ -2761,6 +2763,7 @@ document.addEventListener('click', (e) => {
     case 'modelos': S.textMenu = false; renderToolbar(); openModelos(); break;
     case 'texto-editar': openTextoCamada(false); break;
     case 'atras': textoLiga('atras'); break;
+    case 'corte-seco': camadaSeco(); break;
     case 'recortar': if (S.layerSel) recortaImagemSel(); else recortaTomadaSel(); break;
     case 'enq-original': { const r = S.draft[S.selected]; if (r && r.enq) { remember(); r.enq = null; enqSig = '-'; syncLayers(); renderTimeline(); renderToolbar(); refreshHeader(); } break; }
     case 'texto-segue': textoLiga('acompanhar'); break;
@@ -6097,10 +6100,12 @@ const CENA_BLOCO = {
 /* O texto de destaque de cada efeito: o padrão do componente (src/cenas/*.tsx, `estiloDe(c, {...})`:
  * mudou lá, muda aqui), o que o painel de Texto deixa mudar (`sem`/`so`), o tamanho da letra no
  * quadro (`px`), a largura fixa quando o texto é esticado (`esticar`) e o que aparece escrito. */
+// a cor de destaque do painel Estilo, como o template a lê (ACCENT em src/cenas/comum.tsx)
+const corDestaque = () => { const ed = S.editData || {}; return (ed.hook && ed.hook.accent) || (ed.captions && ed.captions.accent) || '#ff5200'; };
 const CENA_ESTILO = {
   vidro: { fonte: 'poppins', contorno: 6, corContorno: '#ffffff', sem: ['cor'], px: (c) => lay(c).tamanho ?? 300, esticar: (c) => c.largura ?? 1000, linhas: (t) => [t.palavra || 'GARGALO'] },
   zoomDigital: { fonte: 'bebas', cor: (c) => c.cor || '#ffe500', contorno: 8, corContorno: '#000000', px: (c) => c.tamanho ?? 330, linhas: (t) => [maisLonga(t.batidas)] },
-  parede: { fonte: 'anton', cor: '#ff5200', contorno: 10, corContorno: '#ffffff', px: () => 230, linhas: (t) => [t.gigante || ''] },
+  parede: { fonte: 'anton', cor: () => corDestaque(), contorno: 10, corContorno: '#ffffff', px: () => 230, linhas: (t) => [t.gigante || ''] },
   capa: { fonte: 'playfair', cor: (c) => c.cor || '#b0101b', contorno: 0, corContorno: '#000000', px: (c) => lay(c).tamanho ?? 330, esticar: (c) => c.largura ?? 1010, linhas: (t) => [t.nome || 'EQUIPE'] },
   grafico: { fonte: 'poppins', cor: '#063322', contorno: 0, corContorno: '#ffffff', px: () => 52, linhas: (t) => [t.etiqueta || 'ESCALA'] },
   chroma: { fonte: 'poppins', cor: '#ffffff', contorno: 0, corContorno: '#3a0ca3', px: () => 94, linhas: (t) => [t.titulo || ''] },
@@ -6110,7 +6115,7 @@ const CENA_ESTILO = {
   saindo: { fonte: 'bebas', cor: (c) => c.cor || '#c6ff3d', contorno: 0, corContorno: '#000000', px: () => 150, linhas: (t) => [t.titulo || ''] },
   vertigem: { fonte: 'oswald', cor: '#ffffff', contorno: 0, corContorno: '#000000', px: () => 132, linhas: (t) => [t.pergunta || ''] },
   // o gancho (Main.tsx, HookInner) e o número (CustomGraphics, NumeroNaTela): o padrão de cada estilo
-  hook: { fonte: 'poppins', cor: (c) => (['misto', 'realce'].includes(c.style) ? '#ff5200' : '#ffffff'),
+  hook: { fonte: 'poppins', cor: (c) => (['misto', 'realce'].includes(c.style) ? corDestaque() : '#ffffff'),
     contorno: (c) => ((c.style || 'outline') === 'outline' ? c.strokePx ?? 7 : 0), corContorno: '#000000',
     px: (c) => GANCHO[c.style] ? GANCHO[c.style].cap : GANCHO.outline.cap, linhas: (t) => duasLinhas(t.text || ''),
     corDaLinha: (i, e, c) => (c.style === 'misto' && i === 0 ? '#ffffff' : c.style === 'realce' ? '#ffffff' : e.cor) },
@@ -6747,6 +6752,43 @@ function aplicaModelo(m) {
 $('modeloClose').innerHTML = ICON.fechar;
 $('modeloClose').addEventListener('click', fechaModelos);
 // liga e desliga `atras` (texto ou imagem) e `acompanhar` (texto) da camada escolhida
+// entra e sai sem fade: o que a pessoa escolheu ou, sem escolha, quando a camada cobre o quadro inteiro
+// (helpers/camadas.py, corte_seco: as duas contas têm de bater)
+const PROP_MIDIA = {}; // altura ÷ largura de cada arquivo de camada
+function propDaMidia(arq) {
+  if (arq in PROP_MIDIA) return PROP_MIDIA[arq];
+  PROP_MIDIA[arq] = null;
+  const pronto = (w, h) => { if (w && h) { PROP_MIDIA[arq] = h / w; if (S.layerSel) renderToolbar(); } };
+  const url = `/media/${arq.split('/').map(encodeURIComponent).join('/')}`;
+  if (ehVideoArq(arq)) {
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    v.onloadedmetadata = () => pronto(v.videoWidth, v.videoHeight);
+    v.src = url;
+  } else {
+    const im = new Image();
+    im.onload = () => pronto(im.naturalWidth, im.naturalHeight);
+    im.src = url;
+  }
+  return null;
+}
+function cobreQuadro(it) {
+  const p = propDaMidia(it.arquivo);
+  if (it.largura == null || !p) return false;
+  const rc = it.recorte || { w: 1, h: 1 };
+  const alt = it.largura * p * rc.h / rc.w;
+  const x = it.x ?? FRAME_W / 2, y = it.y ?? FRAME_H / 2;
+  return x - it.largura / 2 <= 1 && x + it.largura / 2 >= FRAME_W - 1 && y - alt / 2 <= 1 && y + alt / 2 >= FRAME_H - 1;
+}
+const corteSeco = (it) => (it.corteSeco != null ? !!it.corteSeco : cobreQuadro(it));
+function camadaSeco() {
+  const hit = camItem(S.layerSel);
+  if (!hit || hit.f.tipo !== 'imagem') return;
+  remember();
+  hit.it.corteSeco = !corteSeco(hit.it);
+  toast(hit.it.corteSeco ? t('No vídeo final a camada entra e sai de uma vez, sem fade') : t('No vídeo final a camada entra e sai com fade'), 2800);
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
 function textoLiga(k) {
   const hit = camItem(S.layerSel);
   if (!hit || !(hit.f.tipo === 'texto' || (hit.f.tipo === 'imagem' && k === 'atras'))) return;
@@ -10650,7 +10692,7 @@ async function gfMidia() {
 // a ideia do gráfico no cartão, sobre o quadro da agulha, nas medidas do cartão (cqw). O vídeo sai do modelo no Baixar
 function gfDesenho(b, tipo, tx) {
   const ed = S.editData || {};
-  b.style.setProperty('--acc', (ed.hook && ed.hook.accent) || (ed.captions && ed.captions.accent) || '#ff5200');
+  b.style.setProperty('--acc', corDestaque());
   const fundo = el('div', `gf-fundo${tipo === 'objecao' ? ' cinza' : ''}`, b);
   if (GF.quadro) fundo.style.backgroundImage = `url("${GF.quadro}")`;
   const txt = (cls, pai, s) => { const e = el('div', cls, pai); e.textContent = s; return e; };

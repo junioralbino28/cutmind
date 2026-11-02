@@ -56,7 +56,7 @@ type Caption = {text: string; startMs: number; endMs: number};
 // crop: o pedaço da imagem que aparece (fração dela); w é então a largura do pedaço na tela
 type Crop = {x: number; y: number; w: number; h: number};
 // video/from: o vídeo posto por cima (INSERT_VIDEO), mudo aqui (o som vai no mixar_final), começando em `from` s
-type Insert = {src: string; start: number; end: number; x?: number; y?: number; w?: number; crop?: Crop; video?: boolean; from?: number};
+type Insert = {src: string; start: number; end: number; seco?: boolean; x?: number; y?: number; w?: number; crop?: Crop; video?: boolean; from?: number};
 type BehindImage = {kind: 'image'; src: string; matte: string; start: number; dur: number; x?: number; y?: number; w?: number; crop?: Crop};
 type BehindWords = {kind: 'words'; words: {t: string; at: number}[]; matte: string; start: number; dur: number};
 type Behind = BehindImage | BehindWords;
@@ -83,9 +83,10 @@ export type EditData = {
     // "outline" (default): white text + thick black stroke, no card — the
     //   MrBeast/TikTok headline.
     // "card": Poppins Black on a dark rounded card, UPPERCASE, optional logo row.
-    // "realce": each line on its own solid orange marker block.
-    // "misto": line 1 light white, line 2 heavy orange.
+    // "realce": each line on its own solid marker block in the accent colour.
+    // "misto": line 1 light white, line 2 heavy in the accent colour.
     style?: 'outline' | 'card' | 'realce' | 'misto';
+    accent?: string;       // the colour picked on the Estilo panel (the realce block, the misto line 2)
     fontSizePx?: number;   // auto-fit CEILING (alias of maxFontPx, kept for compat)
     maxFontPx?: number;    // auto-fit ceiling (per-style default)
     safeWidth?: number;    // auto-fit width budget (per-style default)
@@ -489,10 +490,10 @@ const CARD_W = 700;
 const CARD_H = 420;
 const CARD_TOP = ZONA_SEGURA.topo + 20;
 
-const InsertCard: React.FC<{src: string; totalFrames: number}> = ({src, totalFrames}) => {
+const InsertCard: React.FC<{src: string; totalFrames: number; seco?: boolean}> = ({src, totalFrames, seco}) => {
   const frame = useCurrentFrame();
-  const enter = interpolate(frame, [0, 9], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic)});
-  const exit = interpolate(frame, [totalFrames - 7, totalFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+  const enter = seco ? 1 : interpolate(frame, [0, 9], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic)});
+  const exit = seco ? 1 : interpolate(frame, [totalFrames - 7, totalFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
   const opacity = Math.min(enter, exit);
   // dynamic zoom: the image itself grows slowly while on screen (Ken-Burns)
   const grow = interpolate(frame, [0, totalFrames], [1, 1.08], {extrapolateRight: 'clamp'});
@@ -521,11 +522,12 @@ export const recorteEstilo = (x: number, y: number, w: number, crop?: Crop): Rea
     ...(crop ? {clipPath: `inset(${pc(c.y)} ${pc(1 - c.x - c.w)} ${pc(1 - c.y - c.h)} ${pc(c.x)})`} : {}),
   };
 };
-const InsertLivre: React.FC<{src: string; x: number; y: number; w: number; crop?: Crop; video?: boolean; from?: number; totalFrames: number}> = ({src, x, y, w, crop, video, from, totalFrames}) => {
+// INSERT_SECO: `seco` entra e sai de uma vez. Com fade, duas camadas em tela cheia seguidas mostravam a pessoa na troca
+const InsertLivre: React.FC<{src: string; x: number; y: number; w: number; crop?: Crop; video?: boolean; from?: number; totalFrames: number; seco?: boolean}> = ({src, x, y, w, crop, video, from, totalFrames, seco}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
-  const enter = interpolate(frame, [0, 6], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
-  const exit = interpolate(frame, [totalFrames - 6, totalFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+  const enter = seco ? 1 : interpolate(frame, [0, 6], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+  const exit = seco ? 1 : interpolate(frame, [totalFrames - 6, totalFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
   return (
     <AbsoluteFill>
       {video ? null : <Sfx src="whoosh.mp3" />}
@@ -546,8 +548,8 @@ const Inserts: React.FC = () => {
         return (
           <Sequence key={i} from={from} durationInFrames={duration} layout="none">
             {it.w != null && it.x != null && it.y != null
-              ? <InsertLivre src={it.src} x={it.x} y={it.y} w={it.w} crop={it.crop} video={it.video} from={it.from} totalFrames={duration} />
-              : <InsertCard src={it.src} totalFrames={duration} />}
+              ? <InsertLivre src={it.src} x={it.x} y={it.y} w={it.w} crop={it.crop} video={it.video} from={it.from} totalFrames={duration} seco={it.seco} />
+              : <InsertCard src={it.src} totalFrames={duration} seco={it.seco} />}
           </Sequence>
         );
       })}
@@ -581,8 +583,8 @@ const Soundtrack: React.FC = () => {
 //     sits lower (paddingTop~330, may overlap the top of the head) — TikTok.
 //   "card": Poppins Black on a dark-gray rounded card, UPPERCASE, optional
 //     logo + symbol row above.
-//   "realce": each line on its own solid orange marker block.
-//   "misto": line 1 light white, line 2 heavy orange.
+//   "realce": each line on its own solid marker block in the accent colour.
+//   "misto": line 1 light white, line 2 heavy in the accent colour.
 // All static (fade + rise only) with a soft whoosh on entry. Tunables:
 // fontSizePx / maxFontPx (ceiling for the fit — NOT a fixed size), safeWidth,
 // strokePx, paddingTop, lineHeight.
@@ -695,7 +697,7 @@ const HookInner: React.FC<{totalFrames: number}> = ({totalFrames}) => {
             <div
               key={i}
               style={{
-                background: E.cor || '#ff5200',
+                background: E.cor || H.accent || '#ff5200',
                 color: '#fff',
                 fontWeight: peso(900),
                 fontSize: size,
@@ -719,7 +721,7 @@ const HookInner: React.FC<{totalFrames: number}> = ({totalFrames}) => {
         <Sfx src="whoosh.mp3" volume={0.1} />
         <div style={{...shell, filter: 'drop-shadow(0 6px 16px rgba(0,0,0,0.55))'}}>
           <div style={{fontWeight: peso(400), fontSize: size, color: '#fff', ...traco(contorno, E.corContorno || '#000')}}>{lines[0]}</div>
-          <div style={{fontWeight: peso(900), fontSize: size, color: E.cor || '#ff5200', ...traco(contorno, E.corContorno || '#000')}}>{lines[1]}</div>
+          <div style={{fontWeight: peso(900), fontSize: size, color: E.cor || H.accent || '#ff5200', ...traco(contorno, E.corContorno || '#000')}}>{lines[1]}</div>
         </div>
       </AbsoluteFill>
     );

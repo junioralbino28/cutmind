@@ -30,6 +30,9 @@ escolheu no Recortar (FORMATOS), para o agente aprender o jeito dela.
 A faixa de imagem aceita também VÍDEO (VIDEO_EXTS): o vídeo posto por cima, sempre livre (sem `largura`,
 fica no lugar e na largura do cartão), com `corte` (de onde o arquivo começa, como no áudio) e `volume` (0 a
 2): o som dele entra no som final (`tocam`). Não vai atrás da pessoa.
+Imagem e vídeo por cima têm `corteSeco`: true entra e sai de uma vez, false com o fade de ~6 quadros. Sem o
+campo, é corte seco quando a camada cobre o quadro inteiro (`corte_seco`): com fade, duas camadas em tela
+cheia seguidas mostravam a pessoa por ~0,3 s na troca (edição real de 01/11).
 Um texto tem o centro em `x`/`y` (px do quadro 1080x1920, podendo sair um pouco dele), quebra
 de linha com "\n" e o `estilo` do painel de Texto: `fonte` (uma família do catálogo de
 fontes), `peso`, `cor` e `corContorno` (#rrggbb), `tamanho` (× 96 px) e `contorno` (px). Com
@@ -66,6 +69,25 @@ _COR = re.compile(r"#[0-9a-fA-F]{6}")
 _FONTE = re.compile(r"[A-Za-z0-9 ]{1,60}")
 _ARQ = re.compile(r"midia/[^/\\]+")
 FORMATOS = ("livre", "original", "9:16", "1:1", "4:5", "16:9", "meia")  # os do Recortar do editor
+
+
+def cobre_o_quadro(it: dict, proporcao: float, w: float = 1080, h: float = 1920) -> bool:
+    """A camada livre cobre o quadro inteiro? `proporcao` é altura ÷ largura do arquivo. O editor faz a mesma
+    conta (cobreQuadro em celular.js)."""
+    if it.get("largura") is None:
+        return False
+    rc = it.get("recorte") or {"w": 1, "h": 1}
+    larg = float(it["largura"])
+    alt = larg * proporcao * float(rc["h"]) / float(rc["w"])
+    x, y = float(it.get("x", w / 2)), float(it.get("y", h / 2))
+    return x - larg / 2 <= 1 and x + larg / 2 >= w - 1 and y - alt / 2 <= 1 and y + alt / 2 >= h - 1
+
+
+def corte_seco(it: dict, proporcao: float | None, w: float = 1080, h: float = 1920) -> bool:
+    """O que a pessoa escolheu ou, sem escolha, corte seco quando a camada cobre o quadro."""
+    if it.get("corteSeco") is not None:
+        return bool(it["corteSeco"])
+    return proporcao is not None and cobre_o_quadro(it, proporcao, w, h)
 
 
 class CamadasInvalidas(ValueError):
@@ -256,6 +278,8 @@ def normalize(obj: object) -> dict:
                     it = {**it, "x": 540, "y": 340, "largura": 780}
             if tipo == "imagem" and it.get("atras"):  # atrás da pessoa (sem largura, o cartão grande)
                 item["atras"] = True
+            if tipo == "imagem" and it.get("corteSeco") is not None:
+                item["corteSeco"] = bool(it["corteSeco"])
             if tipo == "imagem" and it.get("largura") is not None:  # a imagem livre: lugar e tamanho da pessoa
                 item["x"] = _num(it.get("x", 540), "x", -1080, 2160)
                 item["y"] = _num(it.get("y", 960), "y", -1920, 3840)

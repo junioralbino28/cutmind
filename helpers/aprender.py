@@ -143,8 +143,8 @@ def _itens(c: dict | None, tipo: str) -> dict:
     return {it["id"]: it for f in (c or {}).get("faixas") or [] if f.get("tipo") == tipo for it in f.get("itens") or []}
 
 
-# ligar e desligar o que vale no vídeo final (atrás da pessoa, acompanhar, esconder a legenda)
-_LIGA = ("atras", "acompanhar", "ocultaLegenda")
+# ligar e desligar o que vale no vídeo final (atrás da pessoa, acompanhar, esconder a legenda, corte seco)
+_LIGA = ("atras", "acompanhar", "ocultaLegenda", "corteSeco")
 
 
 def _tempo(x: dict, y: dict, assunto: str, onde: str) -> list[dict]:

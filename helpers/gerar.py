@@ -349,12 +349,23 @@ def renderizar(rem: Path, andamento, de: float, ate: float) -> Path:
     # um render por vez no computador, com prioridade baixa e temporário próprio (vez.py)
     with vez.vez(rem.parent, "o vídeo final",
                  ao_esperar=lambda o: andamento("esperando", "Esperando outro render terminar", de)) as v:
-        return _renderizar(rem, cmd, v, saida, andamento, de, ate)
+        try:
+            return _renderizar(rem, cmd, v, saida, andamento, de, ate)
+        except _SemQuadro:
+            # com a memória apertada o compositor perde um quadro que existe ("No frame found", medido em 02/11 com
+            # outro trabalho pesado rodando; o mesmo quadro sai normal sozinho). Uma aba só pesa bem menos
+            print("o render perdeu um quadro com o computador ocupado: tentando de novo, um quadro por vez", flush=True)
+            return _renderizar(rem, [*cmd, "--concurrency=1"], v, saida, andamento, de, ate)
+
+
+class _SemQuadro(ErroGerar):
+    pass
 
 
 def _renderizar(rem: Path, cmd: list[str], v, saida: Path, andamento, de: float, ate: float) -> Path:
     p = subprocess.Popen(cmd, cwd=rem, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=v.env(), **v.criar)
     resto = b""
+    sem_quadro = False
     while True:
         bloco = p.stdout.read1(4096) if hasattr(p.stdout, "read1") else p.stdout.read(4096)
         if not bloco:
@@ -364,6 +375,7 @@ def _renderizar(rem: Path, cmd: list[str], v, saida: Path, andamento, de: float,
         linhas = re.split(rb"[\r\n]", resto + bloco)
         resto = linhas.pop()
         for ln in linhas:
+            sem_quadro = sem_quadro or b"No frame found" in ln
             m = _PROGRESSO.search(ln.decode("utf-8", "replace"))
             if m:
                 feito, total = int(m.group(2)), max(1, int(m.group(3)))
@@ -371,7 +383,7 @@ def _renderizar(rem: Path, cmd: list[str], v, saida: Path, andamento, de: float,
                 parte = 0.85 * feito / total if m.group(1) == "Rendered" else 0.85 + 0.15 * feito / total
                 andamento("desenhando", "Desenhando o vídeo", de + (ate - de) * parte, quadro=feito, quadros=total)
     if p.wait() != 0 or not saida.is_file():
-        raise ErroGerar("o render do Remotion falhou (a saída dele está no registro do trabalho)")
+        raise (_SemQuadro if sem_quadro else ErroGerar)("o render do Remotion falhou (a saída dele está no registro do trabalho)")
     return saida
 
 

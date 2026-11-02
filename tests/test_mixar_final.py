@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import shutil
 import struct
 import subprocess
@@ -277,3 +278,99 @@ def test_no_video_final_toca_o_som_do_video_por_cima_e_o_mudo_fica_de_fora(tmp_p
     assert _goertzel(_janela(pcm, taxa, 1.25, 1.65), taxa, 660) > 20 * max(_goertzel(_janela(pcm, taxa, 0.3, 0.8), taxa, 660), 1e-3)
     inicio = next(i for i, x in enumerate(pcm) if abs(x) > 300) / taxa
     assert abs(inicio - 1.033) < 0.03, inicio  # entra em 1 s + 1 quadro, como a camada de áudio
+
+
+# ---- os cliques da legenda Empilhado (edição real de 01/11: o Baixar entregava a legenda muda) ----
+def _empilhado(tmp_path, cues, mudo=False, **cap):
+    edit, public = _projeto(tmp_path, {"video": {"mudo": mudo}, "faixas": []})
+    (public / "sfx").mkdir()
+    (public / "sfx" / "caption-click.mp3").write_bytes(b"x")
+    (public / "sfx" / "caption-scratch.mp3").write_bytes(b"x")
+    ed = json.loads((public / "edit-data.json").read_text(encoding="utf-8"))
+    ed["captions"] = {"enabled": True, "style": "stacked", **cap}
+    (public / "edit-data.json").write_text(json.dumps(ed), encoding="utf-8")
+    (public / "caption-cues.json").write_text(json.dumps(cues), encoding="utf-8")
+    return edit
+
+
+def _cue(preset, ini, fim):
+    return {"preset": preset, "startMs": ini, "endMs": fim}
+
+
+CUES = [_cue("STACK_MIXED", 500, 900), _cue("SOLO_BIG", 2000, 2400), _cue("SOLO_OUTLINE", 5000, 5600)]
+
+
+def test_o_som_do_corte_recoloca_o_clique_e_o_risco_da_legenda(tmp_path):
+    edit = _empilhado(tmp_path, CUES)
+    cmd, resumo = montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0)
+    f = _filtro(cmd)
+    assert "volume=0.450,adelay=2000:all=1" in f and "volume=0.450,adelay=5000:all=1" in f  # as duas sozinhas
+    assert "volume=0.160,adelay=5067:all=1" in f  # o risco, 2 quadros depois, só na circulada
+    assert f.count("adelay=") == 4  # a voz e os 3 sons; a frase empilhada não toca nada
+    assert resumo["cliques"] == 3 and resumo["efeitos"] == 0 and resumo["voz"] == "corte"
+    assert sum(1 for e in _entradas(cmd) if Path(e).name == "caption-click.mp3") == 2
+
+
+def test_os_volumes_da_legenda_valem(tmp_path):
+    edit = _empilhado(tmp_path, CUES, sfx={"clickVolume": 0.2, "scratchVolume": 0.1})
+    f = _filtro(montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0)[0])
+    assert "volume=0.200,adelay=2000:all=1" in f and "volume=0.100,adelay=5067:all=1" in f
+
+
+@pytest.mark.parametrize("cap", [{"style": "karaoke"}, {"enabled": False}, {"sfx": {"enabled": False}}])
+def test_sem_legenda_empilhada_ou_com_o_som_desligado_nao_tem_clique(tmp_path, cap):
+    edit = _empilhado(tmp_path, CUES, **cap)
+    assert montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0)[1]["cliques"] == 0
+
+
+def test_a_palavra_que_a_legenda_nao_desenha_nao_toca(tmp_path):
+    """Num trecho em que a legenda sai da frente (tocaOculta), com a mesma junção de janelas a menos de 0,6 s."""
+    edit = _empilhado(tmp_path, CUES, ocultar=[{"start": 1.0, "end": 1.5}], ocultarTextos=[{"start": 1.8, "end": 2.1}])
+    f = _filtro(montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0)[0])
+    assert "adelay=2000:all=1" not in f and "adelay=5000:all=1" in f
+    edit = _empilhado(tmp_path / "b", CUES, ocultar=[{"start": 1.0, "end": 1.5}, {"start": 1.8, "end": 1.9}])
+    assert "adelay=2000:all=1" in _filtro(montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0)[0])
+
+
+def test_as_janelas_a_menos_de_0_6_viram_uma_como_no_template(tmp_path):
+    edit = _empilhado(tmp_path, [_cue("SOLO_BIG", 1600, 1700)], ocultar=[{"start": 1.0, "end": 1.5}, {"start": 1.8, "end": 1.9}])
+    assert montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0)[1]["cliques"] == 0  # 1,6 s cai no vão unido
+
+
+def test_base_render_nao_duplica_e_o_corte_sem_remotion_nao_toca(tmp_path):
+    edit = _empilhado(tmp_path, CUES)
+    assert montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0, base="render")[1]["cliques"] == 0
+    assert montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0, imagem="corte")[1]["cliques"] == 0
+
+
+def test_o_que_passa_do_fim_do_video_nao_entra(tmp_path):
+    edit = _empilhado(tmp_path, CUES)
+    assert montar(edit, edit / "render.mp4", edit / "final.mp4", vd=3.0)[1]["cliques"] == 1
+
+
+def test_o_helper_quadros_nao_deixa_nada_no_temporario_e_a_doc_aponta_para_ele():
+    """16 `npx remotion still` deixaram 3,38 GB no temporário (edição real de 01/11)."""
+    src = (HELPERS / "quadros.py").read_text(encoding="utf-8")
+    assert "vez.vez(" in src and "v.env()" in src  # o temporário próprio, apagado no fim
+    doc = (HELPERS.parent / "references" / "shortform.md").read_text(encoding="utf-8")
+    assert "helpers/quadros.py" in doc
+    assert not re.search(r"`npx remotion still [^`]*`", doc)
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="sem ffmpeg")
+def test_no_video_final_o_clique_da_legenda_toca_no_tempo(tmp_path):
+    edit = _empilhado(tmp_path, [_cue("SOLO_BIG", 1000, 1300)])
+    public = edit / "remotion" / "public"
+    ff = ["ffmpeg", "-v", "error", "-y"]
+    subprocess.run(ff + ["-f", "lavfi", "-i", "color=c=gray:s=108x192:d=3:r=30", "-pix_fmt", "yuvj420p", "-c:v", "libx264", str(edit / "render.mp4")], check=True)
+    subprocess.run(ff + ["-f", "lavfi", "-i", "color=c=black:s=108x192:d=3:r=30", "-f", "lavfi", "-i", "sine=f=440:d=3", "-shortest",
+                         "-c:v", "libx264", "-c:a", "aac", str(edit / "cut.mp4")], check=True)
+    (public / "sfx" / "caption-click.mp3").unlink()
+    subprocess.run(ff + ["-f", "lavfi", "-i", "sine=f=1000:d=0.2", str(public / "sfx" / "caption-click.mp3")], check=True)
+    r = subprocess.run([sys.executable, "-X", "utf8", str(HELPERS / "mixar_final.py"), str(edit), "--render", str(edit / "render.mp4")],
+                       capture_output=True, text=True, encoding="utf-8")
+    assert r.returncode == 0, r.stderr + r.stdout
+    assert "1 clique(s) da legenda" in r.stdout
+    taxa = 8000
+    pcm = _ler_pcm(edit / "final.mp4", taxa)
+    assert _goertzel(_janela(pcm, taxa, 1.03, 1.17), taxa, 1000) > 5 * max(_goertzel(_janela(pcm, taxa, 0.4, 0.8), taxa, 1000), 1e-3)
