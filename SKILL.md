@@ -87,6 +87,8 @@ Phase 1:
 - **`voice_levels.py <video> [--edit-dir <dir>] [--edl edl.json] [--drop-db 5]`** — the source of truth for speech LEVEL. Flags every phrase, run and EDL range ≥5 dB under the speaker's own median and sizes a `gain_db`. It catches what nothing else does: a whispered aside where the transcript is perfect, `speech_regions` says "speech" and `verify_cut` finds no fault — and the viewer still cannot hear it. **Run it before writing the EDL.**
 - **`detect_color.py <video> [--json]`** — resolves NORMAL vs LOG from the file instead of asking — metadata first, image statistics when the metadata is silent (common: a transcode drops the tags). Returns profile, **confidence**, evidence and the `grade` to apply. Only `confidence: low` should send you back to the user; the identification detail is in `references/log-grade.md`.
 - **`render.py <edl.json> -o cut.mp4 --no-subtitles [--voice-master] [--keep-resolution] [--jobs N] [--no-jcut] [--jcut-lead N] [--jcut-tail-trim N]`** — per-segment extract (grade + fades, **parallel**) → **J-cut overlap assembly (default)** or lossless concat → optional voice master → loudnorm. Writes `jcut_timeline` into the EDL: the real output positions, which is what everything downstream must index off. Short-form fps is automatic: **30fps for 30fps+ sources, else 24** (longform keeps source fps via `--keep-resolution`). Set `edit-data.json` `fps` to match the resulting `cut.mp4`.
+- **`pontas.py <edit> [--aplicar]`** — every take edge out of the middle of a sound, by each recording's own noise floor; run-on speech goes to an "ouvir" list (Cut craft).
+- **`conferir_emendas.py <edit> [--language pt]`** — transcribes a window around each junction of the rendered cut and prints the words on both sides (Cut craft).
 - **`verify_cut.py <edl.json> <cut.mp4> [--min-silence 1.2]`** — numeric self-eval: duration, per-junction pop/clipped-word probes, dead air, black frames, clipping, **and range level balance** (each range's RMS vs the median range; `LOW-LEVEL` under −4 dB). ~350 tokens of text instead of N images. The range-balance line is the convergence test for a `gain_db` fix.
 - **`grade.py <in> -o <out>`** — grade presets/raw filters. **`--candidates "a=<filter>;b=<preset>;original=" --frame <t> -o cmp.png`** renders N looks on the SAME frame into one labeled montage.
 - **`timeline_view.py <video> <start> <end>`** — filmstrip+waveform PNG for ONE flagged spot, not a scan tool.
@@ -370,6 +372,11 @@ Three things that are not obvious:
   removes a fumble) it drops to 0 and the takes just butt, with the 30ms fades. A
   fixed 5f summed both voices for ~170ms there. Each take's lead is in
   `jcut_timeline[].lead_frames`; the render log says "emenda colada na fala".
+  "Silence" there is -35 dB, and quiet speech sits under it (someone talking off camera, a fumble's
+  tail): a word the take's transcript (`transcripts/<source>.json`) has WHOLLY inside that silence
+  counts as speech, so a quiet voice is never summed with the other take either. The render log says
+  "fala baixa no silêncio da ponta". On a real edit those quiet voices layered made the user turn the
+  J-cut off ("o áudio parece trepado, um por cima do outro").
 - **Sync is by construction:** `video_in = audio_in + lead` and
   `video_offset = audio_offset + lead`. Break that pairing and the take drifts.
 
@@ -433,6 +440,17 @@ Tune per voice: brighter → raise treble/3.2k; warmer → back those off, lift 
 - Onsets drift early (bakes dead air at a segment head); ends stretch across silence (a 4s "phrase" may be 1s of talk); restarts get collapsed into one stretched word (the doubled take is invisible in text but audible).
 - Fix: edges from `speech_regions.py` — start → region onset −30ms, end → offset +50–80ms (the trail keeps the word's decay; cutting at the offset clips the last sibilant). Inside merged speech blocks, place the edge by eye on a fine `timeline_view`.
 - If the user flags a gap/clip after render, re-run `speech_regions.py` around that timestamp — don't nudge blindly.
+- **Then run `pontas.py <edit> --aplicar` before every render of the cut.** `speech_regions.py`'s fixed -33 dB
+  misses on a take with loud room noise (a -39.6 dB floor put word ends and breaths right at the line, and the
+  user found three clipped words in a row). `pontas.py` measures the floor PER RECORDING, moves each edge that
+  sits in a sound to the nearest silence on the right side (the next word that started vs the word that
+  stays) and leaves it 30 ms inside, so running it again changes nothing. In run-on speech it does NOT move
+  the edge: it lists it as "ouvir" (exit 1). Listen, then add `"inicio"`/`"fim"` to that range's
+  `pontas_ouvidas` in edl.json; those edges are left alone from then on.
+- **After the render, `conferir_emendas.py <edit>` transcribes a window around every junction of cut.mp4**
+  and prints the words on each side. It is the one check that hears a clipped word: in the same edit,
+  verify_cut, the levels and the speech regions were all clean while the user heard it. Read every line
+  before showing the cut.
 - **A stretched word can hide a false start, and the stretch also mis-attributes every word around it.** When "de" spans 6.16→8.64, the words the source transcript places on either side may belong to *different takes* — the speaker trailed off, paused, and restarted the whole sentence. The text shows one clean sentence; the audio holds two attempts.
 - **Never conclude a range is missing content from the SOURCE transcript's word times.** Extract the exact range and transcribe it in isolation — no surrounding context for the LM to complete from. A model reading the full file completes from context; the same model on a 3-second extract cannot. If the answer changes a deliverable (a caption rewrite, dropping a take), also check the range against `speech_regions.py` and the waveform — agreement between the isolated transcript and the acoustics is what makes it trustworthy.
 - **Rotation:** phone clips are often stored landscape with a ±90° display-matrix; render.py handles it — don't force dimensions.

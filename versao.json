@@ -1,8 +1,11 @@
 {
-  "versao": "0.3.8",
+  "versao": "0.3.9",
   "data": "2026-11-01",
   "notas": {
     "pt": [
+      "Menos palavra cortada na emenda. Antes de renderizar o corte, o agente confere cada ponta pelo ruído da própria gravação (numa sala barulhenta, a régua fixa deixava a ponta cair no fim da palavra) e a leva para o silêncio do lado certo. Na fala corrida, sem silêncio perto, ele não mexe sozinho: anota para ouvir.",
+      "Depois do render, o agente ouve cada emenda: transcreve um trecho em volta de cada junção e confere as palavras dos dois lados. É a conferência que acha a palavra cortada que as medidas deixavam passar.",
+      "O J-cut não sobrepõe mais uma fala baixa (alguém falando fora da câmera, o resto de um erro) à outra tomada: onde a transcrição ouve palavra, ele não conta como silêncio.",
       "A legenda sai da frente do texto em destaque: enquanto um texto do tamanho padrão para cima está na tela, o vídeo final mostra só ele. Em cada texto, o botão \"Esconder a legenda\" liga e desliga. Vale nos estilos de legenda que mostram uma frase por vez, e a frase de antes não fica parada na tela.",
       "Ctrl+A na vista Corte escolhe todas as tomadas: Velocidade e Volume mudam todas de uma vez (por exemplo, o vídeo inteiro a 1,1×).",
       "O computador não trava mais com dois renders: um render por vez no computador inteiro (o segundo espera, e o editor avisa), com prioridade baixa para o mouse e os seus programas passarem na frente.",
@@ -29,6 +32,9 @@
       "Órbita: cards girando em volta de você, passando atrás da cabeça e depois na frente."
     ],
     "en": [
+      "Fewer clipped words at the joins. Before rendering the cut, the agent checks every edge against that recording's own noise (in a noisy room the fixed threshold let the edge land on the end of a word) and moves it into the silence on the right side. In run-on speech, with no silence nearby, it does not move it on its own: it notes it to be listened to.",
+      "After the render, the agent listens to every join: it transcribes a window around each junction and checks the words on both sides. It is the check that catches the clipped word the measurements let through.",
+      "The J-cut no longer lays quiet speech (someone talking off camera, the end of a fumble) over the other take: where the transcript hears a word, it does not count as silence.",
       "Captions step aside for a highlighted text: while a text of default size or larger is on screen, the final video shows only that text. Each text has a \"Hide captions\" button to turn it on or off. It works in the caption styles that show one phrase at a time, and the phrase before does not stay frozen on screen.",
       "Ctrl+A in the Cut view selects every take: Speed and Volume change all of them at once (the whole video at 1.1×, for instance).",
       "Two renders no longer freeze the computer: one render at a time on the whole computer (the second waits, and the editor says so), at low priority so your mouse and programs come first.",
@@ -58,7 +64,7 @@
   "arquivos": {
     "README.md": "a6cf59def889fddc4399ccb926bc258e551163cb166533a79c4a90e6c6d7fbd7",
     "README.pt-BR.md": "1f0f42a07d61d580692f03793633892872d935ab49666e7b1cf5656974e78a83",
-    "SKILL.md": "43ffaa92c16c23c811d711b02eb1500b958a31cad2de6e87322a696e83ca679f",
+    "SKILL.md": "6f4318d00d08385a91e2736c02aabb50ee17fb2ce47f8d1cb7182fae6dffeeb8",
     "agents/openai.yaml": "27bc121e08a18862714c53c1e16c842ccaa7cf9d4b8228e22c98ab5937b8734f",
     "assets/efeitos/motor.js": "aecf280ab978e8b83ac14b1290ea4b7ffde0f16a77c33b7e8c04055bca3f773e",
     "assets/efeitos/vendor/jsm/postprocessing/EffectComposer.js": "9936afeb9cf7743ad8263efe3d5e75fc3af487f21456797e93e8b9ed72237b42",
@@ -179,6 +185,7 @@
     "helpers/cenas_edit_data.py": "ea206000bfdfd1bbabf10a45317d2b2f725867c093e4e6b037302a9ca0faa6c5",
     "helpers/chapters.py": "3cbfb0b7914e475d4b0e875baf71b8e0125f39a61a4c33036264b5d62f865e74",
     "helpers/check_remotion_versions.py": "7dae944b3b820b13264aedf28b642121accb9c0fcf385669a4d3a8776b911ac3",
+    "helpers/conferir_emendas.py": "13defffc5a1883c5fa4b22bb213a394ff447ec2e2c46408d67e2c9c1c2690e81",
     "helpers/conferir_legenda.py": "d4ecbb9e91b93cbe8f35ee91cb470021c8d020afa92a2e917c40a1f2da204835",
     "helpers/contact_sheet.py": "0b4641d270f33b4afaefd0d3c60eacd3ccb65fe1e4baf3805b41cf175ba73a67",
     "helpers/corte_alta.py": "7113426e5ceca7e47c97019993dbee1d4916ae3a903de44a308368e7b959c748",
@@ -209,12 +216,13 @@
     "helpers/pendente.py": "e0a100ecbf28865639717ce33a73f3981d82a08e59f46b93354532e0b85bd17d",
     "helpers/person_matte.py": "71fd524f7711741380f1a92de3e8c1671a551579c237f1a73abcee09d0c32672",
     "helpers/pexels_search.py": "4b34c0195367b93e9a2f2dad8171301df3bbfae97dacdedf3f83afcbe85c7d04",
+    "helpers/pontas.py": "70f06a2944d7a0382d4faa381d29ebd9b41d71fa44f6f7d98ab94ed6d7e770da",
     "helpers/preparar_remotion.py": "132dbca3f24f22dcb7fd081774609d71e0e08bd73ea147e21883cd1a5aa76b64",
     "helpers/preview_server.py": "44241d60a3a3fd6b50c70e807f0e505d8cb99e687422f2ed06dc7470a40001cc",
     "helpers/projetos.py": "c003e260b0ccbbed9538d72bfa21223cb18990dccc89438a43b3eac795323827",
     "helpers/proxy.py": "4b4869cf934d5672544db950bf6c3963996a7898b86507bc0fa03757d544e488",
     "helpers/remapear.py": "d390e133af80a9270f3f395a7406d0485e44d0c40b30eea7daab0f55c3695c21",
-    "helpers/render.py": "643a62d4649d7852de131689e281f9bb6b054cb6925f4f6ff8ebe89a32472b10",
+    "helpers/render.py": "e59fb2cf23a3435c9614562f6f932ba409f05e6c0aa63f66981eefd50bd5effb",
     "helpers/render_janelas.py": "6156315349fd515d46e8d798a8c934147b1c4916f7df8b1b0f5ba5740f8e2942",
     "helpers/sonda.py": "ff9715332791ba10424bfb674f5b9abc63c7fd3ef721ab189862caf8af4c0a57",
     "helpers/speech_regions.py": "fe2087596f32b422b303667c78c72ab3f6270be928eef80dd3b5333fdc40bf2a",

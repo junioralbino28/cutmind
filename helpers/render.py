@@ -768,12 +768,43 @@ def trailing_silence(source: Path, start: float, end: float,
     return silencio_nas_pontas(source, start, end, noise_db)[1]
 
 
+def _palavras_da_fonte(edit_dir: Path, fonte: Path, cache: dict) -> list[tuple[float, float]]:
+    """(começo, fim) de cada palavra da transcrição da gravação (transcripts/<nome>.json), em s da gravação."""
+    if fonte not in cache:
+        try:
+            d = json.loads((Path(edit_dir) / "transcripts" / f"{Path(fonte).stem}.json").read_text(encoding="utf-8"))
+            cache[fonte] = [(float(w["start"]), float(w["end"])) for w in d.get("words") or []
+                            if w.get("type", "word") == "word" and w.get("start") is not None and w.get("end") is not None]
+        except (OSError, ValueError, KeyError, TypeError):
+            cache[fonte] = []
+    return cache[fonte]
+
+
+def sem_fala_baixa(palavras: list[tuple[float, float]], start: float, end: float,
+                   cabeca: float, cauda: float | None) -> tuple[float, float | None, int]:
+    """O "silêncio" das pontas sem as palavras que a transcrição achou DENTRO dele (fala baixa demais para
+    o silencedetect: quem fala fora da câmera, um erro que saiu do corte). Edição real de 01/11: o J-cut
+    sobrepunha essa fala à outra tomada ("o áudio parece trepado, um por cima do outro"). Só conta a palavra
+    inteira dentro do silêncio: a 1ª e a última palavra da tomada cruzam a borda dele e ficam de fora.
+    Devolve a cabeça, a cauda e quantas palavras cortaram a sobreposição."""
+    achou = 0
+    dentro = [w for w in palavras if start - 1e-6 <= w[0] and w[1] <= start + cabeca]
+    if dentro:
+        cabeca, achou = max(0.0, min(w[0] for w in dentro) - start - 0.010), achou + len(dentro)
+    if cauda is not None:
+        dentro = [w for w in palavras if end - cauda <= w[0] and w[1] <= end + 1e-6]
+        if dentro:
+            cauda, achou = max(0.0, end - max(w[1] for w in dentro) - 0.010), achou + len(dentro)
+    return cabeca, cauda, achou
+
+
 def plan_jcut(edl: dict, edit_dir: Path, cfg: dict) -> list[dict]:
     """Work out each take's video range, audio range and output offsets."""
     fps = cfg["fps"]
     ranges = edl["ranges"]
     sources = edl["sources"]
     n = len(ranges)
+    falas: dict = {}
 
     plan: list[dict] = []
     for i, r in enumerate(ranges):
@@ -792,6 +823,10 @@ def plan_jcut(edl: dict, edit_dir: Path, cfg: dict) -> list[dict]:
             cabeca, avail = silencio_nas_pontas(src, start, end)
             if i == n - 1:
                 avail = None
+            cabeca, avail, achou = sem_fala_baixa(_palavras_da_fonte(edit_dir, src, falas), start, end, cabeca, avail)
+            if achou:
+                print(f"  J-cut: tomada {i + 1} tem fala baixa no silêncio da ponta ({achou} palavra(s)); "
+                      "a sobreposição fica fora dela")
 
         tail = 0.0
         if avail is not None and cfg["tail_trim_frames"]:

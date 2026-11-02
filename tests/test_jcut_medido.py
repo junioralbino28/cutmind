@@ -172,3 +172,27 @@ def test_previa_sem_sobreposicao_nada_cala():
 def test_o_volume_da_previa_passa_pela_sobra():
     js = CELULAR.read_text(encoding="utf-8")
     assert "sobraVelha(dl, k, video.currentTime) ? 0 : volPrevia(dl[k])" in _funcao(js, "syncVolTomada")
+
+
+# ---- a fala baixa dentro do "silêncio" (edição real de 01/11) ----
+# Quem fala fora da câmera, ou um erro que saiu do corte, pode ficar abaixo dos -35 dB do silencedetect: ele
+# chamava aquilo de silêncio, e o J-cut sobrepunha a fala baixa de uma tomada à da outra ("o áudio parece
+# trepado, um por cima do outro"). A transcrição ouve: a palavra INTEIRA dentro do silêncio corta a sobreposição.
+
+def test_palavra_dentro_do_silencio_encurta_a_ponta_e_a_que_cruza_a_borda_nao():
+    cab, cauda, n = render.sem_fala_baixa([(2.75, 2.85), (2.95, 3.4)], 2.7, 4.6, 0.3, None)
+    assert n == 1 and cab == pytest.approx(0.04) and cauda is None  # a 2ª é a fala da tomada: cruza a borda
+    cab, cauda, n = render.sem_fala_baixa([(0.8, 1.9), (2.1, 2.2)], 0.6, 2.3, 0.2, 0.3)
+    assert n == 1 and cab == 0.2 and cauda == pytest.approx(0.09)
+
+
+def test_fala_baixa_na_cabeca_da_seguinte_tira_a_sobreposicao(fonte, tmp_path):
+    p = _plano(fonte, tmp_path, (0.6, 2.0), (2.7, 4.6))  # sem transcrição: 0,3 s de silêncio na cabeça
+    assert p[1]["lead_frames"] == render.JCUT_LEAD_FRAMES
+    (tmp_path / "transcripts").mkdir()
+    (tmp_path / "transcripts" / f"{fonte.stem}.json").write_text(json.dumps({"words": [
+        {"text": "baixinho", "start": 2.75, "end": 2.85, "type": "word"},   # fora da câmera, no "silêncio"
+        {"text": "fala", "start": 2.95, "end": 3.6, "type": "word"}]}), encoding="utf-8")
+    p = _plano(fonte, tmp_path, (0.6, 2.0), (2.7, 4.6))
+    assert p[1]["lead_frames"] == 0  # 40 ms antes da palavra baixa, menos 10 de folga: não cabe um quadro
+    assert p[1]["v_in"] == p[1]["a_in"] == 2.7
