@@ -345,5 +345,9 @@
  "a cópia leve de {name} falhou (ffmpeg {rc})": "the light copy of {name} failed (ffmpeg {rc})",
  "não deu para gravar {name}": "couldn't save {name}",
  "o corte na qualidade da gravação não saiu (a saída está no registro do trabalho)": "the cut at the recording's quality didn't come out (the output is in the job log)",
- "o corte na qualidade da gravação não ficou marcado como pronto": "the cut at the recording's quality wasn't marked as done"
+ "o corte na qualidade da gravação não ficou marcado como pronto": "the cut at the recording's quality wasn't marked as done",
+ "o projeto ainda não tem o vídeo final da Fase 2": "this project doesn't have the Phase 2 final video yet",
+ "gráficos do vídeo final: {e}": "final video graphics: {e}",
+ "o Remotion compartilhado não carrega neste projeto ({motivo}): apague a pasta {alvo} e tente outra vez": "the shared Remotion doesn't load in this project ({motivo}): delete the folder {alvo} and try again",
+ "o projeto do vídeo final é de um kit anterior e não desenha os gráficos: aperte Pronto para o Claude atualizar": "the final video's project is from an older kit and doesn't draw the graphics: press Done so Claude can update it"
 }

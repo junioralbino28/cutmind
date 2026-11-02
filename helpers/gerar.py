@@ -33,6 +33,7 @@ import aquecer_navegador  # mesma pasta deste arquivo
 import camadas as cam  # mesma pasta deste arquivo
 import camadas_edit_data  # mesma pasta deste arquivo
 import cenas_edit_data  # mesma pasta deste arquivo
+import graficos  # mesma pasta deste arquivo
 import efeitos as ef  # mesma pasta deste arquivo
 import corte_alta  # mesma pasta deste arquivo
 import efeitos_render  # mesma pasta deste arquivo
@@ -281,6 +282,9 @@ def preparar_remotion_fase2(edit: Path) -> Path:
                         "Pronto para o Claude atualizar")
     if r["erros"]:
         raise ErroGerar("um efeito do vídeo final ficou inválido: aperte Pronto para o Claude corrigir")
+    if _ler(pub / "edit-data.json").get("graficos") and graficos.template_falta(rem):  # sairia sem eles, sem erro
+        raise ErroGerar("o projeto do vídeo final é de um kit anterior e não desenha os gráficos: aperte Pronto "
+                        "para o Claude atualizar")
     try:
         camadas_edit_data.aplicar(edit)
     except camadas_edit_data.TemplateVelho:

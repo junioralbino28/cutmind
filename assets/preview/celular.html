@@ -293,6 +293,20 @@
   </footer>
 </section>
 
+<!-- Gráficos animados: um cartão por tipo, os textos já vêm da fala; o gráfico entra na faixa de texto -->
+<section class="sheet" id="gfSheet" aria-hidden="true">
+  <div class="sheet-head">
+    <button class="sh-close" id="gfClose" type="button" aria-label="Fechar"></button>
+    <b class="sh-title" id="gfTitulo">Gráficos</b>
+  </div>
+  <div class="sheet-body" id="gfLista"></div>
+  <div class="cn-campos hidden" id="gfCampos"></div>
+  <footer class="sheet-foot">
+    <div class="t-spacer"></div>
+    <button class="tb-btn primary" id="gfOk" type="button">Pronto</button>
+  </footer>
+</section>
+
 <!-- Modelos de montagem: o modelo, a música e as fotos e clipes; numa montagem pronta, guardar ela como modelo -->
 <section class="sheet" id="montSheet" aria-hidden="true">
   <div class="sheet-head">
@@ -438,6 +452,7 @@
 <input type="file" id="fileImagem" accept="image/*" hidden>
 <input type="file" id="fileSobrepor" accept="video/*" hidden>
 <input type="file" id="fileFundo" accept="image/*" hidden>
+<input type="file" id="fileGrafico" accept="image/*" hidden>
 <input type="file" id="fileLugar" accept="image/*,video/*" hidden>
 <input type="file" id="fileMontMidia" accept="image/*,video/*" multiple hidden>
 <input type="file" id="fileMontMusica" accept="audio/*" hidden>

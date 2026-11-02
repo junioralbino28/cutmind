@@ -83,4 +83,10 @@ does not survive a re-cut.
 
 Each graphic is a block on the Final view's text track, named by its type and text. The user can
 move it (every beat goes along) and trim it (beats outside the new window move to the nearest
-edge). The Salvar writes it straight into `edit-data.json` (`editdata_aplicar.py`), no agent turn.
+edge), and change its texts (**Editar**) or turn it off (**Desligar**, `desligada: true`). The
+Texto and Efeitos menus open **Gráficos**: one card per type, the texts prefilled from the speech
+at the needle, each beat on the spoken word when the line starts with one, and the images of `selo`
+and `celular` from the project's `midia/` (the Salvar copies them to `public/`). The Salvar writes
+all of it straight into `edit-data.json` (`editdata_aplicar.py`), no agent turn, and the Baixar
+renders it. **After a user-made graphic, you may improve its texts and move each beat onto the right
+word when asked; its place on the timeline is the user's.**

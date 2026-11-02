@@ -127,6 +127,7 @@ const ICON = {
   pessoa: sv('<path d="M3 8.5h18" stroke-dasharray="2.2 2"/><circle cx="12" cy="9" r="3.1"/><path d="M5.8 20.5c.7-3.6 3.2-5.6 6.2-5.6s5.5 2 6.2 5.6"/>'),
   // o Fundo: a pessoa na frente de uma paisagem nova
   fundo: sv('<rect x="3" y="4" width="18" height="16" rx="2.6"/><path d="M3.5 14.2l4-3.6 2.8 2.4"/><circle cx="16.8" cy="8.2" r="1.4"/><circle cx="12.6" cy="12.2" r="2.3"/><path d="M8.3 19.8c.6-2.5 2.2-3.8 4.3-3.8s3.7 1.3 4.3 3.8"/>'),
+  graficos: sv('<rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M8 15.5v-3M12 15.5v-7M16 15.5v-5"/>'),
   cenas: sv('<rect x="3" y="4" width="18" height="16" rx="2.6"/><path d="M7 8.2h4M7 10.6h2.6"/><path d="M16.6 6.6l.7 1.5 1.6.2-1.2 1.1.3 1.6-1.4-.8-1.4.8.3-1.6-1.2-1.1 1.6-.2z"/><circle cx="12" cy="13.1" r="2.2"/><path d="M8 19.8c.6-2.3 2.1-3.5 4-3.5s3.4 1.2 4 3.5"/>'),
   // texto que acompanha a pessoa: a mira
   alvo: sv('<circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/>'),
@@ -624,9 +625,9 @@ function buildInsertsDraft() {
   // um gráfico sem janela (`start`/`end`), como os feitos à mão antes da 0.3.0, não vira bloco: com NaN
   // ele parecia sempre mudado, ia sem tempo em todo Salvar e o servidor recusava o Salvar inteiro
   (d.graficos || []).forEach((g, i) => {
-    if (Number.isFinite(+g.start) && Number.isFinite(+g.end) && +g.end > +g.start) list.push({ kind: 'grafico', label: rotuloGrafico(g), start: +g.start, end: +g.end, ref: i });
+    if (Number.isFinite(+g.start) && Number.isFinite(+g.end) && +g.end > +g.start) list.push({ kind: 'grafico', label: rotuloGrafico(g), start: +g.start, end: +g.end, ref: i, item: JSON.parse(JSON.stringify(g)) });
   });
-  S.insertsDraft = list.map((c) => ({ ...c, orig: { start: c.start, end: c.end } }));
+  S.insertsDraft = list.map((c) => ({ ...c, orig: { start: c.start, end: c.end, sig: c.item ? JSON.stringify(c.item) : null } }));
   S.insSel = -1;
   buildCenasDraft(d);
   buildDestaques(d);
@@ -644,7 +645,8 @@ function rotuloGrafico(g) {
   return txt ? `${nome}: ${txt}` : nome;
 }
 // o bloco andou ou foi aparado desde o último vídeo do agente (ou o último Salvar)
-const insMudou = (c) => c.start !== c.orig.start || c.end !== c.orig.end;
+// um gráfico também muda pelo item (o texto, o desligar); criado aqui e nunca salvo, é sempre mudança
+const insMudou = (c) => !!c.nova || c.start !== c.orig.start || c.end !== c.orig.end || (!!c.item && JSON.stringify(c.item) !== c.orig.sig);
 const insertsDirty = () => S.insertsDraft.some(insMudou);
 
 // ---------- montagem na batida: cada tomada é um lugar ----------
@@ -773,6 +775,7 @@ function refreshHeader() {
 // Salvar, ou quando chega um corte novo do agente, o histórico zera: o que foi
 // enviado não volta daqui.
 const HIST = { past: [], future: [], max: 100 };
+const copiaBloco = (c) => ({ ...c, orig: { ...c.orig }, ...(c.item ? { item: JSON.parse(JSON.stringify(c.item)) } : {}) });
 function snap() {
   return {
     draft: S.draft.map((r) => ({ ...r, orig: r.orig ? { ...r.orig } : null, curva: copiaCurva(r.curva), enq: copiaEnq(r.enq) })),
@@ -784,7 +787,7 @@ function snap() {
     layerSel: S.layerSel,
     fx: JSON.parse(JSON.stringify(S.efeitos)),
     fxSel: S.fxSel,
-    ins: S.insertsDraft.map((c) => ({ start: c.start, end: c.end })),
+    ins: S.insertsDraft.map(copiaBloco),
     insSel: S.insSel,
     cenas: S.cenasDraft.filter((c) => !c.nova).map(cenaValor), // os do agente, pela posição
     cenasNovas: S.cenasDraft.filter((c) => c.nova).map(copiaNova), // os Fundos criados aqui, inteiros
@@ -822,8 +825,8 @@ function restore(s) {
   S.layerSel = s.layerSel && camItem(s.layerSel) ? s.layerSel : null;
   if (s.fx) S.efeitos = s.fx;
   S.fxSel = s.fxSel && fxItem(s.fxSel) ? s.fxSel : null;
-  // os blocos da Fase 2 são os mesmos objetos (o agente manda outros junto com um histórico zerado)
-  if (s.ins && s.ins.length === S.insertsDraft.length) s.ins.forEach((v, k) => Object.assign(S.insertsDraft[k], v));
+  // os blocos da Fase 2, sem contar os gráficos novos (o agente manda outros junto com um histórico zerado)
+  if (s.ins && s.ins.filter((c) => !c.nova).length === S.insertsDraft.filter((c) => !c.nova).length) S.insertsDraft = s.ins.map(copiaBloco);
   S.insSel = s.insSel != null && s.insSel < S.insertsDraft.length ? s.insSel : -1;
   const doAgente = S.cenasDraft.filter((c) => !c.nova);
   if (s.cenas && s.cenas.length === doAgente.length) s.cenas.forEach((v, k) => Object.assign(doAgente[k], cenaValor(v)));
@@ -1008,7 +1011,7 @@ async function applyState(data) {
   S.zoomDraft = null; S.zoomOrig = null; S.zoomSel = -1;
   if ((S.state.phase || 1) >= 2) {
     if (S.state.captions) {
-      try { S.captions = groupCaptions(await (await fetch(`/media/${S.state.captions}?v=${Date.now()}`)).json()); } catch (e) { /* ainda não existe */ }
+      try { S.capPalavras = await (await fetch(`/media/${S.state.captions}?v=${Date.now()}`)).json(); S.captions = groupCaptions(S.capPalavras); } catch (e) { /* ainda não existe */ }
     }
     if (S.state.editData) {
       try { S.editData = await (await fetch(`/media/${S.state.editData}?v=${Date.now()}`)).json(); buildInsertsDraft(); } catch (e) { /* ainda não existe */ }
@@ -1265,6 +1268,7 @@ function renderTimeline() {
         chip.style.width = `${Math.max((c.end - c.start) * S.pps, 6)}px`;
         el('span', 'l-name', chip).textContent = c.label; // escolhido, o bloco mostra as alças por fora: o nome corta dentro
         if (insMudou(c)) chip.classList.add('dirty');
+        if (c.item && c.item.desligada) chip.classList.add('off');
         if (i === S.insSel) {
           chip.classList.add('sel');
           if (c.kind !== 'hook') el('div', 'lh l', chip).dataset.side = 'l'; // o gancho começa no 0
@@ -2164,6 +2168,7 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     if (S.layerSel) deleteLayerSel();
     else if (S.fxSel) deleteFxSel();
+    else if (gfNovoEscolhido()) gfExclui();
     else if (S.selected >= 0 && S.view === 'corte') deleteSelected();
   } else if (ctrl && kl === 'b') { // dividir: sem nada escolhido, a tomada debaixo da agulha (CapCut)
     e.preventDefault();
@@ -2471,6 +2476,8 @@ const DICA = { volume: t('Volume'), velocidade: t('Velocidade e curva'), intensi
   'melhorar-voz': t('A voz do vídeo mais limpa ou com som de estúdio, e quanto do ambiente fica'),
   fundo: t('Um fundo novo atrás de você, na tomada debaixo da agulha'),
   cenas: t('Vidro, capa de revista, mural, parede de fotos, gráfico, site e órbita, na tomada debaixo da agulha'),
+  graficos: t('Palavras no ritmo da fala, palavra grande, botões, lista, comentário e mais, na agulha'),
+  'gf-editar': t('Os textos deste gráfico'), 'gf-liga': t('Tira o gráfico do vídeo, sem apagar'),
   'lugar-trocar': t('Outra foto ou vídeo neste lugar, com a mesma duração'), 'lugar-trecho': t('Que parte do clipe entra neste lugar'),
   'lugar-original': t('O lugar volta à mídia e ao trecho do vídeo'),
   'modelos-montagem': t('Os modelos de montagem: o ritmo, a música e as fotos e clipes; ou guardar esta montagem como modelo'),
@@ -2557,6 +2564,7 @@ function renderToolbar() {
     tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
     tool(ctx, 'texto-novo', t('Texto'), { icon: ICON.texto });
     tool(ctx, 'modelos', t('Modelos'), { icon: ICON.estilo });
+    tool(ctx, 'graficos', t('Gráficos'), { icon: ICON.graficos, disabled: !fundoPode() });
     return;
   }
   if (fmenu) { // Efeitos: filtro e fundo na tomada debaixo da agulha, transição no corte mais perto
@@ -2566,6 +2574,7 @@ function renderToolbar() {
     tool(ctx, 'voz', t('Voz'), { icon: ICON.voz, disabled: !hasVideo });
     tool(ctx, 'fundo', t('Fundo'), { icon: ICON.fundo, disabled: !fundoPode() });
     tool(ctx, 'cenas', t('Cenas'), { icon: ICON.cenas, disabled: !fundoPode() });
+    tool(ctx, 'graficos', t('Gráficos'), { icon: ICON.graficos, disabled: !fundoPode() });
     return;
   }
   if (bsel) { // a seleção em massa: o trecho de todas as faixas
@@ -2589,6 +2598,12 @@ function renderToolbar() {
     if (dq) {
       tool(ctx, 'cena-texto', t('Texto'), { icon: ICON.texto });
       tool(ctx, 'cena-lugar', t('Centralizar'), { icon: ICON.mover, disabled: Math.round(blocoDaCena(dq).x) === FRAME_W / 2 });
+    }
+    if (isel.kind === 'grafico') {
+      const off = !!isel.item.desligada;
+      tool(ctx, 'gf-editar', t('Editar'), { icon: ICON.texto, disabled: off });
+      if (isel.nova) { tool(ctx, 'excluir', t('Excluir'), { icon: ICON.remover }); return; } // criado aqui: não tem um original
+      tool(ctx, 'gf-liga', off ? t('Ligar') : t('Desligar'), { icon: off ? ICON.olhoFechado : ICON.olho });
     }
     tool(ctx, 'f2-original', t('Original'), { icon: ICON.original, disabled: !insMudou(isel) && !(dq && cenaMudou(dq)) });
     return;
@@ -2716,6 +2731,9 @@ document.addEventListener('click', (e) => {
       openCenas(c && c.nova && CENAS_NOVAS.includes(c.tipo) ? S.cenaSel : null);
       break;
     }
+    case 'graficos': S.fxMenu = false; S.textMenu = false; renderToolbar(); openGraficos(null); break;
+    case 'gf-editar': openGraficos(S.insSel); break;
+    case 'gf-liga': gfLiga(); break;
     case 'intensidade': openIntensidade(); break;
     case 'ajustar': openAjuste(); break;
     // numa montagem, o vídeo é um clipe para ela (midia/), não material novo para cortar; sem vídeo
@@ -2755,6 +2773,7 @@ document.addEventListener('click', (e) => {
       if (S.layerSel) deleteLayerSel();
       else if (S.fxSel) deleteFxSel();
       else if (S.cenaSel >= 0) cenaExclui();
+      else if (gfNovoEscolhido()) gfExclui();
       else deleteSelected();
       break;
     case 'volume': openVolume(); break;
@@ -2774,6 +2793,7 @@ document.addEventListener('click', (e) => {
       if (c) {
         remember();
         c.start = c.orig.start; c.end = c.orig.end;
+        if (c.item) { c.item = JSON.parse(c.orig.sig); c.label = rotuloGrafico(c.item); }
         const dq = destaqueDoBloco(c);
         if (dq) { Object.assign(dq, cenaValor(dq.orig)); rotulosDestaques(); }
         renderTimeline(); renderToolbar(); refreshHeader(); drawCenaBox();
@@ -5058,7 +5078,7 @@ async function salvar(aviso, confirmado) {
       behind: de('behind').map((c) => ({ ref: c.ref, start: t(c.start), dur: t(c.end - c.start) })),
       wordAccents: de('word').map((c) => ({ ref: c.ref, text: c.label, start: t(c.start), end: t(c.end) })),
       numeros: de('numero').map((c) => ({ ref: c.ref, at: t(c.start), end: t(c.end) })),
-      graficos: de('grafico').map((c) => ({ ref: c.ref, start: t(c.start), end: t(c.end) })),
+      graficos: de('grafico').map(gfPedido),
     });
   }
   // efeitos: só os que mudaram, pelo `ref` (o agente refaz só a janela de cada um); o Fundo
@@ -5132,7 +5152,8 @@ async function salvar(aviso, confirmado) {
     if (comFormato) S.formatoPendente = S.formato === S.formatoAtual ? null : S.formato; // o servidor guarda o mesmo
     if (comVoz) { S.melhorarBase = JSON.stringify(S.melhorar); vozCarregaInfo().then(() => renderTimeline()); }
     S.faixa = null;
-    S.insertsDraft.forEach((c) => { c.orig = { start: c.start, end: c.end }; });
+    if (comBlocos && S.insertsDraft.some((c) => c.kind === 'grafico' && insMudou(c))) await gfDepoisDeSalvar();
+    S.insertsDraft.forEach((c) => { c.orig = { start: c.start, end: c.end, sig: c.orig.sig }; });
     S.cenasDraft = S.cenasDraft.filter((c) => !(c.nova && !c.orig && c.desligada)); // o Fundo novo desligado não foi a lugar nenhum
     S.cenasDraft.forEach((c) => { c.orig = cenaValor(c); });
     listaDestaques().forEach((c) => { c.orig = cenaValor(c); });
@@ -10378,6 +10399,465 @@ $('cnCampos').addEventListener('input', (e) => {
   clearTimeout(CN.espera);
   CN.espera = setTimeout(() => { if (CN.aberto && video.paused) cnRecorte(); }, 450);
 }));
+
+// ---------- gráficos animados: criar e mudar no editor, sem o agente ----------
+/* Os dez gráficos do modelo (src/graficos/; references/graficos.md). Um cartão por tipo, sobre o quadro da
+ * agulha; os textos já vêm da fala do trecho (sem IA) e cada batida cai na palavra dita, quando a linha começa
+ * por uma palavra da fala. O gráfico entra como um bloco da faixa de texto: anda e apara como os outros, e o
+ * Salvar leva o item inteiro (graficos.py confere, editdata_aplicar.py grava). O Baixar desenha. */
+const GF_TIPOS = ['palavras', 'grande', 'botoes', 'lista', 'objecao', 'comenta', 'progresso', 'ajuste', 'selo', 'celular'];
+// os instantes que andam com o bloco (INSTANTE no remapear.py: tests/test_graficos_do_editor.py confere os dois)
+const GF_INSTANTE = /^(at|ate|[a-z][A-Za-z]*At)$/;
+const GF_DICA = {
+  palavras: t('Uma palavra de cada vez, no ritmo da fala. Boa para listas e para a frase de abertura.'),
+  grande: t('Uma palavra gigante que cai e treme. Boa para um número, um preço ou a palavra que fica.'),
+  botoes: t('Botões que um cursor vai clicando. Bons para as ações de um produto.'),
+  lista: t('Um cartão escuro com um X em cada item. Bom para o que está errado na alternativa.'),
+  objecao: t('A imagem fica em preto e branco e aparece o comentário de quem assiste. Boa para a dúvida que você vai responder.'),
+  comenta: t('A caixa de comentário digitando a palavra, com uma seta. Boa para a chamada "comenta tal palavra".'),
+  progresso: t('Uma barra que enche e fecha com uma palavra verde. Boa para aprender, carregar, ficar pronto.'),
+  ajuste: t('Um cursor arrastando a ponta de um clipe. Bom para falar de ajuste à mão.'),
+  selo: t('O logo num selo escuro. Bom quando você diz o nome da marca.'),
+  celular: t('Uma imagem dentro de um celular que desliza. Boa para mostrar um app ou uma tela.'),
+};
+const GF_CAMPOS = {
+  palavras: [{ k: 'linhas', rotulo: t('Palavras, uma por linha'), linhas: 6, max: 24, falta: t('Escreva pelo menos uma palavra.') }],
+  grande: [{ k: 't', rotulo: t('Palavra ou número'), max: 16, falta: t('Escreva a palavra.') }, { k: 'sub', rotulo: t('Linha de cima (opcional)'), max: 28 },
+    { k: 'risco', rotulo: t('Riscar no fim'), check: true }],
+  botoes: [{ k: 'linhas', rotulo: t('Botões, um por linha'), linhas: 5, max: 22, falta: t('Escreva pelo menos um botão.') }],
+  lista: [{ k: 'titulo', rotulo: t('Título'), max: 28, falta: t('Escreva o título.') },
+    { k: 'linhas', rotulo: t('Itens, um por linha (até 6)'), linhas: 6, max: 24, falta: t('Escreva pelo menos um item.') }],
+  objecao: [{ k: 'usuario', rotulo: t('Quem comenta'), max: 24, falta: t('Escreva quem comenta.') }, { k: 'texto', rotulo: t('A dúvida'), max: 90, falta: t('Escreva a dúvida.') }],
+  comenta: [{ k: 'texto', rotulo: t('Palavra que a pessoa comenta'), max: 18, falta: t('Escreva a palavra.') }, { k: 'dm', rotulo: t('Frase do direct (opcional)'), max: 28 }],
+  progresso: [{ k: 'titulo', rotulo: t('Título'), max: 28, falta: t('Escreva o título.') }, { k: 'fim', rotulo: t('Palavra verde do fim'), max: 16, falta: t('Escreva a palavra do fim.') }],
+  ajuste: [{ k: 'titulo', rotulo: t('Título (opcional)'), max: 28 }],
+  selo: [{ k: 'src', rotulo: t('O logo'), imagem: true, falta: t('Escolha a imagem do logo.') }],
+  celular: [{ k: 'src', rotulo: t('A tela'), imagem: true, falta: t('Escolha a imagem da tela.') }],
+};
+// quanto cada um dura ao nascer; depois a pessoa apara na faixa. Os de lista crescem com as linhas
+const GF_DUR = { palavras: 2.5, grande: 2, botoes: 2.5, lista: 3, objecao: 3, comenta: 4, progresso: 3, ajuste: 3, selo: 2.5, celular: 3.5 };
+const GF_POR_LINHA = { palavras: 0.9, botoes: 1.1, lista: 0.9 };
+const GF = { aberto: false, alvo: -1, a: 0, b: 0, tipo: '', textos: {}, quadro: null, midia: [] };
+
+const gfLinhas = (v) => String(v || '').split('\n').map((s) => s.trim()).filter(Boolean);
+const gfNorma = (s) => String(s).normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+function gfDuracao(tipo, tx) {
+  const n = GF_POR_LINHA[tipo] ? gfLinhas(tx.linhas).length : 0;
+  return Math.max(GF_DUR[tipo], n * (GF_POR_LINHA[tipo] || 0) + 0.6);
+}
+// a janela de um gráfico novo: da agulha até a duração dele, sem passar do fim do vídeo
+function gfJanelaNova(tipo, tx) {
+  const fim = fimFinal(), d = gfDuracao(tipo, tx);
+  const b = Math.min(GF.a0 + d, fim);
+  return [+Math.max(0, Math.min(GF.a0, b - Math.min(d, 1))).toFixed(3), +b.toFixed(3)];
+}
+// os textos tirados da fala do trecho: sem IA, só para o gráfico nascer com o assunto
+function gfDaFala(tipo, a, b) {
+  const fala = falaDaJanela(a, b);
+  const ws = fala.split(/\s+/).filter(Boolean);
+  const fortes = [...new Set(ws.map(limpaPalavra).filter((w) => w.length >= 3 && !PALAVRA_FRACA.test(w)))];
+  const forte = palavraForte(fala).toUpperCase();
+  const numero = (fala.match(/\d+(?:[.,]\d+)?\s?(?:%|x\b|mil\b|k\b)?/i) || [''])[0].replace(/\s+/g, '');
+  if (tipo === 'palavras') return { linhas: fortes.slice(0, 4).join('\n') || t('Sua palavra') };
+  if (tipo === 'grande') return { t: (numero || forte).slice(0, 16) || t('PALAVRA'), sub: '', risco: false };
+  if (tipo === 'botoes') return { linhas: fortes.slice(0, 3).join('\n') || t('Seu botão') };
+  if (tipo === 'lista') {
+    const itens = [0, 1, 2].map((k) => primeiras(ws.slice(k * 3), 3)).filter(Boolean);
+    return { titulo: t('O QUE NÃO FAZER'), linhas: (itens.length ? itens : [t('Primeiro item')]).join('\n') };
+  }
+  if (tipo === 'objecao') return { usuario: '@quem_assiste', texto: primeiras(ws, 10) || t('Mas isso funciona mesmo?') };
+  if (tipo === 'comenta') return { texto: forte.slice(0, 18) || t('QUERO'), dm: t('te mando no direct') };
+  if (tipo === 'progresso') return { titulo: primeiras(ws, 3) || t('Carregando'), fim: t('Pronto!') };
+  if (tipo === 'ajuste') return { titulo: t('linha do tempo') };
+  return {};
+}
+// o instante em que a 1ª palavra da linha é dita, de `desde` em diante
+function gfDita(linha, desde, b) {
+  const alvo = gfNorma(linha.split(/\s+/)[0]);
+  if (!alvo) return null;
+  const w = (S.capPalavras || []).find((c) => c.startMs / 1000 >= desde - 0.01 && c.startMs / 1000 < b && gfNorma(c.text) === alvo);
+  return w ? w.startMs / 1000 : null;
+}
+// uma batida por linha: a que não mudou fica onde está, a dita cai na palavra, a outra se espalha na janela
+function gfBatidas(ls, a, b, velhos) {
+  const d = b - a;
+  let desde = a;
+  return ls.map((l, k) => {
+    const velho = velhos && velhos[k] && velhos[k].t === l && Number.isFinite(+velhos[k].at) ? +velhos[k].at : null;
+    const dita = velho != null ? velho : gfDita(l, desde, b);
+    const plano = a + Math.min(d - 0.1, 0.1 + k * Math.max(0.2, (d - 0.4) / Math.max(1, ls.length)));
+    const at = Math.max(desde, Math.min(b - 0.1, dita != null ? dita : plano));
+    desde = Math.min(at + 0.12, b - 0.1);
+    return +at.toFixed(3);
+  });
+}
+function gfDesloca(o, mover, a, b) {
+  for (const k of Object.keys(o)) {
+    const v = o[k];
+    if (GF_INSTANTE.test(k) && typeof v === 'number') o[k] = +Math.min(Math.max(v + mover, a), b).toFixed(4);
+    else if (v && typeof v === 'object') gfDesloca(v, mover, a, b);
+  }
+}
+/* O item com a janela do bloco, como o editdata_aplicar.py faria (_grafico): movido, os instantes andam
+ * juntos; aparado, o que ficou fora entra na ponta. Para mudar o texto de um gráfico já movido. */
+function gfNaJanela(item, a, b) {
+  const g = JSON.parse(JSON.stringify(item));
+  const mover = Math.abs((b - a) - (+g.end - +g.start)) < 1e-3 ? a - +g.start : 0;
+  delete g.start; delete g.end;
+  gfDesloca(g, mover, a, b);
+  return { ...g, start: a, end: b };
+}
+/* O template não quebra a linha da Palavra grande nem de Palavras: texto digitado aqui sairia cortado na borda
+ * do vídeo. A letra (px do quadro) em que a linha mais larga cabe na zona segura, medida na fonte do template. */
+function gfLetraQueCabe(linhas) {
+  const c = gfLetraQueCabe.c || (gfLetraQueCabe.c = document.createElement('canvas').getContext('2d'));
+  const carregou = !!document.fonts && document.fonts.check('900 100px Poppins');
+  c.font = '900 100px Poppins, sans-serif';
+  const em = Math.max(0.01, ...linhas.map((s) => (carregou ? c.measureText(s).width / 100 : s.length * 0.72)));
+  return Math.floor(880 / em);
+}
+function gfTamanho(g, linhas, padrao) {
+  const cabe = gfLetraQueCabe(linhas);
+  if (cabe < padrao) g.tamanho = Math.max(40, cabe);
+  else if (g.tamanho != null && g.tamanho < padrao) delete g.tamanho; // a palavra encurtou: volta ao tamanho de sempre
+}
+// o item que os campos do painel viram; `velho` guarda o que o painel não mostra (a cor, o ícone, os tempos)
+function gfItem(tipo, a, b, tx, velho) {
+  const g = velho ? JSON.parse(JSON.stringify(velho)) : {};
+  Object.assign(g, { tipo, start: +a.toFixed(3), end: +b.toFixed(3) });
+  const v = (k) => String(tx[k] || '').trim();
+  const poe = (k, x) => { if (x !== '' && x != null) g[k] = x; else delete g[k]; };
+  const dentro = (s) => +Math.min(b - 0.05, Math.max(a, s)).toFixed(3);
+  if (GF_POR_LINHA[tipo]) {
+    const ls = gfLinhas(tx.linhas).slice(0, 6);
+    const ats = gfBatidas(ls, a, b, g.itens);
+    g.itens = ls.map((l, k) => {
+      const it = { ...((g.itens && g.itens[k]) || {}), t: l, at: ats[k] };
+      if (it.ate != null && it.ate <= it.at) delete it.ate;
+      return it;
+    });
+    if (tipo === 'palavras') {
+      gfTamanho(g, ls, 140);
+      // o padrão do template é tinta escura, que some em imagem escura: o painel desenha branco com contorno, e sai igual
+      if (!velho || (velho.itens || []).some((i) => i.contorno)) {
+        g.cor = g.cor || '#fff';
+        for (const it of g.itens) it.contorno = it.contorno || '#111';
+      }
+    }
+  }
+  if (tipo === 'grande') {
+    poe('t', v('t')); poe('sub', v('sub'));
+    gfTamanho(g, [v('t')], 170);
+    g.at = dentro(g.at != null ? g.at : a);
+    if (tx.risco) g.riscoAt = dentro(g.riscoAt != null ? g.riscoAt : Math.max(a + 0.4, b - 0.7)); else delete g.riscoAt;
+  }
+  if (tipo === 'objecao') { poe('usuario', v('usuario')); poe('texto', v('texto')); if (g.quando == null) g.quando = t('agora'); }
+  if (tipo === 'lista' || tipo === 'ajuste') poe('titulo', v('titulo'));
+  if (tipo === 'selo' || tipo === 'celular') poe('src', v('src'));
+  if (tipo === 'progresso') {
+    poe('titulo', v('titulo')); poe('fim', v('fim'));
+    g.fimAt = dentro(g.fimAt != null ? g.fimAt : Math.max(a + 0.5, b - 0.8));
+  }
+  if (tipo === 'comenta') {
+    poe('texto', v('texto')); poe('dm', v('dm'));
+    g.digitaAt = dentro(g.digitaAt != null ? g.digitaAt : a + 0.4);
+    g.digitaFimAt = dentro(g.digitaFimAt != null ? g.digitaFimAt : g.digitaAt + 0.5 + v('texto').length * 0.05);
+    if (g.dm) g.dmAt = dentro(g.dmAt != null ? g.dmAt : g.digitaFimAt + 0.5); else delete g.dmAt;
+    if (!g.seta) g.seta = { x: 820, y: 1380 }; // a ponta, em direção aos comentários
+    if (g.placeholder == null) g.placeholder = t('Adicione um comentário...');
+    if (g.publicar == null) g.publicar = t('Publicar');
+  }
+  return g;
+}
+// os campos do painel a partir de um item que já está na faixa
+function gfDoItem(g) {
+  const tx = {};
+  for (const f of GF_CAMPOS[g.tipo] || []) {
+    if (f.k === 'linhas') tx.linhas = (g.itens || []).map((i) => i.t || '').join('\n');
+    else if (f.k === 'risco') tx.risco = g.riscoAt != null;
+    else tx[f.k] = g[f.k] != null ? String(g[f.k]) : '';
+  }
+  return tx;
+}
+// o que o Salvar leva de um bloco: o novo inteiro; o de sempre pelo `ref`, com o item só se ele mudou
+function gfPedido(c) {
+  const r3 = (v) => +v.toFixed(3);
+  if (c.nova) return { nova: true, start: r3(c.start), end: r3(c.end), item: c.item };
+  return { ref: c.ref, start: r3(c.start), end: r3(c.end), ...(JSON.stringify(c.item) !== c.orig.sig ? { item: c.item } : {}) };
+}
+/* Depois do Salvar: o servidor moveu os instantes e numerou os novos. O rascunho passa a ser o que ficou
+ * gravado, para o segundo Salvar não criar de novo o que já foi. */
+async function gfDepoisDeSalvar() {
+  let prox = ((S.editData && S.editData.graficos) || []).length;
+  const blocos = S.insertsDraft.filter((c) => c.kind === 'grafico');
+  blocos.filter((c) => c.nova).forEach((c) => { c.ref = prox++; c.nova = false; });
+  let lista = null;
+  try { lista = (await (await fetch(`/media/${S.state.editData}?v=${Date.now()}`)).json()).graficos || null; } catch (e) { /* a conta local abaixo vale */ }
+  if (lista && S.editData) S.editData.graficos = lista;
+  for (const c of blocos) {
+    c.item = lista && lista[c.ref] ? JSON.parse(JSON.stringify(lista[c.ref])) : gfNaJanela(c.item, c.start, c.end);
+    c.orig.sig = JSON.stringify(c.item);
+  }
+}
+const gfNovoEscolhido = () => { const c = S.insSel >= 0 ? S.insertsDraft[S.insSel] : null; return !!(c && c.kind === 'grafico' && c.nova); };
+function gfExclui() {
+  remember();
+  S.insertsDraft.splice(S.insSel, 1);
+  S.insSel = -1;
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+function gfLiga() {
+  const c = S.insertsDraft[S.insSel];
+  if (!c || !c.item) return;
+  remember();
+  if (c.item.desligada) delete c.item.desligada; else c.item.desligada = true;
+  renderTimeline(); renderToolbar(); refreshHeader();
+}
+function openGraficos(i) {
+  if (!fundoPode()) { toast(t('Os gráficos entram no vídeo final: eles aparecem depois que o agente fizer a Fase 2'), 3200); return; }
+  if (S.view !== 'final') switchView('final');
+  video.pause();
+  const c = i != null && i >= 0 ? S.insertsDraft[i] : null;
+  GF.alvo = c && c.kind === 'grafico' ? i : -1;
+  const g = GF.alvo >= 0 ? c : null;
+  GF.a0 = +draftToRendered(S.t).toFixed(3);
+  GF.a = g ? g.start : GF.a0;
+  GF.b = g ? g.end : GF.a0;
+  GF.tipo = g ? g.item.tipo : '';
+  GF.textos = g ? gfDoItem(g.item) : {};
+  GF.quadro = captureFrame();
+  GF.aberto = true;
+  if (document.fonts) document.fonts.load('900 100px Poppins').catch(() => {}); // a medida de gfLetraQueCabe
+  $('gfTitulo').textContent = g ? t('Gráfico') : t('Gráficos');
+  app.classList.add('efeitando');
+  showSheet($('gfSheet'), true);
+  gfRender();
+  gfMidia();
+}
+function closeGraficos() {
+  GF.aberto = false;
+  app.classList.remove('efeitando');
+  showSheet($('gfSheet'), false);
+  sizeCanvases(); positionTimeline();
+}
+async function gfMidia() {
+  try {
+    const d = await (await fetch('/api/midia')).json();
+    GF.midia = (d.midia || []).filter((m) => m.tipo === 'imagem');
+  } catch (e) { return; }
+  if (GF.aberto) renderGfCampos();
+}
+// a ideia do gráfico no cartão, sobre o quadro da agulha, nas medidas do cartão (cqw). O vídeo sai do modelo no Baixar
+function gfDesenho(b, tipo, tx) {
+  const ed = S.editData || {};
+  b.style.setProperty('--acc', (ed.hook && ed.hook.accent) || (ed.captions && ed.captions.accent) || '#ff5200');
+  const fundo = el('div', `gf-fundo${tipo === 'objecao' ? ' cinza' : ''}`, b);
+  if (GF.quadro) fundo.style.backgroundImage = `url("${GF.quadro}")`;
+  const txt = (cls, pai, s) => { const e = el('div', cls, pai); e.textContent = s; return e; };
+  const ls = gfLinhas(tx.linhas);
+  const img = (pai, cls) => { if (tx.src) { const im = el('img', cls, pai); im.src = fundoUrl(tx.src); im.alt = ''; } };
+  if (tipo === 'palavras') txt('gf-palavra', b, ls[0] || '');
+  if (tipo === 'grande') {
+    const box = el('div', 'gf-grande-box', b);
+    if (tx.sub) txt('gf-sub', box, tx.sub);
+    const g = txt('gf-grande', box, tx.t || '');
+    g.style.fontSize = `${Math.min(19, 140 / Math.max(1, (tx.t || '').length))}cqw`; // palavra longa cabe no cartão
+    if (tx.risco) el('i', 'gf-risco', g);
+  }
+  if (tipo === 'botoes') {
+    const p = el('div', 'gf-pilula', b);
+    el('i', 'gf-bolinha', p);
+    txt('', p, ls[0] || '');
+    el('i', 'gf-cursor', p);
+  }
+  if (tipo === 'lista') {
+    const c = el('div', 'gf-cartao', b);
+    txt('gf-tit', c, tx.titulo || '');
+    ls.slice(0, 3).forEach((s) => { const r = el('div', 'gf-li', c); el('i', 'gf-x', r); txt('', r, s); });
+  }
+  if (tipo === 'objecao') {
+    const c = el('div', 'gf-balao', b);
+    txt('gf-quem', c, tx.usuario || '');
+    txt('gf-duvida', c, tx.texto || '');
+  }
+  if (tipo === 'comenta') {
+    const c = el('div', 'gf-caixa', b);
+    el('i', 'gf-foto', c);
+    txt('gf-digita', c, tx.texto || '');
+    txt('gf-publica', c, t('Publicar'));
+    el('i', 'gf-seta', b);
+    if (tx.dm) txt('gf-dm', b, tx.dm);
+  }
+  if (tipo === 'progresso') {
+    const c = el('div', 'gf-cartao', b);
+    txt('gf-tit2', c, tx.titulo || '');
+    el('i', 'gf-barra', el('div', 'gf-trilho', c));
+    txt('gf-verde', c, tx.fim || '');
+  }
+  if (tipo === 'ajuste') {
+    const c = el('div', 'gf-cartao', b);
+    txt('gf-tit2', c, tx.titulo || t('linha do tempo'));
+    const r = el('div', 'gf-clipes', c);
+    for (let k = 0; k < 3; k++) el('i', k === 1 ? 'ativo' : '', r);
+  }
+  if (tipo === 'selo') {
+    const s = el('div', 'gf-selo', b);
+    if (tx.src) img(s, 'gf-logo'); else txt('gf-sem', s, t('LOGO'));
+  }
+  if (tipo === 'celular') {
+    const s = el('div', 'gf-fone', b);
+    img(s, 'gf-tela');
+  }
+}
+function gfCartao(grade, tipo, antes) {
+  const b = el('button', 'mod-card gf-card', grade);
+  b.type = 'button';
+  b.dataset.tipo = tipo;
+  if (antes) grade.insertBefore(b, antes);
+  const a = GF.alvo >= 0 ? GF.a : GF.a0;
+  gfDesenho(b, tipo, GF.tipo === tipo ? GF.textos : gfDaFala(tipo, a, a + GF_DUR[tipo]));
+  el('span', 'mod-nome', b).textContent = NOME_GRAFICO[tipo];
+  return b;
+}
+function gfRender() {
+  const box = $('gfLista');
+  box.innerHTML = '';
+  el('p', 'sheet-hint', box).id = 'gfDica';
+  const grade = el('div', 'mod-grade fundo-grade cn-grade', box);
+  grade.addEventListener('wheel', (e) => {
+    if (!isDesk() || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+    grade.scrollLeft += e.deltaY;
+    e.preventDefault();
+  }, { passive: false });
+  const c = GF.alvo >= 0 ? S.insertsDraft[GF.alvo] : null;
+  // o gráfico do agente muda de texto, não de tipo; o criado aqui e nunca salvo ainda pode virar outro
+  for (const tipo of c && !c.nova ? [GF.tipo] : GF_TIPOS) gfCartao(grade, tipo);
+  renderGfCampos();
+  gfEstado();
+}
+function renderGfCampos() {
+  const box = $('gfCampos');
+  box.innerHTML = '';
+  box.classList.toggle('hidden', !GF.tipo);
+  if (!GF.tipo) return;
+  el('p', 'cn-dica-tipo', box).textContent = GF_DICA[GF.tipo];
+  for (const f of GF_CAMPOS[GF.tipo]) {
+    if (f.imagem) {
+      const sec = el('div', 'cn-campo', box);
+      el('span', '', sec).textContent = f.rotulo;
+      const fila = el('div', 'gf-imgs', sec);
+      for (const m of GF.midia) {
+        const b = el('button', `gf-img${GF.textos.src === m.arquivo ? ' on' : ''}`, fila);
+        b.type = 'button';
+        b.dataset.src = m.arquivo;
+        b.title = m.nome;
+        b.style.backgroundImage = `url("${fundoUrl(m.arquivo)}")`;
+      }
+      const mais = el('button', 'gf-img gf-img-mais', fila);
+      mais.type = 'button';
+      mais.dataset.mais = '1';
+      mais.innerHTML = ICON.mais;
+      mais.title = t('Sua imagem');
+      continue;
+    }
+    const lab = el('label', `cn-campo${f.check ? ' gf-marca' : ''}`, box);
+    if (f.check) {
+      const inp = el('input', '', lab);
+      inp.type = 'checkbox';
+      inp.checked = !!GF.textos[f.k];
+      inp.dataset.k = f.k;
+      el('span', '', lab).textContent = f.rotulo;
+      continue;
+    }
+    el('span', '', lab).textContent = f.rotulo;
+    const inp = el(f.linhas ? 'textarea' : 'input', '', lab);
+    if (f.linhas) inp.rows = Math.min(f.linhas, 3); else inp.type = 'text';
+    inp.maxLength = f.max * (f.linhas || 1) + (f.linhas || 1);
+    inp.value = GF.textos[f.k] || '';
+    inp.dataset.k = f.k;
+  }
+}
+const gfFalta = () => (GF_CAMPOS[GF.tipo] || []).filter((f) => f.falta && !String(GF.textos[f.k] || '').trim()).map((f) => f.falta)[0] || null;
+// outro gráfico ligado no mesmo trecho: não impede, mas os dois sairiam um por cima do outro
+function gfCruzando() {
+  if (!GF.tipo) return false;
+  const [a, b] = GF.alvo >= 0 ? [GF.a, GF.b] : gfJanelaNova(GF.tipo, GF.textos);
+  return S.insertsDraft.some((c, k) => k !== GF.alvo && c.kind === 'grafico' && !(c.item && c.item.desligada) && c.start < b - 0.01 && c.end > a + 0.01);
+}
+function gfEstado() {
+  for (const b of $('gfLista').querySelectorAll('.gf-card')) b.classList.toggle('on', b.dataset.tipo === GF.tipo);
+  const falta = GF.tipo ? gfFalta() : null;
+  const dica = $('gfDica');
+  if (dica) {
+    dica.textContent = falta || (gfCruzando() ? t('Já tem um gráfico neste trecho: mova um deles na faixa, ou eles saem um por cima do outro.')
+      : GF.tipo ? t('O gráfico entra na agulha. Depois, é só mover e aparar na faixa de texto.')
+        : t('Toque num gráfico: os textos já vêm da sua fala neste trecho, e dá para mudar embaixo.'));
+  }
+  $('gfOk').disabled = !GF.tipo || !!falta;
+}
+function gfPronto() {
+  if (!GF.tipo || gfFalta()) return;
+  const antes = snap();
+  const c = GF.alvo >= 0 ? S.insertsDraft[GF.alvo] : null;
+  const [a, b] = c ? [c.start, c.end] : gfJanelaNova(GF.tipo, GF.textos);
+  const velho = c && c.item.tipo === GF.tipo ? gfNaJanela(c.item, a, b) : null;
+  const item = gfItem(GF.tipo, a, b, GF.textos, velho);
+  let sel;
+  if (c) {
+    c.item = item;
+    c.label = rotuloGrafico(item);
+    sel = GF.alvo;
+  } else {
+    S.insertsDraft.push({ kind: 'grafico', nova: true, ref: null, label: rotuloGrafico(item), start: a, end: b, item, orig: { start: a, end: b, sig: null } });
+    sel = S.insertsDraft.length - 1;
+  }
+  remember(antes);
+  const nome = NOME_GRAFICO[GF.tipo];
+  closeGraficos();
+  S.insSel = sel;
+  S.selected = -1; S.layerSel = null; S.fxSel = null; S.cenaSel = -1; S.zoomSel = -1; S.legSel = false;
+  renderTimeline(); renderToolbar(); refreshHeader(); drawCenaBox();
+  toast(t('{nome} na faixa de texto. Salve e baixe para ver no vídeo.', { nome }), 3600);
+}
+$('gfClose').innerHTML = ICON.fechar;
+$('gfClose').addEventListener('click', closeGraficos);
+$('gfOk').addEventListener('click', gfPronto);
+$('gfLista').addEventListener('click', (e) => {
+  const b = e.target.closest('.gf-card');
+  if (!b || b.dataset.tipo === GF.tipo) return;
+  GF.tipo = b.dataset.tipo;
+  const a = GF.alvo >= 0 ? GF.a : GF.a0;
+  GF.textos = gfDaFala(GF.tipo, a, a + GF_DUR[GF.tipo]);
+  renderGfCampos();
+  gfRedesenha(b);
+  gfEstado();
+});
+function gfRedesenha(velho) {
+  const v = velho || $('gfLista').querySelector(`.gf-card[data-tipo="${GF.tipo}"]`);
+  if (v) { gfCartao(v.parentNode, v.dataset.tipo, v); v.remove(); }
+}
+function gfMuda(e) {
+  const k = e.target.dataset && e.target.dataset.k;
+  if (!k) return;
+  GF.textos[k] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+  gfRedesenha();
+  gfEstado();
+}
+$('gfCampos').addEventListener('input', gfMuda);
+$('gfCampos').addEventListener('click', (e) => {
+  const b = e.target.closest('.gf-img');
+  if (!b) return;
+  if (b.dataset.mais) { $('fileGrafico').click(); return; }
+  GF.textos.src = b.dataset.src;
+  for (const x of $('gfCampos').querySelectorAll('.gf-img')) x.classList.toggle('on', x === b);
+  gfRedesenha();
+  gfEstado();
+});
+$('fileGrafico').addEventListener('change', (e) => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (f) sendVideo(f, (res) => { GF.textos.src = res.arquivo; if (GF.aberto) { gfMidia(); gfRedesenha(); gfEstado(); } });
+});
 
 // ---------- avisos ----------
 let toastTimer = null;

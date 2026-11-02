@@ -80,6 +80,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import json
 import math
 import os
@@ -918,7 +919,53 @@ def remotion_carrega(rem: Path) -> str | None:
                 linhas[0] if linhas else "erro sem mensagem")[:300]
 
 
+def pasta_compartilhada(pacote: Path) -> Path:
+    """O node_modules do Remotion de TODOS os projetos com este package.json: ~/.cutmind/remotion/<hash>/. Cada
+    projeto tinha o seu (0,83 GB cada; em dois dias, ~10 GB e o disco cheio). Um package.json diferente (um
+    kit novo com outro Remotion) ganha outra pasta, e os projetos antigos seguem na deles."""
+    h = hashlib.sha256(Path(pacote).read_bytes()).hexdigest()[:12]
+    return aquecer_navegador.casa() / "remotion" / h
+
+
+def _ligacao(p: Path) -> bool:
+    return p.is_symlink() or (hasattr(p, "is_junction") and p.is_junction())
+
+
+def _ligar(link: Path, destino: Path) -> None:
+    """`link` aponta para `destino` (junção no Windows, que não pede administrador; link simbólico fora dele)."""
+    if _ligacao(link):
+        if destino.is_dir() and os.path.realpath(link) == os.path.realpath(destino):
+            return
+        os.rmdir(link) if os.name == "nt" else link.unlink()  # tira só a ligação, nunca o que ela aponta
+    if os.name == "nt":
+        import _winapi
+        _winapi.CreateJunction(str(destino), str(link))
+    else:
+        os.symlink(destino, link, target_is_directory=True)
+
+
 def _instalar_remotion(rem: Path) -> None:
+    """O Remotion do projeto: o node_modules compartilhado (pasta_compartilhada), instalado uma vez por
+    package.json e ligado ao projeto. Um projeto com node_modules próprio (de antes da 0.4.0) segue com ele."""
+    nm = rem / "node_modules"
+    if nm.is_dir() and not _ligacao(nm):
+        _instalar_em(rem)
+        return
+    alvo = pasta_compartilhada(rem / "package.json")
+    alvo.mkdir(parents=True, exist_ok=True)
+    with trava_remotion(alvo):  # dois projetos instalando a mesma pasta ao mesmo tempo: um espera
+        for nome in ("package.json", "package-lock.json"):
+            if (rem / nome).is_file():
+                shutil.copy2(rem / nome, alvo / nome)
+        _instalar_em(alvo)
+    _ligar(nm, alvo / "node_modules")
+    motivo = remotion_carrega(rem)
+    if motivo is not None:
+        raise ErroMontagem(f"o Remotion compartilhado não carrega neste projeto ({motivo}): apague a pasta "
+                           f"{alvo} e tente outra vez")
+
+
+def _instalar_em(rem: Path) -> None:
     """npm install quando falta, e de novo (do zero) quando a instalação está quebrada, até 2 vezes."""
     motivo = remotion_carrega(rem) if (rem / "node_modules" / "@remotion" / "cli").is_dir() else "falta"
     if motivo is None:

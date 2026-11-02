@@ -160,3 +160,17 @@ def test_a_diferenca_ve_atras_tempo_e_o_que_foi_apagado(edit):
     assert mud[("texto", "texto_tempo")]["para"] == [1.6, 2.0]
     assert mud[("trilha", "trilha_apagada")]["de"] == "lofi-1"
     assert mud[("trilha", "som_novo")]["para"] == {"volume": 0.67, "inicio": 3.0}
+
+
+def test_diferenca_ve_os_graficos_do_editor():
+    velho = {"graficos": [{"tipo": "grande", "start": 1.0, "end": 3.0, "t": "ANTES"}, {"tipo": "ajuste", "start": 5.0, "end": 8.0}]}
+    novo = json.loads(json.dumps(velho))
+    novo["graficos"][0].update(t="DEPOIS", end=4.0)
+    novo["graficos"][1]["desligada"] = True
+    novo["graficos"].append({"tipo": "comenta", "start": 9.0, "end": 12.0, "texto": "QUERO", "digitaAt": 9.4, "digitaFimAt": 10.0})
+    mud = {m["chave"]: m for m in aprender._graficos(velho, novo)}
+    assert mud["grafico_novo"]["para"] == ["comenta", "QUERO"] and mud["grafico_novo"]["onde"] == "comenta"
+    assert mud["grafico_texto"]["de"] == ["grande", "ANTES"] and mud["grafico_texto"]["para"] == ["grande", "DEPOIS"]
+    assert mud["grafico_desligado"]["para"] is True
+    assert (mud["grafico_duracao"]["de"], mud["grafico_duracao"]["para"]) == (2.0, 3.0)
+    assert aprender._graficos(velho, velho) == []

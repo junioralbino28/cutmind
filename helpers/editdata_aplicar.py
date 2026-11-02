@@ -7,7 +7,8 @@ São as regras que o SKILL.md dava ao agente a cada Salvar ("When the user saves
   - blocos por `ref` (o índice na lista do edit-data), com os nomes do editor: `inserts`,
     `splitInserts`, `splitVideos` e `wordAccents` com `start`/`end`; `behind` com `start`/`dur`;
     `numeros` com `at`/`end`; `hook.endSec`; `graficos` com `start`/`end`, e os instantes de dentro
-    andam junto (movido, todos com o bloco; aparado, presos na janela nova);
+    andam junto (movido, todos com o bloco; aparado, presos na janela nova); `item`, o gráfico inteiro,
+    com o texto mudado ou desligado; `nova` + `item`, um gráfico criado no painel do editor, no fim da lista;
   - `cenas`: com `ref`, o que veio (`desligada`, `texto`, `textos`, `estilo` e os `campos` do Fundo)
     no item; `nova`, um Fundo novo no fim da lista (o desligado nunca chegou ao vídeo e fica de fora);
   - `destaques`: o gancho (`alvo: "hook"`) e os números (`alvo: "numero"`, `ref`), com texto, lugar e
@@ -27,7 +28,8 @@ import json
 import sys
 from pathlib import Path
 
-import legenda_tempos as lt  # mesma pasta deste arquivo
+import graficos  # mesma pasta deste arquivo
+import legenda_tempos as lt
 from aplicar_corte import _grava_json, anotar_feito
 from remapear import INSTANTE
 
@@ -137,10 +139,17 @@ def aplicar(ed: dict, pedido: dict) -> tuple[list[str], list[str]]:
                     lista[i][k] = b[k] if k == "text" else _num(b[k])
     gs = ed.get("graficos") or []
     for b in pedido.get("graficos") or []:
+        if b.get("nova"):  # criado no painel do editor: entra no fim, os `ref` dos outros não mudam
+            gs = ed.setdefault("graficos", [])
+            gs.append(dict(b["item"]))
+            _grafico(gs[-1], float(_num(b.get("start"))), float(_num(b.get("end"))))
+            continue
         i = _ref(b.get("ref"), gs)
         if i is None:
             avisos.append(f"graficos: o gráfico {b.get('ref')!r} não existe mais no vídeo final")
             continue
+        if isinstance(b.get("item"), dict):  # o texto mudado ou o desligar: o item inteiro, com o que o agente pôs nele
+            gs[i] = dict(b["item"])
         _grafico(gs[i], float(_num(b.get("start"))), float(_num(b.get("end"))))
     if isinstance(pedido.get("hook"), dict) and "endSec" in pedido["hook"] and isinstance(ed.get("hook"), dict):
         ed["hook"]["endSec"] = _num(pedido["hook"]["endSec"])
@@ -230,6 +239,8 @@ def gravar(edit: Path, pedido: dict) -> dict:
     ed_p = edit / st["editData"]
     ed = json.loads(ed_p.read_text(encoding="utf-8"))
     depois, avisos = aplicar(ed, pedido)
+    if pedido.get("graficos"):
+        graficos.levar_imagens(edit, ed_p.parent, ed)
     _grava_json(ed_p, ed)
     movidos = 0
     tempos = (pedido.get("legenda") or {}).get("tempos") if isinstance(pedido.get("legenda"), dict) else None

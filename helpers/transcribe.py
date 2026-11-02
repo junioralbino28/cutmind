@@ -106,6 +106,11 @@ def call_whisperx(
         ) from e
 
     device, compute_type = _whisperx_device()
+    if model_name == WHISPERX_MODEL and compute_type == "int8":
+        # in int8 on the CPU the default model comes already quantized from the kit (modelo_whisper.py):
+        # half the download, the same words and times; None keeps the usual one
+        import modelo_whisper  # same folder
+        model_name = modelo_whisper.para_o_processador(lambda m: print(m, flush=True)) or model_name  # 1,5 GB: avisa sempre
     if verbose:
         print(f"    whisperx on {device}/{compute_type}, model {model_name}", flush=True)
 

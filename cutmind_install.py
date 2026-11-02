@@ -80,8 +80,8 @@ NODE_MIN = 18
 
 # Espaço em disco, em GB como o Windows mostra (base 1024). Medido numa instalação no
 # Windows em 24/10/2026: o .venv ocupa 2,1 GB; a primeira transcrição em português baixa
-# mais 5,3 GB de modelos (Whisper large-v3, o padrão do transcribe.py, 2,9 GB, e o
-# alinhador wav2vec2, 2,4 GB); e um projeto editado do começo ao fim ocupou 3,3 GB. Abaixo
+# mais 3,9 GB de modelos (Whisper large-v3 em int8, modelo_whisper.py, 1,5 GB; com placa NVIDIA,
+# o float16 de 2,9 GB; e o alinhador wav2vec2, 2,4 GB); e um projeto editado do começo ao fim ocupou 3,3 GB. Abaixo
 # de ESPACO_DEPS_GB o uv sync nem começa: baixaria até encher o disco e pararia no meio do
 # torch.
 ESPACO_DEPS_GB = 3
@@ -148,7 +148,7 @@ EN = {
     "  x uv         — necessário: {p0}": "  x uv         — required: {p0}",
     "  x dependências — {motivo}. Sem elas a transcrição não funciona.": "  x dependencies — {motivo}. Without them, transcription won't work.",
     "  ok dependências": "  ok dependencies",
-    "  · espaço     — sobram {p0} em {p1}: a primeira transcrição ainda baixa uns 5 GB de modelos, e um vídeo editado ocupa uns 3 GB. Deixe pelo menos {ESPACO_TRABALHO_GB} GB livres.": "  · space      — {p0} left on {p1}: the first transcription still downloads about 5 GB of models, and an edited video takes about 3 GB. Keep at least {ESPACO_TRABALHO_GB} GB free.",
+    "  · espaço     — sobram {p0} em {p1}: a primeira transcrição ainda baixa uns 4 GB de modelos, e um vídeo editado ocupa uns 3 GB. Deixe pelo menos {ESPACO_TRABALHO_GB} GB livres.": "  · space      — {p0} left on {p1}: the first transcription still downloads about 4 GB of models, and an edited video takes about 3 GB. Keep at least {ESPACO_TRABALHO_GB} GB free.",
     "  ok ffmpeg": "  ok ffmpeg",
     "  x ffmpeg     — corte e render (Fase 1). Instale com: {p0}": "  x ffmpeg     — cutting and rendering (Phase 1). Install with: {p0}",
     "  ok node": "  ok node",
@@ -836,7 +836,7 @@ def main() -> None:
         livre = espaco_livre(dests)
         if livre and livre[0] < ESPACO_TRABALHO_GB:
             log(f"  · espaço     — sobram {_gb(livre[0])} em {livre[1]}: a primeira transcrição"
-                " ainda baixa uns 5 GB de modelos, e um vídeo editado ocupa uns 3 GB."
+                " ainda baixa uns 4 GB de modelos, e um vídeo editado ocupa uns 3 GB."
                 f" Deixe pelo menos {ESPACO_TRABALHO_GB} GB livres.")
     if shutil.which("ffmpeg"):
         log("  ok ffmpeg")

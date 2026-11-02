@@ -110,10 +110,13 @@ def curtos(rem: Path) -> dict[str, str]:
     if sys.platform != "win32":
         return {}
     rem = Path(rem)
-    if executavel(rem) is None and len(str(rem.resolve())) + 110 >= LIMITE_CAMINHO:
+    # o caminho como o Node o vê: pela pasta do projeto, SEM resolver a junção do node_modules compartilhado
+    # (resolvido ele sai curto e esconde o problema; medido em 01/11: ENOENT a 275 caracteres)
+    como_o_node = lambda p: len(os.path.abspath(p))  # noqa: E731
+    if executavel(rem) is None and como_o_node(rem) + 110 >= LIMITE_CAMINHO:
         _baixar(rem)
     exe, comp = executavel(rem), compositor(rem)
-    if not any(p and len(str(p.resolve())) >= LIMITE_CAMINHO for p in (exe, comp and comp / COMPOSITOR)):
+    if not any(p and como_o_node(p) >= LIMITE_CAMINHO for p in (exe, comp and comp / COMPOSITOR)):
         return {}
     try:
         versao = json.loads((rem / "node_modules" / "@remotion" / "cli" / "package.json").read_text(encoding="utf-8"))["version"]

@@ -98,6 +98,14 @@ def aplicar(edit: Path, forcar: bool = False, npm: bool = True, assets: Path = A
         (remotion / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(kit / rel, remotion / rel)
     pl["npm_feito"] = False
+    nm = remotion / "node_modules"
+    if pl["npm"] and npm and (nm.is_symlink() or (hasattr(nm, "is_junction") and nm.is_junction())):
+        # o node_modules compartilhado entre os projetos (montagem.pasta_compartilhada): instalar aqui dentro
+        # mudaria o dos outros projetos. O package.json novo ganha a pasta dele, e este projeto passa a ela.
+        import montagem as mt  # mesma pasta deste arquivo (só aqui: o montagem importa este)
+        mt._instalar_remotion(remotion)
+        pl["npm_feito"] = True
+        return pl
     if pl["npm"] and npm:
         exe = shutil.which("npm")
         if not exe:

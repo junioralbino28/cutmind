@@ -159,6 +159,7 @@ import atualizar as atu  # mesma pasta deste arquivo
 import tunel as tn  # mesma pasta deste arquivo
 import camadas as cam  # mesma pasta deste arquivo
 import cenas as cn  # mesma pasta deste arquivo
+import graficos as gf
 import efeitos as ef  # mesma pasta deste arquivo
 import velocidade as vel  # mesma pasta deste arquivo
 import pacotes as pk  # mesma pasta deste arquivo
@@ -690,6 +691,14 @@ def conferir_cenas(root: Path, itens: list) -> list:
             if not p.is_relative_to(root.resolve()) or not p.is_file():
                 raise CenasInvalidas(f"cenas[{i}]: a imagem do fundo não está no projeto ({item['fundo']})")
     return itens
+
+
+def conferir_graficos(root: Path, itens: object) -> None:
+    """Os gráficos que o editor cria ou muda no Salvar (graficos.py); o public/ é o do edit-data do projeto."""
+    state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+    if not state.get("editData"):
+        raise gf.GraficosInvalidos("o projeto ainda não tem o vídeo final da Fase 2")
+    gf.conferir_do_editor(root, (root / state["editData"]).parent, itens)
 
 
 class MontagemInvalida(ValueError):
@@ -1562,6 +1571,8 @@ class Handler(BaseHTTPRequestHandler):
                     body["melhorar"] = mv.normalizar_escolha(body["melhorar"])
                 if isinstance(body.get("editData"), dict) and "cenas" in body["editData"]:
                     conferir_cenas(self.root, body["editData"]["cenas"])
+                if isinstance(body.get("editData"), dict) and "graficos" in body["editData"]:
+                    conferir_graficos(self.root, body["editData"]["graficos"])
                 if "montagem" in body:
                     pedido = body["montagem"]
                     if isinstance(pedido, dict) and "usar" in pedido:  # Usar um modelo: a montagem inteira
@@ -1570,6 +1581,9 @@ class Handler(BaseHTTPRequestHandler):
                         body["montagem"] = conferir_montagem(self.root, self.upload_dir, pedido)
             except CenasInvalidas as e:
                 self._json({"error": f"efeitos do vídeo final: {e}"}, 400)
+                return
+            except gf.GraficosInvalidos as e:
+                self._json({"error": f"gráficos do vídeo final: {e}"}, 400)
                 return
             except MontagemInvalida as e:
                 self._json({"error": f"montagem: {e}"}, 400)

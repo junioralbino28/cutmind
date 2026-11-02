@@ -32,6 +32,8 @@ import sys
 import time
 from pathlib import Path
 
+import graficos  # mesma pasta deste arquivo
+
 ASSUNTOS = ("corte", "velocidade", "enquadre", "filtro", "transicao", "texto", "legenda", "imagem", "trilha", "estilo")
 ARQUIVOS = ("edl.json", "camadas.json", "efeitos.json", "velocidade.json")
 MAX_ENTREGAS = 20
@@ -235,6 +237,26 @@ def _legenda(a: dict | None, b: dict | None) -> list[dict]:
             if k != "words" and ca.get(k) != cb.get(k) and not isinstance(cb.get(k), list)]
 
 
+def _graficos(a: dict | None, b: dict | None) -> list[dict]:
+    """Os gráficos animados: os criados no editor entram no fim da lista, os de antes ficam na mesma posição."""
+    ga, gb = (a or {}).get("graficos") or [], (b or {}).get("graficos") or []
+    out: list[dict] = []
+    for i, g in enumerate(gb):
+        onde = str(g.get("tipo"))
+        if i >= len(ga):
+            out.append(_mud("grafico", "grafico_novo", None, graficos._textos(g)[:6], onde))
+            continue
+        x = ga[i]
+        if bool(x.get("desligada")) != bool(g.get("desligada")):
+            out.append(_mud("grafico", "grafico_desligado", bool(x.get("desligada")), bool(g.get("desligada")), onde))
+        if graficos._textos(x) != graficos._textos(g):
+            out.append(_mud("grafico", "grafico_texto", graficos._textos(x)[:6], graficos._textos(g)[:6], onde))
+        de, para = float(x.get("end", 0)) - float(x.get("start", 0)), float(g.get("end", 0)) - float(g.get("start", 0))
+        if abs(de - para) >= 0.05:
+            out.append(_mud("grafico", "grafico_duracao", _r(de, 2), _r(para, 2), onde))
+    return out
+
+
 def diferenca(edit: Path) -> list[dict]:
     """O que a pessoa mudou à mão desde a última entrega do agente; vazio sem entrega guardada."""
     ult = ultima_entrega(edit)
@@ -249,6 +271,7 @@ def diferenca(edit: Path) -> list[dict]:
     if ta != tb:
         out.append(_mud("velocidade", "trechos_velocidade", ta, tb))
     out += _legenda(a.get("edit-data.json"), b.get("edit-data.json"))
+    out += _graficos(a.get("edit-data.json"), b.get("edit-data.json"))
     sa, sb = a.get("estilo") or {}, b.get("estilo") or {}
     for k in sorted(set(sa) | set(sb)):
         if sa.get(k) != sb.get(k):

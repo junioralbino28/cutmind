@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -37,6 +38,28 @@ TIPOS = {
 }
 ICONES = ("rec", "ia", "corte", "cenario", "trilha", "cc", "check", "play", "mic", "texto", "raio", "estrela")
 IMAGENS = ("src",)  # os campos que são um arquivo do public/
+
+# o que um gráfico criado no painel do editor pode trazer (o tipo em src/graficos/index.tsx)
+_COMUNS = ("tipo", "start", "end", "y", "desligada")
+CAMPOS = {
+    "palavras": ("itens", "tamanho", "cor"),
+    "botoes": ("itens",),
+    "celular": ("src", "x", "w", "rot"),
+    "objecao": ("usuario", "texto", "quando", "cinza"),
+    "grande": ("t", "at", "tamanho", "cor", "contorno", "riscoAt", "sub"),
+    "lista": ("titulo", "itens"),
+    "selo": ("src", "fundo"),
+    "ajuste": ("titulo", "src"),
+    "progresso": ("titulo", "fimAt", "fim"),
+    "comenta": ("texto", "digitaAt", "digitaFimAt", "dmAt", "dm", "placeholder", "publicar", "seta"),
+}
+_CAMPOS_ITEM = ("t", "icone", "at", "ate", "cor", "contorno", "selecao", "pilula")
+_TEXTO_MAX = 200
+_ITENS_MAX = 12
+
+
+class GraficosInvalidos(ValueError):
+    pass
 
 
 def _num(v) -> bool:
@@ -98,6 +121,74 @@ def conferir(edit_data: Path) -> list[str]:
             if isinstance(g.get(k), str) and g[k] and not (public / g[k]).is_file():
                 erros.append(f"{nome}: `{k}` {g[k]} não está em {public} (copie a imagem para lá)")
     return erros
+
+
+def _textos(v) -> list[str]:
+    """Todos os textos de dentro de um item, nas listas e objetos também."""
+    if isinstance(v, str):
+        return [v]
+    if isinstance(v, dict):
+        return [s for x in v.values() for s in _textos(x)]
+    if isinstance(v, list):
+        return [s for x in v for s in _textos(x)]
+    return []
+
+
+def imagem_do_projeto(raiz: Path, public: Path, src: object) -> bool:
+    """A imagem é um arquivo do public/ ou da midia/ do projeto (nunca de fora deles)."""
+    if not isinstance(src, str) or not src:
+        return False
+    for base, p in ((public, public / src), (raiz / "midia", raiz / src)):
+        try:
+            p = p.resolve()
+        except OSError:
+            return False
+        if p.is_file() and p.is_relative_to(base.resolve()):
+            return True
+    return False
+
+
+def conferir_do_editor(raiz: Path, public: Path, itens: object) -> None:
+    """Os gráficos que o editor manda no Salvar: `nova` (criado no painel) ou `ref` com o `item` mudado, como o
+    editdata_aplicar.py vai gravar. O Baixar desenha com eles como chegaram: o que está errado para aqui."""
+    if not isinstance(itens, list):
+        raise GraficosInvalidos("uma lista")
+    for i, b in enumerate(itens):
+        if not isinstance(b, dict):
+            raise GraficosInvalidos(f"[{i}]: um objeto")
+        g = b.get("item")
+        if g is None:
+            if b.get("nova"):
+                raise GraficosInvalidos(f"[{i}]: um gráfico novo precisa do `item`")
+            continue
+        erros = validar(g)
+        if erros:
+            raise GraficosInvalidos(f"[{i}]: {'; '.join(erros)}")
+        if b.get("nova"):
+            fora = [k for k in g if k not in (*_COMUNS, *CAMPOS[g["tipo"]])]
+            fora += [k for x in g.get("itens") or [] for k in x if k not in _CAMPOS_ITEM]
+            if fora:
+                raise GraficosInvalidos(f"[{i}]: o gráfico `{g['tipo']}` novo não leva {', '.join(sorted(set(fora)))}")
+        if len(g.get("itens") or []) > _ITENS_MAX:
+            raise GraficosInvalidos(f"[{i}]: até {_ITENS_MAX} itens num gráfico")
+        if any(len(s) > _TEXTO_MAX for s in _textos(g)):
+            raise GraficosInvalidos(f"[{i}]: os textos são frases de até {_TEXTO_MAX} letras")
+        for k in IMAGENS:
+            if g.get(k) and not imagem_do_projeto(raiz, public, g[k]):
+                raise GraficosInvalidos(f"[{i}]: a imagem não está no projeto ({g[k]})")
+
+
+def levar_imagens(raiz: Path, public: Path, ed: dict) -> None:
+    """A imagem escolhida na midia/ vai para o public/, onde o template a procura (`src` relativo a ele)."""
+    for g in ed.get("graficos") or []:
+        for k in IMAGENS if isinstance(g, dict) else ():
+            src = g.get(k)
+            if not (isinstance(src, str) and src) or (public / src).is_file():
+                continue
+            origem = (raiz / src).resolve()
+            if origem.is_file() and origem.is_relative_to((raiz / "midia").resolve()):
+                (public / src).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(origem, public / src)
 
 
 def template_falta(remotion: Path) -> list[str]:
