@@ -1007,5 +1007,20 @@ window.I18N_EN = {
   "Salvo. Pondo os sons...": "Saved. Adding the sounds...",
   "{n} sons na faixa de áudio. Dá para mover, apagar e mudar o volume de cada um.": "{n} sounds on the audio track. You can move, delete and change the volume of each one.",
   "Não há texto grande nem foto neste vídeo.": "There is no big text or photo in this video.",
-  "Som nos textos e nas fotos": "Sound on texts and photos"
+  "Som nos textos e nas fotos": "Sound on texts and photos",
+  "Polaroide": "Polaroid",
+  "Flash": "Flash",
+  "Chamada final": "Closing call",
+  "Sua foto numa moldura branca, inclinada, com legenda à mão e flash. Boa para contar uma história.": "Your photo in a white frame, tilted, with a handwritten caption and a flash. Good for telling a story.",
+  "Um clarão de câmera. Bom para marcar uma foto ou um corte na batida.": "A camera flash. Good for marking a photo or a cut on the beat.",
+  "O vídeo escurece e aparecem a logo, a frase e o botão. Boa para fechar o vídeo.": "The video goes dark and the logo, the sentence and the button appear. Good for closing the video.",
+  "A foto": "The photo",
+  "Escolha a foto.": "Pick the photo.",
+  "Legenda à mão (opcional)": "Handwritten caption (optional)",
+  "Com alfinete": "With a pin",
+  "O botão (opcional)": "The button (optional)",
+  "A logo (opcional)": "The logo (optional)",
+  "Fale com a gente": "Talk to us",
+  "Link na bio": "Link in bio",
+  "A frase": "The sentence"
 };

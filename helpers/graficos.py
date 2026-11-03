@@ -46,6 +46,9 @@ TIPOS = {
     "maquina": ("texto", "digitaAt", "digitaFimAt"),
     "prompt": ("texto", "digitaAt", "digitaFimAt"),
     "emoji": ("itens",),
+    "polaroide": ("src",),
+    "flash": (),
+    "cta": ("frase",),
 }
 ICONES =("rec", "ia", "corte", "cenario", "trilha", "cc", "check", "play", "mic", "texto", "raio", "estrela")
 IMAGENS = ("src",)  # os campos que são um arquivo do public/
@@ -74,6 +77,9 @@ CAMPOS = {
     "maquina": ("texto", "digitaAt", "digitaFimAt", "som"),
     "prompt": ("texto", "titulo", "digitaAt", "digitaFimAt", "som"),
     "emoji": ("itens", "tamanho"),
+    "polaroide": ("src", "legenda", "x", "w", "h", "rot", "alfinete", "flash"),
+    "flash": (),
+    "cta": ("frase", "botao", "src"),
 }
 _CAMPOS_ITEM = ("t", "icone", "at", "ate", "cor", "contorno", "selecao", "pilula", "lado", "x", "y")
 _TEXTO_MAX = 200

@@ -29,6 +29,9 @@ does not survive a re-cut.
 | `maquina` | Máquina de escrever | mono letters typed on a white sheet, with key sounds | a sentence to read slowly, a title |
 | `prompt` | Prompt | a dark AI prompt box typing the request, with key sounds; the send button lights up | says what was asked of an AI |
 | `emoji` | Emoji | emoji popping in, each on its word | a reaction, a light moment |
+| `polaroide` | Polaroide | a photo in a white frame, tilted, handwritten caption, with a camera flash | tells a story with photos |
+| `flash` | Flash | a white camera flash of 7 frames | a photo or a cut lands on a beat |
+| `cta` | Chamada final | the picture goes dark: logo, sentence and a button | closes the video with the call to action |
 
 ## The rules
 
@@ -104,6 +107,13 @@ does not survive a re-cut.
   `digitaFimAt` (~0.03 s per letter), `som?`.
 - **`emoji`**: `itens: [{t, at, ate?, x?, y?}]`, `tamanho?` (190). Each stays until its `ate` or `end`;
   without `x`/`y`, they take places around the top of the frame.
+- **`polaroide`**: `src` (an image in `public/`), `legenda?` (handwritten; about 20 letters), `x?` (500,
+  its centre), `y?`, `w?` (620), `h?` (the same as `w`; the photo is cropped to fill), `rot?` (-3),
+  `alfinete?` (a colour: a pin on top), `flash?` (false takes the flash off). Several in a row work:
+  change `x` and `rot` from one to the other.
+- **`flash`**: only the window (0.2 s or more): the flash starts 1 frame before `start`.
+- **`cta`**: `frase`, `botao?` ("Link na bio"), `src?` (the brand's logo in `public/`, the white version
+  reads best). Use the last seconds of the video.
 
 ## Example (the CTA and an objection)
 

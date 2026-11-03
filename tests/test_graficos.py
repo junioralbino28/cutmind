@@ -53,6 +53,9 @@ EXEMPLOS_TEXTO = {
     "maquina": {"tipo": "maquina", "start": 38.0, "end": 40.0, "texto": "máquina de escrever", "digitaAt": 38.2, "digitaFimAt": 39.2},
     "prompt": {"tipo": "prompt", "start": 40.0, "end": 43.0, "titulo": "Claude", "texto": "coloca legenda animada", "digitaAt": 40.3, "digitaFimAt": 41.3},
     "emoji": {"tipo": "emoji", "start": 43.0, "end": 45.0, "itens": [{"t": "🔥", "at": 43.1}, {"t": "🚀", "at": 44.0, "ate": 44.6, "x": 300, "y": 500}]},
+    "polaroide": {"tipo": "polaroide", "start": 45.0, "end": 47.0, "src": "midia/foto.jpg", "legenda": "Nova York, 2002", "alfinete": "#c8102e"},
+    "flash": {"tipo": "flash", "start": 47.0, "end": 47.3},
+    "cta": {"tipo": "cta", "start": 47.5, "end": 50.0, "frase": "Fale com a gente", "botao": "Link na bio", "src": "brand/logo.png"},
 }
 
 
@@ -98,7 +101,7 @@ def test_o_template_monta_os_graficos_entre_os_efeitos_e_os_textos():
 
 
 def test_cores_vem_do_estilo_e_lugares_da_zona_segura():
-    tsx = TSX.read_text(encoding="utf-8") + (SRC / "graficos" / "comum.tsx").read_text(encoding="utf-8") + (SRC / "graficos" / "texto.tsx").read_text(encoding="utf-8")
+    tsx = TSX.read_text(encoding="utf-8") + (SRC / "graficos" / "comum.tsx").read_text(encoding="utf-8") + (SRC / "graficos" / "texto.tsx").read_text(encoding="utf-8") + (SRC / "graficos" / "fotos.tsx").read_text(encoding="utf-8")
     assert "LARANJA" not in tsx and "#F87000" not in tsx.upper()  # a cor é a do Estilo (hook.accent)
     assert "hook?.accent" in tsx
     padroes = re.findall(r"g\.y \?\? ([^,;)}]+)", tsx)

@@ -41,7 +41,7 @@ def test_todo_tipo_de_grafico_tem_um_destino():
     """Tipo novo em graficos.py sem decidir aqui entraria mudo sem ninguém notar."""
     import graficos
     sem_som = {"comenta", "maquina", "prompt"}  # digitam: têm som de tecla ou o agente põe
-    assert set(graficos.TIPOS) == se._NO_AT | se._NO_START | se._POR_ITEM | sem_som
+    assert set(graficos.TIPOS) == se._NO_AT | se._NO_START | se._POR_ITEM | se._FOTOS | sem_som
 
 
 def test_o_volume_acompanha_a_voz_do_trecho():

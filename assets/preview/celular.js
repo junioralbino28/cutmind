@@ -640,10 +640,11 @@ const NOME_GRAFICO = {
   lista: t('Lista'), selo: t('Selo'), ajuste: t('Ajuste'), progresso: t('Progresso'), comenta: t('Comenta'),
   pula: t('Texto que pula'), partes: t('Texto por partes'), danca: t('Letras dançando'), glitch: t('Glitch'), marca: t('Marca-texto'),
   contador: t('Contador'), nome: t('Nome e cargo'), chat: t('Conversa'), maquina: t('Máquina de escrever'), prompt: t('Prompt'), emoji: t('Emoji'),
+  polaroide: t('Polaroide'), flash: t('Flash'), cta: t('Chamada final'),
 };
 function rotuloGrafico(g) {
   const num = g.valor != null ? `${g.prefixo || ''}${g.valor}${g.sufixo || ''}` : '';
-  const txt = g.t || g.titulo || g.texto || g.nome || num || (g.itens || []).map((i) => i.t).filter(Boolean).join(' ');
+  const txt = g.t || g.titulo || g.texto || g.nome || g.frase || g.legenda || num || (g.itens || []).map((i) => i.t).filter(Boolean).join(' ');
   const nome = NOME_GRAFICO[g.tipo] || g.tipo || t('Gráfico');
   return txt ? `${nome}: ${txt}` : nome;
 }
@@ -10587,7 +10588,7 @@ $('cnCampos').addEventListener('input', (e) => {
  * agulha; os textos já vêm da fala do trecho (sem IA) e cada batida cai na palavra dita, quando a linha começa
  * por uma palavra da fala. O gráfico entra como um bloco da faixa de texto: anda e apara como os outros, e o
  * Salvar leva o item inteiro (graficos.py confere, editdata_aplicar.py grava). O Baixar desenha. */
-const GF_TIPOS = ['palavras', 'grande', 'pula', 'partes', 'danca', 'glitch', 'marca', 'contador', 'nome', 'chat', 'maquina', 'prompt', 'emoji',
+const GF_TIPOS = ['palavras', 'grande', 'pula', 'partes', 'danca', 'glitch', 'marca', 'contador', 'nome', 'chat', 'maquina', 'prompt', 'emoji', 'polaroide', 'flash', 'cta',
   'botoes', 'lista', 'objecao', 'comenta', 'progresso', 'ajuste', 'selo', 'celular'];
 // os instantes que andam com o bloco (INSTANTE no remapear.py: tests/test_graficos_do_editor.py confere os dois)
 const GF_INSTANTE = /^(at|ate|[a-z][A-Za-z]*At)$/;
@@ -10613,6 +10614,9 @@ const GF_DICA = {
   maquina: t('O texto digitado letra a letra numa folha branca, com som de tecla no vídeo final.'),
   prompt: t('Uma caixa de IA digitando o pedido, com som de tecla no vídeo final. Boa para mostrar o que você pediu.'),
   emoji: t('Emojis que aparecem com um pop, cada um na sua hora.'),
+  polaroide: t('Sua foto numa moldura branca, inclinada, com legenda à mão e flash. Boa para contar uma história.'),
+  flash: t('Um clarão de câmera. Bom para marcar uma foto ou um corte na batida.'),
+  cta: t('O vídeo escurece e aparecem a logo, a frase e o botão. Boa para fechar o vídeo.'),
 };
 const GF_CAMPOS = {
   palavras: [{ k: 'linhas', rotulo: t('Palavras, uma por linha'), linhas: 6, max: 24, falta: t('Escreva pelo menos uma palavra.') }],
@@ -10634,6 +10638,9 @@ const GF_CAMPOS = {
   maquina: [{ k: 'texto', rotulo: t('O texto digitado'), max: 60, falta: t('Escreva o texto.') }],
   prompt: [{ k: 'titulo', rotulo: t('Nome da IA'), max: 20 }, { k: 'texto', rotulo: t('O pedido digitado'), max: 120, falta: t('Escreva o pedido.') }],
   emoji: [{ k: 'linhas', rotulo: t('Emojis, um por linha'), linhas: 6, max: 8, falta: t('Escreva pelo menos um emoji.') }],
+  polaroide: [{ k: 'src', rotulo: t('A foto'), imagem: true, falta: t('Escolha a foto.') }, { k: 'legenda', rotulo: t('Legenda à mão (opcional)'), max: 26 }, { k: 'alf', rotulo: t('Com alfinete'), check: true }],
+  flash: [],
+  cta: [{ k: 'frase', rotulo: t('A frase'), max: 60, falta: t('Escreva a frase.') }, { k: 'botao', rotulo: t('O botão (opcional)'), max: 22 }, { k: 'src', rotulo: t('A logo (opcional)'), imagem: true }],
   objecao: [{ k: 'usuario', rotulo: t('Quem comenta'), max: 24, falta: t('Escreva quem comenta.') }, { k: 'texto', rotulo: t('A dúvida'), max: 90, falta: t('Escreva a dúvida.') }],
   comenta: [{ k: 'texto', rotulo: t('Palavra que a pessoa comenta'), max: 18, falta: t('Escreva a palavra.') }, { k: 'dm', rotulo: t('Frase do direct (opcional)'), max: 28 }],
   progresso: [{ k: 'titulo', rotulo: t('Título'), max: 28, falta: t('Escreva o título.') }, { k: 'fim', rotulo: t('Palavra verde do fim'), max: 16, falta: t('Escreva a palavra do fim.') }],
@@ -10643,7 +10650,7 @@ const GF_CAMPOS = {
 };
 // quanto cada um dura ao nascer; depois a pessoa apara na faixa. Os de lista crescem com as linhas
 const GF_DUR = { palavras: 2.5, grande: 2, botoes: 2.5, lista: 3, objecao: 3, comenta: 4, progresso: 3, ajuste: 3, selo: 2.5, celular: 3.5,
-  pula: 3, partes: 2.5, danca: 2.5, glitch: 2, marca: 3.5, contador: 2.5, nome: 3.5, chat: 3.5, maquina: 3, prompt: 4, emoji: 2 };
+  pula: 3, partes: 2.5, danca: 2.5, glitch: 2, marca: 3.5, contador: 2.5, nome: 3.5, chat: 3.5, maquina: 3, prompt: 4, emoji: 2, polaroide: 2.5, flash: 0.4, cta: 3.5 };
 const GF_POR_LINHA = { palavras: 0.9, botoes: 1.1, lista: 0.9, partes: 1, chat: 1.4, emoji: 0.7 };
 const GF_MAX_LINHAS = 6;
 const GF_MAX_PALAVRAS = 12; // _ITENS_MAX no graficos.py
@@ -10703,6 +10710,8 @@ function gfDaFala(tipo, a, b) {
   if (tipo === 'maquina') return { texto: primeiras(ws, 6) || t('Seu texto aqui') };
   if (tipo === 'prompt') return { titulo: 'Claude', texto: primeiras(ws, 12) || t('Seu pedido aqui') };
   if (tipo === 'emoji') return { linhas: '🔥' };
+  if (tipo === 'polaroide') return { legenda: '', alf: false };
+  if (tipo === 'cta') return { frase: primeiras(ws, 8) || t('Fale com a gente'), botao: t('Link na bio') };
   return {};
 }
 // o instante em que a 1ª palavra da linha é dita, de `desde` em diante
@@ -10819,6 +10828,11 @@ function gfItem(tipo, a, b, tx, velho) {
     gfTamanho(g, [`${v('prefixo')}${v('valor')}${v('sufixo')}`], 190);
   }
   if (tipo === 'nome') { poe('nome', v('nome')); poe('cargo', v('cargo')); }
+  if (tipo === 'polaroide') {
+    poe('src', v('src')); poe('legenda', v('legenda'));
+    if (tx.alf) g.alfinete = g.alfinete || '#c8102e'; else delete g.alfinete;
+  }
+  if (tipo === 'cta') { poe('frase', v('frase')); poe('botao', v('botao')); poe('src', v('src')); }
   if (tipo === 'maquina' || tipo === 'prompt') {
     poe('texto', v('texto'));
     if (tipo === 'prompt') poe('titulo', v('titulo'));
@@ -10849,6 +10863,7 @@ function gfDoItem(g) {
     else if (f.k === 'frase' && g.tipo === 'pula') tx.frase = (g.itens || []).map((i) => i.t || '').join(' ');
     else if (f.k === 'risco') tx.risco = g.riscoAt != null;
     else if (f.k === 'check') tx.check = g.icone === 'check';
+    else if (f.k === 'alf') tx.alf = !!g.alfinete;
     else if (f.k === 'valor') tx.valor = g.valor != null ? String(g.valor).replace('.', ',') : '';
     else tx[f.k] = g[f.k] != null ? String(g[f.k]) : '';
   }
@@ -11009,6 +11024,19 @@ function gfDesenho(b, tipo, tx) {
   if (tipo === 'emoji') {
     const c = el('div', 'gf-emoji', b);
     ls.slice(0, 3).forEach((s) => { txt('', c, s); });
+  }
+  if (tipo === 'polaroide') {
+    const c = el('div', 'gf-polaroide', b);
+    if (tx.src) img(c, 'gf-polaroide-f'); else el('i', 'gf-polaroide-f', c);
+    txt('gf-polaroide-l', c, tx.legenda || '');
+    if (tx.alf) el('i', 'gf-pino', c);
+  }
+  if (tipo === 'flash') el('i', 'gf-clarao', b);
+  if (tipo === 'cta') {
+    const c = el('div', 'gf-cta', b);
+    img(c, 'gf-logo');
+    txt('gf-cta-f', c, tx.frase || '');
+    if (tx.botao) txt('gf-cta-b', c, tx.botao);
   }
   if (tipo === 'objecao') {
     const c = el('div', 'gf-balao', b);

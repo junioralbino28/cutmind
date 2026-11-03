@@ -10,7 +10,8 @@ mesma sequência, só quando ela pede o vídeo:
   4. o projeto do Remotion: o do agente quando a Fase 2 existe (a legenda, o gancho, os efeitos que
      ele pôs), com o public/cut.mp4 de agora (efeitos_render.py), as cenas e as camadas; sem a Fase 2,
      um projeto do kit só com as camadas e os efeitos, sem legenda, gancho nem zoom;
-  5. o render, o som final (mixar_final.py) e a velocidade do vídeo final (velocidade_final.py).
+  5. o render, só do trecho que mudou quando dá para ter certeza (render_parcial.py), o som final
+     (mixar_final.py), a conferência (conferir_final.py) e a velocidade do vídeo final (velocidade_final.py).
 
 O Salvar que refaz o corte leva a Fase 2 junto (aplicar_corte.py); o rastreio do rosto e os recortes
 da pessoa que mudaram de começo saem daqui. Com a Fase 2 ainda no relógio de um corte mais velho (um
@@ -41,6 +42,8 @@ import melhorar_voz as mv  # mesma pasta deste arquivo
 import montagem as mt  # mesma pasta deste arquivo
 import pacotes as pk  # mesma pasta deste arquivo
 import pendente as pend  # mesma pasta deste arquivo
+import render_janelas  # mesma pasta deste arquivo
+import render_parcial  # mesma pasta deste arquivo
 import sonda  # mesma pasta deste arquivo
 import tempo  # mesma pasta deste arquivo
 import vez  # mesma pasta deste arquivo
@@ -358,6 +361,28 @@ def renderizar(rem: Path, andamento, de: float, ate: float) -> Path:
             return _renderizar(rem, [*cmd, "--concurrency=1"], v, saida, andamento, de, ate)
 
 
+def _desenhar(edit: Path, rem: Path, andamento, de: float, ate: float) -> Path:
+    """O render do que mudou desde o último: nada, só as janelas, ou o vídeo inteiro (render_parcial.py)."""
+    janelas = render_parcial.o_que_mudou(rem)
+    if janelas == []:
+        print("a imagem não mudou desde o último render: ele fica como está", flush=True)
+        andamento("desenhando", "A imagem não mudou", ate)
+        return rem / "out" / "render.mp4"
+    if janelas:
+        print(f"refazendo só o que mudou: {janelas}", flush=True)
+        andamento("desenhando", "Refazendo só o trecho que mudou", de)
+        try:
+            r = render_janelas.aplicar(edit, janelas)
+        except render_janelas.JanelaErro as e:
+            print(f"o trecho não saiu ({e}): desenhando o vídeo inteiro", flush=True)
+        else:
+            render_parcial.guardar(rem)
+            return r["render"]
+    render = renderizar(rem, andamento, de, ate)
+    render_parcial.guardar(rem)
+    return render
+
+
 class _SemQuadro(ErroGerar):
     pass
 
@@ -448,7 +473,7 @@ def gerar(edit: Path, andamento=_sem_andamento) -> dict:
                                 f"Mac está no {v}")
             andamento("preparando", "Preparando o vídeo", 0.15)
             rem = preparar_remotion_fase2(edit) if tem_estilo(edit) else preparar_remotion_fala(edit)
-            render = renderizar(rem, andamento, 0.25, 0.85)
+            render = _desenhar(edit, rem, andamento, 0.25, 0.85)
         elif "final" in falta:
             render = _video(edit)
         if "final" in falta:
@@ -457,6 +482,9 @@ def gerar(edit: Path, andamento=_sem_andamento) -> dict:
             if _passo([AQUI / "mixar_final.py", edit, "--render", render, *imagem]) != 0:
                 raise ErroGerar("o som do vídeo final não foi montado (a saída está no registro do trabalho)")
             _gravar_state(edit, finalVideo=FINAL)
+            andamento("conferencia", "Conferindo o vídeo final", 0.92)
+            if _passo([AQUI / "conferir_final.py", edit]) != 0:  # não segura a entrega: fica no verify/conferencia.txt
+                print("a conferência do vídeo final achou problema: veja verify/conferencia.txt", flush=True)
         if "entrega" in falta:
             andamento("velocidade", "Aplicando a velocidade", 0.95)
             cod = _passo([AQUI / "velocidade_final.py", edit])

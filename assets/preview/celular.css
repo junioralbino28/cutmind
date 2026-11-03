@@ -404,6 +404,15 @@ html:not(.desk) .pronto-btn .pronto-n { margin-left: 3px; padding: 0 4px; font-s
 .ov-tx-letreiro { width: 300%; display: flex; flex-direction: column; align-items: center; overflow: visible; white-space: pre; }
 .ov-tx-letreiro-l { flex: none; }
 .tx-palavras { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--line2); border-radius: 8px; background: var(--surface3); color: var(--text); font: inherit; font-size: 13px; }
+.gf-polaroide { left: 22%; right: 22%; top: 10%; padding: 2cqw 2cqw 0; background: #fbf8f1; border-radius: 0.4cqw; transform: rotate(-3deg); box-shadow: 0 2cqw 4cqw rgba(0, 0, 0, 0.5); }
+.gf-polaroide-f { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; background: #b9b4a8; }
+.gf-polaroide-l { height: 8cqw; display: flex; align-items: center; justify-content: center; color: #14233a; font-family: Caveat, cursive; font-weight: 700; font-size: 5cqw; white-space: nowrap; overflow: hidden; }
+.gf-pino { position: absolute; top: -1.6cqw; left: 50%; width: 4cqw; height: 4cqw; margin-left: -2cqw; border-radius: 50%; background: radial-gradient(circle at 34% 32%, #fff 0 14%, #c8102e 38%, #300 100%); }
+.gf-card > .gf-clarao { inset: 0; background: radial-gradient(circle at 50% 42%, #fff 0%, rgba(255, 255, 255, 0.85) 45%, rgba(255, 255, 255, 0.35) 100%); }
+.gf-cta { inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3cqw; padding: 0 8%; text-align: center; background: rgba(8, 8, 12, 0.62); backdrop-filter: blur(1.4cqw); }
+.gf-cta .gf-logo { max-height: 12cqw; }
+.gf-cta-f { font-weight: 800; font-size: 6.4cqw; line-height: 1.14; max-height: 30cqw; overflow: hidden; }
+.gf-cta-b { padding: 1.8cqw 4cqw 2cqw; border-radius: 99px; background: var(--acc); color: #1b0c00; font-weight: 800; font-size: 4.8cqw; white-space: nowrap; }
 .gf-x.ok { background: #22c55e; }
 .gf-pula { left: 4%; right: 4%; top: 15%; display: flex; flex-wrap: wrap; justify-content: center; gap: 0 1.6cqw; font-weight: 900; font-size: 8cqw; line-height: 1.14; -webkit-text-stroke: 0.6cqw #111; paint-order: stroke fill; }
 .gf-pula .on, .gf-partes .on, .gf-danca .on { color: var(--acc); }

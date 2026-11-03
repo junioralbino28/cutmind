@@ -43,6 +43,9 @@ def um_de_cada(a=10.0, b=14.0):
         {"tipo": "maquina", "start": a, "end": b, "texto": "digitando", "digitaAt": a + 0.2, "digitaFimAt": a + 1.0},
         {"tipo": "prompt", "start": a, "end": b, "titulo": "Claude", "texto": "faz isso", "digitaAt": a + 0.2, "digitaFimAt": a + 1.0},
         {"tipo": "emoji", "start": a, "end": b, "itens": [{"t": "🔥", "at": a + 0.2}]},
+        {"tipo": "polaroide", "start": a, "end": b, "src": "midia/tela.png", "legenda": "Nova York", "alfinete": "#c8102e"},
+        {"tipo": "flash", "start": a, "end": b},
+        {"tipo": "cta", "start": a, "end": b, "frase": "Fale com a gente", "botao": "Link na bio", "src": "midia/logo.png"},
     ]
 
 

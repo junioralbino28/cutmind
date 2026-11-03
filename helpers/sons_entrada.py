@@ -37,7 +37,8 @@ SR = 16000
 
 # os gráficos: o instante de entrada de cada um; os de digitar já têm o som de tecla, o `pula` é um som só
 _NO_AT = {"grande", "danca", "glitch"}
-_NO_START = {"contador", "marca", "nome", "objecao", "selo", "celular", "progresso", "ajuste", "pula", "lista", "chat"}
+_NO_START = {"contador", "marca", "nome", "objecao", "selo", "celular", "progresso", "ajuste", "pula", "lista", "chat", "cta"}
+_FOTOS = {"polaroide", "flash"}
 _POR_ITEM = {"palavras", "partes", "botoes", "emoji"}
 
 
@@ -73,6 +74,8 @@ def entradas(camadas: dict, ed: dict) -> list[tuple[float, str]]:
             ev.append((float(g.get("at", g["start"])), "texto"))
         elif t in _NO_START:
             ev.append((float(g["start"]), "texto"))
+        elif t in _FOTOS:
+            ev.append((float(g["start"]), "foto"))
         elif t in _POR_ITEM:
             ev += [(float(it["at"]), "texto") for it in g.get("itens") or [] if isinstance(it, dict) and "at" in it]
     out: list[tuple[float, str]] = []

@@ -13,6 +13,7 @@ import {AbsoluteFill, Easing, Img, interpolate, spring, staticFile, useVideoConf
 import editData from '../../public/edit-data.json';
 import {ZONA_SEGURA} from '../zonaSegura';
 import {ACCENT, Base, CL, Cursor, Faisca, Icone, POPPINS, Selecao, TINTA, VERDE, VERMELHO, comAlfa, entra, quadro, sai, tremor, useJanela} from './comum';
+import {Cta, Flash, GraficoFoto, Polaroide} from './fotos';
 import {Chat, Contador, Danca, Emoji, Glitch, GraficoTexto, Maquina, Marca, Nome, Partes, Prompt, Pula} from './texto';
 
 const TOPO = ZONA_SEGURA.topo;
@@ -31,7 +32,7 @@ export type Grafico = Base &
     | {tipo: 'ajuste'; titulo?: string; src?: string}
     | {tipo: 'progresso'; titulo: string; fimAt: number; fim: string}
     | {tipo: 'comenta'; texto: string; digitaAt: number; digitaFimAt: number; dmAt?: number; dm?: string; placeholder?: string; publicar?: string; seta?: {x: number; y: number}}
-  ) | GraficoTexto;
+  ) | GraficoTexto | GraficoFoto;
 type De<T extends Grafico['tipo']> = Extract<Grafico, {tipo: T}>;
 
 /** The item showing now in a list of beats: each one lasts until its `ate`, the next `at` or the end. */
@@ -383,6 +384,9 @@ export const TIPOS: Record<Grafico['tipo'], React.FC<{g: any}>> = {
   maquina: Maquina,
   prompt: Prompt,
   emoji: Emoji,
+  polaroide: Polaroide,
+  flash: Flash,
+  cta: Cta,
 };
 
 const W = 1080;
