@@ -35,9 +35,9 @@ from remapear import INSTANTE
 
 # o nome de cada bloco no edit-data e os campos de tempo que o editor manda dele
 BLOCOS = {"inserts": ("start", "end"), "splitInserts": ("start", "end"), "splitVideos": ("start", "end"),
-          "behind": ("start", "dur"), "wordAccents": ("start", "end", "text"), "numeros": ("at", "end")}
+          "behind": ("start", "dur"), "wordAccents": ("start", "end", "text"), "numeros": ("at", "end"), "punchins": ("start", "end")}
 NOMES = {"inserts": "imagem", "splitInserts": "tela dividida", "splitVideos": "vídeo dividido",
-         "behind": "fundo atrás da pessoa", "wordAccents": "palavra", "numeros": "número"}
+         "behind": "fundo atrás da pessoa", "wordAccents": "palavra", "numeros": "número", "punchins": "punch-in"}
 
 
 def _ref(v: object, lista: list) -> int | None:

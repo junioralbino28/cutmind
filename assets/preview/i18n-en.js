@@ -1042,5 +1042,7 @@ window.I18N_EN = {
   "Solte aqui": "Drop here",
   "Transcrever": "Transcribe",
   "Cortar silêncio": "Cut silence",
-  "Música": "Music"
+  "Música": "Music",
+  "Punch-in": "Punch-in",
+  "O punch-in": "The punch-in"
 };

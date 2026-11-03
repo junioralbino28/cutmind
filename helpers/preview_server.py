@@ -588,7 +588,7 @@ def grade_da_musica(arquivo: Path, edit: Path) -> dict:
 
 
 # blocos da Fase 2 que o editor manda INTEIROS (todos os de cada tipo) quando algum anda
-BLOCOS_F2 = ("inserts", "splitInserts", "splitVideos", "hook", "behind", "wordAccents", "numeros", "graficos")
+BLOCOS_F2 = ("inserts", "splitInserts", "splitVideos", "hook", "behind", "wordAccents", "numeros", "graficos", "punchins")
 
 
 def recorte_disponivel() -> bool:
@@ -1297,6 +1297,12 @@ class Handler(BaseHTTPRequestHandler):
         self._hdr(code, "application/json; charset=utf-8", len(body), {"Connection": "close"})
         self.wfile.write(body)
 
+    def _recusar_envio(self, code: int, msg: str) -> None:
+        """A recusa de um envio antes de ler o corpo: sem ler o corpo pequeno, o reset do Windows às vezes chega
+        antes da resposta, e a pessoa vê erro de rede no lugar do motivo (`_descartar_corpo`)."""
+        self._descartar_corpo()
+        self._fail(code, msg)
+
     # ---- helpers ----
     def _hdr(self, code: int, ctype: str, length: int | None = None,
              extra: dict[str, str] | None = None) -> None:
@@ -1880,48 +1886,48 @@ class Handler(BaseHTTPRequestHandler):
         reserva o nome e recebe um `id`; os seguintes mandam `id` e `inicio`. Pedaço fora de ordem → 409 com
         `recebido`, de onde o editor continua. Sem `total`, o arquivo inteiro vem num pedido só (editor antigo)."""
         if self.upload_dir is None:
-            self._fail(404, "envio desligado")
+            self._recusar_envio(404, "envio desligado")
             return
         q = parse_qs(query)
         pid = (q.get("projeto") or [None])[0]
         if pid is not None and pid != pj.id_de(self.root):
-            self._fail(409, "outro projeto foi aberto no editor; volte para este (Projetos) para enviar")
+            self._recusar_envio(409, "outro projeto foi aberto no editor; volte para este (Projetos) para enviar")
             return
         raw_len = self.headers.get("Content-Length")
         if raw_len is None:
-            self._fail(411, "Envio sem tamanho (Content-Length).")
+            self._recusar_envio(411, "Envio sem tamanho (Content-Length).")
             return
         try:
             length = int(raw_len)
             total = int((q.get("total") or [length])[0])
             inicio = int((q.get("inicio") or [0])[0])
         except ValueError:
-            self._fail(400, "Tamanho inválido.")
+            self._recusar_envio(400, "Tamanho inválido.")
             return
         em_pedacos = "total" in q
         if length <= 0 or total <= 0:
-            self._fail(400, "Arquivo vazio.")
+            self._recusar_envio(400, "Arquivo vazio.")
             return
         if em_pedacos and length > PEDACO_MAX:
-            self._fail(413, "Pedaço grande demais.")
+            self._recusar_envio(413, "Pedaço grande demais.")
             return
         if length > total:
-            self._fail(400, "Pedaço maior que o arquivo.")
+            self._recusar_envio(400, "Pedaço maior que o arquivo.")
             return
         envio_id = (q.get("id") or [""])[0]
         if envio_id:
             self._upload_pedaco(envio_id, inicio, length)
             return
         if inicio != 0:
-            self._fail(400, "O envio começa do início.")
+            self._recusar_envio(400, "O envio começa do início.")
             return
         if total > self.max_upload:
-            self._fail(413, f"Arquivo maior que o limite de {self.max_upload / 1024 ** 3:.1f} GB.")
+            self._recusar_envio(413, f"Arquivo maior que o limite de {self.max_upload / 1024 ** 3:.1f} GB.")
             return
         name = clean_upload_name((q.get("name") or [""])[0])
         kind = upload_kind(name)
         if kind is None:
-            self._fail(415, "Só vídeo, imagem ou áudio: mp4, mov, webm, jpg, png, webp, mp3, m4a, wav, ogg.")
+            self._recusar_envio(415, "Só vídeo, imagem ou áudio: mp4, mov, webm, jpg, png, webp, mp3, m4a, wav, ogg.")
             return
         # a foto ou o vídeo de um lugar da montagem (Trocar → Do aparelho) é mídia do projeto: vai
         # para midia/, e o agente não é avisado de material novo para cortar
@@ -1929,13 +1935,13 @@ class Handler(BaseHTTPRequestHandler):
         para = (q.get("para") or [""])[0]
         para_lugar = para in ("montagem", "camada")
         if para == "montagem" and kind == "audio":
-            self._fail(415, "Para um lugar da montagem: foto ou vídeo.")
+            self._recusar_envio(415, "Para um lugar da montagem: foto ou vídeo.")
             return
         folder = self.upload_dir if kind == "video" and not para_lugar else self.root / cam.MIDIA_DIR
         folder.mkdir(exist_ok=True)
         try:
             if total > shutil.disk_usage(folder).free - DISK_MARGIN:
-                self._fail(507, "Sem espaço no computador para esse vídeo.")
+                self._recusar_envio(507, "Sem espaço no computador para esse vídeo.")
                 return
         except OSError:
             pass

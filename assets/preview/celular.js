@@ -617,6 +617,7 @@ function buildInsertsDraft() {
   (d.inserts || []).forEach((it, i) => list.push({ kind: 'insert', label: (it.src || '').split('/').pop(), start: +it.start, end: +it.end, ref: i }));
   (d.splitInserts || []).forEach((it, i) => list.push({ kind: 'split', label: it.label || (it.src || '').split('/').pop(), start: +it.start, end: +it.end, ref: i }));
   (d.splitVideos || []).forEach((it, i) => list.push({ kind: 'splitvideo', label: it.label || (it.src || '').split('/').pop(), start: +it.start, end: +it.end, ref: i }));
+  (d.punchins || []).forEach((it, i) => list.push({ kind: 'punch', label: t('Punch-in'), start: +it.start, end: +it.end, ref: i }));
   (d.behind || []).forEach((b, i) => list.push({ kind: 'behind', label: b.kind === 'words' ? (b.words || []).map((w) => w.t).join(' ') : (b.src || '').split('/').pop(), start: +b.start, end: +b.start + +b.dur, ref: i }));
   (d.wordAccents || []).forEach((w, i) => list.push({ kind: 'word', label: w.text, start: +w.start, end: +w.end, ref: i }));
   // o número que conta (numeros[]: at → end) anda e apara como as palavras
@@ -5094,6 +5095,7 @@ async function salvar(aviso, confirmado) {
       inserts: de('insert').map((c) => ({ ref: c.ref, start: t(c.start), end: t(c.end) })),
       splitInserts: de('split').map((c) => ({ ref: c.ref, label: c.label, start: t(c.start), end: t(c.end) })),
       splitVideos: de('splitvideo').map((c) => ({ ref: c.ref, label: c.label, start: t(c.start), end: t(c.end) })),
+      punchins: de('punch').map((c) => ({ ref: c.ref, start: t(c.start), end: t(c.end) })),
       hook: de('hook').map((c) => ({ endSec: t(c.end) }))[0] || null,
       behind: de('behind').map((c) => ({ ref: c.ref, start: t(c.start), dur: t(c.end - c.start) })),
       wordAccents: de('word').map((c) => ({ ref: c.ref, text: c.label, start: t(c.start), end: t(c.end) })),
@@ -5303,7 +5305,7 @@ const ITEM_AVISO = { imagem: () => t('A imagem'), texto: () => t('O texto'), aud
   velocidade: () => t('O trecho de velocidade'),
   // os blocos e efeitos da Fase 2 (remapear.fase2)
   insert: () => t('A imagem do vídeo final'), split: () => t('A tela dividida'),
-  splitvideo: () => t('O vídeo da tela dividida'), word: () => t('A palavra em destaque'),
+  splitvideo: () => t('O vídeo da tela dividida'), punch: () => t('O punch-in'), word: () => t('A palavra em destaque'),
   behind: () => t('O destaque atrás da pessoa'), numero: () => t('O número'), cena: () => t('O efeito do vídeo final'),
   grafico: () => t('O gráfico do vídeo final'), voz: () => t('O efeito de voz') };
 const numLocal = (v) => String(v).replace('.', IDIOMA === 'pt' ? ',' : '.');

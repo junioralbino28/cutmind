@@ -150,6 +150,16 @@ def test_envio_para_um_lugar_fica_no_projeto_e_nao_avisa_o_agente(srv):
     assert r.status == 415
 
 
+def test_toda_recusa_de_envio_descarta_o_corpo():
+    """Fechar a conexão com o corpo por ler faz o Windows mandar um reset, que às vezes chega antes da resposta:
+    a linha do 415 acima falhou assim uma vez na suíte, com WinError 10053."""
+    import inspect
+    fonte = inspect.getsource(ps.Handler._upload)
+    assert "self._recusar_envio(415" in fonte  # o detector funciona: acha a recusa que sabidamente está lá
+    assert "self._fail(" not in fonte
+    assert "self._descartar_corpo()" in inspect.getsource(ps.Handler._recusar_envio)
+
+
 # ---- modelos de montagem (etapa 5) ----
 def _post(port, caminho, corpo):
     dados = json.dumps(corpo).encode("utf-8")

@@ -107,7 +107,7 @@ def mensagens(fonte_do_servidor: str, modulos: dict[str, str]) -> dict[str, str]
             if mod == "preview_server" and isinstance(no, ast.Dict):
                 cands += [v for k, v in zip(no.keys, no.values) if isinstance(k, ast.Constant) and k.value == "error"]
             if (mod == "preview_server" and isinstance(no, ast.Call) and len(no.args) >= 2
-                    and getattr(no.func, "attr", "") in ("_deny", "_fail")):
+                    and getattr(no.func, "attr", "") in ("_deny", "_fail", "_recusar_envio")):
                 cands.append(no.args[1])
             for c in cands:
                 s = _texto(c)

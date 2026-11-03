@@ -37,7 +37,7 @@ SILENCIO_MAX = 1.2    # o --min-silence do verify_cut: mais que isso numa emenda
 NOMES_ITEM = {"imagem": "A imagem", "texto": "O texto", "audio": "O áudio", "filtro": "O filtro",
               "ajuste": "O ajuste de cor", "transicao": "A transição", "velocidade": "O trecho de velocidade",
               # os blocos e efeitos da Fase 2 (remapear.fase2)
-              "insert": "A imagem do vídeo final", "split": "A tela dividida", "splitvideo": "O vídeo da tela dividida",
+              "insert": "A imagem do vídeo final", "split": "A tela dividida", "splitvideo": "O vídeo da tela dividida", "punch": "O punch-in",
               "word": "A palavra em destaque", "behind": "O destaque atrás da pessoa", "numero": "O número",
               "cena": "O efeito do vídeo final", "grafico": "O gráfico do vídeo final",
               "voz": "O efeito de voz"}

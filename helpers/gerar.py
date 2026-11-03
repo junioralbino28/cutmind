@@ -44,6 +44,7 @@ import pacotes as pk  # mesma pasta deste arquivo
 import pendente as pend  # mesma pasta deste arquivo
 import render_janelas  # mesma pasta deste arquivo
 import render_parcial  # mesma pasta deste arquivo
+import rosto_blocos  # mesma pasta deste arquivo
 import sonda  # mesma pasta deste arquivo
 import tempo  # mesma pasta deste arquivo
 import vez  # mesma pasta deste arquivo
@@ -279,6 +280,13 @@ def preparar_remotion_fase2(edit: Path) -> Path:
     corte_alta.aplicar(edit, rem, edit_data=pub / "edit-data.json")  # zoom nítido (gravação 4K)
     _refazer_rastreio(edit, pub)
     _refazer_recortes(edit, pub)
+    try:  # a tela dividida e o punch-in pelo rosto medido no trecho de agora
+        blocos = rosto_blocos.aplicar(edit)
+    except rosto_blocos.BlocosErro as e:
+        raise ErroGerar("o rosto ou o recorte da tela dividida não saiu (a saída está no registro do trabalho)") from e
+    if blocos["template"]:
+        raise ErroGerar("o projeto do vídeo final é de um kit anterior e não desenha a tela dividida por bloco nem o "
+                        "punch-in: aperte Pronto para o Claude atualizar")
     r = cenas_edit_data.aplicar(edit)
     if r["template"]:
         raise ErroGerar("o projeto do vídeo final é de um kit anterior e não desenha os efeitos de agora: aperte "

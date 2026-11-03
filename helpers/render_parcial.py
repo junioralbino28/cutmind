@@ -19,7 +19,7 @@ from pathlib import Path
 
 FOTO = "render.dados.json"
 # as listas em que cada item só aparece na própria janela
-JANELADOS = ("cenas", "graficos", "textos", "inserts", "behind", "splitInserts", "numeros", "atras")
+JANELADOS = ("cenas", "graficos", "textos", "inserts", "behind", "splitInserts", "numeros", "atras", "wordAccents", "punchins")
 SO_SOM = ("soundtrack",)  # entra no mixar_final, a imagem não depende dele
 SONS = (".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac")
 MARGEM = 0.25  # s de cada lado: o que entra e sai na borda (o render_janelas ainda põe 2 quadros de folga)
@@ -64,9 +64,10 @@ def guardar(rem: Path) -> None:
 
 
 def _janela(it) -> tuple[float, float] | None:
-    if not isinstance(it, dict) or not isinstance(it.get("start"), (int, float)):
+    ini = it.get("start", it.get("at")) if isinstance(it, dict) else None  # o número conta de `at` a `end`
+    if not isinstance(ini, (int, float)):
         return None
-    a = float(it["start"])
+    a = float(ini)
     if isinstance(it.get("end"), (int, float)):
         return a, float(it["end"])
     return (a, a + float(it["dur"])) if isinstance(it.get("dur"), (int, float)) else None

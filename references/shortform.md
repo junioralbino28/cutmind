@@ -249,6 +249,16 @@ lines with the **Zona segura** button under the player):
 - Checking: open the editor, turn on **Zona segura** and scrub the Final view;
   nothing readable may touch the red or yellow bands.
 
+## Punch-in (`punchins[]`)
+
+A zoom on one stretch of a take, on a word that deserves it: `{"start": 12.3, "end": 14.1, "zoom": 1.5}` is a dry cut in;
+add `"zoomIni": 1.0` to go from one to the other frame by frame through the stretch. It acts on the base picture, over the
+camera, so cut-outs behind the person stay aligned and the captions do not move. The zoom holds the face still:
+`rosto_blocos.py <edit>` writes `x` and `y` from the face measured in that stretch (`fixo: true` keeps yours). `gerar.py` runs
+it too. A zoom over 1.25× over a recording of 2× the output makes the base picture come from the recording itself
+(`cut-alta.mp4`, below), so it stays sharp. The blocks show on the Final timeline and move and trim like the others. Use
+one or two in a Reels, on the strongest words: more than that reads as a tic.
+
 ## Corte nítido para zoom (`cut-alta.mp4`)
 
 The take's framing (`enquadre`) and the camera zoom enlarge the base picture in Remotion. Over the
@@ -546,6 +556,14 @@ talking-head picture.
 numbers:** pull a frame out of `cut.mp4`, read the hair-top and chin y, and set
 `focusY` so the head lands where the user asked. The defaults fit a head ~660px
 tall starting at y 455.
+
+**The height of the face changes between cuts**, so a fixed pair cuts the forehead in one block and leaves room in the
+next. Per block, over those defaults: `zoom`, `focusY`; or `"focusAuto": true`, and `rosto_blocos.py <edit>` writes `focusY`
+from the face measured in that block's stretch (with `zoom` 1 unless you set one), the eyes always at the same height. And
+`"cabeca": true` (`top` only) makes the head pass over the band and stop at the division: it adds a cut-out of the person
+(blocks that touch share one), at the cost of the cut-out, 3 to 4.5 frames per second. Both together: the top of the head,
+measured in the cut-out, passes the division by 150 px, whatever the size of the face. `gerar.py` runs the helper too. A
+project scaffolded before 0.4.5 keeps its own `CustomGraphics.tsx`, which does not read these fields: the helper says so.
 
 The two are opposites in one specific way, and it is the whole trick: the source
 has a lot of headroom above the head. `top` has to zoom in to throw that headroom

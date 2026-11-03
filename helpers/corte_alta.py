@@ -7,8 +7,8 @@ cut.mp4 de 1080, um enquadre de 1,7× amolece a imagem; sobre um corte da grava�
 
 - a saída é vertical (Reels, TikTok, Shorts) e TODA gravação do edl.json tem o lado menor com 2× ou
   mais da saída (2160 para 1080x1920);
-- algum zoom passa de 1,25×: o enquadre de uma tomada (`largura` / 1080) ou a câmera (`zooms` +
-  `pushIn`, ligada).
+- algum zoom passa de 1,25×: o enquadre de uma tomada (`largura` / 1080), a câmera (`zooms` +
+  `pushIn`, ligada) ou um punch-in (`punchins[].zoom`).
 
 Como: o render.py com o MESMO edl.json e `--lado-maior 3840`, numa pasta à parte (`<edit>/.alta/`,
 para não trocar o `clips_graded/` nem o `edl.json` do corte); confere que o corte alto tem os mesmos
@@ -75,6 +75,7 @@ def zoom_maximo(edit: Path) -> float:
     cam = ed.get("camera") or {}
     if cam.get("enabled"):
         zs += [float(z) + float(cam.get("pushIn") or 0) for z in cam.get("zooms") or [] if isinstance(z, (int, float))]
+    zs += [float(p["zoom"]) for p in ed.get("punchins") or [] if isinstance(p.get("zoom"), (int, float)) and not p.get("desligado")]
     return max(zs, default=1.0)
 
 

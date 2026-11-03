@@ -351,5 +351,7 @@
  "o Remotion compartilhado não carrega neste projeto ({motivo}): apague a pasta {alvo} e tente outra vez": "the shared Remotion doesn't load in this project ({motivo}): delete the folder {alvo} and try again",
  "o projeto do vídeo final é de um kit anterior e não desenha os gráficos: aperte Pronto para o Claude atualizar": "the final video's project is from an older kit and doesn't draw the graphics: press Done so Claude can update it",
  "não deu para ler o áudio de {name}": "couldn't read the audio of {name}",
- "o som `{sid}` não existe; os que existem: {p1}": "the sound `{sid}` doesn't exist; the ones that exist: {p1}"
+ "o som `{sid}` não existe; os que existem: {p1}": "the sound `{sid}` doesn't exist; the ones that exist: {p1}",
+ "o projeto do vídeo final é de um kit anterior e não desenha a tela dividida por bloco nem o punch-in: aperte Pronto para o Claude atualizar": "the final video's project is from an earlier kit and doesn't draw the per-block split screen or the punch-in: press Done for Claude to update it",
+ "o rosto ou o recorte da tela dividida não saiu (a saída está no registro do trabalho)": "the face or the split screen's cut-out didn't come out (the output is in the job's log)"
 }

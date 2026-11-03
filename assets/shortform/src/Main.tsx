@@ -75,6 +75,9 @@ export type EditData = {
   fps: number;
   durationSec: number;
   camera: {enabled: boolean; zooms: number[]; pushIn: number; targetX: number; targetY: number};
+  // punch-ins: a zoom on one stretch of a take, over the camera. `zoomIni` → `zoom` frame by frame (without it, a dry
+  // cut), around x/y in frame px, the face that helpers/rosto_blocos.py measures
+  punchins?: {start: number; end: number; zoom: number; zoomIni?: number; x?: number; y?: number; desligado?: boolean}[];
   hook: {
     enabled: boolean; endSec: number; lines: string[]; logo: string | null; sign: string | null;
     // `text` is preferred over `lines`: the headline is ALWAYS re-broken into
@@ -202,6 +205,19 @@ export const cameraAt = (frame: number, width: number, height: number, fps: numb
     ty = cam.targetY * height - cy * height * S;
     tx = clamp(tx, width - width * S, 0); // never reveal an edge
     ty = clamp(ty, height - height * S, 0);
+  }
+  const pi = D.punchins?.find((p) => !p.desligado && frame >= Math.round(p.start * fps) + VIDEO_LAG && frame < Math.round(p.end * fps) + VIDEO_LAG);
+  if (pi) {
+    const a = Math.round(pi.start * fps) + VIDEO_LAG;
+    const b = Math.round(pi.end * fps) + VIDEO_LAG;
+    const z = (pi.zoomIni ?? pi.zoom) + (pi.zoom - (pi.zoomIni ?? pi.zoom)) * clamp01((frame - a) / Math.max(1, b - 1 - a));
+    const k = width / 1080;
+    const px = (pi.x ?? 540) * k;
+    const py = (pi.y ?? 768) * (height / 1920);
+    const S2 = S * z; // the face stays where the camera had it, and the edge never shows
+    tx = clamp(px * S + tx - px * S2, width - width * S2, 0);
+    ty = clamp(py * S + ty - py * S2, height - height * S2, 0);
+    S = S2;
   }
   return {S, tx, ty, clip: null};
 };

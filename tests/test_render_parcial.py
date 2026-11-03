@@ -54,6 +54,12 @@ def test_a_legenda_que_some_muda_so_por_trechos():
     assert rp.janelas(a, b) == [(9.75, 14.25)]
 
 
+def test_o_numero_e_o_punch_in_tem_janela():
+    a = base(numeros=[{"at": 5, "end": 7, "valor": 3}], punchins=[{"start": 20, "end": 22, "zoom": 1.4}])
+    b = base(numeros=[{"at": 5, "end": 7, "valor": 9}], punchins=[{"start": 20, "end": 22, "zoom": 1.6}])
+    assert rp.janelas(a, b) == [(4.75, 7.25), (19.75, 22.25)]
+
+
 def test_trecho_grande_demais_vai_inteiro():
     a, b = base(), base(textos=[texto("a", 10, 80), texto("b", 40, 42)])
     assert rp.janelas(a, b, 100.0) is None

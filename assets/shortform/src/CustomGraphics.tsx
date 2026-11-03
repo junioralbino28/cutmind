@@ -41,6 +41,10 @@ type SplitInsert = {
   fit?: 'cover' | 'contain';
   bandH?: number;
   layout?: 'top' | 'bottom';
+  zoom?: number; // over the LAYOUT, for this block: the height of the face changes between the cuts
+  focusY?: number; // same (rosto_blocos.py writes it with `focusAuto: true`)
+  matte?: string; // layout "top": the person cut out, so the head passes over the band (`cabeca: true`)
+  matteIni?: number; // the frame of the cut that cut-out starts on
 };
 
 // Two variants of one idea — both PIN THE FACE to a fixed region and give the
@@ -156,10 +160,15 @@ const SplitFrame: React.FC<{
   progress: number;
   layout: 'top' | 'bottom';
   baseStartFrame: number;
-}> = ({src, bandH, fit, progress, layout, baseStartFrame}) => {
+  zoomBloco?: number;
+  focusBloco?: number;
+  matte?: string;
+  matteTrim?: number;
+}> = ({src, bandH, fit, progress, layout, baseStartFrame, zoomBloco, focusBloco, matte, matteTrim}) => {
   // slow Ken-Burns so the band is not a dead still
   const artScale = 1 + 0.03 * progress;
-  const {zoom, focusY} = LAYOUT[layout];
+  const zoom = zoomBloco ?? LAYOUT[layout].zoom;
+  const focusY = focusBloco ?? LAYOUT[layout].focusY;
   const videoH = 1920 - bandH;
   const bandTop = layout === 'top' ? 0 : videoH;
   const videoTop = layout === 'top' ? bandH : 0;
@@ -212,6 +221,25 @@ const SplitFrame: React.FC<{
           />
         ) : null}
       </div>
+
+      {/* The head over the band: the same framing of the person, cut out and stopped at the division. */}
+      {matte && layout === 'top' ? (
+        <div style={{position: 'absolute', left: 0, top: 0, width: 1080, height: bandH, overflow: 'hidden'}}>
+          <OffthreadVideo
+            src={staticFile(matte)}
+            muted
+            transparent
+            trimBefore={matteTrim ?? 0}
+            style={{
+              position: 'absolute',
+              width: 1080 * zoom,
+              height: 1920 * zoom,
+              left: -(1080 * (zoom - 1)) / 2,
+              top: bandH - focusY * zoom,
+            }}
+          />
+        </div>
+      ) : null}
     </AbsoluteFill>
   );
 };
@@ -233,8 +261,12 @@ export const SplitScreen: React.FC<{items: SplitInsert[]}> = ({items}) => {
   const a = Math.round(active.start * fps) + VIDEO_LAG;
   const b = Math.round(active.end * fps) + VIDEO_LAG;
   return (
-    <Sequence from={a} durationInFrames={Math.max(1, b - a)}>
+    <Sequence key={active.src} from={a} durationInFrames={Math.max(1, b - a)}>
       <SplitFrame
+        zoomBloco={active.zoom}
+        focusBloco={active.focusY}
+        matte={active.matte}
+        matteTrim={Math.round(active.start * fps) - (active.matteIni ?? 0)}
         src={active.src}
         bandH={active.bandH ?? 750}
         fit={active.fit ?? 'cover'}

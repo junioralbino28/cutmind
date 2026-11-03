@@ -187,7 +187,7 @@ def velocidade(vel: dict, levar: Levar, total: float) -> tuple[dict, list[dict]]
 # nos avisos (o editor monta a frase); `textos` e os blocos com `camada` são do camadas_edit_data.py
 BLOCOS = {"inserts": ("start", "end", "insert"), "splitInserts": ("start", "end", "split"),
           "splitVideos": ("start", "end", "splitvideo"), "wordAccents": ("start", "end", "word"),
-          "behind": ("start", "dur", "behind"), "numeros": ("at", "end", "numero")}
+          "behind": ("start", "dur", "behind"), "numeros": ("at", "end", "numero"), "punchins": ("start", "end", "punch")}
 # instantes absolutos do corte dentro de um efeito ou gráfico: `at`, `ate` (até quando um item da
 # lista fica) e todo campo terminado em `At` (kpiAt, circuloAt, fimAt...). Os relativos (`inicio`,
 # `entrada`, `saiEm`, `cada`, `passo`, `fraseInicio`) ficam.
