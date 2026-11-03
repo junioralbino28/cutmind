@@ -1,6 +1,6 @@
 # Effects that take the person off the background (`cenas[]`)
 
-Seven Phase-2 effects redraw one take of the short-form video: a new background, things on it,
+Fourteen Phase-2 effects redraw one take of the short-form video: a new background, things on it,
 and the person, cut out of the frame, in front. They live in `edit-data.json` `cenas[]`, one item
 per effect, and the template draws them (`assets/shortform/src/cenas/`).
 
@@ -14,10 +14,16 @@ per effect, and the template draws them (`assets/shortform/src/cenas/`).
 | `grafico` | Gráfico | a bar chart grows behind the person, a tag pops at the end |
 | `chroma` | Site | the background becomes a web page and the person, smaller, slides into a corner |
 | `orbita` | Órbita | cards (images or frames) circle the person: behind the head, then in front |
+| `app` | App | the top half becomes an app window: thumbnails fall in, a command is typed; the person below |
+| `saindo` | Saindo da tela | the video in a neon post frame; the head and hand break out of it |
+| `revelacao` | Revelação | the picture shrinks into the preview of a dark editor, tasks ticking around it |
+| `papel` | Recorte de papel | a kraft collage in stop motion, the person a sticker, cut-out letters |
+| `rabisco` | Rabisco | a chalkboard, a trembling chalk outline around the person, doodles drawing themselves |
+| `vertigem` | Vertigem | dolly zoom: the video's own background grows while the person keeps their size |
 
-The editor knows nine more names (`papel`, `rabisco`, `saindo`, `vertigem`, `app`,
-`celular`, `checklist`, `revelacao`, `zoomDigital`, plus `corteZoom`). The template does not draw
-them yet: `cenas_edit_data.py` refuses them with the list above.
+The editor knows four more names (`celular`, `checklist`, `zoomDigital`, `corteZoom`). The template
+does not draw them as scenes (the first two exist as graphics, `references/graficos.md`):
+`cenas_edit_data.py` refuses them with the list above.
 
 ## The path
 
@@ -55,7 +61,7 @@ its measurement, so the run costs seconds.
 
 | Field | Who writes it | What it is |
 |---|---|---|
-| `tipo` | agent | one of the seven |
+| `tipo` | agent | one of the types above |
 | `start`, `end` | agent | the window on the cut, seconds; at least 0.3 s |
 | `desligada` | editor | `true` = off |
 | `texto` | editor | `{x, y}`: where the user dragged the movable block, frame px; absent = `layout` |
@@ -66,7 +72,7 @@ its measurement, so the run costs seconds.
 Inside an effect the camera of the cut does not act (no zoom steps, no face tracking): the
 frame is the plain picture, plus the effect's own `zoom`.
 
-## The seven types
+## The types
 
 Required fields in **bold**; the others have the default in parentheses. Instants (`at`,
 `circuloAt`, `pequenoAt`, `giganteAt`, `manchetes[].at`) are seconds of the cut, inside the window.
@@ -143,6 +149,9 @@ e-commerce → product shots; a creator → their own posts; a consultant → cl
   helper uses frames of the video itself, a square around the face from other moments.
 - `pequeno` (the yellow tape) and `gigante` (the giant word, 1 word), `pequenoAt`, `giganteAt`
   (start + 2); `cada` (0.1 s between photos); `inicio` (0.15 s); `fundo` (`fundos/concreto`).
+- `fundo: "video"`: the photos go on the video's OWN background. The person stays exactly where they
+  are (no moving down for the giant word), the photos only take the places they do not cover, and
+  there is no shadow. For a take where the place matters: a story told at home, a room full of memories.
 
 ```json
 {"tipo": "parede", "start": 62.30, "end": 65.93, "pequeno": "CORTAR A", "gigante": "FOLHA", "giganteAt": 63.6}
@@ -198,6 +207,81 @@ person cut out over them are drawn.
  "cartoes": [{"src": "midia/print-editor.png"}, {"src": "midia/print-legenda.png"}, {"src": "midia/print-trilha.png"}]}
 ```
 
+### `app` — inside an app window
+
+When the take describes something happening on a screen: sending files, asking for something, a
+workflow. The top half slides down as a light app window, pushing the picture below it.
+
+- `zona`: the text of the drop area; `etiqueta`: a tag that pops ("4 CLIPES"); `comando`: what gets
+  typed in the box, with the send button pressed at the end. All from the speech, and all optional.
+- `fotos`: up to 4 `{"src": "midia/<file>"}`. Without them, 4 frames of the video itself.
+- `digitaAt`, `digitaFimAt` (45 % and 85 % of the window): when the typing happens. It comes with the
+  key sound in the final mix; `som: false` turns it off.
+
+```json
+{"tipo": "app", "start": 20.1, "end": 25.3, "zona": "Solte aqui", "etiqueta": "4 CLIPES", "comando": "edita pra mim"}
+```
+
+### `saindo` — breaking out of the frame
+
+For a turning point or an "I got out of this" moment: the video sits in a post frame and the person
+comes out through the top, with shards and a shake. Best on a take with the head well inside the frame.
+
+- `titulo`: above the frame, 1 to 3 words; `cor` (`#c6ff3d`): border, grid and title; `at` (start + 0.4): when
+  they break out.
+
+```json
+{"tipo": "saindo", "start": 40.2, "end": 43.0, "titulo": "SAI DO FEED", "at": 40.6}
+```
+
+### `revelacao` — the video becomes the preview of an editor
+
+For showing the work behind the video. It needs no person (no cut-out, no measure), so it also works on a
+screen recording. Do not use it on a take that depends on seeing the face: the picture ends small.
+
+- `tarefas`: up to 6 short lines, ticked one by one as the window goes on; `at` (start + 0.25): when the
+  camera starts pulling back. The colour is the Estilo accent.
+
+```json
+{"tipo": "revelacao", "start": 70.0, "end": 75.5, "tarefas": ["Transcrever", "Cortar silêncio", "Legenda", "Efeitos", "Música"]}
+```
+
+### `papel` — paper collage
+
+For a lighter or more personal take. Everything moves in stop motion (15 frames per second), including
+the person, who is a sticker with a thick white border.
+
+- `frase`: cut-out letters, up to 2 lines (a line break in the text), about 12 letters per line (each letter
+  has its own font and paper, so long sentences get small). The person moves down to clear it.
+
+```json
+{"tipo": "papel", "start": 12.0, "end": 15.2, "frase": "FEITO\nÀ MÃO"}
+```
+
+### `rabisco` — chalk doodles
+
+For an idea being explained or a big claim. A chalk outline trembles around the person, a crown
+draws itself on the head and doodles appear where the person is not (those that do not fit stay out, silently).
+
+- `frase`: handwritten at the top, up to ~30 letters.
+
+```json
+{"tipo": "rabisco", "start": 30.0, "end": 34.0, "frase": "isso muda tudo"}
+```
+
+### `vertigem` — dolly zoom
+
+For a shock or a question that hangs in the air. The background of the video itself, rebuilt without the
+person from frames of the same take, grows slowly while the person keeps their size, in black and white
+over dark red. It only works when the camera does not move in that take. Where the person never left, the
+hole is filled and blurred: the darker colour and the rays hide it.
+
+- `pergunta`: at the top, with a colour shake, up to ~20 letters; `cor` (`#8a0b16`): the background colour.
+
+```json
+{"tipo": "vertigem", "start": 50.0, "end": 53.5, "pergunta": "E AGORA?"}
+```
+
 ## Rules
 
 - **Short text.** The big text is 1 to 3 words (`palavra`, `nome`, `gigante`, `etiqueta`); a
@@ -235,12 +319,15 @@ The user can also CREATE effects there, on the take under the needle:
   Escurecer and Desfoque. It comes in the Salvar as `nova: true`, without `ref`, with the take's
   window and `campos` (`fundo`, `escurecer`, `desfoque`).
 - **Efeitos → Cenas** (since 0.3.6): one card per other type (Vidro, Capa, Mural, Parede, Gráfico,
-  Site, Órbita), each a sketch of the effect around the user cut out on the needle's frame, with the
+  Site, Órbita, App, Saindo da tela, Revelação, Recorte de papel, Rabisco, Vertigem), each a sketch of
+  the effect around the user cut out on the needle's frame, with the
   texts already taken from the take's speech (no AI: the longest word, the first words, chunks of
   up to 6 words for headlines, a number said for the chart tag). It comes as `nova: true` with the
   texts in `textos` (only the type's own: `palavra`; `nome`, `selo`; `pequeno`, `gigante`;
-  `etiqueta`; `titulo`, `frase`, `botao`; `titulo`) and the lists in `campos` (Mural `manchetes`
-  with `at` spread in the window, `circulo`, `circuloAt`; Gráfico `valores`). The server checks it
+  `etiqueta`; `titulo`, `frase`, `botao`; `titulo`; `zona`, `etiqueta`, `comando`; `titulo`; `frase`;
+  `frase`; `pergunta`) and the lists in `campos` (Mural `manchetes` with `at` spread in the window,
+  `circulo`, `circuloAt`; Gráfico `valores`; Revelação `tarefas`; Parede `fundo: "video"` when the user ticks
+  "Sobre o fundo do próprio vídeo"). The server checks it
   against this file's rules and writes it into `cenas[]` by itself, so the Baixar draws it with no
   agent at all.
 - **`textoAuto: true`** marks texts the panel took from the speech and the user never touched. When

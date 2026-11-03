@@ -278,6 +278,7 @@ html:not(.desk) .pronto-btn .pronto-n { margin-left: 3px; padding: 0 4px; font-s
 .cn-card .cn-atras { background: #111 center / cover no-repeat; }
 .cn-card .cn-pessoa { z-index: 1; }
 .cn-card .cn-frente { z-index: 2; }
+.cn-card .mod-nome { z-index: 3; } /* por cima da pessoa, ou o nome do efeito some atrás dela */
 .cn-card.on { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand); }
 /* Vidro: gelo, a palavra grande e translúcida atrás da cabeça */
 .cn-vidro .cn-atras { background: radial-gradient(120% 70% at 50% 20%, #e8f0f6, #9fb4c6); }
@@ -360,6 +361,51 @@ html:not(.desk) .pronto-btn .pronto-n { margin-left: 3px; padding: 0 4px; font-s
 .cn-o3 { left: 2%; top: 46%; }
 .cn-o4 { right: 2%; top: 47%; }
 .cn-orb-titulo { position: absolute; left: 0; right: 0; top: 9%; text-align: center; color: #fff; font: italic 400 8cqw/1.05 'Instrument Serif', Georgia, serif; text-shadow: 0 0.6cqw 2cqw rgba(0, 0, 0, 0.5); }
+/* Dentro do app: o painel claro em cima, com a janela, e a pessoa embaixo */
+.cn-app .cn-atras { background: #17171a; }
+.cn-app .cn-pessoa { transform: translateY(30cqh); }
+.cn-app-painel { position: absolute; left: 0; right: 0; top: 0; height: 46%; background: #efece6; box-shadow: 0 1cqw 3cqw rgba(0, 0, 0, 0.4); }
+.cn-app-janela { position: absolute; left: 4%; right: 4%; top: 22%; bottom: 5%; border-radius: 2.6cqw; background: #fff; overflow: hidden; }
+.cn-app-zona { position: absolute; left: 4%; right: 4%; top: 7%; height: 54%; border: 0.5cqw dashed #c9c3b6; border-radius: 1.8cqw; display: flex; align-items: center; justify-content: center; gap: 2%; padding: 0 2%; box-sizing: border-box; }
+.cn-app-foto { flex: 1; aspect-ratio: 1; border-radius: 1cqw; background: #bbb center / cover no-repeat; }
+.cn-app-caixa { position: absolute; left: 4%; right: 4%; bottom: 7%; height: 22%; border: 0.4cqw solid #dcd7cb; border-radius: 1.6cqw; padding: 0 3%; box-sizing: border-box; color: #26241f; font: 500 3.4cqw/5cqh 'Poppins', system-ui, sans-serif; white-space: nowrap; overflow: hidden; }
+.cn-app-etiqueta { position: absolute; right: 3%; top: 3%; padding: 0.7cqw 1.8cqw; border-radius: 99px; background: var(--acc, #ff5200); color: #fff; font: 800 3cqw/1 'Poppins', system-ui, sans-serif; }
+/* Saindo da tela: fundo preto com grade, o quadro de post e a cabeça passando da borda */
+.cn-saindo .cn-atras { background: #050505; background-image: linear-gradient(rgba(198, 255, 61, 0.14) 1px, transparent 1px), linear-gradient(90deg, rgba(198, 255, 61, 0.14) 1px, transparent 1px); background-size: 8cqw 8cqw; }
+.cn-saindo-quadro { position: absolute; left: 8%; right: 8%; top: 30%; bottom: 18%; border: 0.8cqw solid #c6ff3d; box-shadow: 0 0 3cqw #c6ff3d; background: #000 center / cover no-repeat; }
+.cn-saindo .cn-pessoa { transform: scale(0.92) translateY(6cqh); transform-origin: 50% 82%; clip-path: inset(0 0 12% 0); }
+.cn-saindo-titulo { position: absolute; left: 0; right: 0; top: 13%; text-align: center; color: #c6ff3d; font: 400 13cqw/1 'Bebas Neue', Impact, sans-serif; text-shadow: 0 0 2cqw rgba(198, 255, 61, 0.6); white-space: nowrap; }
+/* Revelação: o vídeo vira a janela de um editor escuro */
+.cn-revelacao .cn-atras { background: #14161b; }
+.cn-rv-preview { position: absolute; left: 6%; top: 16%; width: 44%; aspect-ratio: 9 / 16; border-radius: 1.4cqw; outline: 0.5cqw solid var(--acc, #ff5200); background: #333 center / cover no-repeat; }
+.cn-rv-lista { position: absolute; left: 54%; right: 6%; top: 17%; display: grid; gap: 1.8cqh; color: #7d8290; font: 600 3.6cqw/1.1 'Poppins', system-ui, sans-serif; }
+.cn-rv-lista .feito { color: #fff; }
+.cn-rv-lista .feito::before { content: '✓ '; color: var(--acc, #ff5200); }
+.cn-rv-faixas { position: absolute; left: 6%; right: 12%; bottom: 11%; height: 15%; border-radius: 1.4cqw; background: linear-gradient(var(--acc, #ff5200) 0 22%, transparent 22% 39%, #3aa0ff 39% 61%, transparent 61% 78%, #a06bff 78%) 0 0 / 70% 100% no-repeat, #1c1f26; }
+/* Recorte de papel: kraft, pedaços rasgados, a pessoa adesivo e letras de recorte */
+.cn-papel .cn-atras { background-image: url('/assets/fundos/kraft.jpg'); }
+.cn-pedaco { position: absolute; width: 38%; height: 26%; box-shadow: 0.4cqw 0.7cqw 0.6cqw rgba(0, 0, 0, 0.35); }
+.cn-pd0 { left: -4%; top: 24%; background: #f5efe2; rotate: -7deg; }
+.cn-pd1 { right: -6%; top: 30%; background: #c9d6df; rotate: 6deg; }
+.cn-pd2 { left: -4%; top: 62%; background: #e9d8a6; rotate: 4deg; }
+.cn-pd3 { right: -6%; top: 64%; background: #f2c5a0; rotate: -5deg; }
+.cn-papel .cn-pessoa { rotate: -2.4deg; transform: translateY(8cqh); filter: drop-shadow(1cqw 0 0 #fff) drop-shadow(-1cqw 0 0 #fff) drop-shadow(0 1cqw 0 #fff) drop-shadow(0 -1cqw 0 #fff); }
+.cn-papel-letras { position: absolute; left: 3%; right: 3%; top: 14%; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6cqw; }
+.cn-papel-letra { padding: 0.4cqw 1cqw; font: 700 8cqw/1.1 'Anton', Impact, sans-serif; box-shadow: 0.4cqw 0.6cqw 0 rgba(0, 0, 0, 0.3); }
+.cn-papel-vao { width: 3cqw; }
+/* Rabisco vivo: lousa, contorno de giz e rabiscos */
+.cn-rabisco .cn-atras { background-image: url('/assets/fundos/lousa.jpg'); }
+.cn-rabisco .cn-pessoa { transform: translateY(6cqh); filter: drop-shadow(0.5cqw 0 0 #fdfdf8) drop-shadow(-0.5cqw 0 0 #fdfdf8) drop-shadow(0 0.5cqw 0 #fdfdf8) drop-shadow(0 -0.5cqw 0 #fdfdf8); }
+.cn-giz { position: absolute; width: 22%; aspect-ratio: 1; fill: none; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+.cn-giz-estrela { left: 5%; top: 28%; }
+.cn-giz-coracao { right: 5%; top: 30%; }
+.cn-giz-coroa { left: 37%; top: 19%; width: 26%; }
+.cn-giz-frase { position: absolute; left: 0; right: 0; top: 12%; text-align: center; color: #fdfdf8; font: 700 9cqw/1 'Caveat', cursive; white-space: nowrap; }
+/* Vertigem: o quadro em cinza e vermelho, a pessoa em preto e branco e a pergunta */
+.cn-vt-foto { position: absolute; inset: 0; background: #333 center / 135% no-repeat; filter: grayscale(1) contrast(1.1); }
+.cn-vt-cor { position: absolute; inset: 0; background: #8a0b16; mix-blend-mode: multiply; }
+.cn-vertigem .cn-pessoa { filter: grayscale(1) contrast(1.18); }
+.cn-vt-pergunta { position: absolute; left: 0; right: 0; top: 13%; text-align: center; color: #fff; font: 700 10cqw/1 'Oswald', sans-serif; text-shadow: 0.6cqw 0 0 rgba(255, 30, 60, 0.85), -0.6cqw 0 0 rgba(40, 220, 255, 0.75); white-space: nowrap; }
 /* Gráficos: cada cartão desenha a ideia do gráfico sobre o quadro da agulha, nas medidas do cartão
    (cqw: o .mod-card é o container). A cor é a do Estilo (--acc) */
 .gf-card { color: #fff; font-family: Poppins, system-ui, sans-serif; }

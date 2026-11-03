@@ -45,7 +45,7 @@ def test_a_moldura_do_editor_parte_do_layout_medido_na_pessoa():
     assert m, "não achei o CENA_BLOCO"
     entradas = dict(re.findall(r"^  (\w+): (.*)$", m.group(1), re.M))
     assert "zoomDigital" in entradas  # o detector acha as entradas (essa não tem layout)
-    for tipo in ("vidro", "capa", "parede", "grafico", "chroma"):
+    for tipo in ("vidro", "capa", "parede", "grafico", "chroma", "papel", "rabisco", "saindo", "vertigem"):
         assert "lay(c)" in entradas.get(tipo, ""), f"a moldura de `{tipo}` não lê o layout"
 
 

@@ -126,7 +126,7 @@ def test_salvar_aceita_os_efeitos_do_painel_cenas(srv):
 
 @pytest.mark.parametrize("ruim, motivo", [
     (_fundo(tipo="capa"), "não leva fundo, escurecer, desfoque"),
-    (_fundo(tipo="revelacao", campos={}), "não existe no modelo"),
+    (_fundo(tipo="zoomDigital", campos={}), "não existe no modelo"),
     (_fundo(tipo="vidro", campos={}, textos={"palavra": "OI", "matte": "x.mov"}), "não leva matte"),
     (_fundo(tipo="vidro", campos={}, textos={}), "falta `palavra`"),
     (_fundo(tipo="mural", textos={}, campos={"manchetes": [{"t": "Oi", "at": 4.5, "src": "c:/x"}]}), "cada manchete"),

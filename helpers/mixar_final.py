@@ -135,6 +135,16 @@ def teclas_dos_graficos(ed: dict, vd: float) -> list[tuple[float, float]]:
             continue
         if b - a > 0.05:
             out.append((a, b - a))
+    for c in ed.get("cenas") or []:  # a caixa de texto do Dentro do app, com o mesmo tempo padrão do template
+        if not isinstance(c, dict) or c.get("tipo") != "app" or not c.get("comando") or c.get("desligada") or c.get("som") is False:
+            continue
+        try:
+            ini, dur = float(c["start"]), float(c["end"]) - float(c["start"])
+            a, b = float(c.get("digitaAt", ini + 0.45 * dur)), min(float(c.get("digitaFimAt", ini + 0.85 * dur)), vd)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if b - a > 0.05:
+            out.append((a, b - a))
     return out
 
 

@@ -8,7 +8,7 @@
  */
 import React from 'react';
 import {AbsoluteFill, Easing, Img, interpolate, random, staticFile} from 'remotion';
-import {ACCENT, CenaProps, FONTE, Fundo, H, Recorte, Traco, W, centro, clamp, ease, estiloDe, local, mola, tremidas, useJanela} from './comum';
+import {ACCENT, Base, CenaProps, FONTE, Fundo, H, Recorte, Traco, W, centro, clamp, ease, estiloDe, local, mola, tremidas, useJanela} from './comum';
 
 type Slot = {x: number; y: number; w: number; h: number; r: number};
 type Coluna = {x: number; y: number; w: number; lado: 'esquerda' | 'direita'} | null;
@@ -89,7 +89,9 @@ export const Mural: React.FC<CenaProps> = ({c, a}) => {
 // with a coloured pin; the person casts a shadow on it; a tape strip and a giant word sit above
 // the head, below the Reels safe zone (the person moves down `layout.desce` px to make room). Data:
 // cada (s), inicio (s), pequeno, pequenoAt, gigante, giganteAt; layout.fotos (the user's images, or
-// frames of the video itself), layout.bloco, layout.desce, layout.fundo.
+// frames of the video itself), layout.bloco, layout.desce, layout.fundo. With `fundo: "video"` the wall
+// is the video's own background: the person stays where they are, the photos go in layout.slots (the
+// places they do not cover), with no shadow.
 const SLOTS_PAREDE = [
   {x: 24, y: 120, r: -6}, {x: 286, y: 80, r: 4}, {x: 548, y: 128, r: -3}, {x: 806, y: 92, r: 7},
   {x: -6, y: 470, r: 5}, {x: 818, y: 452, r: -4}, {x: 258, y: 420, r: -5}, {x: 574, y: 462, r: 6},
@@ -111,12 +113,14 @@ export const Parede: React.FC<CenaProps> = ({c, a}) => {
   const [tx, ty] = centro(c, [b.x, b.y]);
   const desce = Number(c.layout?.desce) || 0;
   const est = estiloDe(c, {fonte: 'anton', cor: ACCENT, escala: 1, contorno: 10, corContorno: '#ffffff'});
+  const noVideo = c.fundo === 'video';
+  const slots: {x: number; y: number; r: number}[] = c.layout?.slots ?? SLOTS_PAREDE;
   return (
     <AbsoluteFill>
-      <Fundo src={c.layout?.fundo} reserva="#c8c4be" />
-      <AbsoluteFill style={{background: 'radial-gradient(ellipse at 50% 35%, rgba(255,255,255,.18), rgba(0,0,0,.28))'}} />
-      {fotos.slice(0, SLOTS_PAREDE.length).map((ft, i) => {
-        const s = SLOTS_PAREDE[i];
+      {noVideo ? <Base c={c} a={a} /> : <Fundo src={c.layout?.fundo} reserva="#c8c4be" />}
+      {noVideo ? null : <AbsoluteFill style={{background: 'radial-gradient(ellipse at 50% 35%, rgba(255,255,255,.18), rgba(0,0,0,.28))'}} />}
+      {fotos.slice(0, slots.length).map((ft, i) => {
+        const s = slots[i];
         const de = ini + i * cada;
         if (f < de) return null;
         const m = mola(f, de, fps, {damping: 11, stiffness: 170});
@@ -142,7 +146,7 @@ export const Parede: React.FC<CenaProps> = ({c, a}) => {
         );
       })}
       {/* the person's shadow on the wall, then the person */}
-      <Recorte c={c} style={{filter: 'brightness(0) blur(16px)', opacity: 0.42, transform: `translate(38px, ${26 + desce}px)`}} />
+      {noVideo ? null : <Recorte c={c} style={{filter: 'brightness(0) blur(16px)', opacity: 0.42, transform: `translate(38px, ${26 + desce}px)`}} />}
       <Recorte c={c} style={desce ? {transform: `translateY(${desce}px)`} : undefined} />
       {/* tape + giant word: one block, centred on `texto` or on layout.bloco */}
       <div style={{position: 'absolute', left: tx, top: ty, width: W, transform: 'translate(-50%, -50%)', display: 'flex', flexDirection: 'column', alignItems: 'center'}}>

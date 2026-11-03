@@ -629,8 +629,11 @@ class CenasInvalidas(ValueError):
 # o que um efeito novo do painel Cenas pode trazer: os textos dele (em `textos`) e as listas e números
 # (em `campos`). O resto do item (o recorte, o lugar medido, as fotos e os cartões) é do helper e do agente.
 NOVA_TEXTOS = {"vidro": ("palavra",), "capa": ("nome", "selo"), "mural": (), "parede": ("pequeno", "gigante"),
-               "grafico": ("etiqueta",), "chroma": ("titulo", "frase", "botao"), "orbita": ("titulo",)}
-NOVA_CAMPOS = {"mural": ("manchetes", "circulo", "circuloAt"), "grafico": ("valores",)}
+               "grafico": ("etiqueta",), "chroma": ("titulo", "frase", "botao"), "orbita": ("titulo",),
+               "app": ("zona", "etiqueta", "comando"), "saindo": ("titulo",), "revelacao": (), "papel": ("frase",),
+               "rabisco": ("frase",), "vertigem": ("pergunta",)}
+NOVA_CAMPOS = {"mural": ("manchetes", "circulo", "circuloAt"), "grafico": ("valores",), "revelacao": ("tarefas",),
+               "parede": ("fundo",)}
 _TEXTO_MAX = 200
 
 

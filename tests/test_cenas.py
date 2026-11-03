@@ -3,6 +3,7 @@ cada coisa na tela, a validação e o helper que prepara o edit-data."""
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -180,8 +181,8 @@ def test_validar_diz_o_campo_que_falta():
 
 
 def test_validar_lista_os_tipos_que_existem():
-    (msg,) = cenas.validar({"tipo": "rabisco", "start": 1, "end": 3, "frase": "x"})
-    assert "rabisco" in msg and all(t in msg for t in ("fundo", "vidro", "capa", "mural", "parede", "grafico", "chroma", "orbita"))
+    (msg,) = cenas.validar({"tipo": "zoomDigital", "start": 1, "end": 3})
+    assert "zoomDigital" in msg and all(t in msg for t in ("fundo", "vidro", "capa", "mural", "parede", "grafico", "chroma", "orbita", "rabisco", "vertigem"))
 
 
 def test_validar_confere_faixas_listas_janela_e_caminhos():
@@ -381,3 +382,105 @@ def test_ler_janela_comeca_no_quadro_pedido(tmp_path):
     lidos = [round(f.mean() / 4) for f in pm.ler_janela(cap, 37, 5)]
     cap.release()
     assert lidos == [37, 38, 39, 40, 41]
+
+
+# ---------------------------------------------------------------- os efeitos do item 16
+
+P16 = {"x0": 200, "x1": 880, "topo": 300, "base": 1920, "cabecaX": 540, "presenca": 1.0,
+          "perfil": [[300, 700, 340, 740], [700, 1920, 200, 880]]}
+
+
+def test_app_a_cabeca_fica_logo_abaixo_do_painel():
+    assert cenas.layout("app", P16, {})["desce"] == cenas.APP_PAINEL + 24 - 300
+    assert cenas.layout("app", {**P16, "topo": 1000}, {})["desce"] == 0
+
+
+def test_saindo_o_quadro_fica_coberto_e_a_cabeca_perto_da_borda():
+    l = cenas.layout("saindo", P16, {})
+    q, f = l["quadro"], l["foto"]
+    assert f["x"] <= q["x"] and f["x"] + cenas.W * f["escala"] >= q["x"] + q["w"]  # sem vão dos lados
+    assert f["y"] <= q["y"] and f["y"] + cenas.H * f["escala"] >= q["y"] + q["h"]  # nem em cima e embaixo
+    assert f["y"] + 300 * f["escala"] - q["y"] == pytest.approx(30, abs=1)
+    assert l["bloco"]["y"] - 75 >= cenas.ZONA_TOPO
+
+
+def test_saindo_com_a_cabeca_muito_alta_ou_muito_baixa_nao_abre_vao():
+    for topo in (0, 40, 900, 1200):
+        l = cenas.layout("saindo", {**P16, "topo": topo}, {})
+        q, f = l["quadro"], l["foto"]
+        assert f["y"] <= q["y"] and f["y"] + cenas.H * f["escala"] >= q["y"] + q["h"] - 1, topo
+
+
+def test_papel_as_letras_ficam_abaixo_da_zona_segura_e_a_pessoa_desce():
+    l = cenas.layout("papel", P16, {"frase": "FEITO\nÀ MÃO"})
+    assert l["bloco"]["y"] > cenas.ZONA_TOPO and l["desce"] > 0
+    assert cenas.layout("papel", {**P16, "topo": 1200}, {"frase": "OI"})["desce"] == 0
+
+
+def test_rabisco_nada_em_cima_da_pessoa_nem_nos_botoes():
+    l = cenas.layout("rabisco", P16, {"frase": "isso muda tudo"})
+    d = l["desce"]
+    desceu = {**P16, "perfil": [[a + d, b + d, x0, x1] for a, b, x0, x1 in P16["perfil"]]}
+    assert any(l["desenhos"].values())
+    for k, s in l["desenhos"].items():
+        if s:
+            r = (s["x"], s["y"], s["w"], s["h"])
+            assert cenas.cobre(desceu, r) <= 0.25, k
+            assert not cenas._nos_botoes(r), k
+            assert s["y"] >= cenas.ZONA_TOPO, k
+    assert l["coroa"]["x"] == 540
+
+
+def test_vertigem_a_pergunta_fica_acima_da_cabeca():
+    l = cenas.layout("vertigem", {**P16, "topo": 200}, {"pergunta": "E AGORA?"})
+    assert l["bloco"]["y"] + 75 + 16 == pytest.approx(200 + l["desce"], abs=2)
+    assert cenas.layout("vertigem", {**P16, "topo": 900}, {})["desce"] == 0
+
+
+def test_parede_sobre_o_video_nao_desce_e_foge_da_pessoa():
+    l = cenas.layout("parede", P16, {"fundo": "video"})
+    assert l["desce"] == 0 and 0 < len(l["slots"]) < cenas.PAREDE_FOTOS
+    assert all(cenas.cobre(P16, (s["x"], s["y"], 250, 296)) <= 0.35 for s in l["slots"])
+    assert "slots" not in cenas.layout("parede", P16, {})
+
+
+def test_os_lugares_da_parede_sao_os_do_template():
+    tsx = (Path(__file__).resolve().parents[1] / "assets" / "shortform" / "src" / "cenas" / "fundoNovo.tsx").read_text(encoding="utf-8")
+    m = re.search(r"const SLOTS_PAREDE = \[(.*?)\];", tsx, re.S)
+    assert m
+    achados = [tuple(int(x) for x in t) for t in re.findall(r"x: (-?\d+), y: (-?\d+), r: (-?\d+)", m.group(1))]
+    assert achados == list(cenas._PAREDE)
+
+
+def test_a_altura_do_painel_do_app_e_a_do_template():
+    tsx = (Path(__file__).resolve().parents[1] / "assets" / "shortform" / "src" / "cenas" / "maisCenas.tsx").read_text(encoding="utf-8")
+    assert f"const PAINEL_H = {cenas.APP_PAINEL};" in tsx
+
+
+def test_conferencia_dos_tipos_novos():
+    ok = {"start": 1.0, "end": 4.0}
+    assert cenas.validar({"tipo": "app", **ok, "comando": "oi", "digitaAt": 2.0}) == []
+    assert cenas.validar({"tipo": "app", **ok, "digitaAt": 9.0})  # fora da janela
+    assert cenas.validar({"tipo": "app", **ok, "fotos": [{"src": "midia/a.jpg"}] * 5})  # 4 no máximo
+    assert cenas.validar({"tipo": "revelacao", **ok, "tarefas": ["a"] * 7})
+    assert cenas.validar({"tipo": "revelacao", **ok, "tarefas": ["a"] * 6}) == []
+    assert cenas.validar({"tipo": "papel", **ok, "frase": ["lista"]})
+    assert cenas.validar({"tipo": "saindo", **ok, "at": 1.5, "titulo": "X"}) == []
+    assert cenas.validar({"tipo": "parede", **ok, "fundo": "video"}) == []
+    assert cenas.validar({"tipo": "fundo", **ok, "fundo": "video"})  # só a Parede
+
+
+def test_o_template_usa_o_fundo_que_o_tipo_pede():
+    assert cenas.FUNDO_PADRAO["papel"] == "fundos/kraft" and cenas.FUNDO_PADRAO["rabisco"] == "fundos/lousa"
+    assert "revelacao" in cenas.SEM_PESSOA
+    idx = (Path(__file__).resolve().parents[1] / "assets" / "shortform" / "src" / "cenas" / "index.tsx").read_text(encoding="utf-8")
+    assert "const SEM_PESSOA = ['revelacao'];" in idx
+
+
+def test_rabisco_a_coroa_nao_fica_debaixo_de_um_desenho():
+    l = cenas.layout("rabisco", P16, {})
+    c = l["coroa"]
+    caixa = (c["x"] - c["w"] / 2, c["y"] - 0.45 * c["w"], c["w"], 0.75 * c["w"])
+    for k, s in l["desenhos"].items():
+        if s:
+            assert cenas._inter(caixa, (s["x"], s["y"], s["w"], s["h"])) / (s["w"] * s["h"]) <= 0.2, k

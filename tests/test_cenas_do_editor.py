@@ -31,16 +31,41 @@ def test_cada_tipo_do_painel_chega_ao_edit_data_e_passa_na_conferencia():
         nova("grafico", {"etiqueta": "66%"}, {"valores": [0.28, 0.46, 0.64, 0.85]}),
         nova("chroma", {"titulo": "Seu editor agora", "frase": "Você fala, ele corta.", "botao": "Começar"}),
         nova("orbita", {"titulo": "Tudo num lugar só"}),
+        nova("app", {"zona": "Solte aqui", "etiqueta": "4 CLIPES", "comando": "edita pra mim"}),
+        nova("saindo", {"titulo": "SAI DO FEED"}),
+        nova("revelacao", {}, {"tarefas": ["Transcrever", "Legenda"]}),
+        nova("papel", {"frase": "FEITO\nÀ MÃO"}),
+        nova("rabisco", {"frase": "isso muda tudo"}),
+        nova("vertigem", {"pergunta": "E AGORA?"}),
     ]
     d = {"cenas": []}
     depois, avisos = eda.aplicar(d, {"cenas": pedidos})
-    assert not avisos and "cenas" in depois and len(d["cenas"]) == 7
+    assert not avisos and "cenas" in depois and len(d["cenas"]) == 13
     for c in d["cenas"]:
         assert cenas.validar(c) == [], (c["tipo"], cenas.validar(c))
     vidro, mural, grafico = d["cenas"][0], d["cenas"][2], d["cenas"][4]
     assert vidro == {"tipo": "vidro", "start": 10.0, "end": 13.0, "palavra": "FOCO", "textoAuto": True}
     assert [m["t"] for m in mural["manchetes"]] == ["A notícia do dia", "O mercado mudou"]
     assert grafico["valores"] == [0.28, 0.46, 0.64, 0.85] and grafico["etiqueta"] == "66%"
+
+
+def test_parede_sobre_o_fundo_do_video_chega_ao_edit_data():
+    d = {"cenas": []}
+    eda.aplicar(d, {"cenas": [nova("parede", {"gigante": "ANOS"}, {"fundo": "video"})]})
+    assert d["cenas"][0]["fundo"] == "video" and cenas.validar(d["cenas"][0]) == []
+
+
+def test_o_servidor_aceita_o_que_cada_cartao_novo_manda():
+    import preview_server as ps
+    ps._conferir_cena_nova(0, nova("revelacao", {}, {"tarefas": ["Legenda"]}))
+    ps._conferir_cena_nova(0, nova("parede", {}, {"fundo": "video"}))
+    ps._conferir_cena_nova(0, nova("app", {"comando": "oi"}))
+    try:
+        ps._conferir_cena_nova(0, nova("parede", {}, {"fundo": "qualquer"}))
+    except ps.CenasInvalidas:
+        pass
+    else:
+        raise AssertionError("o fundo inválido passou")
 
 
 def test_texto_escrito_depois_do_salvar_tira_a_marca_do_agente():
@@ -71,6 +96,13 @@ def test_nenhuma_funcao_do_editor_declarada_duas_vezes():
     nomes = re.findall(r"^(?:async )?function (\w+)\(", JS, re.M)
     repetidas = sorted({n for n in nomes if nomes.count(n) > 1})
     assert not repetidas, f"declaradas mais de uma vez no celular.js: {repetidas}"
+
+
+def test_a_parede_nao_vira_um_fundo_no_salvar():
+    """O `cenaValor` decidia pelo campo `fundo`, e a Parede sobre o vídeo também tem esse campo: ela sairia com
+    escurecer e desfoque NaN e o servidor recusaria o Salvar inteiro."""
+    corpo = JS.split("function cenaValor(v)")[1].split("\n}\n")[0]
+    assert "'escurecer' in v.campos" in corpo and "'fundo' in v.campos" not in corpo
 
 
 def test_campos_de_qualquer_efeito_novo_vao_no_salvar():

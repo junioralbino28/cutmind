@@ -6089,14 +6089,15 @@ const CENA_NOME = {
   saindo: t('Saindo da tela'), rabisco: t('Rabisco'), vertigem: t('Vertigem'), celular: t('Celular'), vidro: t('Vidro'), orbita: t('Órbita'), chroma: t('Site'),
 };
 // os efeitos que o modelo desenha e que a pessoa escolhe no painel Cenas (o Fundo tem painel próprio)
-const CENAS_NOVAS = ['vidro', 'capa', 'mural', 'parede', 'grafico', 'chroma', 'orbita'];
+const CENAS_NOVAS = ['vidro', 'capa', 'mural', 'parede', 'grafico', 'chroma', 'orbita', 'app', 'saindo', 'revelacao', 'papel', 'rabisco', 'vertigem'];
 // o véu e o desfoque do Fundo quando o item não diz (src/cenas/fundo.tsx): mudou lá, muda aqui
 const FUNDO_PADRAO = { escurecer: 0.25, desfoque: 0 };
 // os campos de texto que a pessoa pode trocar (texto solto ou uma lista de linhas)
 const CENA_TEXTOS = { titulo: t('Título'), pergunta: t('Pergunta'), frase: t('Frase'), palavra: t('Palavra'), pequeno: t('Faixa de cima'),
   gigante: t('Palavra grande'), etiqueta: t('Etiqueta'), botao: t('Botão'), nome: t('Nome'), batidas: t('Palavras (uma por batida)'),
-  text: t('Texto'), prefixo: t('Antes do número'), valor: t('Número'), sufixo: t('Depois do número'), rotulo: t('Linha de baixo') };
-const linhasDe = (v) => (Array.isArray(v) ? v : [v || '']).map(String);
+  text: t('Texto'), prefixo: t('Antes do número'), valor: t('Número'), sufixo: t('Depois do número'), rotulo: t('Linha de baixo'),
+  zona: t('Texto da área'), comando: t('Comando') };
+const linhasDe = (v) => (Array.isArray(v) ? v : [v || '']).flatMap((s) => String(s).split('\n'));
 const maisLonga = (v) => linhasDe(v).reduce((a, s) => (s.length > a.length ? s : a), '');
 const largo = (s, px) => Math.min(1040, Math.max(160, String(s || '').length * px));
 /* O bloco que se arrasta em cada efeito, em px do quadro 1080x1920: centro padrão e tamanho.
@@ -6113,13 +6114,13 @@ const CENA_BLOCO = {
   capa: (c) => { const tam = lay(c).tamanho ?? 330; return { x: 540, y: (lay(c).baseline ?? 690) - tam * 0.355, w: c.largura ?? 1010, h: tam * 0.72 }; },
   grafico: (c, t) => { const b = lay(c).bloco || { x: 751, y: 411 }; return { x: b.x, y: b.y, w: largo(t.etiqueta || 'ESCALA', 42) + 128, h: 130 }; },
   chroma: (c) => { const b = lay(c).bloco || { x: 514, y: 640 }; return { x: b.x, y: b.y, w: 900, h: 580 }; },
-  papel: (c, t) => ({ x: 540, y: 268, w: largo(maisLonga(t.frase), 96), h: 296 }),
-  rabisco: (c, t) => ({ x: 540, y: 184, w: largo(t.frase, 48), h: 124 }),
+  papel: (c, t) => { const b = lay(c).bloco || { x: 540, y: 414 }; return { x: b.x, y: b.y, w: largo(maisLonga(t.frase), 96), h: 296 }; },
+  rabisco: (c, t) => { const b = lay(c).bloco || { x: 540, y: 329 }; return { x: b.x, y: b.y, w: largo(t.frase, 48), h: 124 }; },
   checklist: (c) => ({ x: 540, y: (c.top ?? 108) + 234, w: 908, h: 468 }),
   celular: () => ({ x: 778, y: 795, w: 452, h: 930 }),
   orbita: (c, t) => { const h = 104 * linhasDe(t.titulo).length; return { x: 540, y: 270 + h / 2, w: largo(maisLonga(t.titulo), 46), h }; },
-  saindo: (c, t) => ({ x: 540, y: 213, w: largo(t.titulo, 66), h: 150 }),
-  vertigem: (c, t) => ({ x: 540, y: 226, w: largo(t.pergunta, 70), h: 132 }),
+  saindo: (c, t) => { const b = lay(c).bloco || { x: 540, y: 325 }; return { x: b.x, y: b.y, w: largo(t.titulo, 66), h: 150 }; },
+  vertigem: (c, t) => { const b = lay(c).bloco || { x: 540, y: 339 }; return { x: b.x, y: b.y, w: largo(t.pergunta, 70), h: 132 }; },
   hook: (c) => {
     const g = GANCHO[c.style] || GANCHO.outline, h = 2 * g.cap * (c.lineHeight ?? g.lh);
     return { x: 540, y: (c.paddingTop ?? g.top) + h / 2, w: c.safeWidth ?? g.w, h };
@@ -6190,7 +6191,8 @@ function cenaValor(v) {
   // `campos`: no Fundo, a imagem, o véu e o desfoque; num efeito novo do painel Cenas, as listas e os
   // números dele (as manchetes do Mural, os valores do Gráfico) e a marca `textoAuto`
   if (v.campos) {
-    out.campos = 'fundo' in v.campos ? { fundo: String(v.campos.fundo), escurecer: +v.campos.escurecer, desfoque: +v.campos.desfoque }
+    // o véu só existe no Fundo: a Parede também leva `fundo` ("video") e nunca teve escurecer nem desfoque
+    out.campos = 'escurecer' in v.campos ? { fundo: String(v.campos.fundo), escurecer: +v.campos.escurecer, desfoque: +v.campos.desfoque }
       : JSON.parse(JSON.stringify(v.campos));
   }
   return out;
@@ -10299,16 +10301,30 @@ const CENA_DICA = {
   grafico: t('Um gráfico de barras crescendo atrás de você'),
   chroma: t('Você no canto de uma página de site'),
   orbita: t('Cartões girando em volta de você'),
+  app: t('A metade de cima vira uma janela de app, e você fica embaixo'),
+  saindo: t('Você quebra a moldura e sai para fora do post'),
+  revelacao: t('O vídeo encolhe e revela um editor inteiro em volta'),
+  papel: t('Colagem de papel, com você virando adesivo'),
+  rabisco: t('Um contorno de giz em volta de você e rabiscos se desenhando'),
+  vertigem: t('O fundo cresce e você fica do mesmo tamanho'),
 };
 // os campos de cada efeito no painel: `k` é o campo do item (references/cenas.md); `linhas` = uma por linha
 const CN_CAMPOS = {
   vidro: [{ k: 'palavra', rotulo: t('Palavra'), max: 12 }],
   capa: [{ k: 'nome', rotulo: t('Nome da capa'), max: 14 }, { k: 'selo', rotulo: t('Selo (opcional)'), max: 16 }],
   mural: [{ k: 'manchetes', rotulo: t('Manchetes, uma por linha (até 4)'), linhas: 4, max: 60 }],
-  parede: [{ k: 'pequeno', rotulo: t('Faixa de cima'), max: 24 }, { k: 'gigante', rotulo: t('Palavra grande'), max: 12 }],
+  parede: [{ k: 'pequeno', rotulo: t('Faixa de cima'), max: 24 }, { k: 'gigante', rotulo: t('Palavra grande'), max: 12 },
+    { k: 'noVideo', rotulo: t('Sobre o fundo do próprio vídeo'), marca: true }],
   grafico: [{ k: 'etiqueta', rotulo: t('Etiqueta (o número dito)'), max: 10 }],
   chroma: [{ k: 'titulo', rotulo: t('Título'), max: 40 }, { k: 'frase', rotulo: t('Frase'), max: 70 }, { k: 'botao', rotulo: t('Botão'), max: 24 }],
   orbita: [{ k: 'titulo', rotulo: t('Título (opcional)'), max: 40 }],
+  app: [{ k: 'zona', rotulo: t('Texto da área (opcional)'), max: 30 }, { k: 'etiqueta', rotulo: t('Etiqueta (opcional)'), max: 14 },
+    { k: 'comando', rotulo: t('O que aparece sendo digitado'), max: 70 }],
+  saindo: [{ k: 'titulo', rotulo: t('Título (opcional)'), max: 22 }],
+  revelacao: [{ k: 'tarefas', rotulo: t('Tarefas, uma por linha (até 6)'), linhas: 6, max: 22 }],
+  papel: [{ k: 'frase', rotulo: t('Frase, em até 2 linhas'), linhas: 2, max: 14 }],
+  rabisco: [{ k: 'frase', rotulo: t('Frase (opcional)'), max: 34 }],
+  vertigem: [{ k: 'pergunta', rotulo: t('Pergunta (opcional)'), max: 24 }],
 };
 const CN = { aberto: false, alvo: -1, a: 0, b: 0, tipo: '', textos: {}, mexeu: false, recorte: null, quadro: null,
   erro: null, pedido: null, espera: null, t: -1, outro: null };
@@ -10342,6 +10358,12 @@ function textosDaFala(tipo, a, b) {
   if (tipo === 'grafico') return { etiqueta: numero };
   if (tipo === 'chroma') return { titulo: primeiras(ws, 5) || t('Seu título aqui'), frase: primeiras(ws.slice(5), 8), botao: t('Quero saber mais') };
   if (tipo === 'orbita') return { titulo: primeiras(ws, 4) };
+  if (tipo === 'app') return { zona: t('Solte aqui'), etiqueta: numero, comando: primeiras(ws, 8) };
+  if (tipo === 'saindo') return { titulo: primeiras(ws, 3).toUpperCase() };
+  if (tipo === 'revelacao') return { tarefas: [t('Transcrever'), t('Cortar silêncio'), t('Legenda'), t('Efeitos'), t('Música')].join('\n') };
+  if (tipo === 'papel') return { frase: forte.slice(0, 14) };
+  if (tipo === 'rabisco') return { frase: primeiras(ws, 4) };
+  if (tipo === 'vertigem') return { pergunta: primeiras(ws, 3) };
   return {};
 }
 /* O item do edit-data que os campos do painel viram. Textos soltos vão em `textos` (o painel de Texto
@@ -10351,9 +10373,11 @@ function cnItem(tipo, a, b, tx, auto) {
   const textos = {}, campos = {};
   for (const f of CN_CAMPOS[tipo]) {
     const v = String(tx[f.k] || '').trim();
-    if (f.k === 'manchetes') continue;
+    if (f.k === 'manchetes' || f.k === 'tarefas' || f.marca) continue;
     if (v) textos[f.k] = v;
   }
+  if (tipo === 'revelacao') campos.tarefas = String(tx.tarefas || '').split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 6);
+  if (tipo === 'parede' && tx.noVideo) campos.fundo = 'video';
   if (tipo === 'mural') {
     const ls = String(tx.manchetes || '').split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 4);
     const d = b - a;
@@ -10411,6 +10435,8 @@ function closeCenas() {
 function cnDoItem(c) {
   const tx = { ...(c.textos || {}) };
   if (c.tipo === 'mural') tx.manchetes = ((c.campos && c.campos.manchetes) || []).map((m) => m.t).join('\n');
+  if (c.tipo === 'revelacao') tx.tarefas = ((c.campos && c.campos.tarefas) || []).join('\n');
+  if (c.tipo === 'parede') tx.noVideo = !!(c.campos && c.campos.fundo === 'video');
   return tx;
 }
 // o que falta para o efeito desenhar (os obrigatórios do cenas.py)
@@ -10425,9 +10451,41 @@ function cnFalta() {
 /* O desenho de cada efeito no cartão, em volta da pessoa recortada: `atras` fica atrás dela e `frente`
  * na frente, nas medidas do cartão (cqw/cqh, o cartão é o container). É uma ideia do efeito, não o
  * quadro final: o vídeo sai do modelo do Remotion no Baixar. */
+// um rabisco de giz do cartão: os mesmos caminhos do modelo (DESENHOS em src/cenas/maisCenas.tsx), num quadrado de 100
+const CN_GIZ = { estrela: ['M50 5 L62 38 L97 38 L68 60 L79 95 L50 73 L21 95 L32 60 L3 38 L38 38 Z', '#fdfdf8'],
+  coracao: ['M50 88 C10 60 0 30 20 15 C35 5 48 18 50 30 C52 18 65 5 80 15 C100 30 90 60 50 88 Z', '#ff7ab8'],
+  coroa: ['M5 90 L12 25 L32 60 L50 10 L68 60 L88 25 L95 90 Z', '#ffd84d'] };
+function cnGiz(pai, nome) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const s = document.createElementNS(NS, 'svg');
+  s.setAttribute('viewBox', '0 0 100 100');
+  s.setAttribute('class', `cn-giz cn-giz-${nome}`);
+  const p = document.createElementNS(NS, 'path');
+  p.setAttribute('d', CN_GIZ[nome][0]);
+  p.setAttribute('stroke', CN_GIZ[nome][1]);
+  s.appendChild(p);
+  pai.appendChild(s);
+}
+const CN_PAPEIS = [['#fff7e6', '#111'], ['#141414', '#fff'], ['#d7263d', '#fff'], ['#f4d35e', '#111'], ['#1b4965', '#fff']];
 function cnDesenho(b, tipo, tx) {
   const atras = el('div', 'cn-atras', b);
   const txt = (cls, pai, s) => { const e = el('div', cls, pai); e.textContent = s; return e; };
+  if (tipo === 'parede' && tx.noVideo && CN.quadro) atras.style.backgroundImage = `url("${CN.quadro}")`;
+  if (tipo === 'saindo') { const q = el('div', 'cn-saindo-quadro', atras); if (CN.quadro) q.style.backgroundImage = `url("${CN.quadro}")`; }
+  if (tipo === 'revelacao') {
+    const pv = el('div', 'cn-rv-preview', atras);
+    if (CN.quadro) pv.style.backgroundImage = `url("${CN.quadro}")`;
+    const ls = el('div', 'cn-rv-lista', atras);
+    String(tx.tarefas || '').split('\n').filter((s) => s.trim()).slice(0, 6).forEach((s, k) => txt(k < 2 ? 'feito' : '', ls, s.trim()));
+    el('div', 'cn-rv-faixas', atras);
+  }
+  if (tipo === 'papel') for (let k = 0; k < 4; k++) el('div', `cn-pedaco cn-pd${k}`, atras);
+  if (tipo === 'rabisco') { cnGiz(atras, 'estrela'); cnGiz(atras, 'coracao'); }
+  if (tipo === 'vertigem') {
+    const f = el('div', 'cn-vt-foto', atras);
+    if (CN.quadro) f.style.backgroundImage = `url("${CN.quadro}")`;
+    el('div', 'cn-vt-cor', atras);
+  }
   if (tipo === 'vidro') txt('cn-vidro-palavra', atras, tx.palavra || '');
   if (tipo === 'capa') txt('cn-capa-nome', atras, tx.nome || '');
   if (tipo === 'mural') {
@@ -10448,8 +10506,27 @@ function cnDesenho(b, tipo, tx) {
     el('div', 'cn-anel', atras);
     for (let k = 0; k < 3; k++) el('div', `cn-orb cn-o${k}`, atras);
   }
-  if (CN.recorte) { const im = el('img', 'fundo-pessoa cn-pessoa', b); im.src = CN.recorte; im.alt = ''; }
+  if (CN.recorte && tipo !== 'revelacao') { const im = el('img', 'fundo-pessoa cn-pessoa', b); im.src = CN.recorte; im.alt = ''; }
   const frente = el('div', 'cn-frente', b);
+  if (tipo === 'app') {
+    const janela = el('div', 'cn-app-janela', el('div', 'cn-app-painel', frente));
+    const zona = el('div', 'cn-app-zona', janela);
+    for (let k = 0; k < 4; k++) { const m = el('div', 'cn-app-foto', zona); if (CN.quadro) m.style.backgroundImage = `url("${CN.quadro}")`; }
+    txt('cn-app-caixa', janela, tx.comando || '');
+    if (tx.etiqueta) txt('cn-app-etiqueta', janela, tx.etiqueta);
+  }
+  if (tipo === 'saindo' && tx.titulo) txt('cn-saindo-titulo', frente, tx.titulo);
+  if (tipo === 'papel') {
+    const box = el('div', 'cn-papel-letras', frente);
+    Array.from(String(tx.frase || '').replace(/\n/g, ' ')).slice(0, 14).forEach((ch, k) => {
+      if (ch === ' ') { el('i', 'cn-papel-vao', box); return; }
+      const [fundo, tinta] = CN_PAPEIS[k % CN_PAPEIS.length];
+      const l = txt('cn-papel-letra', box, ch);
+      l.style.background = fundo; l.style.color = tinta; l.style.rotate = `${(k % 2 ? 1 : -1) * (3 + k % 4)}deg`;
+    });
+  }
+  if (tipo === 'rabisco') { cnGiz(frente, 'coroa'); if (tx.frase) txt('cn-giz-frase', frente, tx.frase); }
+  if (tipo === 'vertigem' && tx.pergunta) txt('cn-vt-pergunta', frente, tx.pergunta);
   if (tipo === 'capa') { el('div', 'cn-capa-barras', frente); if (tx.selo) txt('cn-capa-selo', frente, tx.selo); }
   if (tipo === 'parede') { if (tx.pequeno) txt('cn-fita', frente, tx.pequeno); txt('cn-gigante', frente, tx.gigante || ''); }
   if (tipo === 'grafico' && tx.etiqueta) txt('cn-etiqueta', frente, tx.etiqueta);
@@ -10486,6 +10563,15 @@ function renderCnCampos() {
   if (!CN.tipo) return;
   el('p', 'cn-dica-tipo', box).textContent = CENA_DICA[CN.tipo];
   for (const f of CN_CAMPOS[CN.tipo]) {
+    if (f.marca) { // uma escolha, não um texto
+      const lab = el('label', 'cn-campo gf-marca', box);
+      const inp = el('input', '', lab);
+      inp.type = 'checkbox';
+      inp.checked = !!CN.textos[f.k];
+      inp.dataset.k = f.k;
+      el('span', '', lab).textContent = f.rotulo;
+      continue;
+    }
     const lab = el('label', 'cn-campo', box);
     el('span', '', lab).textContent = f.rotulo;
     const inp = el(f.linhas ? 'textarea' : 'input', '', lab);
@@ -10570,8 +10656,8 @@ $('cnLista').addEventListener('click', (e) => {
 $('cnCampos').addEventListener('input', (e) => {
   const k = e.target.dataset && e.target.dataset.k;
   if (!k) return;
-  CN.textos[k] = e.target.value;
-  CN.mexeu = true;
+  CN.textos[k] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+  if (e.target.type !== 'checkbox') CN.mexeu = true; // a escolha do fundo não é texto: o agente ainda pode melhorar os textos
   const velho = $('cnLista').querySelector(`.cn-card[data-tipo="${CN.tipo}"]`);
   if (velho) { cnCartao(velho.parentNode, CN.tipo, velho); velho.remove(); }
   cnEstado();

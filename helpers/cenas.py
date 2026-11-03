@@ -1,9 +1,10 @@
 """Os efeitos que tiram a pessoa do fundo: o `cenas[]` do edit-data.json.
 
-Sete tipos: `fundo` (troca o cenário), `vidro` (Letra de vidro), `capa` (Capa de revista), `mural`
-(Mural de manchete), `parede` (Parede de fotos), `grafico` (Gráfico subindo) e `chroma` (Site).
-Cada um redesenha a janela dele, normalmente a tomada inteira: um fundo novo, coisas sobre ele e a
-pessoa recortada na frente.
+Os tipos: `fundo` (troca o cenário), `vidro` (Letra de vidro), `capa` (Capa de revista), `mural`
+(Mural de manchete), `parede` (Parede de fotos), `grafico` (Gráfico subindo), `chroma` (Site), `orbita`,
+`app` (Dentro do app), `saindo` (Saindo da tela), `revelacao` (Revelação), `papel` (Recorte de papel),
+`rabisco` (Rabisco vivo) e `vertigem`. Cada um redesenha a janela dele, normalmente a tomada inteira: um
+fundo novo, coisas sobre ele e a pessoa recortada na frente.
 
 Este módulo diz:
 - o que cada tipo pede e em que faixa (`TIPOS`, `validar`);
@@ -29,8 +30,11 @@ W, H = 1080, 1920
 ZONA_TOPO = 240
 ZONA_BOTOES = (930, 880, 1680)  # a coluna de botões do Reels: à direita de x 930, de y 880 a 1680
 FUNDOS = ("concreto", "parede", "kraft", "lousa", "estudio", "neon")
-FUNDO_PADRAO = {"mural": "fundos/parede", "parede": "fundos/concreto"}  # os que o tipo usa sem pedir
+# os que o tipo usa sem pedir
+FUNDO_PADRAO = {"mural": "fundos/parede", "parede": "fundos/concreto", "papel": "fundos/kraft", "rabisco": "fundos/lousa"}
 PAREDE_FOTOS = 14  # os lugares de foto da Parede
+APP_FOTOS = 4  # as miniaturas do Dentro do app
+SEM_PESSOA = ("revelacao",)  # desenha o quadro inteiro: sem recorte nem medida, serve até para gravação de tela
 ORBITA_CARTOES = 6  # os cards da Órbita sem `cartoes`: quadros do próprio corte
 PRESENCA_MINIMA = 0.6  # abaixo disso a pessoa sai do quadro boa parte da janela: o efeito não serve
 
@@ -47,9 +51,16 @@ TIPOS: dict[str, dict] = {
     "grafico": {"nome": "Gráfico subindo", "obrigatorios": (), "numeros": {"inicio": (0, 5), "passo": (0.03, 1)}},
     "chroma": {"nome": "Site", "obrigatorios": ("titulo",), "numeros": {"escala": (0.45, 0.85), "entrada": (0, 5)}},
     "orbita": {"nome": "Órbita", "obrigatorios": (), "numeros": {"voltas": (0.25, 3)}},
+    "app": {"nome": "Dentro do app", "obrigatorios": (), "numeros": {}},
+    "saindo": {"nome": "Saindo da tela", "obrigatorios": (), "numeros": {}},
+    "revelacao": {"nome": "Revelação", "obrigatorios": (), "numeros": {}},
+    "papel": {"nome": "Recorte de papel", "obrigatorios": (), "numeros": {}},
+    "rabisco": {"nome": "Rabisco vivo", "obrigatorios": (), "numeros": {}},
+    "vertigem": {"nome": "Vertigem", "obrigatorios": (), "numeros": {}},
 }
 # instantes em segundos do corte (como `start`/`end`): têm de cair dentro da janela
-INSTANTES = {"vidro": ("at",), "mural": ("circuloAt",), "parede": ("pequenoAt", "giganteAt")}
+INSTANTES = {"vidro": ("at",), "mural": ("circuloAt",), "parede": ("pequenoAt", "giganteAt"), "saindo": ("at",),
+             "revelacao": ("at",), "app": ("digitaAt", "digitaFimAt")}
 
 
 # ---------------------------------------------------------------- validação
@@ -114,15 +125,19 @@ def _c_mural(c) -> list[str]:
     return erros + _fundo(c, False)
 
 
+def _fotos(c, ate: int) -> list[str]:
+    fotos = c.get("fotos")
+    if fotos is None:
+        return []
+    if not isinstance(fotos, list) or len(fotos) > ate:
+        return [f"`fotos` é uma lista de até {ate} itens {{src, legenda}}"]
+    return [f"`fotos[{i}].src` é `midia/<arquivo do projeto>`" for i, f in enumerate(fotos)
+            if not (isinstance(f, dict) and midia(f.get("src")))]
+
+
 def _c_parede(c) -> list[str]:
-    fotos, erros = c.get("fotos"), []
-    if fotos is not None:
-        if not isinstance(fotos, list) or len(fotos) > PAREDE_FOTOS:
-            erros.append(f"`fotos` é uma lista de até {PAREDE_FOTOS} itens {{src, legenda}}")
-        else:
-            erros += [f"`fotos[{i}].src` é `midia/<arquivo do projeto>`" for i, f in enumerate(fotos)
-                      if not (isinstance(f, dict) and midia(f.get("src")))]
-    return erros + _fundo(c, False)
+    # "video": as fotos sobre o fundo do próprio vídeo, com a pessoa no lugar dela
+    return _fotos(c, PAREDE_FOTOS) + ([] if c.get("fundo") == "video" else _fundo(c, False))
 
 
 def _c_grafico(c) -> list[str]:
@@ -159,8 +174,20 @@ def _c_orbita(c) -> list[str]:
     return erros
 
 
+def _so_textos(c, *chaves) -> list[str]:
+    return [f"`{k}` é um texto" for k in chaves if c.get(k) is not None and not isinstance(c[k], str)]
+
+
+def _c_revelacao(c) -> list[str]:
+    return [] if c.get("tarefas") is None or _textos(c["tarefas"], 6) else ["`tarefas` é uma lista de até 6 textos"]
+
+
 _CONFERE = {"fundo": lambda c: _fundo(c, True), "vidro": lambda c: [], "capa": _c_capa, "mural": _c_mural,
-            "parede": _c_parede, "grafico": _c_grafico, "chroma": _c_chroma, "orbita": _c_orbita}
+            "parede": _c_parede, "grafico": _c_grafico, "chroma": _c_chroma, "orbita": _c_orbita,
+            "app": lambda c: _fotos(c, APP_FOTOS) + _so_textos(c, "zona", "etiqueta", "comando"),
+            "saindo": lambda c: _so_textos(c, "titulo", "cor"), "revelacao": _c_revelacao,
+            "papel": lambda c: _so_textos(c, "frase"), "rabisco": lambda c: _so_textos(c, "frase"),
+            "vertigem": lambda c: _so_textos(c, "pergunta", "cor")}
 
 
 def _instantes(c):
@@ -191,7 +218,7 @@ def validar(c) -> list[str]:
         v = c.get(k)
         if v is not None and not (_num(v) and lo <= v <= hi):
             erros.append(f"`{k}` vai de {lo} a {hi}")
-    erros += [f"`{k}` é true ou false" for k in ("desligada", "aproximar", "sombra")
+    erros += [f"`{k}` é true ou false" for k in ("desligada", "aproximar", "sombra", "som")
               if k in c and not isinstance(c[k], bool)]
     tx = c.get("texto")
     if tx is not None and not (isinstance(tx, dict) and _num(tx.get("x")) and _num(tx.get("y"))):
@@ -430,12 +457,86 @@ def _mural(p: dict, c: dict) -> dict:
     return {"slots": slots}
 
 
+# os lugares das fotos da Parede (SLOTS_PAREDE em src/cenas/fundoNovo.tsx): x, y, giro; 250 x 296 px
+_PAREDE = ((24, 120, -6), (286, 80, 4), (548, 128, -3), (806, 92, 7), (-6, 470, 5), (818, 452, -4), (258, 420, -5),
+           (574, 462, 6), (14, 820, -3), (822, 812, 4), (36, 1160, 6), (800, 1150, -6), (290, 760, 3), (560, 790, -5))
+
+
 def _parede(p: dict, c: dict) -> dict:
     """`bloco`: o centro da fita com a palavra grande (~316 px de altura), com o topo logo abaixo da
     zona segura. `desce`: quanto a pessoa desce para a cabeça ficar 20 px abaixo do bloco, até 260 px
-    (com a cabeça mais alta que isso, o pé da palavra fica por cima dela)."""
+    (com a cabeça mais alta que isso, o pé da palavra fica por cima dela). Com `fundo: "video"` ela fica no
+    lugar, e `slots` são só os lugares em que ela cobre até 35 % da foto."""
     y = ZONA_TOPO + 160
+    if c.get("fundo") == "video":
+        slots = [{"x": x, "y": yy, "r": r} for x, yy, r in _PAREDE if cobre(p, (x, yy, 250, 296)) <= 0.35]
+        return {"bloco": {"x": W // 2, "y": y}, "desce": 0, "slots": slots}
     return {"bloco": {"x": W // 2, "y": y}, "desce": round(max(0.0, min(260.0, y + 158 + 20 - p["topo"])))}
+
+
+APP_PAINEL = 900  # a altura do painel de cima (PAINEL_H em src/cenas/maisCenas.tsx)
+SAINDO_QUADRO = (90, 560, 900, 980)  # x, y, largura, altura do quadro de post
+SAINDO_ESCALA = 0.9
+
+
+def _app(p: dict, c: dict) -> dict:
+    """`desce`: o quadro inteiro desce até a cabeça ficar logo abaixo do painel."""
+    return {"desce": round(max(0.0, APP_PAINEL + 24 - p["topo"]))}
+
+
+def _saindo(p: dict, c: dict) -> dict:
+    """`foto`: o quadro em escala, com o topo da cabeça 30 px abaixo da borda de cima do post (é o que sai para
+    fora quando ela cresce) e sem deixar vão em nenhum lado do post. `bloco`: o título, acima do post."""
+    x, y, w, h = SAINDO_QUADRO
+    e = SAINDO_ESCALA
+    py = min(float(y), max(y + h - H * e, y + 30 - p["topo"] * e))
+    px = min(float(x), max(x + w - W * e, W / 2 - p["cabecaX"] * e))
+    return {"quadro": {"x": x, "y": y, "w": w, "h": h}, "foto": {"x": round(px), "y": round(py), "escala": e},
+            "bloco": {"x": W // 2, "y": ZONA_TOPO + 85}}
+
+
+def _papel(p: dict, c: dict) -> dict:
+    """`bloco`: o centro das letras de recorte (a conta do tamanho é a do template), abaixo da zona segura.
+    `desce`: quanto a pessoa desce para a cabeça ficar abaixo delas, até 300 px."""
+    linhas = [s for s in str(c.get("frase") or "").split("\n") if s.strip()][:2] or [""]
+    tam = min(118.0, 930 / (max(1, max(len(s.strip()) for s in linhas)) * 0.74))
+    alto = len(linhas) * tam * 1.28 + 12 * (len(linhas) - 1)
+    y = ZONA_TOPO + 24 + alto / 2
+    return {"bloco": {"x": W // 2, "y": round(y)}, "desce": round(max(0.0, min(300.0, y + alto / 2 + 18 - p["topo"])))}
+
+
+def _texto_no_topo(p: dict, alto: float) -> tuple[int, int]:
+    """O centro de um texto logo abaixo da zona segura e quanto a pessoa desce para ele não cobrir a cabeça."""
+    y = ZONA_TOPO + 24 + alto / 2
+    return round(y), round(max(0.0, min(260.0, y + alto / 2 + 16 - p["topo"])))
+
+
+# os rabiscos como foram desenhados (x, y, w, h): em volta da pessoa, fora da coluna de botões
+_RABISCOS = {"estrela": (64, 470, 190, 190), "coracao": (806, 470, 190, 190), "espiral": (54, 860, 210, 210),
+             "claquete": (730, 860, 190, 170), "seta": (90, 1180, 240, 150)}
+
+
+def _rabisco(p: dict, c: dict) -> dict:
+    """`coroa`: o centro e a largura da coroa, com a base na cabeça. `desenhos`: o lugar de cada rabisco fora da
+    pessoa, ou `null`. `bloco`: a frase. `desce`: quanto a pessoa desce para a frase não cobrir a cabeça."""
+    y, desce = _texto_no_topo(p, 130)
+    q = {**p, "topo": p["topo"] + desce, "base": p["base"] + desce,
+         "perfil": [[a + desce, b + desce, x0, x1] for a, b, x0, x1 in _perfil(p)]}
+    w = 280
+    cy = round(q["topo"] + 30 - 0.225 * w)
+    coroa = {"x": p["cabecaX"] - w / 2, "y": cy - 0.45 * w, "w": w, "h": 0.75 * w}  # a caixa que a coroa ocupa
+    desenhos: dict = {}
+    for nome, (x, yy, lg, al) in _RABISCOS.items():
+        lugar = _lugar(q, x, yy, lg, al, [coroa, *(s for s in desenhos.values() if s)])
+        desenhos[nome] = {"x": lugar[0], "y": lugar[1], "w": lg, "h": al} if lugar else None
+    return {"coroa": {"x": p["cabecaX"], "y": cy, "w": w}, "desenhos": desenhos,
+            "bloco": {"x": W // 2, "y": y}, "desce": desce}
+
+
+def _vertigem(p: dict, c: dict) -> dict:
+    """`bloco`: a pergunta. `desce`: quanto a pessoa desce para ela não cobrir a cabeça."""
+    y, desce = _texto_no_topo(p, 150)
+    return {"bloco": {"x": W // 2, "y": y}, "desce": desce}
 
 
 def _grafico(p: dict, c: dict) -> dict:
@@ -489,7 +590,8 @@ def _chroma(p: dict, c: dict) -> dict:
 
 # a Órbita acha o centro do anel na pessoa já na tela (o template, pelo cameraAt): aqui, só a altura dele
 _LAYOUTS = {"fundo": lambda p, c: {}, "vidro": _vidro, "capa": _capa, "mural": _mural, "parede": _parede,
-            "grafico": _grafico, "chroma": _chroma, "orbita": lambda p, c: {"raio": {"ry": 190}}}
+            "grafico": _grafico, "chroma": _chroma, "orbita": lambda p, c: {"raio": {"ry": 190}},
+            "app": _app, "saindo": _saindo, "papel": _papel, "rabisco": _rabisco, "vertigem": _vertigem}
 
 
 def layout(tipo: str, p: dict, c: dict) -> dict:

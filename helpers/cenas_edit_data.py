@@ -156,8 +156,56 @@ def _rosto(public: Path, t: float) -> tuple[float, float]:
         return 0.5, 0.4
 
 
-def _quadros(public: Path, pasta: Path, c: dict, usados: set[str]) -> list[dict]:
-    """As fotos da Parede sem `fotos`: quadros do próprio corte, cada um num quadrado em volta do rosto."""
+def fundo_limpo(cut: Path, matte: Path, ini_f: int, n_f: int, fps: float, alvo: Path, amostras: int = 16) -> bool:
+    """O fundo do vídeo sem a pessoa (Vertigem): a mediana de vários quadros da janela, em cada ponto só os
+    quadros em que ela não está ali; o buraco que sobra (onde ela nunca saiu) é preenchido pelo OpenCV."""
+    import cv2  # só este efeito precisa dele aqui
+    import numpy as np
+
+    w, h = 540, 960
+    tv, tm = w * h * 3, w * h
+    pv = subprocess.Popen(["ffmpeg", "-v", "error", "-nostdin", "-ss", f"{ini_f / fps:.3f}", "-i", str(cut), "-frames:v", str(n_f),
+                           "-vf", f"scale={w}:{h},format=rgb24", "-f", "rawvideo", "-"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    pm = subprocess.Popen(["ffmpeg", "-v", "error", "-nostdin", "-i", str(matte), "-frames:v", str(n_f),
+                           "-vf", f"scale={w}:{h},format=yuva444p,alphaextract", "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    passo = max(1, n_f // amostras)
+    pilha = []
+    try:
+        for k in range(n_f):
+            bv, bm = pv.stdout.read(tv), pm.stdout.read(tm)
+            if len(bv) < tv or len(bm) < tm:
+                break
+            if k % passo == 0:
+                q = np.frombuffer(bv, np.uint8).reshape(h, w, 3).astype(np.float32)
+                a = cv2.dilate(np.frombuffer(bm, np.uint8).reshape(h, w), np.ones((13, 13), np.uint8))
+                q[a > 24] = np.nan
+                pilha.append(q)
+    finally:
+        for pr in (pv, pm):
+            pr.stdout.close()
+            pr.wait()
+    if not pilha:
+        return False
+    s = np.sort(np.stack(pilha), axis=0)  # os NaN vão para o fim
+    n = (~np.isnan(s)).sum(axis=0)
+    img = np.take_along_axis(s, np.maximum(n - 1, 0)[None] // 2, axis=0)[0]
+    buraco = (n[..., 0] == 0).astype(np.uint8) * 255
+    img = np.nan_to_num(img).astype(np.uint8)
+    if buraco.any():  # em tamanho menor: o preenchimento é lento e o resultado é desfocado de qualquer jeito
+        pq = cv2.inpaint(cv2.resize(img, (w // 2, h // 2), interpolation=cv2.INTER_AREA),
+                         cv2.resize(buraco, (w // 2, h // 2), interpolation=cv2.INTER_NEAREST), 5, cv2.INPAINT_TELEA)
+        cheio = cv2.GaussianBlur(cv2.resize(pq, (w, h), interpolation=cv2.INTER_LINEAR), (0, 0), 7)
+        img[buraco > 0] = cheio[buraco > 0]
+    final = cv2.cvtColor(cv2.resize(img, (cenas.W, cenas.H), interpolation=cv2.INTER_CUBIC), cv2.COLOR_RGB2BGR)
+    ok, buf = cv2.imencode(".jpg", final, [cv2.IMWRITE_JPEG_QUALITY, 88])
+    if ok:
+        buf.tofile(alvo)  # o imwrite não aceita acento no caminho
+    return bool(ok)
+
+
+def _quadros(public: Path, pasta: Path, c: dict, usados: set[str], quantos: int = cenas.PAREDE_FOTOS) -> list[dict]:
+    """As fotos da Parede e do Dentro do app sem `fotos`: quadros do próprio corte, cada um num quadrado em volta do rosto."""
     cut = public / "cut.mp4"
     info = _sonda(cut) if cut.is_file() else None
     if not info:
@@ -165,7 +213,7 @@ def _quadros(public: Path, pasta: Path, c: dict, usados: set[str]) -> list[dict]
     dur, wv, hv = info
     lado = min(wv, hv, 2 * round(wv / 4))  # metade da largura, par
     fotos = []
-    for t in _tempos(dur, c["start"], c["end"], cenas.PAREDE_FOTOS):
+    for t in _tempos(dur, c["start"], c["end"], quantos):
         nome = f"quadro-{round(t * 1000)}.jpg"
         alvo = pasta / nome
         if not alvo.is_file() or alvo.stat().st_mtime < cut.stat().st_mtime:
@@ -207,12 +255,12 @@ def _cartoes(public: Path, pasta: Path, c: dict, usados: set[str]) -> list[dict]
     return cards
 
 
-def _arquivos(edit: Path, public: Path, pasta: Path, c: dict, usados: set[str], faltando: list[str]) -> dict:
-    """O que o template carrega de public/: o fundo (Fundo, Mural e Parede), as fotos (Parede) e os cards
-    (Órbita)."""
+def _arquivos(edit: Path, public: Path, pasta: Path, c: dict, usados: set[str], faltando: list[str], fps: float = 30.0) -> dict:
+    """O que o template carrega de public/: o fundo (Fundo, Mural, Parede, Papel e Rabisco), as fotos (Parede e
+    Dentro do app), os cards (Órbita) e o fundo sem a pessoa (Vertigem)."""
     out: dict = {}
     v = (c.get("fundo") if c["tipo"] in ("fundo", "mural", "parede") else None) or cenas.FUNDO_PADRAO.get(c["tipo"])
-    if v:
+    if v and v != "video":
         pronto = cenas.fundo_pronto(v)
         origem = FUNDOS_DIR / f"{pronto}.jpg" if pronto else edit / v
         nome = f"fundo-{pronto}.jpg" if pronto else _nome("fundo", v)
@@ -222,7 +270,17 @@ def _arquivos(edit: Path, public: Path, pasta: Path, c: dict, usados: set[str], 
             out["fundo"] = f"{PASTA}/{nome}"
         else:
             faltando.append(f"{v} (o kit não tem assets/preview/fundos/{origem.name})" if pronto else v)
-    if c["tipo"] == "parede":
+    if c["tipo"] == "vertigem" and c.get("matte"):
+        cut = public / "cut.mp4"
+        _, q0, n = _janela(c, fps)
+        nome = f"limpo-{q0}-{n}.jpg"
+        alvo = pasta / nome
+        if cut.is_file() and (not alvo.is_file() or alvo.stat().st_mtime < cut.stat().st_mtime):
+            fundo_limpo(cut, public / c["matte"], q0, n, fps, alvo)
+        if alvo.is_file():
+            usados.add(nome)
+            out["limpo"] = f"{PASTA}/{nome}"
+    if c["tipo"] in ("parede", "app"):
         if c.get("fotos"):
             fotos = []
             for f in c["fotos"]:
@@ -235,7 +293,7 @@ def _arquivos(edit: Path, public: Path, pasta: Path, c: dict, usados: set[str], 
                 usados.add(nome)
                 fotos.append({"src": f"{PASTA}/{nome}", **({"legenda": f["legenda"]} if f.get("legenda") else {})})
         else:
-            fotos = _quadros(public, pasta, c, usados)
+            fotos = _quadros(public, pasta, c, usados, cenas.APP_FOTOS if c["tipo"] == "app" else cenas.PAREDE_FOTOS)
         out["fotos"] = fotos
     if c["tipo"] == "orbita":
         if c.get("cartoes"):
@@ -282,6 +340,12 @@ def aplicar(edit: Path, edit_data: Path | None = None, recortar: bool = True) ->
     extra = _tem_recorte()
     medidas, usados = _Medidas(pasta), set()
     for i, (c, (nome, q0, n)) in enumerate(zip(lista, janelas)):
+        if c["tipo"] in cenas.SEM_PESSOA:
+            c.pop("matte", None)
+            c.pop("pessoa", None)
+            c["layout"] = {}
+            r["prontos"] += 0 if c.get("desligada") else 1
+            continue
         alvo = public / nome
         if not alvo.is_file() and not c.get("desligada"):
             cmd = _cmd(cut, alvo, q0, n, fps)
@@ -303,7 +367,7 @@ def aplicar(edit: Path, edit_data: Path | None = None, recortar: bool = True) ->
                 continue
         p = cenas.com_zoom(bruto, c.get("zoom"))
         c["matte"], c["pessoa"] = nome, cenas.resumo(p)
-        c["layout"] = {**cenas.layout(c["tipo"], p, c), **_arquivos(edit, public, pasta, c, usados, r["faltando"])}
+        c["layout"] = {**cenas.layout(c["tipo"], p, c), **_arquivos(edit, public, pasta, c, usados, r["faltando"], fps)}
         r["prontos"] += 0 if c.get("desligada") else 1
         for k in ("esquerda", "direita") if c["tipo"] == "capa" else ():
             if c.get(k) and not c["layout"]["colunas"][k]:

@@ -15,6 +15,7 @@ import {VIDEO_LAG} from '../videoLag';
 import {Cena, CenaProps, H, W} from './comum';
 import {FundoNovo} from './fundo';
 import {Capa, Chroma, Grafico, Mural, Parede} from './fundoNovo';
+import {App, Papel, Rabisco, Revelacao, Saindo, Vertigem} from './maisCenas';
 import {Orbita} from './orbita';
 import {Vidro} from './vidro';
 
@@ -28,7 +29,15 @@ export const TIPOS: Record<string, React.FC<CenaProps>> = {
   grafico: Grafico,
   chroma: Chroma,
   orbita: Orbita,
+  app: App,
+  saindo: Saindo,
+  revelacao: Revelacao,
+  papel: Papel,
+  rabisco: Rabisco,
+  vertigem: Vertigem,
 };
+// draws the whole frame, with no cut-out and no measure of the person (SEM_PESSOA in helpers/cenas.py)
+const SEM_PESSOA = ['revelacao'];
 
 export const janelaDaCena = (c: Cena, fps: number): [number, number] => [
   Math.round(c.start * fps) + VIDEO_LAG,
@@ -54,7 +63,7 @@ export const Cenas: React.FC = () => {
           avisa(`cena ${c.tipo}: o template ainda não desenha esse tipo; ficou fora do vídeo`);
           return null;
         }
-        if (!c.matte || !c.layout) {
+        if (!c.layout || (!c.matte && !SEM_PESSOA.includes(c.tipo))) {
           avisa(`cena ${c.tipo} em ${c.start}s: sem recorte; rode helpers/cenas_edit_data.py`);
           return null;
         }
