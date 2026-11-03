@@ -495,14 +495,21 @@ def _saindo(p: dict, c: dict) -> dict:
             "bloco": {"x": W // 2, "y": ZONA_TOPO + 85}}
 
 
+# o adesivo do papel, os mesmos números de cenas/maisCenas.tsx: grande o bastante para as bordas do quadro original,
+# com a inclinação de 2° e o contorno de 12 px, ficarem fora da tela (recorte encolhido mostra o corte reto do corpo)
+PAPEL_ESCALA = 1.1
+PAPEL_BAIXA = 40
+
+
 def _papel(p: dict, c: dict) -> dict:
     """`bloco`: o centro das letras de recorte (a conta do tamanho é a do template), abaixo da zona segura.
-    `desce`: quanto a pessoa desce para a cabeça ficar abaixo delas, até 300 px."""
+    `desce`: quanto a pessoa desce para a cabeça ficar abaixo delas, até 300 px, já com a escala do adesivo."""
     linhas = [s for s in str(c.get("frase") or "").split("\n") if s.strip()][:2] or [""]
     tam = min(118.0, 930 / (max(1, max(len(s.strip()) for s in linhas)) * 0.74))
     alto = len(linhas) * tam * 1.28 + 12 * (len(linhas) - 1)
     y = ZONA_TOPO + 24 + alto / 2
-    return {"bloco": {"x": W // 2, "y": round(y)}, "desce": round(max(0.0, min(300.0, y + alto / 2 + 18 - p["topo"])))}
+    topo = H / 2 + (p["topo"] - H / 2 + PAPEL_BAIXA) * PAPEL_ESCALA
+    return {"bloco": {"x": W // 2, "y": round(y)}, "desce": round(max(0.0, min(300.0, y + alto / 2 + 18 - topo)))}
 
 
 def _texto_no_topo(p: dict, alto: float) -> tuple[int, int]:

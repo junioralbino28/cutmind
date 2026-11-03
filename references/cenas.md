@@ -248,8 +248,8 @@ screen recording. Do not use it on a take that depends on seeing the face: the p
 
 ### `papel` — paper collage
 
-For a lighter or more personal take. Everything moves in stop motion (15 frames per second), including
-the person, who is a sticker with a thick white border.
+For a lighter or more personal take. The collage moves in stop motion (15 frames per second); the person
+is a sticker with a thick white border and a fixed tilt, moving normally, so the mouth stays on the voice.
 
 - `frase`: cut-out letters, up to 2 lines (a line break in the text), about 12 letters per line (each letter
   has its own font and paper, so long sentences get small). The person moves down to clear it.

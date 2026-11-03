@@ -411,6 +411,46 @@ def test_saindo_com_a_cabeca_muito_alta_ou_muito_baixa_nao_abre_vao():
         assert f["y"] <= q["y"] and f["y"] + cenas.H * f["escala"] >= q["y"] + q["h"] - 1, topo
 
 
+def _mais_cenas(de: str, ate: str) -> str:
+    tsx = (Path(__file__).resolve().parents[1] / "assets/shortform/src/cenas/maisCenas.tsx").read_text(encoding="utf-8")
+    return tsx[tsx.index(de):tsx.index(ate)]
+
+
+def test_papel_a_pessoa_nao_entra_no_stop_motion_nem_balanca():
+    """Decisão de 22/10, perdida na 0.4.4 e cobrada de novo em 03/11: a 15 q/s a boca sai da voz, e uma inclinação
+    sorteada a cada passo, girando pelo pé, joga a cabeça de um lado para o outro (medido: até 45,7 px entre quadros)."""
+    papel = _mais_cenas("export const Papel", "// ============ RABISCO")
+    pessoa = re.search(r"translateY\(\$\{desce\}px\) rotate\(([^)]*)\) scale\(\$\{PAPEL_ESCALA\}\)", papel)
+    assert pessoa, "o detector da inclinação da pessoa parou de casar"
+    assert pessoa.group(1) == "-2deg"
+    assert "Freeze" not in papel
+    assert not re.search(r"\b(giro|dx|dy)\b", papel)
+    assert "random(`pd" in papel, "a colagem continua em stop motion"
+
+
+def test_papel_as_bordas_do_quadro_original_ficam_fora_da_tela():
+    """O canto de baixo é o pior: a inclinação traz a lateral para dentro, e o contorno de 12 px ainda sobra para a tela."""
+    tsx = _mais_cenas("const PAPEL_ESCALA", "const FONTES_PAPEL")
+    assert f"PAPEL_ESCALA = {cenas.PAPEL_ESCALA}" in tsx and f"PAPEL_BAIXA = {cenas.PAPEL_BAIXA}" in tsx
+    s, baixa, sen = cenas.PAPEL_ESCALA, cenas.PAPEL_BAIXA, np.sin(np.deg2rad(2))
+    contorno = 12
+    lado_em_baixo = 540 - 540 * s + (960 + baixa) * s * sen
+    lado_em_cima = 540 + 540 * s - (960 - baixa) * s * sen
+    assert lado_em_baixo + contorno <= 0
+    assert lado_em_cima - contorno >= 1080
+
+
+def test_rabisco_e_papel_tem_o_recorte_de_borda_firme():
+    """O recorte some em 20 a 60 px: sobre o quadro-negro e no adesivo isso aparece como embaçado (03/11)."""
+    rabisco = _mais_cenas("export const Rabisco", "// ============ VERTIGEM")
+    papel = _mais_cenas("export const Papel", "// ============ RABISCO")
+    assert re.search(r"<BordaFirme de=\"SourceGraphic\" />", rabisco), "a pessoa do Rabisco"
+    assert re.search(r"<BordaFirme de=\"SourceAlpha\" result=\"firme\" />", rabisco), "o anel de giz nasce da borda firme"
+    assert "filter: `url(#firme-${a})`" in rabisco
+    assert re.search(r"<BordaFirme de=\"SourceGraphic\" result=\"firme\" />", papel)
+    assert '<feMergeNode in="firme" />' in papel and '<feMergeNode in="SourceGraphic" />' not in papel
+
+
 def test_papel_as_letras_ficam_abaixo_da_zona_segura_e_a_pessoa_desce():
     l = cenas.layout("papel", P16, {"frase": "FEITO\nÀ MÃO"})
     assert l["bloco"]["y"] > cenas.ZONA_TOPO and l["desce"] > 0

@@ -5,11 +5,19 @@
  * movable block, and no text has a default: an empty field draws nothing.
  */
 import React from 'react';
-import {AbsoluteFill, Easing, Freeze, Img, interpolate, random, staticFile} from 'remotion';
+import {AbsoluteFill, Easing, Img, interpolate, random, staticFile} from 'remotion';
 import {ZONA_SEGURA} from '../zonaSegura';
 import {ACCENT, Base, CenaProps, FONTE, Fundo, H, Recorte, Traco, W, centro, clamp, ease, estiloDe, local, mola, tremida, useJanela} from './comum';
 
 const TOPO = ZONA_SEGURA.topo;
+
+// The matte fades over 20 to 60 px, right for a person placed on a scene but blurred on a hand-cut look:
+// alpha 0.42 becomes 0 and 0.60 becomes 1, which leaves about 5 px of edge.
+const BordaFirme: React.FC<{de: string; result?: string}> = ({de, result}) => (
+  <feComponentTransfer in={de} result={result}>
+    <feFuncA type="linear" slope="5.556" intercept="-2.333" />
+  </feComponentTransfer>
+);
 
 // ============ DENTRO DO APP =====================================================
 // The top half becomes a light app window pushing the picture down; thumbnails fall into a drop area,
@@ -217,9 +225,11 @@ export const Revelacao: React.FC<CenaProps> = ({c, a, n}) => {
 
 // ============ RECORTE DE PAPEL ==================================================
 // A kraft collage in stop motion (15 fps): torn paper, tape, a blue pen scribble and a red X; the person
-// is a sticker with a thick white border, a bit crooked; the sentence is made of cut-out letters, each
-// with its own font and paper. Data: frase (a text, one line per \n, up to 2); layout.fundo, layout.bloco,
-// layout.desce.
+// is a sticker with a thick white border, a bit crooked, moving normally; the sentence is made of cut-out
+// letters, each with its own font and paper. Data: frase (a text, one line per \n, up to 2); layout.fundo,
+// layout.bloco, layout.desce.
+const PAPEL_ESCALA = 1.1; // the same two numbers as PAPEL_ESCALA and PAPEL_BAIXA in helpers/cenas.py
+const PAPEL_BAIXA = 40;
 const FONTES_PAPEL = ['anton', 'playfair', 'elite', 'marker', 'bebas', 'abril', 'oldstd', 'oswald'] as const;
 const PAPEIS = [['#fff7e6', '#111111'], ['#141414', '#ffffff'], ['#d7263d', '#ffffff'], ['#f4d35e', '#111111'], ['#1b4965', '#ffffff'], ['#ffffff', '#d7263d'], ['#2a9d8f', '#ffffff']];
 const PEDACOS = [
@@ -249,9 +259,6 @@ export const Papel: React.FC<CenaProps> = ({c, a}) => {
   const linhas = String(c.frase ?? '').split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 2);
   const maior = Math.max(1, ...linhas.map((s) => s.length));
   const tam = Math.min(118, 930 / (maior * 0.74)) * est.escala;
-  const giro = -2.4 + 1.3 * (random(`pg${g}`) * 2 - 1);
-  const dx = (random(`px${g}`) * 2 - 1) * 4;
-  const dy = (random(`py${g}`) * 2 - 1) * 4;
   const risco = clamp(g / 14);
   const xis = clamp((g - 8) / 7);
   let conta = 0;
@@ -270,24 +277,26 @@ export const Papel: React.FC<CenaProps> = ({c, a}) => {
       <div style={{position: 'absolute', left: 620, top: 1150, width: 220, height: 58, background: 'rgba(255,240,175,.62)', transform: `rotate(9deg)`, boxShadow: '0 2px 5px rgba(0,0,0,.2)'}} />
       <svg width={W} height={H} style={{position: 'absolute', inset: 0}}>
         <Traco d="M 40 1230 C 130 1160, 170 1320, 250 1230 S 370 1180, 410 1290 S 240 1400, 120 1340" p={risco} cor="#1f5fd1" w={9} />
-        <Traco d="M 830 640 L 990 800" p={xis * 2} cor="#d7263d" w={22} />
-        <Traco d="M 990 640 L 830 800" p={xis * 2 - 1} cor="#d7263d" w={22} />
+        <Traco d="M 905 585 L 1035 715" p={xis * 2} cor="#d7263d" w={22} />
+        <Traco d="M 1035 585 L 905 715" p={xis * 2 - 1} cor="#d7263d" w={22} />
       </svg>
       <svg width={0} height={0} style={{position: 'absolute'}}>
         <filter id={`adesivo-${a}`} x="-4%" y="-4%" width="108%" height="108%" colorInterpolationFilters="sRGB">
-          <feMorphology in="SourceAlpha" operator="dilate" radius="12" result="d" />
+          <BordaFirme de="SourceGraphic" result="firme" />
+          <feMorphology in="firme" operator="dilate" radius="12" result="d" />
           <feFlood floodColor="#ffffff" />
           <feComposite in2="d" operator="in" result="borda" />
           <feMerge>
             <feMergeNode in="borda" />
-            <feMergeNode in="SourceGraphic" />
+            <feMergeNode in="firme" />
           </feMerge>
         </filter>
       </svg>
-      <AbsoluteFill style={{transform: `translate(${dx}px, ${dy + desce}px) rotate(${giro}deg)`, transformOrigin: '50% 100%', filter: 'drop-shadow(9px 12px 0 rgba(0,0,0,.33))'}}>
-        <Freeze frame={g * passo}>
-          <Recorte c={c} style={{filter: `url(#adesivo-${a})`}} />
-        </Freeze>
+      {/* the person stays at 30 fps with a fixed tilt: stop motion is only for the collage (at 15 fps the
+          mouth drifts off the voice, and a new tilt per step swings the head from side to side). The scale
+          keeps the edges where the original frame cut the body off screen */}
+      <AbsoluteFill style={{transform: `translateY(${desce}px) rotate(-2deg) scale(${PAPEL_ESCALA}) translateY(${PAPEL_BAIXA}px)`, filter: 'drop-shadow(9px 12px 0 rgba(0,0,0,.33))'}}>
+        <Recorte c={c} style={{filter: `url(#adesivo-${a})`}} />
       </AbsoluteFill>
       <div style={{position: 'absolute', left: tx, top: ty, transform: 'translate(-50%, -50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12}}>
         {linhas.map((s, li) => (
@@ -355,13 +364,10 @@ export const Rabisco: React.FC<CenaProps> = ({c, a, n}) => {
       <Fundo src={c.layout?.fundo} reserva="#1d2a26" />
       <svg width={0} height={0} style={{position: 'absolute'}}>
         <filter id={`giz-${a}-${sem}`} x="0" y="0" width="100%" height="100%" colorInterpolationFilters="sRGB">
-          <feMorphology in="SourceAlpha" operator="dilate" radius="19" result="fora" />
-          <feMorphology in="SourceAlpha" operator="dilate" radius="13" result="dentro" />
-          <feComposite in="fora" in2="dentro" operator="out" />
-          {/* the cut-out has soft edges: without this the ring comes out grey and blurred */}
-          <feComponentTransfer result="anel">
-            <feFuncA type="linear" slope="6" />
-          </feComponentTransfer>
+          <BordaFirme de="SourceAlpha" result="firme" />
+          <feMorphology in="firme" operator="dilate" radius="19" result="fora" />
+          <feMorphology in="firme" operator="dilate" radius="6" result="dentro" />
+          <feComposite in="fora" in2="dentro" operator="out" result="anel" />
           <feTurbulence type="fractalNoise" baseFrequency="0.016" numOctaves="2" seed={sem} result="ruido" />
           <feDisplacementMap in="anel" in2="ruido" scale="26" xChannelSelector="R" yChannelSelector="G" result="tremido" />
           <feFlood floodColor="#fdfdf8" />
@@ -370,6 +376,9 @@ export const Rabisco: React.FC<CenaProps> = ({c, a, n}) => {
         <filter id={`tremor-${a}-${sem}`} x="-2%" y="-2%" width="104%" height="104%" colorInterpolationFilters="sRGB">
           <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="2" seed={sem + 40} result="ruido" />
           <feDisplacementMap in="SourceGraphic" in2="ruido" scale="9" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+        <filter id={`firme-${a}`} x="0" y="0" width="100%" height="100%" colorInterpolationFilters="sRGB">
+          <BordaFirme de="SourceGraphic" />
         </filter>
       </svg>
       <svg width={W} height={H} style={{position: 'absolute', inset: 0}} filter={`url(#tremor-${a}-${sem})`}>
@@ -384,7 +393,7 @@ export const Rabisco: React.FC<CenaProps> = ({c, a, n}) => {
         })}
       </svg>
       <Recorte c={c} style={{filter: `url(#giz-${a}-${sem})`, opacity: ease(f, 0, 5), transform: `translateY(${desce}px)`}} />
-      <Recorte c={c} style={{transform: `translateY(${desce}px)`}} />
+      <Recorte c={c} style={{filter: `url(#firme-${a})`, transform: `translateY(${desce}px)`}} />
       <svg width={W} height={H} style={{position: 'absolute', inset: 0}} filter={`url(#tremor-${a}-${sem})`}>
         {coroa ? (
           <g transform={`translate(${coroa.x - coroa.w / 2} ${coroa.y - coroa.w * 0.45}) scale(${coroa.w / 100} ${(coroa.w * 0.75) / 100})`}>

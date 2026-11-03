@@ -1,8 +1,10 @@
 {
-  "versao": "0.4.5",
+  "versao": "0.4.6",
   "data": "2026-11-03",
   "notas": {
     "pt": [
+      "Recorte de papel: a pessoa não fica mais saltando de um lado para o outro. Ela se move normal, com a inclinação fixa, e só a colagem fica em stop motion.",
+      "Rabisco vivo e Recorte de papel: o recorte da pessoa ficou nítido, sem a borda embaçada, e o contorno branco do Rabisco ficou mais fino.",
       "Tela dividida por bloco: cada bloco acompanha a altura do seu rosto naquele trecho, e a cabeça pode passar por cima da faixa e parar na divisão.",
       "Punch-in: um zoom num trecho da tomada, seco ou subindo aos poucos, com o rosto parado. Vira um bloco na linha do tempo que você move e apara. Com gravação 4K, fica nítido.",
       "6 efeitos de cena novos no painel Cenas: Dentro do app, Saindo da tela, Revelação, Recorte de papel, Rabisco vivo e Vertigem. O texto já vem da sua fala, e dá para mudar.",
@@ -56,6 +58,8 @@
       "Órbita: cards girando em volta de você, passando atrás da cabeça e depois na frente."
     ],
     "en": [
+      "Paper cut-out: the person no longer jumps from side to side. They move normally, at a fixed tilt, and only the collage stays in stop motion.",
+      "Living scribble and Paper cut-out: the person's cut-out is sharp, without the blurred edge, and the Scribble's white outline is thinner.",
       "Per-block split screen: each block follows the height of your face in that stretch, and the head can pass over the band and stop at the division.",
       "Punch-in: a zoom on a stretch of a take, dry or rising little by little, with the face held still. It becomes a block on the timeline that you move and trim. With a 4K recording, it stays sharp.",
       "6 new scene effects in the Scenes panel: Inside the app, Out of the screen, Reveal, Paper cut-out, Living doodle and Vertigo. The text comes from your speech, and you can change it.",
@@ -206,7 +210,7 @@
     "assets/shortform/src/cenas/fundo.tsx": "089055fb45c91e828c1437e6defb6f03982e31c90b1614523bb441a496b347f3",
     "assets/shortform/src/cenas/fundoNovo.tsx": "378d0e85c576cf08c420858b001f2d39b43571640b62d607b43d3152b2d3c407",
     "assets/shortform/src/cenas/index.tsx": "cb231fcb6f3dfd955ee3f55acc99c771359cb0e6bfa1b0e5c37b67c1fb187e2b",
-    "assets/shortform/src/cenas/maisCenas.tsx": "ac168984537a175d6b9f319ce6fa30dfc4688972614b3460d463f00dc800aa34",
+    "assets/shortform/src/cenas/maisCenas.tsx": "3032cc97521a3facb99bc2661de802847da1210317fbc867460e1673a1570a1c",
     "assets/shortform/src/cenas/orbita.tsx": "d67e0fe197754377b04503a637cc6fabe7ce519cbf8bdf5db45bcfaa7e2cc80a",
     "assets/shortform/src/cenas/vidro.tsx": "7c00c1245d5f1468df6a43a80ebd1654df5757a4535fa22eb118c200d2c14f79",
     "assets/shortform/src/fontes.ts": "0e48a2daae89422558341eed69122544bf8a94389b9d2c100f7f5601695ef484",
@@ -234,7 +238,7 @@
     "helpers/caption_style.py": "f58ecfa4825f6b4c43eaa934c36e4d4455a6451c328bddfd6ea8d71a19768b31",
     "helpers/captions_for_remotion.py": "cc0238c47b49d3604ad9ace27dc66517fcde63780af837c7fe861083af24181d",
     "helpers/captions_srt.py": "d0a76ae624fa153d194fa679ced84497a0efe9930d82cd81c8d3bff29c97f604",
-    "helpers/cenas.py": "a39efec64e9d4d72ed9dac488af6295cac39d8a1f06e6f4d125a2fe17d295070",
+    "helpers/cenas.py": "c9ab802986b074bbd318cc6b04a88f2d746c227a89549fe43208aca6cf8f31ba",
     "helpers/cenas_edit_data.py": "fa85244bcb6f577c7ffd0437fe1ba8b27ce3325e96136d3aad8afd6096149c5f",
     "helpers/chapters.py": "3cbfb0b7914e475d4b0e875baf71b8e0125f39a61a4c33036264b5d62f865e74",
     "helpers/check_remotion_versions.py": "7dae944b3b820b13264aedf28b642121accb9c0fcf385669a4d3a8776b911ac3",
@@ -309,7 +313,7 @@
     "install.md": "bfcef4aee5f7a0fd70f9e7bb9f0312a62a7a53073445c18f3bda42280e01c8e8",
     "pyproject.toml": "de2284d3a213f0e48c3cd2e03d157769eaab23cb153cb09ffdb54c9ac8629d97",
     "references/celular.md": "6603bcfe840deb0ff080a533437491ea641b7f7ce1745fddb7925fe59a8dd59d",
-    "references/cenas.md": "ac07d13afd651b68c9c189cb70e89d27de6b47d47b783f29a40faa0dc4902255",
+    "references/cenas.md": "7eddbe181fc96464be08c4f3ed2bb65a0eb841835ed9febdad247ddb4d17b46c",
     "references/efeitos-sonoros.md": "46de7d81dcc5dc93a2cfe0ff1af89ab7cfaf6c0cb729f925cb8618d3f48c9b63",
     "references/graficos.md": "b1a2fc1be85bc3b8cf918590de4040f93ed9bcad6fd832c7708c831f45e508d8",
     "references/log-grade.md": "50eba561bf746d7a941209d9de25296eacc4384d3823967522bb231478380b4f",
