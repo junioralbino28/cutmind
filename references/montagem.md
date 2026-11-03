@@ -13,7 +13,7 @@ Modelos de montagem panel (or Nova montagem in Projetos).
 | `helpers/batida.py` | the beat grid of a song (Beat This!, local): beats, downbeats, BPM, energy per bar, the drop and the strength of each half beat. Cached per song in `<edit>/batidas/` |
 | a template (`montagens.py`) | the rhythm: slots (`vagas`, each N beats, optional `repetir` and `movimento`), `drop_na_vaga`, texts and transitions. The user's in `~/.cutmind/montagens/`, the kit's in `assets/montagens/` and in the package library (type `montagem`) |
 | `helpers/montagem.py` | builds the project and the video: `usar`, `montar`, `aplicar`, `render`, `conferir`, `capturar` |
-| `helpers/mural.py` | the community mural (only with `CUTMIND_MURAL`): list, take a template, share one |
+| `helpers/mural.py` | the community mural: list, take a template, share one |
 
 ## Making one
 
@@ -58,6 +58,6 @@ over a montage whose song the person said they will add in the app.
 
 ## The community mural
 
-With `CUTMIND_MURAL` set, the panel has a Da comunidade tab and a share button on the person's own
-templates. `mural.py lista`, `mural.py pegar <code>` and `mural.py link <id>` do the same from the
+The panel has a Da comunidade tab and a share button on the person's own templates (`CUTMIND_MURAL`
+points to another address; empty turns the mural off). `mural.py lista`, `mural.py pegar <code>` and `mural.py link <id>` do the same from the
 chat. Publishing always happens on the mural's own page, by the person, never from the agent.

@@ -82,7 +82,7 @@ Routes:
   /api/montagens         POST {nome}: guarda a montagem aberta como modelo (montagem.py capturar)
   /api/montagens/apagar  POST {id}: apaga um modelo da pessoa
   /api/mural             GET  (?antes=) uma página dos modelos do mural da comunidade (mural.py, no
-                         endereço de CUTMIND_MURAL); `mural` no /api/montagens diz se ele está ligado
+                         endereço de mural.endereco()); `mural` no /api/montagens diz se ele está ligado
   /api/mural/pegar       POST {codigo}: traz um modelo do mural para os da pessoa
   /api/mural/compartilhar?id=  GET  redireciona para a página de publicar do mural com o modelo
   /api/save com `montagem.usar` = {modelo, musica, midias}: o Usar do painel (a montagem inteira);

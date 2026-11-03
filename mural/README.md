@@ -65,7 +65,7 @@ para as chaves do Access.
 
 ## Publicar na Cloudflare
 
-Nada de conta, domínio ou segredo entra neste repositório. Para publicar:
+Nada de conta ou segredo entra neste repositório; o endereço público fica em `helpers/mural.py`. Para publicar:
 
 1. Crie o banco: `npx wrangler d1 create cutmind-mural`.
 2. Copie `wrangler.jsonc` para **fora do repositório** (por exemplo `../mural-producao.jsonc`) e, na

@@ -92,8 +92,13 @@ def test_endereco(monkeypatch, valor, esperado):
     assert mu.endereco() == esperado
 
 
-def test_sem_endereco_nada_sai(monkeypatch):
+def test_sem_a_variavel_e_o_mural_oficial(monkeypatch):
     monkeypatch.delenv("CUTMIND_MURAL", raising=False)
+    assert mu.endereco() == mu.PADRAO and mu.PADRAO.startswith("https://")
+
+
+def test_sem_endereco_nada_sai(monkeypatch):
+    monkeypatch.setenv("CUTMIND_MURAL", "")
     with pytest.raises(mu.MuralIndisponivel):
         mu.lista()
     with pytest.raises(mu.MuralIndisponivel):
@@ -323,7 +328,7 @@ def test_post_de_outro_site_e_recusado(falso, srv):
 
 
 def test_rotas_sem_mural(monkeypatch, srv):
-    monkeypatch.delenv("CUTMIND_MURAL", raising=False)
+    monkeypatch.setenv("CUTMIND_MURAL", "")
     assert json.loads(pedir(srv, "/api/montagens")[1])["mural"] is False
     assert pedir(srv, "/api/mural")[0].status == 502
     assert pedir(srv, "/api/mural/pegar", "POST", {"codigo": "AAAAAAAAAAA1"})[0].status == 502

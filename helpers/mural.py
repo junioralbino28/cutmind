@@ -2,8 +2,8 @@
 """A ponte do editor com o mural de modelos (a pasta `mural/` deste repositório): a lista da
 comunidade, pegar um modelo de lá para os seus e o link para publicar um modelo seu.
 
-O editor fala só com o servidor local; quem fala com o mural é este módulo, no endereço da variável
-`CUTMIND_MURAL` (sem ela, o mural fica de fora do editor). O que vem do mural é de qualquer pessoa:
+O editor fala só com o servidor local; quem fala com o mural é este módulo, no endereço `PADRAO`. A variável
+`CUTMIND_MURAL` troca o endereço e, vazia, deixa o mural de fora do editor. O que vem do mural é de qualquer pessoa:
 cada campo é conferido de novo, e o modelo passa pela mesma conferência dos modelos da pessoa
 (montagens.normalize). Publicar nunca passa por aqui: o link abre a página de publicar do mural,
 com o modelo no fragmento (#m=), e a pessoa confirma lá.
@@ -55,9 +55,12 @@ class MuralRecusou(ValueError):
 LOCAIS = ("127.0.0.1", "localhost", "::1")
 
 
+PADRAO = "https://mural.cennohub.com.br"
+
+
 def endereco() -> str | None:
     """O mural, em https; http só para um mural de teste neste computador."""
-    v = (os.environ.get("CUTMIND_MURAL") or "").strip().rstrip("/")
+    v = os.environ.get("CUTMIND_MURAL", PADRAO).strip().rstrip("/")
     u = urllib.parse.urlsplit(v)
     if not u.netloc or u.query or u.fragment:
         return None

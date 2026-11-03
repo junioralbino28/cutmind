@@ -1,8 +1,9 @@
 {
-  "versao": "0.4.6",
+  "versao": "0.4.7",
   "data": "2026-11-03",
   "notas": {
     "pt": [
+      "Mural de modelos no ar: em Modelos, a aba Da comunidade mostra as montagens de outras pessoas para usar nos seus vídeos, e o botão de compartilhar publica as suas.",
       "Recorte de papel: a pessoa não fica mais saltando de um lado para o outro. Ela se move normal, com a inclinação fixa, e só a colagem fica em stop motion.",
       "Rabisco vivo e Recorte de papel: o recorte da pessoa ficou nítido, sem a borda embaçada, e o contorno branco do Rabisco ficou mais fino.",
       "Tela dividida por bloco: cada bloco acompanha a altura do seu rosto naquele trecho, e a cabeça pode passar por cima da faixa e parar na divisão.",
@@ -58,6 +59,7 @@
       "Órbita: cards girando em volta de você, passando atrás da cabeça e depois na frente."
     ],
     "en": [
+      "Template mural is live: under Templates, the Community tab shows other people's edits to use in your videos, and the share button publishes yours.",
       "Paper cut-out: the person no longer jumps from side to side. They move normally, at a fixed tilt, and only the collage stays in stop motion.",
       "Living scribble and Paper cut-out: the person's cut-out is sharp, without the blurred edge, and the Scribble's white outline is thinner.",
       "Per-block split screen: each block follows the height of your face in that stretch, and the head can pass over the band and stop at the division.",
@@ -271,7 +273,7 @@
     "helpers/modelos.py": "9c0de2af4a20903e4aaa5a1b997eec79a35b9f877b2004c174fe492e83561e79",
     "helpers/montagem.py": "898a62ce67a7c356e596c65fe24b4278138f8be7326125a2c228a510eee9d4aa",
     "helpers/montagens.py": "c937ce66b41dd2a77ac38771cfdeb51a5b9b47a7787e765592a03d7e29ae1640",
-    "helpers/mural.py": "19403c7f6252211ad377cca1f559c8ef6ae82081f29ccd8218899ae1528f8220",
+    "helpers/mural.py": "b76a4df7fe7fe111dd21c1a0291218569df16ab713a93d2a24da080fb19644ae",
     "helpers/pack_transcripts.py": "d9291f68b4bfd46a5b61a34fb492cd3da70c6d7a024fea06f6d674cddde31f5b",
     "helpers/pacotes.py": "8e301003f02b3a17c20969d26f5c818b5547745e7dea2c92779ce8c46eff3e9b",
     "helpers/pendente.py": "e0a100ecbf28865639717ce33a73f3981d82a08e59f46b93354532e0b85bd17d",
@@ -279,7 +281,7 @@
     "helpers/pexels_search.py": "4b34c0195367b93e9a2f2dad8171301df3bbfae97dacdedf3f83afcbe85c7d04",
     "helpers/pontas.py": "70f06a2944d7a0382d4faa381d29ebd9b41d71fa44f6f7d98ab94ed6d7e770da",
     "helpers/preparar_remotion.py": "132dbca3f24f22dcb7fd081774609d71e0e08bd73ea147e21883cd1a5aa76b64",
-    "helpers/preview_server.py": "052aaea33c45887a67e1237bbc08f977bf5a841f394d808e09f4af98cd8f8031",
+    "helpers/preview_server.py": "6749038dbb6f8702158470d54881be15bf16c5b5ae6a98ef095a51fb0997672a",
     "helpers/projetos.py": "c003e260b0ccbbed9538d72bfa21223cb18990dccc89438a43b3eac795323827",
     "helpers/proxy.py": "4b4869cf934d5672544db950bf6c3963996a7898b86507bc0fa03757d544e488",
     "helpers/quadros.py": "34b1d0ff766f3b200135ef127e8bf8546578a9ff561ecfc7d48c74fccb9453ef",
@@ -318,8 +320,8 @@
     "references/graficos.md": "b1a2fc1be85bc3b8cf918590de4040f93ed9bcad6fd832c7708c831f45e508d8",
     "references/log-grade.md": "50eba561bf746d7a941209d9de25296eacc4384d3823967522bb231478380b4f",
     "references/longform.md": "2b87c438c82e7763771565aa78857a3bed7f78554de7b832105b9e3052e6483a",
-    "references/montagem.md": "ad6f069d88b365b3ce589b593cc8aa273a646640300a3a44168cc839957c4f43",
-    "references/pelo-chat.md": "d6fd4b6eed529567942d98893a0d0923162863a0386b12ebd87701e401863f51",
+    "references/montagem.md": "8f72ceb2ecd0066551efd35a54eb0f4410be5ee84ccc0e23bab39e77f4237c3b",
+    "references/pelo-chat.md": "5eba405d6f9a49987729e9328e7c80dac53114f4e20bec12f3defa195b8096af",
     "references/premiere-mcp.md": "46dee7c1c67a545dfe918260e4547fbf7ee8f6ddf2f8ad47badd5f8ffb1b3a72",
     "references/shortform.md": "f352d2668c42cd4e4e252d3106cc7b131190ec7370fcc1ab16951f696e369707",
     "references/trilhas-gratis.md": "4dab2b78670c37843f00077885f4e8b1b7b534be7305197d9a9c786d97f5c580",
