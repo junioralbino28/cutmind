@@ -2706,6 +2706,7 @@ function renderToolbar() {
     tool(ctx, 'dividir', t('Dividir'));
     tool(ctx, 'duplicar', t('Duplicar'));
     tool(ctx, 'volume', `${Math.round(sel.vol * 100)}%`);
+    tool(ctx, 'separar-audio', t('Separar áudio'), { icon: ICON.volume });
     tool(ctx, 'velocidade', sel.curva ? nomeCurva(sel.curva.nome) : fmtVel(sel.vel));
     tool(ctx, 'ajustar', t('Ajustar§cor'));
     tool(ctx, 'recortar', t('Recortar'), { on: !!(sel.enq && sel.enq.recorte) });
@@ -2798,6 +2799,7 @@ document.addEventListener('click', (e) => {
       else deleteSelected();
       break;
     case 'volume': openVolume(); break;
+    case 'separar-audio': separarAudio(); break;
     case 'velocidade': openVelocidade(); break;
     case 'melhorar': toggleMelhorar(); break;
     case 'ouvir': {
@@ -5801,6 +5803,46 @@ async function addLayer(tipo, arquivo, extra = {}) {
   S.selected = -1;
   if (tipo === 'audio') carregaBatidas(); // a música nova ganha as marcas de batida quando a grade sai
   renderTimeline(); renderToolbar(); refreshHeader();
+}
+
+/* Separar áudio: a fala da tomada vira uma camada no mesmo lugar, e a tomada fica em 0%. O arquivo tem a
+ * gravação inteira, então puxar a ponta da camada recupera o que tinha ficado fora do corte. Curva de
+ * velocidade não tem como: a camada só tem um ritmo. */
+async function separarAudio() {
+  const r = S.draft[S.selected];
+  if (!r || S.separando) return;
+  if (r.curva) { toast(t('Tire a curva de velocidade antes de separar o áudio')); return; }
+  const d = draftLayout()[S.selected];
+  const vel = r.vel || 1;
+  S.separando = true;
+  toast(t('Separando o áudio…'));
+  let res;
+  try {
+    const q = await fetch('/api/separar-audio', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: r.source, velocidade: vel }) });
+    res = await q.json();
+    if (!q.ok) throw new Error(res.error || t('erro {status}', { status: q.status }));
+  } catch (e) {
+    toast(t('Não consegui separar o áudio: {erro}', { erro: e.message }));
+    return;
+  } finally {
+    S.separando = false;
+  }
+  if (!S.draft.includes(r)) return; // a tomada saiu enquanto o som era tirado
+  remember();
+  S.midiaDur[res.arquivo] = res.duracao;
+  const fid = newFaixaId('a');
+  // o som da tomada começa `lead` antes da imagem (J-cut), do começo do trecho na gravação
+  const item = { id: `${fid}-1`, arquivo: res.arquivo, inicio: +Math.max(0, draftToRendered(d.out) - (d.lead || 0)).toFixed(3),
+    corte: +Math.max(0, r.start / vel - res.adianta).toFixed(3), duracao: +((r.end - r.start) / vel).toFixed(3),
+    volume: Math.min(2, r.vol || 1), melhorar: false };
+  S.camadas.faixas.push({ id: fid, tipo: 'audio', mudo: false, travado: false, itens: [item] });
+  r.vol = 0;
+  S.layerSel = item.id;
+  S.fxSel = null;
+  S.selected = -1;
+  renderTimeline(); renderToolbar(); refreshHeader();
+  toast(t('Áudio separado: agora é uma camada que você move e apara'));
 }
 
 // cabeçalho fixo à esquerda da faixa: os botões dela (faixa null = o vídeo principal)

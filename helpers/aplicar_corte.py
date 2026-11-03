@@ -477,8 +477,9 @@ def aplicar(edit: Path, pedido: dict, confirmado: bool = False, andamento=_sem_a
     levar = _tolerante(remapear.mapa(edl_velho, edl_novo, origem), remapear.mapa(edl_velho, {"ranges": novo["ranges"]}, origem))
     fora: list[dict] = []
     if (edit / "camadas.json").exists():
-        c, f = remapear.camadas(cam.load(edit / "camadas.json"), levar, total)
-        cam.save(edit / "camadas.json", c)
+        c_velho = cam.load(edit / "camadas.json")
+        c, f = remapear.camadas(c_velho, levar, total)
+        cam.save(edit / "camadas.json", remapear.som_separado(c_velho, c, edl_velho, edl_novo))
         fora += f
     if (edit / "efeitos.json").exists():
         e, f = remapear.efeitos(ef.load(edit / "efeitos.json"), levar, [s["out"] for s in spans[1:]], total)

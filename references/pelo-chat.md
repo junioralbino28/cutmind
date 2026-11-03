@@ -29,6 +29,7 @@ editor reloads by itself, and tell the user what changed and where.
 | `dividir` | "divide a tomada 3 no 'então'" | two ranges from the same source, meeting at the split point. A split alone changes nothing (render merges consecutive ranges that meet exactly); it only matters together with another change on one half | same |
 | `duplicar` | "repete essa frase" | the same span twice | same |
 | `volume` | "abaixa a tomada 2 pela metade" | `ranges[i].volume` 0–4 (0.5 = 50%); omit at 1. The user's choice — level fixes are `gain_db` | `render.py` applies it last; Phase 3 with `mixar_final.py` |
+| `separar-audio` | "separa o áudio dessa tomada", "essa fala tem que tocar em cima da entrada" | `separar_audio.py <edit> <source> [--velocidade v]` gives `arquivo` and `adianta`; add an audio layer to `camadas.json` with `corte` = start / v − adianta, `duracao` = (end − start) / v and `inicio` where the take's sound starts, then `ranges[i].volume: 0`. The file has the whole recording, so the layer can be pulled longer. Not with `curva` | `render.py`, `mixar_final.py` |
 | `velocidade` | "acelera a tomada 4 para 2×" | `ranges[i].velocidade` 0.25–4; omit at 1; never with `curva` | `render.py` |
 | `velocidade` → Curva | "faz o Herói na tomada 2" | `ranges[i].curva` = `{"nome": ..., "pontos": [[x, y], ...]}` (presets below; x 0–1 along the take in the source, y 0.1–10) | `render.py` |
 | `original` | "volta a tomada 2 como estava" | the edges from the previous `edl.json` | same |

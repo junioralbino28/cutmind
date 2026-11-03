@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import copy
 import re
+from pathlib import Path
 from typing import Callable, Optional
 
 import tempo  # mesma pasta deste arquivo
@@ -141,6 +142,37 @@ def camadas(cam: dict, levar: Levar, total: float) -> tuple[dict, list[dict]]:
             manter.append(it)
         f["itens"] = manter
     return novo, fora
+
+
+def _som_em(edl: dict, i: int) -> float:
+    """Onde o som da tomada i começa no corte: com J-cut, antes da imagem."""
+    tl = edl.get("jcut_timeline") or []
+    return float(tl[i]["audio_start_in_output"]) if i < len(tl) else float(tempo.tomadas_no_corte(edl)[i]["out"])
+
+
+def som_separado(velho: dict, novo: dict, edl_velho: dict, edl_novo: dict, fps: float = 30.0) -> dict:
+    """A camada do Separar áudio (separar_audio.py) que ninguém moveu continua no som da tomada calada.
+
+    `camadas` leva a camada junto da imagem, e refazer o corte pode mudar a sobreposição de uma emenda: a imagem anda
+    de um jeito e o som de outro, e a boca sairia até 4 quadros fora sem aviso (medido em 03/11, 134 ms). Só vale para
+    quem está onde o som estava: a camada que a pessoa moveu fica onde ela pôs. `novo` sai ajustado."""
+    atuais = {it.get("id"): it for f in novo.get("faixas") or [] if f.get("tipo") == "audio" for it in f.get("itens") or []}
+    for f in velho.get("faixas") or []:
+        for it in (f.get("itens") or []) if f.get("tipo") == "audio" else []:
+            arq, atual = str(it.get("arquivo") or ""), atuais.get(it.get("id"))
+            if atual is None or not arq.startswith("midia/audio-"):
+                continue
+            for j, r in enumerate(edl_novo.get("ranges") or []):
+                nome = re.sub(r"[^\w-]+", "-", Path(str((edl_novo.get("sources") or {}).get(r.get("source"), ""))).stem).strip("-")[:40]
+                if r.get("volume") != 0 or f"audio-{nome}" not in arq:
+                    continue
+                if abs(float(it.get("corte", 0)) - float(r["start"]) / float(r.get("velocidade") or 1)) > 0.1:
+                    continue
+                k = next((k for k, a in enumerate(edl_velho.get("ranges") or []) if a.get("source") == r.get("source") and abs(float(a["start"]) - float(r["start"])) < 1e-3), None)
+                if k is not None and abs(float(it.get("inicio", 0)) - _som_em(edl_velho, k)) <= 1.5 / fps:
+                    atual["inicio"] = round(_som_em(edl_novo, j), 3)
+                break
+    return novo
 
 
 def efeitos(ef: dict, levar: Levar, emendas: list[float], total: float, fps: float = 30.0) -> tuple[dict, list[dict]]:

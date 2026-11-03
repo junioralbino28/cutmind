@@ -1044,5 +1044,10 @@ window.I18N_EN = {
   "Cortar silêncio": "Cut silence",
   "Música": "Music",
   "Punch-in": "Punch-in",
-  "O punch-in": "The punch-in"
+  "O punch-in": "The punch-in",
+  "Separar áudio": "Detach audio",
+  "Separando o áudio…": "Detaching the audio…",
+  "Tire a curva de velocidade antes de separar o áudio": "Remove the speed curve before detaching the audio",
+  "Não consegui separar o áudio: {erro}": "Couldn't detach the audio: {erro}",
+  "Áudio separado: agora é uma camada que você move e apara": "Audio detached: it's now a layer you can move and trim"
 };

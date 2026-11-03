@@ -84,6 +84,7 @@ Routes:
   /api/mural             GET  (?antes=) uma página dos modelos do mural da comunidade (mural.py, no
                          endereço de mural.endereco()); `mural` no /api/montagens diz se ele está ligado
   /api/mural/pegar       POST {codigo}: traz um modelo do mural para os da pessoa
+  /api/separar-audio     POST {source, velocidade}: o som da gravação vira um áudio de midia/ (separar_audio.py)
   /api/mural/compartilhar?id=  GET  redireciona para a página de publicar do mural com o modelo
   /api/save com `montagem.usar` = {modelo, musica, midias}: o Usar do painel (a montagem inteira);
                          conferido em conferir_usar, e o agente roda montagem.py montar. Até ele
@@ -172,6 +173,7 @@ import montagem as mt  # mesma pasta deste arquivo
 import idioma as idm  # mesma pasta deste arquivo
 import montagens as mg  # mesma pasta deste arquivo
 import mural as mu  # mesma pasta deste arquivo
+import separar_audio as sa  # mesma pasta deste arquivo
 import aplicar_corte as ac  # mesma pasta deste arquivo
 import trabalhos as tb  # mesma pasta deste arquivo
 import gerar as gr  # mesma pasta deste arquivo
@@ -1522,6 +1524,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/mural/pegar":
             self._mural_pegar()
             return
+        if path == "/api/separar-audio":
+            self._separar_audio()
+            return
         if path == "/api/melhorar/preparar":
             self._melhorar_preparar()
             return
@@ -2517,6 +2522,16 @@ class Handler(BaseHTTPRequestHandler):
         tmp.write_bytes(json.dumps(pronto, ensure_ascii=False, indent=2).encode("utf-8"))
         tmp.replace(out)
         self._json({"ok": True, "pedidos": len(pedidos), "vigia": bool(st.get("vigia"))})
+
+    def _separar_audio(self) -> None:
+        """O som da gravação de uma tomada vira um áudio de `midia/`: quem põe a camada e cala a tomada é o editor."""
+        body = self._corpo_pequeno()
+        if body is None:
+            return
+        try:
+            self._json(sa.separar(self.root, body.get("source"), body.get("velocidade", 1)))
+        except sa.SepararErro as e:
+            self._json({"error": str(e)}, 409)
 
     def _melhorar_preparar(self) -> None:
         if self._corpo_pequeno() is None:

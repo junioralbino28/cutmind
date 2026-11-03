@@ -353,5 +353,9 @@
  "não deu para ler o áudio de {name}": "couldn't read the audio of {name}",
  "o som `{sid}` não existe; os que existem: {p1}": "the sound `{sid}` doesn't exist; the ones that exist: {p1}",
  "o projeto do vídeo final é de um kit anterior e não desenha a tela dividida por bloco nem o punch-in: aperte Pronto para o Claude atualizar": "the final video's project is from an earlier kit and doesn't draw the per-block split screen or the punch-in: press Done for Claude to update it",
- "o rosto ou o recorte da tela dividida não saiu (a saída está no registro do trabalho)": "the face or the split screen's cut-out didn't come out (the output is in the job's log)"
+ "o rosto ou o recorte da tela dividida não saiu (a saída está no registro do trabalho)": "the face or the split screen's cut-out didn't come out (the output is in the job's log)",
+ "não achei a gravação desta tomada": "couldn't find this take's recording",
+ "velocidade inválida": "invalid speed",
+ "esta gravação não tem som": "this recording has no sound",
+ "o ffmpeg não conseguiu tirar o som desta gravação": "ffmpeg couldn't extract the sound of this recording"
 }
