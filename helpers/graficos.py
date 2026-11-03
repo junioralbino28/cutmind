@@ -35,8 +35,19 @@ TIPOS = {
     "ajuste": (),
     "progresso": ("titulo", "fimAt", "fim"),
     "comenta": ("texto", "digitaAt", "digitaFimAt"),
+    "pula": ("itens",),
+    "partes": ("itens",),
+    "danca": ("t",),
+    "glitch": ("t",),
+    "marca": ("texto", "marcaAt", "marcaFimAt"),
+    "contador": ("valor", "fimAt"),
+    "nome": ("nome",),
+    "chat": ("itens",),
+    "maquina": ("texto", "digitaAt", "digitaFimAt"),
+    "prompt": ("texto", "digitaAt", "digitaFimAt"),
+    "emoji": ("itens",),
 }
-ICONES = ("rec", "ia", "corte", "cenario", "trilha", "cc", "check", "play", "mic", "texto", "raio", "estrela")
+ICONES =("rec", "ia", "corte", "cenario", "trilha", "cc", "check", "play", "mic", "texto", "raio", "estrela")
 IMAGENS = ("src",)  # os campos que são um arquivo do public/
 
 # o que um gráfico criado no painel do editor pode trazer (o tipo em src/graficos/index.tsx)
@@ -46,14 +57,25 @@ CAMPOS = {
     "botoes": ("itens",),
     "celular": ("src", "x", "w", "rot"),
     "objecao": ("usuario", "texto", "quando", "cinza"),
-    "grande": ("t", "at", "tamanho", "cor", "contorno", "riscoAt", "sub"),
-    "lista": ("titulo", "itens"),
+    "grande": ("t", "at", "tamanho", "cor", "contorno", "riscoAt", "sub", "troca", "trocaAt"),
+    "lista": ("titulo", "itens", "icone"),
     "selo": ("src", "fundo"),
     "ajuste": ("titulo", "src"),
     "progresso": ("titulo", "fimAt", "fim"),
     "comenta": ("texto", "digitaAt", "digitaFimAt", "dmAt", "dm", "placeholder", "publicar", "seta"),
+    "pula": ("itens", "tamanho"),
+    "partes": ("itens", "tamanho"),
+    "danca": ("t", "sub", "at", "tamanho"),
+    "glitch": ("t", "at", "tamanho"),
+    "marca": ("texto", "frase", "marcaAt", "marcaFimAt", "cor"),
+    "contador": ("valor", "inicio", "casas", "prefixo", "sufixo", "rotulo", "fimAt", "tamanho", "local"),
+    "nome": ("nome", "cargo"),
+    "chat": ("itens",),
+    "maquina": ("texto", "digitaAt", "digitaFimAt", "som"),
+    "prompt": ("texto", "titulo", "digitaAt", "digitaFimAt", "som"),
+    "emoji": ("itens", "tamanho"),
 }
-_CAMPOS_ITEM = ("t", "icone", "at", "ate", "cor", "contorno", "selecao", "pilula")
+_CAMPOS_ITEM = ("t", "icone", "at", "ate", "cor", "contorno", "selecao", "pilula", "lado", "x", "y")
 _TEXTO_MAX = 200
 _ITENS_MAX = 12
 
@@ -100,6 +122,16 @@ def validar(g) -> list[str]:
                 erros.append(f"`itens[{i}].icone` `{it['icone']}` não existe; os que existem: {', '.join(ICONES)}")
     if g.get("y") is not None and not (_num(g["y"]) and 0 <= g["y"] <= 1920):
         erros.append("`y` é px do quadro 1080x1920")
+    if tipo == "contador" and g.get("valor") is not None and not _num(g["valor"]):
+        erros.append("`valor` é um número (é até onde o contador sobe)")
+    if tipo == "grande" and bool(g.get("troca")) != (g.get("trocaAt") is not None):
+        erros.append("`troca` e `trocaAt` andam juntos: a palavra nova e o instante da troca")
+    if tipo == "lista" and g.get("icone") not in (None, "x", "check"):
+        erros.append("`icone` da lista é `x` ou `check`")
+    if tipo == "chat":
+        for i, it in enumerate(g.get("itens") or []):
+            if isinstance(it, dict) and it.get("lado") not in (None, "eu", "outro"):
+                erros.append(f"`itens[{i}].lado` é `eu` ou `outro`")
     seta = g.get("seta")
     if seta is not None and not (isinstance(seta, dict) and _num(seta.get("x")) and _num(seta.get("y"))):
         erros.append("`seta` é {x, y}: a ponta, em px do quadro")

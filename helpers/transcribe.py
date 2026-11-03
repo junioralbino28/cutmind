@@ -48,6 +48,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import os
 import subprocess
@@ -58,6 +59,41 @@ from pathlib import Path
 
 
 WHISPERX_MODEL = "large-v3"
+
+# The batch of the Whisper pass, then the smaller ones to retry with when memory runs out. The transcript
+# does not change with the batch: same words and same times with 8, 4, 2 and 1 (measured on 03/11/2026).
+# On the CPU, 4 was also the fastest of them and asks for 2 GB less than 8.
+LOTES_PROCESSADOR = (4, 2, 1)
+LOTES_PLACA = (8, 4, 2, 1)
+SEM_MEMORIA = (
+    "The transcription ran out of memory even with the smallest batch. Close the heavy programs (a video "
+    "render, a browser with many tabs) and run it again. If the disk is nearly full, free some space too: "
+    "Windows only grows its page file when there is room for it."
+)
+
+
+def _falta_memoria(e: BaseException) -> bool:
+    """CTranslate2 says `mkl_malloc: failed to allocate memory`, torch `not enough memory`, Windows `paging file`."""
+    if isinstance(e, MemoryError):
+        return True
+    s = str(e).lower()
+    return any(x in s for x in ("failed to allocate", "out of memory", "not enough memory", "bad allocation", "bad_alloc", "paging file"))
+
+
+def _transcrever(model, audio, language: str | None, device: str) -> dict:
+    """The Whisper pass, going down the batches when memory runs out instead of losing the whole run."""
+    lotes = LOTES_PLACA if device == "cuda" else LOTES_PROCESSADOR
+    for lote in lotes:
+        try:
+            return model.transcribe(audio, batch_size=lote, language=language)
+        except (RuntimeError, MemoryError) as e:
+            if not _falta_memoria(e):
+                raise
+            if lote == lotes[-1]:
+                raise RuntimeError(SEM_MEMORIA) from e
+            print(f"    out of memory with batch {lote}: trying a smaller one (the transcript comes out the same)", flush=True)
+            gc.collect()
+    raise AssertionError("unreachable")
 
 
 def _whisperx_device() -> tuple[str, str]:
@@ -96,6 +132,10 @@ def call_whisperx(
     # 1,2 GB, de um pedido de conversão, "para a próxima vez", e nunca o usa: o modelo
     # carregado é o .bin com ou sem ela (medido em 24/10/2026). Só aceita "true".
     os.environ.setdefault("DISABLE_SAFETENSORS_CONVERSION", "true")
+    # CTranslate2 with Intel MKL keeps a packed copy of every weight, reserving 6.6 GB for a 1.45 GB model while
+    # only 1.8 GB is ever touched. Without packing it reserves 1.9 GB (measured on 03/11/2026), and that reserve is
+    # what falls with `mkl_malloc: failed to allocate memory` on a PC with little free virtual memory.
+    os.environ.setdefault("CT2_PACKED_GEMM", "0")
     try:
         import whisperx
     except ImportError as e:
@@ -115,10 +155,18 @@ def call_whisperx(
         print(f"    whisperx on {device}/{compute_type}, model {model_name}", flush=True)
 
     audio = whisperx.load_audio(str(audio_path))
-    model = whisperx.load_model(model_name, device, compute_type=compute_type,
-                                language=language)
-    result = model.transcribe(audio, batch_size=8, language=language)
+    try:
+        model = whisperx.load_model(model_name, device, compute_type=compute_type,
+                                    language=language)
+    except (RuntimeError, MemoryError, OSError) as e:
+        if _falta_memoria(e):
+            raise RuntimeError(SEM_MEMORIA) from e
+        raise
+    result = _transcrever(model, audio, language, device)
     detected = result.get("language") or language or ""
+    # Whisper is done: it leaves memory before the aligner comes in, or both add up
+    del model
+    gc.collect()
 
     aligned_ok = True
     try:
@@ -126,6 +174,8 @@ def call_whisperx(
         result = whisperx.align(result["segments"], align_model, metadata, audio, device,
                                 return_char_alignments=False)
     except Exception as e:
+        if _falta_memoria(e):  # not "coarse times with a warning": a machine state, and the next run can pass
+            raise RuntimeError(SEM_MEMORIA) from e
         # No wav2vec2 model for this language (or it failed to load). Whisper's
         # own segment times still exist, but they are exactly the coarse kind
         # this backend was chosen to avoid — say so instead of silently

@@ -42,6 +42,7 @@ PICO = 10 ** (-3 / 20)  # todo som sai com o pico em -3 dBFS
 PASTA = Path(__file__).resolve().parents[1] / "assets" / "sfx"
 CATALOGO = "catalogo.json"
 VIRAIS = "virais.json"  # a lista dos virais; o som vem da Release que ela diz
+GRAVADOS = "gravados.json"  # os gravados de licença CC0; o som vem da Release que ela diz
 CACHE_VIRAIS = 64 * 1024 ** 2  # os 11 de hoje somam ~0,4 MB: nada sai do cache
 
 
@@ -264,24 +265,35 @@ def virais(pasta: Path = PASTA) -> list[dict]:
             for x in cat["pacotes"]]
 
 
+def gravados(pasta: Path = PASTA) -> list[dict]:
+    """Os gravados (CC0: podem ir em anúncio), com `gravado: True`. Como os virais, o som vem da Release."""
+    if not (pasta / GRAVADOS).is_file():
+        return []
+    cat = json.loads((pasta / GRAVADOS).read_text(encoding="utf-8"))
+    return [{k: x[k] for k in ("id", "nome", "nome_en", "uso", "duracao", "golpe", "volume")} | {"gravado": True}
+            for x in cat["pacotes"]]
+
+
 def todos(pasta: Path = PASTA) -> list[dict]:
-    return catalogo(pasta) + virais(pasta)
+    return catalogo(pasta) + gravados(pasta) + virais(pasta)
 
 
-def _biblioteca_virais(pasta: Path = PASTA) -> pk.Pacotes:
+def _biblioteca(pasta: Path, lista: str) -> pk.Pacotes:
     cache = Path(os.environ.get("CUTMIND_PACOTES_DIR") or Path.home() / ".cutmind" / "pacotes") / "sons"
-    return pk.Pacotes(pk.ler_catalogo(pasta / VIRAIS), cache, CACHE_VIRAIS,
+    return pk.Pacotes(pk.ler_catalogo(pasta / lista), cache, CACHE_VIRAIS,
                       base=os.environ.get("CUTMIND_PACOTES_BASE") or None)
 
 
 def arquivo(sid: str, pasta: Path = PASTA) -> Path:
-    """O arquivo do som: o do kit, na hora; o viral, do cache (baixa e confere na primeira vez).
-    KeyError se o id não existe; pk.PacoteErro se o viral não desceu."""
+    """O arquivo do som: o do kit, na hora; o gravado e o viral, do cache (baixa e confere na primeira vez).
+    KeyError se o id não existe; pk.PacoteErro se o som não desceu."""
     item = next((x for x in catalogo(pasta) if x["id"] == sid), None)
     if item is not None:
         return pasta / item["arquivo"]
+    if any(x["id"] == sid for x in gravados(pasta)):
+        return _biblioteca(pasta, GRAVADOS).obter(sid)
     if any(x["id"] == sid for x in virais(pasta)):
-        return _biblioteca_virais(pasta).obter(sid)
+        return _biblioteca(pasta, VIRAIS).obter(sid)
     raise KeyError(f"efeito sonoro `{sid}` não existe; os que existem: {', '.join(x['id'] for x in todos(pasta))}")
 
 

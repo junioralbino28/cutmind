@@ -24,6 +24,7 @@ import captions from '../public/captions.json';
 import editData from '../public/edit-data.json';
 import {seamAt, spotCentre, spotFor} from './captionPlace';
 import {CATALOGO, familiaCss, useFontesProntas} from './fontes';
+import {corDaPalavra} from './legendaCor';
 import {semAsOcultas, vazia} from './legendaOculta';
 
 const POPPINS = loadPoppins('normal', {weights: ['600']}).fontFamily;
@@ -225,7 +226,14 @@ export const SimpleCaptions: React.FC<{variant: string}> = ({variant}) => {
         }}
       >
         {lines.map((ln, i) => (
-          <div key={i}>{ln.map((w) => clean(w.text)).join(' ')}</div>
+          <div key={i}>
+            {ln.map((w, j) => (
+              <span key={j} style={{color: corDaPalavra(w.text)}}>
+                {clean(w.text)}
+                {j < ln.length - 1 ? ' ' : ''}
+              </span>
+            ))}
+          </div>
         ))}
       </div>
     </AbsoluteFill>

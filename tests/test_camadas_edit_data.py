@@ -484,3 +484,12 @@ def test_o_editor_e_o_servidor_contam_o_destaque_do_mesmo_jeito():
     assert "tool(ctx, 'leg-oculta', t('Esconder a legenda')" in js and "case 'leg-oculta': legendaOcultaLiga()" in js
     en = (raiz / "i18n-en.js").read_text(encoding="utf-8")
     assert '"Esconder a legenda": "Hide captions"' in en
+
+
+def test_o_letreiro_chega_ao_edit_data(projeto):
+    """O texto passando pela tela: sem `letreiro` no item, o template o desenharia parado, sem erro nenhum."""
+    edit, public, _ = projeto
+    _camadas(edit, [_txt("t1", {"texto": "PASSANDO", "inicio": 1, "letreiro": True}), _txt("t2", {"texto": "parado", "inicio": 5})])
+    aplicar(edit, recortar=False)
+    a, b = _textos(public)
+    assert a["letreiro"] is True and "letreiro" not in b

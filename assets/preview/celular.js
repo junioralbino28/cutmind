@@ -638,9 +638,12 @@ const isText = (c) => c.kind === 'hook' || c.kind === 'word' || c.kind === 'nume
 const NOME_GRAFICO = {
   palavras: t('Palavras'), botoes: t('Botões'), celular: t('Celular'), objecao: t('Objeção'), grande: t('Palavra grande'),
   lista: t('Lista'), selo: t('Selo'), ajuste: t('Ajuste'), progresso: t('Progresso'), comenta: t('Comenta'),
+  pula: t('Texto que pula'), partes: t('Texto por partes'), danca: t('Letras dançando'), glitch: t('Glitch'), marca: t('Marca-texto'),
+  contador: t('Contador'), nome: t('Nome e cargo'), chat: t('Conversa'), maquina: t('Máquina de escrever'), prompt: t('Prompt'), emoji: t('Emoji'),
 };
 function rotuloGrafico(g) {
-  const txt = g.t || g.titulo || g.texto || (g.itens || []).map((i) => i.t).filter(Boolean).join(' ');
+  const num = g.valor != null ? `${g.prefixo || ''}${g.valor}${g.sufixo || ''}` : '';
+  const txt = g.t || g.titulo || g.texto || g.nome || num || (g.itens || []).map((i) => i.t).filter(Boolean).join(' ');
   const nome = NOME_GRAFICO[g.tipo] || g.tipo || t('Gráfico');
   return txt ? `${nome}: ${txt}` : nome;
 }
@@ -2468,6 +2471,7 @@ const DICA = { volume: t('Volume'), velocidade: t('Velocidade e curva'), intensi
   'texto-editar': t('Texto, fonte, cor, tamanho, contorno, curva e altura'),
   'corte-seco': t('No vídeo final, a camada entra e sai de uma vez, sem fade'),
   atras: t('No vídeo final, a camada passa atrás da pessoa'), 'texto-segue': t('No vídeo final, o texto anda junto com a pessoa'),
+  letreiro: t('O texto se repete e passa pela tela, como um letreiro. Com "Atrás da pessoa", passa atrás de você'),
   'leg-oculta': t('No vídeo final, a legenda some enquanto este texto está na tela'),
   'leg-texto': t('Fonte, cor, tamanho e contorno de todas as frases'), 'leg-segue': t('No vídeo final, a legenda anda junto com a pessoa'),
   'leg-posicao': t('O lugar de cada frase da legenda'), 'leg-original': t('A legenda como o agente fez'),
@@ -2621,9 +2625,16 @@ function renderToolbar() {
     else tool(ctx, 'cena-original', t('Original'), { icon: ICON.original, disabled: !cenaMudou(csel) });
     return;
   }
+  if (!lgsel) S.legTrad = false;
+  if (lgsel && S.legTrad) { // para que idioma traduzir: vai como um pedido ao agente, que é quem traduz
+    tool(ctx, 'leg-trad-volta', t('Voltar'), { cls: 'back', icon: ICON.voltar });
+    for (const [k, nome] of Object.entries(LEG_IDIOMAS)) tool(ctx, `leg-trad-${k}`, nome, { icon: ICON.legenda });
+    return;
+  }
   if (lgsel) { // a legenda do vídeo final: o texto dela, acompanhar a pessoa e o lugar das frases
     tool(ctx, 'voltar', t('Voltar'), { cls: 'back' });
     tool(ctx, 'leg-texto', t('Texto'), { icon: ICON.texto });
+    tool(ctx, 'leg-traduzir', t('Traduzir'), { icon: ICON.legenda });
     tool(ctx, 'leg-segue', t('Acompanhar'), { icon: ICON.alvo, on: S.legenda.acompanhar });
     tool(ctx, 'leg-posicao', t('Posição'), { icon: ICON.mover, disabled: !S.style || !S.style.captions || S.style.captions === 'none' });
     tool(ctx, 'leg-original', t('Original'), { icon: ICON.original, disabled: !legendaMudou() });
@@ -2644,6 +2655,7 @@ function renderToolbar() {
       tool(ctx, 'texto-editar', t('Editar'), { icon: ICON.texto });
       tool(ctx, 'atras', t('Atrás da pessoa'), { icon: ICON.pessoa, on: lsel.it.atras });
       tool(ctx, 'texto-segue', t('Acompanhar'), { icon: ICON.alvo, on: lsel.it.acompanhar });
+      tool(ctx, 'letreiro', t('Passando'), { icon: ICON.texto, on: !!lsel.it.letreiro });
       if (temLegenda()) tool(ctx, 'leg-oculta', t('Esconder a legenda'), { icon: ICON.legenda, on: ocultaLegenda(lsel.it) });
     }
     if (lsel.f.tipo === 'imagem' && ehVideoArq(lsel.it.arquivo)) {
@@ -2767,8 +2779,12 @@ document.addEventListener('click', (e) => {
     case 'recortar': if (S.layerSel) recortaImagemSel(); else recortaTomadaSel(); break;
     case 'enq-original': { const r = S.draft[S.selected]; if (r && r.enq) { remember(); r.enq = null; enqSig = '-'; syncLayers(); renderTimeline(); renderToolbar(); refreshHeader(); } break; }
     case 'texto-segue': textoLiga('acompanhar'); break;
+    case 'letreiro': textoLiga('letreiro'); break;
     case 'leg-oculta': legendaOcultaLiga(); break;
     case 'leg-texto': openLegendaTexto(); break;
+    case 'leg-traduzir': S.legTrad = true; renderToolbar(); break;
+    case 'leg-trad-volta': S.legTrad = false; renderToolbar(); break;
+    case 'leg-trad-en': case 'leg-trad-es': case 'leg-trad-fr': case 'leg-trad-it': case 'leg-trad-de': pedeTraducao(LEG_IDIOMAS[id.slice(9)]); break;
     case 'leg-segue': legendaSegue(); break;
     case 'leg-posicao': soltaEscolha(); enterPosMode(); break;
     case 'leg-original': if (legendaMudou()) { remember(); S.legenda = JSON.parse(JSON.stringify(S.legendaOrig)); renderTimeline(); renderToolbar(); refreshHeader(); } break;
@@ -5232,6 +5248,18 @@ function mostraAgente() {
   refreshHeader();
 }
 
+// a legenda em outro idioma: quem traduz é o agente (helpers/legenda_traduzida.py), então vira um pedido
+const LEG_IDIOMAS = { en: 'English', es: 'Español', fr: 'Français', it: 'Italiano', de: 'Deutsch' };
+async function pedeTraducao(idioma) {
+  S.legTrad = false;
+  renderToolbar();
+  const id = `p${Date.now()}`;
+  S.notes.push({ id, start: S.t, end: S.t, text: `Traduza a legenda para ${idioma} (helpers/legenda_traduzida.py) e faça o vídeo de novo.`, geral: true });
+  const semVigia = !!S.state && S.state.vigia === false;
+  const aviso = semVigia ? t('Volte à conversa e mande qualquer mensagem: o Claude lê o seu Pronto.') : t('Pedido enviado. O agente responde na barra de cima.');
+  if (!(await salvar(aviso) && await pronto(true))) S.notes = S.notes.filter((n) => n.id !== id);
+}
+
 // ---------- pedido ao agente: a caixa "O que você quer mudar?" (computador) ----------
 /* Um pedido em texto livre, sem trecho marcado. Vai como uma marcação `geral` na posição da
  * agulha, junto com o que estiver por salvar, e o Pronto acorda o agente com ele. Sem vigia (o
@@ -6803,6 +6831,7 @@ function textoLiga(k) {
   if (hit.f.tipo === 'imagem') toast(liga ? t('No vídeo final a imagem passa atrás da pessoa (a prévia mostra por cima, transparente)')
     : hit.it.largura != null ? t('A imagem volta para a frente') : t('A imagem volta para o cartão de cima'), 3200);
   else if (k === 'atras') toast(liga ? t('No vídeo final o texto passa atrás da pessoa (a prévia mostra na frente)') : t('O texto volta para a frente'), 2800);
+  else if (k === 'letreiro') toast(liga ? t('O texto passa pela tela, como um letreiro') : t('O texto volta a ficar parado'), 2400);
   else toast(liga ? (S.rastreio ? t('O texto anda junto com a pessoa') : t('O texto anda junto com a pessoa no vídeo final (o agente rastreia o rosto)')) : t('O texto fica parado'), 2800);
   renderTimeline(); renderToolbar(); refreshHeader();
 }
@@ -6849,7 +6878,7 @@ function textoJaNoFinal(it) {
   const perto = (a, b) => Math.abs(+a - +b) < 0.0015;
   const ord = (o) => JSON.stringify(Object.keys(o || {}).sort().map((k) => [k, o[k]]));
   return t.texto === it.texto && perto(t.start, it.inicio) && perto(t.end, it.inicio + it.duracao) && perto(t.x, it.x) && perto(t.y, it.y)
-    && ord(t.estilo) === ord(it.estilo) && perto(t.curva || 0, it.curva || 0) && !!t.matte === !!it.atras && !!t.acompanhar === !!it.acompanhar;
+    && ord(t.estilo) === ord(it.estilo) && perto(t.curva || 0, it.curva || 0) && !!t.matte === !!it.atras && !!t.acompanhar === !!it.acompanhar && !!t.letreiro === !!it.letreiro;
 }
 const medidor = document.createElement('canvas').getContext('2d');
 S.fontesVersao = 0;
@@ -6878,12 +6907,22 @@ function desenhaTextos() {
       }
     }
   }
-  const sig = JSON.stringify([lista.map((x) => [x.it, x.sel, x.fantasma, x.d.map(Math.round), x.trav]), S.fontesVersao,
+  // o letreiro anda com o tempo: a assinatura muda a cada quadro enquanto ele está na tela
+  const sig = JSON.stringify([lista.map((x) => [x.it, x.sel, x.fantasma, x.d.map(Math.round), x.trav, x.it.letreiro ? Math.round(rt * 30) : 0]), S.fontesVersao,
     FRAME_W, FRAME_H]);
   if (sig === txSig) return;
   txSig = sig;
   box.innerHTML = '';
   for (const x of lista) desenhaTexto(box, x);
+}
+// o letreiro: cada linha repetida até cobrir o caminho que ela anda (letreiroLinhas em CamadasTexto.tsx)
+const LETREIRO_VEL = 220; // px do quadro por segundo
+function letreiroLinhas(texto, px, duracao) {
+  const ls = String(texto).split('\n').map((s) => s.trim()).filter(Boolean);
+  return ls.map((l) => {
+    const n = Math.max(5, Math.ceil((duracao * LETREIRO_VEL * 2 + FRAME_W * 2) / Math.max(1, (l.length + 1) * px * 0.45)) + 1);
+    return Array(n).fill(l).join('  ');
+  });
 }
 function desenhaTexto(box, { it, sel, fantasma, d, trav }) {
   const e = estiloTexto(it);
@@ -6892,6 +6931,21 @@ function desenhaTexto(box, { it, sel, fantasma, d, trav }) {
   const w = el('div', `ov-tx-w${fantasma ? ' fantasma' : ''}${trav ? ' trav' : ''}`, box);
   w.style.translate = `${cq(d[0])} ${cq(d[1])}`;
   const curva = Math.max(-100, Math.min(100, +it.curva || 0));
+  if (it.letreiro) { // a mesma conta do Letreiro em CamadasTexto.tsx; a caixa de pegar fica no texto do meio
+    const s = Math.max(0, draftToRendered(S.t) - it.inicio);
+    const f = letreiroLinhas(it.texto, px, it.duracao);
+    const caixa = el('div', `ov-tx ov-tx-letreiro${sel ? ' sel' : ''}`, w);
+    caixa.dataset.tx = it.id;
+    Object.assign(caixa.style, { left: pct(it.x / FRAME_W), top: pct(it.y / FRAME_H), fontFamily: `"${e.fonte}"`, fontWeight: e.peso, fontSize: cq(px), color: e.cor });
+    if (e.contorno > 0) { caixa.style.webkitTextStroke = `${cq(e.contorno)} ${e.corContorno}`; caixa.style.paintOrder = 'stroke fill'; }
+    f.forEach((ln, k) => {
+      const l = el('div', 'ov-tx-letreiro-l', caixa);
+      l.textContent = ln;
+      l.style.translate = `${cq(s * LETREIRO_VEL * (k % 2 ? 1 : -1))} 0`;
+    });
+    if (sel && !trav) el('span', 'ov-tx-tam', caixa).dataset.tam = it.id;
+    return;
+  }
   if (!curva) {
     const t = el('div', `ov-tx${sel ? ' sel' : ''}`, w);
     t.dataset.tx = it.id;
@@ -7257,6 +7311,22 @@ function openLegendaTexto() {
   if (!so) {
     paletaCores(campoTexto(box, t('Cor')), e.cor, S.style && S.style.accent, (cor) => legEstilo('cor', cor));
     campoContorno(box, e, (v) => legEstilo('contorno', v), (cor) => legEstilo('corContorno', cor));
+    const es = (S.legenda && S.legenda.estilo) || {};
+    const sec = campoTexto(box, t('Palavras em outra cor (separe por vírgula)'));
+    const inp = el('input', 'tx-palavras', sec);
+    inp.type = 'text';
+    inp.maxLength = 300;
+    inp.placeholder = t('sem custo, grátis, hoje');
+    inp.value = (es.destaques || []).join(', ');
+    inp.addEventListener('input', () => {
+      const lista = inp.value.split(',').map((s) => s.trim()).filter(Boolean);
+      legMuda((L) => {
+        const novo = { ...(L.estilo || {}) };
+        if (lista.length) novo.destaques = lista; else delete novo.destaques;
+        L.estilo = novo;
+      });
+    });
+    paletaCores(campoTexto(box, t('A cor dessas palavras')), es.corDestaque || (S.style && S.style.accent) || '', S.style && S.style.accent, (cor) => legEstilo('corDestaque', cor));
   }
   el('p', 'tx-dica', box).textContent = so
     ? t('Neste estilo as fontes e as cores fazem parte do desenho: aqui muda o tamanho. A altura de cada frase fica em "Posição".')
@@ -7283,12 +7353,21 @@ function desenhaLegendaPrevia(forca) {
   const rt = draftToRendered(S.t);
   const c = S.captions.find((x) => rt >= x.start - 0.05 && rt < x.end + 0.4) || S.captions.find((x) => x.start >= rt) || S.captions[S.captions.length - 1];
   const e = legendaEfetiva();
-  const sig = JSON.stringify([c.text, e, estiloDaLegenda()]);
+  const es = S.legenda.estilo || {};
+  const sig = JSON.stringify([c.text, e, estiloDaLegenda(), es.destaques, es.corDestaque]);
   if (!forca && sig === legSig) return;
   legSig = sig;
   box.innerHTML = '';
   const t = el('div', 'ov-leg-txt', box);
-  t.textContent = c.text;
+  // as palavras em outra cor: a mesma conta do legendaCor.ts do template
+  const marcadas = new Set((es.destaques || []).flatMap((x) => String(x).split(/\s+/)).map(gfNorma).filter(Boolean));
+  if (marcadas.size) {
+    String(c.text).split(/(\s+)/).forEach((w) => {
+      const s = el('span', '', t);
+      s.textContent = w;
+      if (marcadas.has(gfNorma(w))) s.style.color = es.corDestaque || (S.style && S.style.accent) || corDestaque();
+    });
+  } else t.textContent = c.text;
   const cq = (v) => `${((v / FRAME_W) * 100).toFixed(4)}cqw`;
   const y = S.style ? capCenter({ ...S.style, captions: estiloDaLegenda() }, 'abertura') : 0.76;
   Object.assign(t.style, { top: pct(y), fontFamily: `"${e.fonte}"`, fontWeight: e.peso, fontSize: cq(e.px * e.tamanho), color: e.cor });
@@ -9071,7 +9150,12 @@ function renderSfx() {
   el('p', 'sheet-hint', box).textContent = t('Sons feitos pelo próprio CutMind: podem ir até em anúncio. Entram na agulha, como camada de áudio.');
   const tocando = !PREV.paused && PREV.dataset.id;
   const virais = (S.sfx || []).filter((s) => s.viral);
-  for (const s of [...(S.sfx || []).filter((s) => !s.viral), ...virais]) {
+  const gravados = (S.sfx || []).filter((s) => s.gravado);
+  for (const s of [...(S.sfx || []).filter((s) => !s.viral && !s.gravado), ...gravados, ...virais]) {
+    if (s === gravados[0]) {
+      el('div', 'tr-guia-grupo', box).textContent = t('Gravados');
+      el('p', 'sheet-hint', box).textContent = t('Sons gravados, de domínio público: podem ir em anúncio. Descem na primeira vez que você ouve.');
+    }
     if (s === virais[0]) {
       el('div', 'tr-guia-grupo', box).textContent = t('Virais');
       el('p', 'sheet-hint', box).textContent = t('Sons de meme, marca e série que circulam em todo Reels. Descem na primeira vez que você ouve. Em anúncio pago, podem reprovar o anúncio.');
@@ -9087,11 +9171,65 @@ function renderSfx() {
     el('b', null, txt).textContent = nomeSfx(s);
     el('span', null, txt).textContent = [`${numLocal(Math.max(0.1, Math.round(s.duracao * 10) / 10))} s`, IDIOMA === 'pt' ? s.uso : ''].filter(Boolean).join(' · ');
     if (sfxSel === s.id) {
-      const usar = el('button', 'tb-btn primary tr-usar', row);
+      const acoes = el('div', 'tr-acoes', row);
+      const voz = el('button', 'tb-btn tr-usar', acoes);
+      voz.type = 'button';
+      voz.dataset.act = 'voz';
+      voz.textContent = t('Sobre a voz');
+      voz.title = t('Toca o som por cima da sua fala, na agulha, para ouvir como fica');
+      const tudo = el('button', 'tb-btn tr-usar', acoes);
+      tudo.type = 'button';
+      tudo.dataset.act = 'tudo';
+      tudo.textContent = sfxEhFoto(s) ? t('Em todas as fotos') : t('Em todos os textos');
+      const usar = el('button', 'tb-btn primary tr-usar', acoes);
       usar.type = 'button';
       usar.dataset.act = 'usar';
       usar.textContent = t('Usar');
+      requestAnimationFrame(() => row.scrollIntoView({ block: 'nearest' })); // os botões não ficam abaixo da dobra da folha
     }
+  }
+}
+const sfxEhFoto = (s) => /camera/.test(s.id);
+/* A prévia "no contexto": a fala da agulha tocando, com o som entrando no volume sugerido. Sozinho, um som engana:
+ * o que parece forte some embaixo da voz, e o contrário (edição real de 01/11). */
+let sfxVozTimers = [];
+function ouvirSobreVoz(id) {
+  const s = (S.sfx || []).find((x) => x.id === id);
+  if (!s) return;
+  for (const k of sfxVozTimers) clearTimeout(k);
+  PREV.pause();
+  sfxSel = id;
+  const volta = S.t;
+  const golpeEm = 0.5; // meio segundo de fala antes do som
+  PREV.src = `/gen/sfx?id=${encodeURIComponent(id)}`;
+  PREV.dataset.id = `sfx:${id}`;
+  PREV.muted = S.mudoUsuario;
+  PREV.volume = Math.min(1, s.volume ?? 0.5);
+  video.play().catch(() => {});
+  sfxVozTimers = [
+    setTimeout(() => { PREV.play().catch(() => toast(t('Não deu para baixar esse som agora'), 3200)); }, Math.max(0, (golpeEm - (s.golpe || 0)) * 1000)),
+    setTimeout(() => { video.pause(); S.t = volta; preciseSeek(); PREV.volume = 1; }, (golpeEm + 1.4) * 1000),
+  ];
+  renderSfx();
+}
+// o som em todas as entradas: o servidor mede cada uma contra a voz e refaz a faixa, que depois se edita como qualquer camada
+async function sfxEmTudo(id) {
+  const s = (S.sfx || []).find((x) => x.id === id);
+  if (!s) return;
+  if (dirtyCount() > 0 && !(await salvar(t('Salvo. Pondo os sons...')))) return;
+  const antes = snap();
+  try {
+    const r = await fetch('/api/sfx/entradas', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sfxEhFoto(s) ? { foto: id } : { texto: id }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || t('erro {status}', { status: r.status }));
+    await loadCamadas();
+    remember(antes);
+    closeSfx();
+    renderTimeline(); renderToolbar(); refreshHeader();
+    toast(d.sons ? t('{n} sons na faixa de áudio. Dá para mover, apagar e mudar o volume de cada um.', { n: d.sons }) : t('Não há texto grande nem foto neste vídeo.'), 3600);
+  } catch (e) {
+    toast(t('O efeito sonoro não entrou: {message}', { message: e.message }), 3600);
   }
 }
 function ouvirSfx(id) {
@@ -9127,6 +9265,8 @@ $('sfxLista').addEventListener('click', (e) => {
   if (!row) return;
   const btn = e.target.closest('[data-act]');
   if (btn && btn.dataset.act === 'usar') usarSfx(row.dataset.id);
+  else if (btn && btn.dataset.act === 'voz') ouvirSobreVoz(row.dataset.id);
+  else if (btn && btn.dataset.act === 'tudo') sfxEmTudo(row.dataset.id);
   else ouvirSfx(row.dataset.id);
 });
 ['play', 'pause'].forEach((ev) => PREV.addEventListener(ev, () => { if (sfxAberto()) renderSfx(); }));
@@ -10443,11 +10583,12 @@ $('cnCampos').addEventListener('input', (e) => {
 }));
 
 // ---------- gráficos animados: criar e mudar no editor, sem o agente ----------
-/* Os dez gráficos do modelo (src/graficos/; references/graficos.md). Um cartão por tipo, sobre o quadro da
+/* Os gráficos do modelo (src/graficos/; references/graficos.md). Um cartão por tipo, sobre o quadro da
  * agulha; os textos já vêm da fala do trecho (sem IA) e cada batida cai na palavra dita, quando a linha começa
  * por uma palavra da fala. O gráfico entra como um bloco da faixa de texto: anda e apara como os outros, e o
  * Salvar leva o item inteiro (graficos.py confere, editdata_aplicar.py grava). O Baixar desenha. */
-const GF_TIPOS = ['palavras', 'grande', 'botoes', 'lista', 'objecao', 'comenta', 'progresso', 'ajuste', 'selo', 'celular'];
+const GF_TIPOS = ['palavras', 'grande', 'pula', 'partes', 'danca', 'glitch', 'marca', 'contador', 'nome', 'chat', 'maquina', 'prompt', 'emoji',
+  'botoes', 'lista', 'objecao', 'comenta', 'progresso', 'ajuste', 'selo', 'celular'];
 // os instantes que andam com o bloco (INSTANTE no remapear.py: tests/test_graficos_do_editor.py confere os dois)
 const GF_INSTANTE = /^(at|ate|[a-z][A-Za-z]*At)$/;
 const GF_DICA = {
@@ -10461,14 +10602,38 @@ const GF_DICA = {
   ajuste: t('Um cursor arrastando a ponta de um clipe. Bom para falar de ajuste à mão.'),
   selo: t('O logo num selo escuro. Bom quando você diz o nome da marca.'),
   celular: t('Uma imagem dentro de um celular que desliza. Boa para mostrar um app ou uma tela.'),
+  pula: t('A frase entra palavra por palavra, pulando no ritmo da sua voz, com a palavra dita na cor de destaque.'),
+  partes: t('Um texto grande que entra por partes, cada uma na sua palavra, e sai todo junto. Bom para pergunta e resposta.'),
+  danca: t('As letras entram uma a uma e seguem dançando. Boa para um título.'),
+  glitch: t('O título se parte em fatias coloridas e treme. Bom para um erro, uma virada ou algo que quebrou.'),
+  marca: t('Um cartão branco com a frase, e o marca-texto passa no trecho mais importante.'),
+  contador: t('Um número subindo até o valor, como um contador. Bom para resultado, preço ou quantidade.'),
+  nome: t('Seu nome e o que você faz, entrando no canto. Bom para se apresentar.'),
+  chat: t('Uma conversa de mensagens, uma de cada vez, cada linha de um lado.'),
+  maquina: t('O texto digitado letra a letra numa folha branca, com som de tecla no vídeo final.'),
+  prompt: t('Uma caixa de IA digitando o pedido, com som de tecla no vídeo final. Boa para mostrar o que você pediu.'),
+  emoji: t('Emojis que aparecem com um pop, cada um na sua hora.'),
 };
 const GF_CAMPOS = {
   palavras: [{ k: 'linhas', rotulo: t('Palavras, uma por linha'), linhas: 6, max: 24, falta: t('Escreva pelo menos uma palavra.') }],
   grande: [{ k: 't', rotulo: t('Palavra ou número'), max: 16, falta: t('Escreva a palavra.') }, { k: 'sub', rotulo: t('Linha de cima (opcional)'), max: 28 },
-    { k: 'risco', rotulo: t('Riscar no fim'), check: true }],
+    { k: 'risco', rotulo: t('Riscar no fim'), check: true }, { k: 'troca', rotulo: t('Trocar por (opcional, risca e troca)'), max: 16 }],
   botoes: [{ k: 'linhas', rotulo: t('Botões, um por linha'), linhas: 5, max: 22, falta: t('Escreva pelo menos um botão.') }],
   lista: [{ k: 'titulo', rotulo: t('Título'), max: 28, falta: t('Escreva o título.') },
-    { k: 'linhas', rotulo: t('Itens, um por linha (até 6)'), linhas: 6, max: 24, falta: t('Escreva pelo menos um item.') }],
+    { k: 'linhas', rotulo: t('Itens, um por linha (até 6)'), linhas: 6, max: 24, falta: t('Escreva pelo menos um item.') },
+    { k: 'check', rotulo: t('Check verde em vez do X'), check: true }],
+  pula: [{ k: 'frase', rotulo: t('A frase (até 12 palavras)'), max: 90, falta: t('Escreva a frase.') }],
+  partes: [{ k: 'linhas', rotulo: t('As partes, uma por linha'), linhas: 4, max: 20, falta: t('Escreva pelo menos uma parte.') }],
+  danca: [{ k: 't', rotulo: t('O título'), max: 16, falta: t('Escreva o título.') }, { k: 'sub', rotulo: t('Linha de baixo (opcional)'), max: 28 }],
+  glitch: [{ k: 't', rotulo: t('O título'), max: 14, falta: t('Escreva o título.') }],
+  marca: [{ k: 'texto', rotulo: t('A frase inteira'), max: 120, falta: t('Escreva a frase.') }, { k: 'frase', rotulo: t('O trecho que o marca-texto passa'), max: 60 }],
+  contador: [{ k: 'valor', rotulo: t('Até que número sobe'), max: 12, falta: t('Escreva o número.') }, { k: 'prefixo', rotulo: t('Antes do número (opcional, como R$)'), max: 6 },
+    { k: 'sufixo', rotulo: t('Depois do número (opcional, como %)'), max: 6 }, { k: 'rotulo', rotulo: t('Embaixo (opcional)'), max: 24 }],
+  nome: [{ k: 'nome', rotulo: t('Nome'), max: 26, falta: t('Escreva o nome.') }, { k: 'cargo', rotulo: t('O que faz (opcional)'), max: 40 }],
+  chat: [{ k: 'linhas', rotulo: t('Mensagens, uma por linha'), linhas: 6, max: 60, falta: t('Escreva pelo menos uma mensagem.') }],
+  maquina: [{ k: 'texto', rotulo: t('O texto digitado'), max: 60, falta: t('Escreva o texto.') }],
+  prompt: [{ k: 'titulo', rotulo: t('Nome da IA'), max: 20 }, { k: 'texto', rotulo: t('O pedido digitado'), max: 120, falta: t('Escreva o pedido.') }],
+  emoji: [{ k: 'linhas', rotulo: t('Emojis, um por linha'), linhas: 6, max: 8, falta: t('Escreva pelo menos um emoji.') }],
   objecao: [{ k: 'usuario', rotulo: t('Quem comenta'), max: 24, falta: t('Escreva quem comenta.') }, { k: 'texto', rotulo: t('A dúvida'), max: 90, falta: t('Escreva a dúvida.') }],
   comenta: [{ k: 'texto', rotulo: t('Palavra que a pessoa comenta'), max: 18, falta: t('Escreva a palavra.') }, { k: 'dm', rotulo: t('Frase do direct (opcional)'), max: 28 }],
   progresso: [{ k: 'titulo', rotulo: t('Título'), max: 28, falta: t('Escreva o título.') }, { k: 'fim', rotulo: t('Palavra verde do fim'), max: 16, falta: t('Escreva a palavra do fim.') }],
@@ -10477,13 +10642,27 @@ const GF_CAMPOS = {
   celular: [{ k: 'src', rotulo: t('A tela'), imagem: true, falta: t('Escolha a imagem da tela.') }],
 };
 // quanto cada um dura ao nascer; depois a pessoa apara na faixa. Os de lista crescem com as linhas
-const GF_DUR = { palavras: 2.5, grande: 2, botoes: 2.5, lista: 3, objecao: 3, comenta: 4, progresso: 3, ajuste: 3, selo: 2.5, celular: 3.5 };
-const GF_POR_LINHA = { palavras: 0.9, botoes: 1.1, lista: 0.9 };
+const GF_DUR = { palavras: 2.5, grande: 2, botoes: 2.5, lista: 3, objecao: 3, comenta: 4, progresso: 3, ajuste: 3, selo: 2.5, celular: 3.5,
+  pula: 3, partes: 2.5, danca: 2.5, glitch: 2, marca: 3.5, contador: 2.5, nome: 3.5, chat: 3.5, maquina: 3, prompt: 4, emoji: 2 };
+const GF_POR_LINHA = { palavras: 0.9, botoes: 1.1, lista: 0.9, partes: 1, chat: 1.4, emoji: 0.7 };
+const GF_MAX_LINHAS = 6;
+const GF_MAX_PALAVRAS = 12; // _ITENS_MAX no graficos.py
 const GF = { aberto: false, alvo: -1, a: 0, b: 0, tipo: '', textos: {}, quadro: null, midia: [] };
 
 const gfLinhas = (v) => String(v || '').split('\n').map((s) => s.trim()).filter(Boolean);
+const gfPalavras = (v) => String(v || '').split(/\s+/).filter(Boolean).slice(0, GF_MAX_PALAVRAS);
 const gfNorma = (s) => String(s).normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+// o número digitado, com ponto de milhar ou vírgula decimal: {valor, casas}, ou null se não é número
+function gfNumero(s) {
+  const m = String(s || '').trim().match(/^\d{1,3}(?:\.\d{3})+(?:,\d+)?$|^\d+(?:[.,]\d+)?$/);
+  if (!m) return null;
+  const p = /^\d{1,3}(?:\.\d{3})+/.test(m[0]) ? m[0].replace(/\./g, '') : m[0];
+  const n = p.replace(',', '.');
+  return { valor: +n, casas: (n.split('.')[1] || '').length };
+}
 function gfDuracao(tipo, tx) {
+  if (tipo === 'pula') return Math.max(GF_DUR.pula, gfPalavras(tx.frase).length * 0.36 + 0.6);
+  if (tipo === 'maquina' || tipo === 'prompt') return Math.max(GF_DUR[tipo], String(tx.texto || '').length * (tipo === 'prompt' ? 0.03 : 0.05) + 1.4);
   const n = GF_POR_LINHA[tipo] ? gfLinhas(tx.linhas).length : 0;
   return Math.max(GF_DUR[tipo], n * (GF_POR_LINHA[tipo] || 0) + 0.6);
 }
@@ -10511,6 +10690,19 @@ function gfDaFala(tipo, a, b) {
   if (tipo === 'comenta') return { texto: forte.slice(0, 18) || t('QUERO'), dm: t('te mando no direct') };
   if (tipo === 'progresso') return { titulo: primeiras(ws, 3) || t('Carregando'), fim: t('Pronto!') };
   if (tipo === 'ajuste') return { titulo: t('linha do tempo') };
+  if (tipo === 'pula') return { frase: primeiras(ws, 9) || t('Sua frase aqui') };
+  if (tipo === 'partes') return { linhas: [primeiras(ws, 2), primeiras(ws.slice(2), 2)].filter(Boolean).join('\n').toUpperCase() || t('SUA FRASE') };
+  if (tipo === 'danca' || tipo === 'glitch') return { t: forte.slice(0, 14) || t('PALAVRA') };
+  if (tipo === 'marca') return { texto: primeiras(ws, 12) || t('A frase mais importante do que você está dizendo'), frase: primeiras(ws.slice(3), 4) };
+  if (tipo === 'contador') {
+    const n = numero.replace(/[^\d.,]/g, '');
+    return { valor: n || '100', sufixo: /%/.test(numero) ? '%' : '', prefixo: '', rotulo: '' };
+  }
+  if (tipo === 'nome') return { nome: t('Seu nome'), cargo: t('O que você faz') };
+  if (tipo === 'chat') return { linhas: [primeiras(ws, 5), primeiras(ws.slice(5), 5)].filter(Boolean).join('\n') || t('Oi, tudo bem?') };
+  if (tipo === 'maquina') return { texto: primeiras(ws, 6) || t('Seu texto aqui') };
+  if (tipo === 'prompt') return { titulo: 'Claude', texto: primeiras(ws, 12) || t('Seu pedido aqui') };
+  if (tipo === 'emoji') return { linhas: '🔥' };
   return {};
 }
 // o instante em que a 1ª palavra da linha é dita, de `desde` em diante
@@ -10571,13 +10763,14 @@ function gfItem(tipo, a, b, tx, velho) {
   const poe = (k, x) => { if (x !== '' && x != null) g[k] = x; else delete g[k]; };
   const dentro = (s) => +Math.min(b - 0.05, Math.max(a, s)).toFixed(3);
   if (GF_POR_LINHA[tipo]) {
-    const ls = gfLinhas(tx.linhas).slice(0, 6);
+    const ls = gfLinhas(tx.linhas).slice(0, GF_MAX_LINHAS);
     const ats = gfBatidas(ls, a, b, g.itens);
     g.itens = ls.map((l, k) => {
       const it = { ...((g.itens && g.itens[k]) || {}), t: l, at: ats[k] };
       if (it.ate != null && it.ate <= it.at) delete it.ate;
       return it;
     });
+    if (tipo === 'partes') gfTamanho(g, ls, 130);
     if (tipo === 'palavras') {
       gfTamanho(g, ls, 140);
       // o padrão do template é tinta escura, que some em imagem escura: o painel desenha branco com contorno, e sai igual
@@ -10588,13 +10781,50 @@ function gfItem(tipo, a, b, tx, velho) {
     }
   }
   if (tipo === 'grande') {
-    poe('t', v('t')); poe('sub', v('sub'));
-    gfTamanho(g, [v('t')], 170);
+    poe('t', v('t')); poe('sub', v('sub')); poe('troca', v('troca'));
+    gfTamanho(g, [v('t'), v('troca')], 170);
     g.at = dentro(g.at != null ? g.at : a);
-    if (tx.risco) g.riscoAt = dentro(g.riscoAt != null ? g.riscoAt : Math.max(a + 0.4, b - 0.7)); else delete g.riscoAt;
+    if (g.troca) { // risca no meio da janela e a palavra nova cai logo depois
+      g.riscoAt = dentro(g.riscoAt != null ? g.riscoAt : a + (b - a) * 0.4);
+      g.trocaAt = dentro(g.trocaAt != null && g.trocaAt > g.riscoAt ? g.trocaAt : g.riscoAt + 0.4);
+    } else {
+      delete g.trocaAt;
+      if (tx.risco) g.riscoAt = dentro(g.riscoAt != null ? g.riscoAt : Math.max(a + 0.4, b - 0.7)); else delete g.riscoAt;
+    }
   }
   if (tipo === 'objecao') { poe('usuario', v('usuario')); poe('texto', v('texto')); if (g.quando == null) g.quando = t('agora'); }
   if (tipo === 'lista' || tipo === 'ajuste') poe('titulo', v('titulo'));
+  if (tipo === 'lista') { if (tx.check) g.icone = 'check'; else delete g.icone; }
+  if (tipo === 'pula') {
+    const ls = gfPalavras(tx.frase);
+    const ats = gfBatidas(ls, a, b, g.itens);
+    g.itens = ls.map((l, k) => ({ t: l, at: ats[k] }));
+  }
+  if (tipo === 'danca' || tipo === 'glitch') {
+    poe('t', v('t'));
+    if (tipo === 'danca') poe('sub', v('sub'));
+    gfTamanho(g, [v('t')], tipo === 'danca' ? 150 : 170);
+    g.at = dentro(g.at != null ? g.at : a);
+  }
+  if (tipo === 'marca') {
+    poe('texto', v('texto')); poe('frase', v('frase'));
+    g.marcaAt = dentro(g.marcaAt != null ? g.marcaAt : a + 0.5);
+    g.marcaFimAt = dentro(g.marcaFimAt != null ? g.marcaFimAt : g.marcaAt + Math.max(0.5, (v('frase') || v('texto')).length * 0.035));
+  }
+  if (tipo === 'contador') {
+    const n = gfNumero(v('valor'));
+    if (n) { g.valor = n.valor; if (n.casas) g.casas = n.casas; else delete g.casas; }
+    poe('prefixo', v('prefixo')); poe('sufixo', v('sufixo')); poe('rotulo', v('rotulo'));
+    g.fimAt = dentro(g.fimAt != null ? g.fimAt : Math.max(a + 0.5, b - 0.8));
+    gfTamanho(g, [`${v('prefixo')}${v('valor')}${v('sufixo')}`], 190);
+  }
+  if (tipo === 'nome') { poe('nome', v('nome')); poe('cargo', v('cargo')); }
+  if (tipo === 'maquina' || tipo === 'prompt') {
+    poe('texto', v('texto'));
+    if (tipo === 'prompt') poe('titulo', v('titulo'));
+    g.digitaAt = dentro(g.digitaAt != null ? g.digitaAt : a + 0.25);
+    g.digitaFimAt = dentro(g.digitaFimAt != null ? g.digitaFimAt : g.digitaAt + 0.3 + v('texto').length * (tipo === 'prompt' ? 0.03 : 0.05));
+  }
   if (tipo === 'selo' || tipo === 'celular') poe('src', v('src'));
   if (tipo === 'progresso') {
     poe('titulo', v('titulo')); poe('fim', v('fim'));
@@ -10616,7 +10846,10 @@ function gfDoItem(g) {
   const tx = {};
   for (const f of GF_CAMPOS[g.tipo] || []) {
     if (f.k === 'linhas') tx.linhas = (g.itens || []).map((i) => i.t || '').join('\n');
+    else if (f.k === 'frase' && g.tipo === 'pula') tx.frase = (g.itens || []).map((i) => i.t || '').join(' ');
     else if (f.k === 'risco') tx.risco = g.riscoAt != null;
+    else if (f.k === 'check') tx.check = g.icone === 'check';
+    else if (f.k === 'valor') tx.valor = g.valor != null ? String(g.valor).replace('.', ',') : '';
     else tx[f.k] = g[f.k] != null ? String(g[f.k]) : '';
   }
   return tx;
@@ -10715,7 +10948,67 @@ function gfDesenho(b, tipo, tx) {
   if (tipo === 'lista') {
     const c = el('div', 'gf-cartao', b);
     txt('gf-tit', c, tx.titulo || '');
-    ls.slice(0, 3).forEach((s) => { const r = el('div', 'gf-li', c); el('i', 'gf-x', r); txt('', r, s); });
+    ls.slice(0, 3).forEach((s) => { const r = el('div', 'gf-li', c); el('i', tx.check ? 'gf-x ok' : 'gf-x', r); txt('', r, s); });
+  }
+  if (tipo === 'pula') {
+    const c = el('div', 'gf-pula', b);
+    const ws = gfPalavras(tx.frase).slice(0, 7);
+    ws.forEach((w, k) => { txt(k === 2 ? 'on' : '', c, w); });
+  }
+  if (tipo === 'partes') {
+    const c = el('div', 'gf-partes', b);
+    ls.slice(0, 3).forEach((s, k) => { txt(k % 2 ? 'on' : '', c, s); });
+  }
+  if (tipo === 'danca') {
+    const c = el('div', 'gf-danca', b);
+    const fonte = [...String(tx.t || '')].slice(0, 16);
+    c.style.fontSize = `${Math.min(13, 100 / Math.max(1, fonte.length))}cqw`;
+    fonte.forEach((l, k) => {
+      const s = txt(k % 3 === 1 ? 'on' : '', c, l === ' ' ? ' ' : l);
+      s.style.transform = `translateY(${(k % 2 ? 1 : -1) * 0.8}cqw) rotate(${(k % 2 ? 1 : -1) * 6}deg)`;
+    });
+    if (tx.sub) txt('gf-danca-sub', b, tx.sub);
+  }
+  if (tipo === 'glitch') {
+    const g = txt('gf-glitch', b, tx.t || '');
+    g.style.fontSize = `${Math.min(17, 130 / Math.max(1, (tx.t || '').length))}cqw`;
+  }
+  if (tipo === 'marca') {
+    const c = el('div', 'gf-papel', b);
+    const tudo = tx.texto || '';
+    const i = tx.frase ? tudo.toLowerCase().indexOf(String(tx.frase).toLowerCase()) : -1;
+    if (i < 0) txt('gf-marcado', c, tudo).style.display = 'inline';
+    else {
+      c.append(tudo.slice(0, i));
+      const m = el('span', 'gf-marcado', c);
+      m.textContent = tudo.slice(i, i + tx.frase.length);
+      c.append(tudo.slice(i + tx.frase.length));
+    }
+  }
+  if (tipo === 'contador') {
+    const c = el('div', 'gf-conta', b);
+    const n = txt('gf-conta-n', c, `${tx.prefixo || ''}${tx.valor || ''}${tx.sufixo || ''}`);
+    n.style.fontSize = `${Math.min(20, 130 / Math.max(1, n.textContent.length))}cqw`;
+    if (tx.rotulo) txt('gf-conta-r', c, tx.rotulo);
+  }
+  if (tipo === 'nome') {
+    const c = el('div', 'gf-nome', b);
+    txt('gf-nome-n', c, tx.nome || '');
+    if (tx.cargo) txt('gf-nome-c', c, tx.cargo);
+  }
+  if (tipo === 'chat') {
+    const c = el('div', 'gf-chat', b);
+    ls.slice(0, 3).forEach((s, k) => { txt(k % 2 ? 'eu' : '', c, s); });
+  }
+  if (tipo === 'maquina') txt('gf-folha', b, `${tx.texto || ''}▌`);
+  if (tipo === 'prompt') {
+    const c = el('div', 'gf-pedido', b);
+    txt('gf-pedido-t', c, tx.titulo || 'Claude');
+    txt('gf-pedido-x', c, tx.texto || '');
+  }
+  if (tipo === 'emoji') {
+    const c = el('div', 'gf-emoji', b);
+    ls.slice(0, 3).forEach((s) => { txt('', c, s); });
   }
   if (tipo === 'objecao') {
     const c = el('div', 'gf-balao', b);
@@ -10819,7 +11112,11 @@ function renderGfCampos() {
     inp.dataset.k = f.k;
   }
 }
-const gfFalta = () => (GF_CAMPOS[GF.tipo] || []).filter((f) => f.falta && !String(GF.textos[f.k] || '').trim()).map((f) => f.falta)[0] || null;
+const gfFalta = () => {
+  const f = (GF_CAMPOS[GF.tipo] || []).filter((c) => c.falta && !String(GF.textos[c.k] || '').trim()).map((c) => c.falta)[0];
+  if (f) return f;
+  return GF.tipo === 'contador' && !gfNumero(GF.textos.valor) ? t('O contador sobe até um número: escreva só o número, sem letras.') : null;
+};
 // outro gráfico ligado no mesmo trecho: não impede, mas os dois sairiam um por cima do outro
 function gfCruzando() {
   if (!GF.tipo) return false;

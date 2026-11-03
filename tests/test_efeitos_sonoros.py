@@ -104,7 +104,22 @@ def test_os_virais_tem_o_que_o_editor_precisa():
         assert x["id"].startswith("v-") and x["id"] not in ids_kit, x["id"]
         assert x["nome"] and x["nome_en"] and x["uso"] and x["viral"] is True
         assert 0.05 <= x["volume"] <= 1.0 and 0 <= x["golpe"] < 0.3 and x["duracao"] > x["golpe"], x["id"]
-    assert [x["id"] for x in es.todos()] == [x["id"] for x in es.catalogo()] + [x["id"] for x in vs]
+    assert [x["id"] for x in es.todos()] == [x["id"] for x in es.catalogo()] + [x["id"] for x in es.gravados()] + [x["id"] for x in vs]
+
+
+def test_os_gravados_sao_cc0_e_tem_o_golpe_marcado():
+    """Sons gravados que podem ir em anúncio e na biblioteca pública: só CC0, com a fonte de cada um."""
+    cat = pk.ler_catalogo(es.PASTA / es.GRAVADOS)
+    assert cat["pacotes"] and all(x["tipo"] == "som" for x in cat["pacotes"])
+    for x in json.loads((es.PASTA / es.GRAVADOS).read_text(encoding="utf-8"))["pacotes"]:
+        assert x["licenca"] == "CC0 1.0" and x["fonte"].startswith("https://freesound.org/"), x["id"]
+        assert x["id"].startswith("g-") and x["gravado"] is True and x["duracao"] > x["golpe"] >= 0
+    gs = es.gravados()
+    assert {"g-camera", "g-riser-metal", "g-whoosh-rapido"} <= {x["id"] for x in gs}
+    # riser: a subida é o som, o golpe fica perto do fim e é ali que ele cola na palavra
+    riser = next(x for x in gs if x["id"] == "g-riser-metal")
+    assert riser["golpe"] > riser["duracao"] * 0.8
+    assert not (set(x["id"] for x in gs) & set(x["id"] for x in es.virais()))
 
 
 def _virais_de_mentira(tmp_path: Path, conteudo: bytes) -> Path:

@@ -32,6 +32,17 @@ def um_de_cada(a=10.0, b=14.0):
         {"tipo": "ajuste", "start": a, "end": b, "titulo": "linha do tempo"},
         {"tipo": "selo", "start": a, "end": b, "src": "midia/logo.png"},
         {"tipo": "celular", "start": a, "end": b, "src": "midia/tela.png"},
+        {"tipo": "pula", "start": a, "end": b, "itens": [{"t": "pula", "at": a + 0.1}, {"t": "aqui", "at": a + 0.5}]},
+        {"tipo": "partes", "start": a, "end": b, "tamanho": 110, "itens": [{"t": "IMPOSSÍVEL?", "at": a + 0.1}, {"t": "NÃO É.", "at": a + 1.0}]},
+        {"tipo": "danca", "start": a, "end": b, "t": "TIPOGRAFIA", "sub": "animada", "at": a},
+        {"tipo": "glitch", "start": a, "end": b, "t": "GLITCH", "at": a},
+        {"tipo": "marca", "start": a, "end": b, "texto": "A frase mais importante", "frase": "mais importante", "marcaAt": a + 0.5, "marcaFimAt": a + 1.2},
+        {"tipo": "contador", "start": a, "end": b, "valor": 1500.5, "casas": 1, "prefixo": "R$", "sufixo": "%", "rotulo": "AO MÊS", "fimAt": b - 0.8},
+        {"tipo": "nome", "start": a, "end": b, "nome": "Quem Fala", "cargo": "Criador"},
+        {"tipo": "chat", "start": a, "end": b, "itens": [{"t": "oi", "at": a + 0.1}, {"t": "oi!", "at": a + 1.0}]},
+        {"tipo": "maquina", "start": a, "end": b, "texto": "digitando", "digitaAt": a + 0.2, "digitaFimAt": a + 1.0},
+        {"tipo": "prompt", "start": a, "end": b, "titulo": "Claude", "texto": "faz isso", "digitaAt": a + 0.2, "digitaFimAt": a + 1.0},
+        {"tipo": "emoji", "start": a, "end": b, "itens": [{"t": "🔥", "at": a + 0.2}]},
     ]
 
 
@@ -54,8 +65,16 @@ def test_o_ajuste_da_letra_parte_do_tamanho_do_template():
     src = (Path(__file__).resolve().parents[1] / "assets" / "shortform" / "src" / "graficos" / "index.tsx").read_text(encoding="utf-8")
     grande = re.search(r"const Grande: .*?const tam = g\.tamanho \?\? (\d+);", src, re.S)
     palavras = re.search(r"const Palavras: .*?const tam = g\.tamanho \?\? (\d+);", src, re.S)
-    assert grande and f"gfTamanho(g, [v('t')], {grande.group(1)})" in JS
+    assert grande and f"gfTamanho(g, [v('t'), v('troca')], {grande.group(1)})" in JS
     assert palavras and f"gfTamanho(g, ls, {palavras.group(1)})" in JS
+    texto = (Path(__file__).resolve().parents[1] / "assets" / "shortform" / "src" / "graficos" / "texto.tsx").read_text(encoding="utf-8")
+    danca = re.search(r"const Danca: .*?const tam = g\.tamanho \?\? (\d+);", texto, re.S)
+    glitch = re.search(r"const Glitch: .*?const tam = g\.tamanho \?\? (\d+);", texto, re.S)
+    partes = re.search(r"const Partes: .*?const tam = g\.tamanho \?\? (\d+);", texto, re.S)
+    contador = re.search(r"const Contador: .*?const tam = g\.tamanho \?\? (\d+);", texto, re.S)
+    assert danca and glitch and f"tipo === 'danca' ? {danca.group(1)} : {glitch.group(1)}" in JS
+    assert partes and f"gfTamanho(g, ls, {partes.group(1)})" in JS
+    assert contador and f"`], {contador.group(1)})" in JS
 
 
 def test_os_instantes_do_editor_sao_os_mesmos_do_recorte():

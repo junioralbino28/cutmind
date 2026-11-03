@@ -12,7 +12,9 @@
  *   - `matte` puts it BEHIND the person: the person's cut-out (person_matte.py, ProRes 4444,
  *     frame 0 = the text's start) is drawn back over it with the camera of the base picture;
  *   - `acompanhar` makes it FOLLOW the person: it moves as much as the face tracked in
- *     public/rastreio.json (face_track.py) moved on screen since the text came in.
+ *     public/rastreio.json (face_track.py) moved on screen since the text came in;
+ *   - `letreiro` repeats it across the frame and keeps it running, one line to each side, on the
+ *     height of `y` (with `matte`, it runs behind the person).
  * The editor's preview draws the texts with these same numbers (assets/preview/celular.js).
  * A later text draws over an earlier one, like the layers in the editor.
  */
@@ -36,6 +38,7 @@ export type Texto = {
   curva?: number;
   matte?: string;
   acompanhar?: boolean;
+  letreiro?: boolean;
 };
 
 const TEXTOS: Texto[] = (editData as unknown as {textos?: Texto[]}).textos ?? [];
@@ -85,6 +88,19 @@ export const rostoNaTela = (g: number, width: number, height: number, fps: numbe
 const traco = (px: number, cor: string): React.CSSProperties =>
   px > 0 ? {WebkitTextStroke: `${px}px ${cor}`, paintOrder: 'stroke fill'} : {};
 
+// `letreiro`: each line repeated until it covers the way it runs, one line to each side. The
+// editor's preview does the same (celular.js, letreiroLinhas): no measuring, so no wait for the font
+const LETREIRO_VEL = 220; // frame px per second
+const letreiroLinhas = (texto: string, px: number, duracao: number) =>
+  texto
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((l) => {
+      const n = Math.max(5, Math.ceil((duracao * LETREIRO_VEL * 2 + 1080 * 2) / Math.max(1, (l.length + 1) * px * 0.45)) + 1);
+      return Array(n).fill(l).join('  ');
+    });
+
 const TextoEl: React.FC<{t: Texto; from: number; prontas: boolean}> = ({t, from, prontas}) => {
   const f = useCurrentFrame();
   const {width, height, fps} = useVideoConfig();
@@ -107,6 +123,20 @@ const TextoEl: React.FC<{t: Texto; from: number; prontas: boolean}> = ({t, from,
   }
   const casca: React.CSSProperties = {translate: `${dx}px ${dy}px`, filter: 'drop-shadow(0 4px 14px rgba(0,0,0,0.45))'};
   const curva = curvaDe(t);
+
+  if (t.letreiro) {
+    return (
+      <AbsoluteFill style={casca}>
+        <div style={{position: 'absolute', left: 0, right: 0, top: t.y, translate: '0 -50%', display: 'flex', flexDirection: 'column', alignItems: 'center', fontFamily: fam, fontWeight: peso, fontSize: size, lineHeight: TEXTO_LH, color: cor, whiteSpace: 'pre', ...traco(contorno, corContorno)}}>
+          {letreiroLinhas(t.texto, size, t.end - t.start).map((ln, i) => (
+            <div key={i} style={{translate: `${(f / fps) * LETREIRO_VEL * (i % 2 ? 1 : -1)}px 0px`}}>
+              {ln}
+            </div>
+          ))}
+        </div>
+      </AbsoluteFill>
+    );
+  }
 
   if (curva !== 0) {
     if (!prontas) return null;

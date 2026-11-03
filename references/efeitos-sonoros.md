@@ -1,11 +1,34 @@
-# Sound effects — the kit's own and the viral ones
+# Sound effects — the kit's own, the recorded ones and the viral ones
 
-Two groups, side by side in the editor (Áudio → Efeitos sonoros) and in `listar`:
+Three groups, side by side in the editor (Áudio → Efeitos sonoros) and in `listar`:
 
 - ten sound effects the kit **synthesizes itself** (`helpers/efeitos_sonoros.py`, files in
   `assets/sfx/`): no recording, no one's license, safe in a paid ad. They play the roles of the
   sounds that show up most in Reels;
+- fifteen **recorded** ones (`g-`, list in `assets/sfx/gravados.json`, audio in a Release), public
+  domain (CC0, the source of each is on the list): the risers, the camera, whooshes and hits. Safe in
+  a paid ad. A user who compared them by ear preferred a recorded whoosh over the synthesized one;
 - eleven **viral** ones (meme, brand, series), further down: what everybody uses, not for a paid ad.
+
+## Sound on every big text and photo
+
+`uv run python -X utf8 helpers/sons_entrada.py <edit> [--texto <id>] [--foto <id>]` builds an audio
+track (`sons-entrada` in `camadas.json`) with one sound per entry: big text layers, images and graphics
+(not the ones that type: they bring key sounds). Each sound is measured against the speech around its
+entry, its peak 4 dB under the voice's peak in a 0.5 s window, because a fixed volume vanished under
+some sentences (3 to 16 dB under the voice at 55-60%). The default is `v-whoosh` for text, the one a
+user chose by ear, and `g-camera` for photos; for a paid ad, pass `--texto g-whoosh-rapido`. Running it
+again rebuilds that track; `--remover` takes it out. Each sound stays editable in the editor.
+
+In the editor: Áudio → Efeitos sonoros → a sound → **Sobre a voz** (hear it over the speech at the
+needle) → **Em todos os textos** / **Em todas as fotos**. The Estilo panel has the same as an element
+(`elements.somEntrada`).
+
+## Risers
+
+`g-riser-*` and `g-transicao` build up to a hit marked in `golpe`, near the end of the file: start the
+layer at *t* − `golpe` and the hit lands on the word at *t* (the editor's **Usar** does it from the
+needle). Use one, on the sentence that matters: a riser under every line wears out fast.
 
 | `id` | Name | Use it for | Golpe | Suggested volume |
 |---|---|---|---|---|

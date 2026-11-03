@@ -40,10 +40,54 @@ EXEMPLOS = {
 }
 
 
+# os de texto em movimento (src/graficos/texto.tsx), o vídeo 2 das referências de efeitos
+EXEMPLOS_TEXTO = {
+    "pula": {"tipo": "pula", "start": 20.0, "end": 22.0, "itens": [{"t": "texto", "at": 20.1}, {"t": "que", "at": 20.5}, {"t": "pula", "at": 20.8}]},
+    "partes": {"tipo": "partes", "start": 22.0, "end": 24.0, "itens": [{"t": "IMPOSSÍVEL?", "at": 22.1}, {"t": "NÃO É.", "at": 23.0}]},
+    "danca": {"tipo": "danca", "start": 24.0, "end": 26.0, "t": "TIPOGRAFIA", "sub": "animada"},
+    "glitch": {"tipo": "glitch", "start": 26.0, "end": 27.5, "t": "GLITCH", "at": 26.1},
+    "marca": {"tipo": "marca", "start": 27.5, "end": 30.0, "texto": "Marca-texto na frase mais importante", "frase": "frase mais importante", "marcaAt": 28.0, "marcaFimAt": 28.8},
+    "contador": {"tipo": "contador", "start": 30.0, "end": 32.0, "valor": 1500, "prefixo": "R$ ", "rotulo": "POR MÊS", "fimAt": 31.2},
+    "nome": {"tipo": "nome", "start": 32.0, "end": 35.0, "nome": "Quem Fala", "cargo": "Criador de conteúdo"},
+    "chat": {"tipo": "chat", "start": 35.0, "end": 38.0, "itens": [{"t": "edita meu vídeo?", "at": 35.5}, {"t": "claro", "at": 36.5, "lado": "eu"}]},
+    "maquina": {"tipo": "maquina", "start": 38.0, "end": 40.0, "texto": "máquina de escrever", "digitaAt": 38.2, "digitaFimAt": 39.2},
+    "prompt": {"tipo": "prompt", "start": 40.0, "end": 43.0, "titulo": "Claude", "texto": "coloca legenda animada", "digitaAt": 40.3, "digitaFimAt": 41.3},
+    "emoji": {"tipo": "emoji", "start": 43.0, "end": 45.0, "itens": [{"t": "🔥", "at": 43.1}, {"t": "🚀", "at": 44.0, "ate": 44.6, "x": 300, "y": 500}]},
+}
+
+
 def test_o_template_e_o_helper_conhecem_os_mesmos_tipos():
     tsx = TSX.read_text(encoding="utf-8")
     bloco = re.search(r"export const TIPOS[^=]*= \{([^}]*)\}", tsx).group(1)
-    assert set(re.findall(r"(\w+):", bloco)) == set(graficos.TIPOS) == set(EXEMPLOS)
+    assert set(re.findall(r"(\w+):", bloco)) == set(graficos.TIPOS) == set(EXEMPLOS) | set(EXEMPLOS_TEXTO)
+
+
+def test_os_de_texto_passam_e_o_re_corte_leva_os_instantes_deles():
+    for g in EXEMPLOS_TEXTO.values():
+        assert graficos.validar(g) == [], g
+    ed = {"graficos": [json.loads(json.dumps(g)) for g in EXEMPLOS_TEXTO.values()]}
+    novo, fora = remapear.fase2(ed, _levar_somando(1.0), 90.0, [0], 1)
+    assert fora == []
+    por_tipo = {g["tipo"]: g for g in novo["graficos"]}
+    assert (por_tipo["marca"]["marcaAt"], por_tipo["marca"]["marcaFimAt"]) == (29.0, 29.8)
+    assert por_tipo["contador"]["fimAt"] == 32.2 and por_tipo["contador"]["valor"] == 1500  # valor não é tempo
+    assert [i["at"] for i in por_tipo["pula"]["itens"]] == [21.1, 21.5, 21.8]
+    assert por_tipo["emoji"]["itens"][1]["ate"] == 45.6 and por_tipo["emoji"]["itens"][1]["x"] == 300
+    assert (por_tipo["maquina"]["digitaAt"], por_tipo["maquina"]["digitaFimAt"]) == (39.2, 40.2)
+    g = {"tipo": "grande", "start": 1.0, "end": 3.0, "t": "A", "riscoAt": 1.5, "troca": "B", "trocaAt": 2.0}
+    assert graficos.validar(g) == []
+    assert remapear.fase2({"graficos": [g]}, _levar_somando(1.0), 90.0, [0], 1)[0]["graficos"][0]["trocaAt"] == 3.0
+
+
+@pytest.mark.parametrize("mexe, frase", [
+    ({"tipo": "contador", "start": 1, "end": 2, "valor": "muito", "fimAt": 1.5}, "valor"),
+    ({"tipo": "grande", "start": 1, "end": 2, "t": "A", "troca": "B"}, "trocaAt"),
+    ({"tipo": "lista", "start": 1, "end": 2, "titulo": "T", "icone": "foguete", "itens": [{"t": "x", "at": 1.1}]}, "icone"),
+    ({"tipo": "chat", "start": 1, "end": 2, "itens": [{"t": "x", "at": 1.1, "lado": "meio"}]}, "lado"),
+    ({"tipo": "marca", "start": 1, "end": 2, "texto": "x", "marcaAt": 1.1, "marcaFimAt": 9.0}, "marcaFimAt"),
+])
+def test_os_erros_dos_de_texto_dizem_o_campo(mexe, frase):
+    assert any(frase in e for e in graficos.validar(mexe))
 
 
 def test_o_template_monta_os_graficos_entre_os_efeitos_e_os_textos():
@@ -54,7 +98,7 @@ def test_o_template_monta_os_graficos_entre_os_efeitos_e_os_textos():
 
 
 def test_cores_vem_do_estilo_e_lugares_da_zona_segura():
-    tsx = TSX.read_text(encoding="utf-8") + (SRC / "graficos" / "comum.tsx").read_text(encoding="utf-8")
+    tsx = TSX.read_text(encoding="utf-8") + (SRC / "graficos" / "comum.tsx").read_text(encoding="utf-8") + (SRC / "graficos" / "texto.tsx").read_text(encoding="utf-8")
     assert "LARANJA" not in tsx and "#F87000" not in tsx.upper()  # a cor é a do Estilo (hook.accent)
     assert "hook?.accent" in tsx
     padroes = re.findall(r"g\.y \?\? ([^,;)}]+)", tsx)

@@ -220,6 +220,8 @@ def _item_texto(it: dict, iid: str) -> dict:
            "curva": _num(it.get("curva", 0), "curva", -100, 100)}
     if it.get("ocultaLegenda") is not None:  # sem ele, vale o padrão pelo tamanho (oculta_legenda)
         out["ocultaLegenda"] = bool(it["ocultaLegenda"])
+    if it.get("letreiro"):  # o texto se repete e passa pela tela (CamadasTexto.tsx)
+        out["letreiro"] = True
     nome = it.get("nome")
     if nome is not None:  # o texto de um modelo de montagem ("Título"): o painel mostra
         if not isinstance(nome, str) or not nome.strip() or len(nome) > MAX_NOME or any(ord(ch) < 32 for ch in nome):

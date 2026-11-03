@@ -130,6 +130,12 @@
         icon: '<svg viewBox="0 0 16 16"><rect x="1.2" y="3.4" width="6" height="9.2" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="9.6" y="1.9" width="5.2" height="12.2" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8.4 8h.7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
       },
       {
+        id: 'somEntrada',
+        name: t('Som nos textos e nas fotos'),
+        def: false,
+        icon: '<svg viewBox="0 0 16 16"><path d="M2.5 6v4h2.4l3.3 2.6V3.4L4.9 6z" fill="currentColor"/><path d="M10.4 5.6a3.2 3.2 0 010 4.8M12.3 3.8a5.8 5.8 0 010 8.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+      },
+      {
         id: 'flashCut',
         name: t('Flash na transição'),
         def: false,

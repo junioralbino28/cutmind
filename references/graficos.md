@@ -1,7 +1,7 @@
 # Animated graphics as data (`graficos[]`)
 
-Ten motion graphics the template draws on top of the video, without redrawing the take (that is
-`cenas[]`). They came from a finished Reels and are data, not code: one item per graphic in
+Motion graphics the template draws on top of the video, without redrawing the take (that is
+`cenas[]`). They are data, not code: one item per graphic in
 `edit-data.json` `graficos[]`, drawn by `assets/shortform/src/graficos/`. **Never** write a graphic
 of these kinds in `CustomGraphics.tsx`: a graphic in code is invisible to the editor's timeline and
 does not survive a re-cut.
@@ -18,6 +18,17 @@ does not survive a re-cut.
 | `progresso` | Progresso | a bar fills and closes with a green word at `fimAt` | talks about learning, loading, getting done |
 | `comenta` | Comenta | an Instagram-style comment box types the keyword, an arrow points down, a direct pill pops | is the CTA "comment X and I send you…" |
 | `celular` | Celular | a screenshot (image from `public/`) inside a drawn phone sliding in | shows an app or a screen |
+| `pula` | Texto que pula | the sentence word by word, each word jumping in when spoken, the one being said in the accent | the sentence itself is the point and the rhythm carries it |
+| `partes` | Texto por partes | big lines entering one at a time, each on its word, leaving together | asks and answers ("IMPOSSÍVEL?" … "NÃO É.") |
+| `danca` | Letras dançando | a title whose letters enter one by one and keep dancing | names the topic with energy |
+| `glitch` | Glitch | a title breaking into shifted coloured slices, in bursts | says something broke, failed or changed abruptly |
+| `marca` | Marca-texto | a white card with the sentence; a highlighter runs over the part that matters | states the one sentence to remember |
+| `contador` | Contador | a number climbing to its value at `fimAt`, label under it | says a result, a price, an amount |
+| `nome` | Nome e cargo | name and role coming in at the lower corner | the person introduces themselves or quotes someone |
+| `chat` | Conversa | message bubbles, one at a time, the other side typing first | tells a conversation |
+| `maquina` | Máquina de escrever | mono letters typed on a white sheet, with key sounds | a sentence to read slowly, a title |
+| `prompt` | Prompt | a dark AI prompt box typing the request, with key sounds; the send button lights up | says what was asked of an AI |
+| `emoji` | Emoji | emoji popping in, each on its word | a reaction, a light moment |
 
 ## The rules
 
@@ -36,7 +47,12 @@ does not survive a re-cut.
   ≥ 300 for anything whose top is above its `y`, and a `seta` tip left of x 900.
 - **Sound** is not in the template: put an SFX on each beat in the final mix
   (`mixar_final.py --sfx arquivo@segundo:volume`), e.g. a pop on each `palavras` item, a click on
-  each button, a whoosh on `objecao`, a typing sound during `comenta`.
+  each button, a whoosh on `objecao`, a typing sound during `comenta`. **`maquina` and `prompt` bring
+  their key sounds by themselves**: the final mix plays `digitacao` from `digitaAt` to `digitaFimAt`,
+  and it moves with the graphic. `som: false` on the item turns it off.
+- **Texts that do not wrap** (`grande`, `palavras`, `danca`, `glitch`, `partes`, `contador`) must fit
+  880 px: with Poppins 900 a word takes about 0.7 × `tamanho` per letter. The editor's panel reduces
+  `tamanho` by itself; in the chat, you do.
 - One graphic at a time on screen; leave the face clear (they all sit in the upper zone).
 - **Check before rendering**: `uv run python -X utf8 helpers/graficos.py <edit>` lists every missing
   field, beat outside its window, unknown icon and image missing from `public/`, and says when the
@@ -54,10 +70,12 @@ does not survive a re-cut.
 - **`botoes`**: `itens: [{t, icone?, at, ate?}]`. Icons: `rec`, `ia`, `corte`, `cenario`, `trilha`,
   `cc`, `check`, `play`, `mic`, `texto`, `raio`, `estrela`.
 - **`grande`**: `t`, `at?` (when it slams; default `start`), `riscoAt?`, `sub?`, `tamanho?` (170),
-  `cor?` (white), `contorno?` (`#111`).
+  `cor?` (white), `contorno?` (`#111`). `troca?` + `trocaAt?`: the word struck at `riscoAt` is swapped
+  for `troca` at `trocaAt`, landing in the accent ("word crossed out and replaced").
 - **`objecao`**: `usuario` (e.g. `@quem_assiste`), `texto`, `quando?` ("agora"), `cinza?` (true:
   the picture goes black and white).
-- **`lista`**: `titulo`, `itens: [{t, at}]` (up to 6; short items, ~22 characters).
+- **`lista`**: `titulo`, `itens: [{t, at}]` (up to 6; short items, ~22 characters), `icone?` (`x`, the
+  default red X, or `check`, a green check, for what is right).
 - **`selo`**: `src` (a logo in `public/`, white on transparent reads best), `fundo?` (`#101010`).
 - **`ajuste`**: `titulo?` ("linha do tempo"), `src?` (a strip image for the clips; without it, accent
   gradients). The drag happens on its own in the first second.
@@ -67,6 +85,25 @@ does not survive a re-cut.
   the comments), `placeholder?`, `publicar?` (the UI words, Portuguese by default: translate them for
   a video in another language).
 - **`celular`**: `src` (a screenshot in `public/`), `x?` (550), `w?` (300), `rot?` (7).
+- **`pula`**: `itens: [{t, at}]`, ONE WORD per item (up to 12), each `at` on the word as spoken;
+  `tamanho?` (92). The lines wrap by themselves.
+- **`partes`**: `itens: [{t, at, cor?}]` (one line per item); `tamanho?` (130). Odd lines default to
+  the accent. All leave at `end`.
+- **`danca`**: `t`, `sub?` (a line under it), `at?`, `tamanho?` (150).
+- **`glitch`**: `t`, `at?`, `tamanho?` (170).
+- **`marca`**: `texto`, `frase?` (a part of `texto`; without it, the whole text is highlighted),
+  `marcaAt`, `marcaFimAt` (the highlighter's run), `cor?` (accent at 50%).
+- **`contador`**: `valor` (a number), `fimAt` (when it arrives), `inicio?` (0), `casas?` (0), `prefixo?`
+  (`R$ `), `sufixo?` (`%`), `rotulo?` (a line under it), `tamanho?` (190), `local?` (`pt-BR`, the
+  number format).
+- **`nome`**: `nome`, `cargo?`. Its default place is low (y 1140), left of the button column.
+- **`chat`**: `itens: [{t, at, lado?}]` (up to 6; the last 4 stay on screen). `lado`: `outro` (left,
+  dark) or `eu` (right, accent); without it, they alternate starting from `outro`.
+- **`maquina`**: `texto`, `digitaAt`, `digitaFimAt` (~0.05 s per letter), `som?`.
+- **`prompt`**: `texto`, `titulo?` (`Claude`: the name of the AI on the card), `digitaAt`,
+  `digitaFimAt` (~0.03 s per letter), `som?`.
+- **`emoji`**: `itens: [{t, at, ate?, x?, y?}]`, `tamanho?` (190). Each stays until its `ate` or `end`;
+  without `x`/`y`, they take places around the top of the frame.
 
 ## Example (the CTA and an objection)
 

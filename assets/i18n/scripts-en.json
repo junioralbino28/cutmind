@@ -349,5 +349,7 @@
  "o projeto ainda não tem o vídeo final da Fase 2": "this project doesn't have the Phase 2 final video yet",
  "gráficos do vídeo final: {e}": "final video graphics: {e}",
  "o Remotion compartilhado não carrega neste projeto ({motivo}): apague a pasta {alvo} e tente outra vez": "the shared Remotion doesn't load in this project ({motivo}): delete the folder {alvo} and try again",
- "o projeto do vídeo final é de um kit anterior e não desenha os gráficos: aperte Pronto para o Claude atualizar": "the final video's project is from an older kit and doesn't draw the graphics: press Done so Claude can update it"
+ "o projeto do vídeo final é de um kit anterior e não desenha os gráficos: aperte Pronto para o Claude atualizar": "the final video's project is from an older kit and doesn't draw the graphics: press Done so Claude can update it",
+ "não deu para ler o áudio de {name}": "couldn't read the audio of {name}",
+ "o som `{sid}` não existe; os que existem: {p1}": "the sound `{sid}` doesn't exist; the ones that exist: {p1}"
 }

@@ -115,6 +115,29 @@ def _ocultas(cap: dict) -> list[tuple[float, float]]:
     return [(a, b) for a, b in out]
 
 
+# o som de tecla dos gráficos que digitam: o `digitacao` do kit, repetido do `digitaAt` ao `digitaFimAt`
+SOM_TECLAS = Path(__file__).resolve().parents[1] / "assets" / "sfx" / "digitacao.mp3"
+TECLAS_LOOP = 1.75  # os toques do arquivo acabam aqui
+TECLAS_VOLUME = 1.0  # o do catálogo
+GRAFICOS_QUE_DIGITAM = ("maquina", "prompt")
+
+
+def teclas_dos_graficos(ed: dict, vd: float) -> list[tuple[float, float]]:
+    """(início, duração) do som de tecla de cada gráfico que digita, no relógio do corte. Mora aqui, não numa camada:
+    anda sozinho com o gráfico quando a pessoa o move. `som: false` no item desliga."""
+    out = []
+    for g in ed.get("graficos") or []:
+        if not isinstance(g, dict) or g.get("tipo") not in GRAFICOS_QUE_DIGITAM or g.get("desligada") or g.get("som") is False:
+            continue
+        try:
+            a, b = float(g["digitaAt"]), min(float(g["digitaFimAt"]), vd)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if b - a > 0.05:
+            out.append((a, b - a))
+    return out
+
+
 def cliques_da_legenda(ed: dict, public: Path, fps: float, vd: float) -> list[tuple[Path, float, float]]:
     """Os sons da legenda Empilhado, no tempo em que StackedCaptions.tsx os toca: um clique em cada palavra
     sozinha e um risco, 2 quadros depois, na circulada. Eles moram no áudio do Remotion, que a base do corte
@@ -222,6 +245,16 @@ def montar(edit: Path, render: Path, saida: Path, vd: float, base: str = "cut",
         cliques = cliques_da_legenda(ed, public, fps, vd)
         sfx = [*sfx, *cliques]
         resumo["cliques"] = len(cliques)
+    if not corte:
+        resumo["teclas"] = 0
+        for n, (a, d) in enumerate(teclas_dos_graficos(ed, vd)):
+            k = entrada(SOM_TECLAS)
+            partes.append(f"[{k}:a]aresample=48000,atrim=end={_n(TECLAS_LOOP)},asetpts=PTS-STARTPTS,"
+                          f"aloop=loop=-1:size={round(TECLAS_LOOP * 48000)},atrim=duration={_n(d)},"
+                          f"volume={_n(TECLAS_VOLUME)},afade=t=out:st={_n(max(0.0, d - 0.05))}:d=0.05,"
+                          f"adelay={round(a * 1000) + lag}:all=1,{FMT}[k{n}]")
+            soma.append(f"[k{n}]")
+            resumo["teclas"] += 1
     for n, (arq, t, vol) in enumerate(sfx):
         k = entrada(arq)
         partes.append(f"[{k}:a]volume={_n(vol)},adelay={round(t * 1000)}:all=1,{FMT}[s{n}]")

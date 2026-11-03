@@ -9,14 +9,14 @@
  * the final mix (mixar_final.py --sfx), not here.
  */
 import React from 'react';
-import {AbsoluteFill, Easing, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
+import {AbsoluteFill, Easing, Img, interpolate, spring, staticFile, useVideoConfig} from 'remotion';
 import editData from '../../public/edit-data.json';
 import {ZONA_SEGURA} from '../zonaSegura';
-import {ACCENT, CL, Cursor, Faisca, Icone, POPPINS, Selecao, TINTA, VERDE, VERMELHO, comAlfa, entra, quadro, sai, tremor} from './comum';
+import {ACCENT, Base, CL, Cursor, Faisca, Icone, POPPINS, Selecao, TINTA, VERDE, VERMELHO, comAlfa, entra, quadro, sai, tremor, useJanela} from './comum';
+import {Chat, Contador, Danca, Emoji, Glitch, GraficoTexto, Maquina, Marca, Nome, Partes, Prompt, Pula} from './texto';
 
 const TOPO = ZONA_SEGURA.topo;
 
-type Base = {start: number; end: number; desligada?: boolean; y?: number};
 type ItemPalavra = {t?: string; at: number; ate?: number; cor?: string; contorno?: string; selecao?: {at: number; palavra: string}; pilula?: {cor?: string; icone?: string} | boolean};
 type Botao = {t: string; icone?: string; at: number; ate?: number};
 export type Grafico = Base &
@@ -25,13 +25,13 @@ export type Grafico = Base &
     | {tipo: 'botoes'; itens: Botao[]}
     | {tipo: 'celular'; src: string; x?: number; w?: number; rot?: number}
     | {tipo: 'objecao'; usuario: string; texto: string; quando?: string; cinza?: boolean}
-    | {tipo: 'grande'; t: string; at?: number; tamanho?: number; cor?: string; contorno?: string; riscoAt?: number; sub?: string}
-    | {tipo: 'lista'; titulo: string; itens: {t: string; at: number}[]}
+    | {tipo: 'grande'; t: string; at?: number; tamanho?: number; cor?: string; contorno?: string; riscoAt?: number; sub?: string; troca?: string; trocaAt?: number}
+    | {tipo: 'lista'; titulo: string; icone?: 'x' | 'check'; itens: {t: string; at: number}[]}
     | {tipo: 'selo'; src: string; fundo?: string}
     | {tipo: 'ajuste'; titulo?: string; src?: string}
     | {tipo: 'progresso'; titulo: string; fimAt: number; fim: string}
     | {tipo: 'comenta'; texto: string; digitaAt: number; digitaFimAt: number; dmAt?: number; dm?: string; placeholder?: string; publicar?: string; seta?: {x: number; y: number}}
-  );
+  ) | GraficoTexto;
 type De<T extends Grafico['tipo']> = Extract<Grafico, {tipo: T}>;
 
 /** The item showing now in a list of beats: each one lasts until its `ate`, the next `at` or the end. */
@@ -42,12 +42,6 @@ const daVez = <T extends {at: number; ate?: number}>(itens: T[], fim: number, f:
     if (f >= a && f < b) return itens[i];
   }
   return null;
-};
-
-const useJanela = (g: Base) => {
-  const f = useCurrentFrame();
-  const {fps} = useVideoConfig();
-  return {f, fps, a: quadro(fps, g.start), b: quadro(fps, g.end)};
 };
 
 // ---- one word per beat of the speech, coming in blurred and settling; a pill (icon + name) or a
@@ -168,11 +162,25 @@ const Objecao: React.FC<{g: De<'objecao'>}> = ({g}) => {
   );
 };
 
-// ---- a big word that lands (falls from a bigger size and shakes); `riscoAt` strikes it in red
+// ---- a big word that lands (falls from a bigger size and shakes); `riscoAt` strikes it in red and
+// `trocaAt` swaps it for `troca`, landing in the accent
 const Grande: React.FC<{g: De<'grande'>}> = ({g}) => {
   const {f, fps, a: a0, b} = useJanela(g);
   const a = g.at !== undefined ? quadro(fps, g.at) : a0;
   if (f < a || f >= b) return null;
+  const w = g.troca && g.trocaAt !== undefined ? quadro(fps, g.trocaAt) : null;
+  if (w !== null && f >= w) {
+    const tam = g.tamanho ?? 170;
+    const k = entra(f, w, 5);
+    return (
+      <AbsoluteFill style={{pointerEvents: 'none'}}>
+        <div style={{position: 'absolute', left: 0, right: 0, top: (g.y ?? TOPO + 160) - tam * 0.6, display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: interpolate(f, [w, w + 2], [0, 1], CL) * sai(f, b, 4), translate: `${tremor(f, w + 5)}px 0px`}}>
+          {g.sub ? <div style={{fontFamily: POPPINS, fontWeight: 800, fontSize: 64, color: 'white', WebkitTextStroke: '9px #111', paintOrder: 'stroke fill', marginBottom: -10, letterSpacing: -1}}>{g.sub}</div> : null}
+          <div style={{fontFamily: POPPINS, fontWeight: 900, fontSize: tam, color: ACCENT, WebkitTextStroke: `${tam * 0.075}px ${g.contorno ?? '#111'}`, paintOrder: 'stroke fill', letterSpacing: -4, wordSpacing: tam * 0.18, lineHeight: 1.05, whiteSpace: 'nowrap', textShadow: '0 12px 30px rgba(0,0,0,.35)', scale: String(2 - k)}}>{g.troca}</div>
+        </div>
+      </AbsoluteFill>
+    );
+  }
   const k = entra(f, a, 5);
   const esc = 2.3 - 1.3 * k;
   const r = g.riscoAt !== undefined ? quadro(fps, g.riscoAt) : null;
@@ -194,7 +202,7 @@ const Grande: React.FC<{g: De<'grande'>}> = ({g}) => {
   );
 };
 
-// ---- a dark card: each item comes in with a red X
+// ---- a dark card: each item comes in with a red X (or, with `icone: 'check'`, a green check)
 const Lista: React.FC<{g: De<'lista'>}> = ({g}) => {
   const {f, fps, a, b} = useJanela(g);
   if (f < a || f >= b) return null;
@@ -209,8 +217,10 @@ const Lista: React.FC<{g: De<'lista'>}> = ({g}) => {
           const k = entra(f, quadro(fps, i.at), 6);
           return (
             <div key={n} style={{display: 'flex', alignItems: 'center', gap: 24, padding: '10px 0', opacity: k, translate: `${(1 - k) * -50}px 0px`}}>
-              <div style={{flex: '0 0 auto', width: 62, height: 62, borderRadius: 999, background: VERMELHO, display: 'flex', alignItems: 'center', justifyContent: 'center', scale: String(0.5 + 0.5 * k)}}>
-                <svg width={34} height={34} viewBox="0 0 24 24"><path d="M5 5 L19 19 M19 5 L5 19" stroke="white" strokeWidth={4} strokeLinecap="round" /></svg>
+              <div style={{flex: '0 0 auto', width: 62, height: 62, borderRadius: 999, background: g.icone === 'check' ? VERDE : VERMELHO, display: 'flex', alignItems: 'center', justifyContent: 'center', scale: String(0.5 + 0.5 * k)}}>
+                <svg width={34} height={34} viewBox="0 0 24 24">
+                  {g.icone === 'check' ? <path d="M4.5 12.5 L10 18 L19.5 6.5" fill="none" stroke="white" strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" /> : <path d="M5 5 L19 19 M19 5 L5 19" stroke="white" strokeWidth={4} strokeLinecap="round" />}
+                </svg>
               </div>
               <div style={{fontWeight: 700, fontSize: 52, color: 'white', letterSpacing: -1}}>{i.t}</div>
             </div>
@@ -362,6 +372,17 @@ export const TIPOS: Record<Grafico['tipo'], React.FC<{g: any}>> = {
   ajuste: Ajuste,
   progresso: Progresso,
   comenta: Comenta,
+  pula: Pula,
+  partes: Partes,
+  danca: Danca,
+  glitch: Glitch,
+  marca: Marca,
+  contador: Contador,
+  nome: Nome,
+  chat: Chat,
+  maquina: Maquina,
+  prompt: Prompt,
+  emoji: Emoji,
 };
 
 const W = 1080;

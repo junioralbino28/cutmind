@@ -60,6 +60,7 @@ Routes:
   /api/sfx      GET     os efeitos sonoros do kit (efeitos_sonoros.py, assets/sfx/catalogo.json)
   /gen/sfx?id=          o arquivo de um efeito sonoro, para ouvir
   /api/sfx/usar POST {id}: copia o efeito para <edit>/midia/sfx-<id>.mp3 (vira camada de áudio)
+  /api/sfx/entradas POST {texto?, foto?}: o som na entrada de todos os textos e fotos (sons_entrada.py)
   /gen/voz-previa?efeito=&inicio=&duracao=  o trecho do corte com um efeito de voz, para ouvir antes
                         de usar (voz_efeitos.py; guardado em <edit>/.voz/)
   /api/melhorar          GET  Melhorar voz (melhorar_voz.py): se o preparo vale para o corte
@@ -177,6 +178,7 @@ import gerar as gr  # mesma pasta deste arquivo
 import editdata_aplicar as eda  # mesma pasta deste arquivo
 import proxy as prx  # mesma pasta deste arquivo
 import efeitos_sonoros as es  # mesma pasta deste arquivo
+import sons_entrada as se  # mesma pasta deste arquivo
 import voz_efeitos as vze  # mesma pasta deste arquivo
 import pendente as pend  # mesma pasta deste arquivo
 
@@ -1496,6 +1498,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/sfx/usar":
             self._sfx_usar()
             return
+        if path == "/api/sfx/entradas":
+            self._sfx_entradas()
+            return
         if path in ("/api/projetos/abrir", "/api/projetos/novo"):
             self._projeto_post(path)
             return
@@ -2191,6 +2196,26 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": f"a prévia da voz não saiu: {e}"}, 500)
                 return
         self._send_file(alvo)
+
+    def _sfx_entradas(self) -> None:
+        """O som na entrada de todos os textos e fotos (sons_entrada.py): a faixa de áudio refeita, medida contra a voz."""
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            body = json.loads(self.rfile.read(length) or b"{}") if 0 <= length <= 10_000 else None
+        except (ValueError, json.JSONDecodeError):
+            body = None
+        if not isinstance(body, dict):
+            self._fail(400, "pedido inválido")
+            return
+        ids = {x["id"] for x in es.todos()}
+        texto, foto = body.get("texto") or se.SOM_TEXTO, body.get("foto") or se.SOM_FOTO
+        if texto not in ids or foto not in ids:
+            self._json({"error": "efeito sonoro desconhecido"}, 404)
+            return
+        try:
+            self._json(se.aplicar(self.root, texto, foto))
+        except (se.SonsInvalidos, pk.PacoteErro, cam.CamadasInvalidas, OSError) as e:
+            self._json({"error": str(e)}, 502)
 
     def _sfx_usar(self) -> None:
         """Um efeito sonoro do kit na pasta das camadas do projeto: o editor o põe na agulha."""

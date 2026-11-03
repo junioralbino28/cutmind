@@ -64,6 +64,7 @@ the Estilo panel at the end of Fase 1; every key maps to something here:
 | `elements.zoomAuto` | the slow push-in inside each segment (`+0.04/segment`) |
 | `elements.zoomCuts` | the hard zoom change ON each cut (~1.10–1.22, cycles) |
 | `elements.flashCut` | `transitions[]` in edit-data.json — see "Flash na transição" |
+| `elements.somEntrada` | `sons_entrada.py <edit>` after the texts and graphics are in place: one sound per big text, photo and graphic, each measured against the voice (`references/efeitos-sonoros.md`) |
 | `elements.musicAI` | Phase 3 via `treblo_music.py`; OFF → deliver with voice only |
 | `modelo` (`{id, nome}`) | the user applied a saved style template (Estilo → Modelos). The picks above already ARE the template's. Its filter, transition, colour and soundtrack the same Salvar already wrote into `efeitos.json` and `camadas.json`: build the Phase 2 with them. `modelos.py mostrar <id>` shows the template |
 | `legenda` (`{estilo, acompanhar}`) | the template's caption look → `captions.estilo` / `captions.acompanhar` in edit-data.json, the same as `editData.legenda` from a Salvar |
@@ -943,7 +944,7 @@ and the UI opens its own tab, sitting between FASE 1 and FASE 2:
   `scatter`/"Disperso") and three static (`simples`, `serifada`, `classica`).
 - **Elementos da edição** — checkboxes: `tracking` (movimento de tracking),
   `zoomAuto` (automação de zoom in), `zoomCuts` (zoom in/out nos cortes),
-  `flashCut` (flash na transição), `musicAI` (trilha sonora com IA), plus a
+  `flashCut` (flash na transição), `somEntrada` (som nos textos e nas fotos), `musicAI` (trilha sonora com IA), plus a
   free-text observation field.
 - **Modelos** — the look of a video kept under a name (`helpers/modelos.py`,
   `~/.cutmind/modelos`). The first card saves this video's look; every other card is
@@ -1019,6 +1020,7 @@ skill prompt is resent every turn.
 
 ## Helpers de Fase 2/3
 
+- **`sons_entrada.py`** (a sound on every big text, photo and graphic, measured against the voice, as editable layers: `references/efeitos-sonoros.md`) · **`legenda_traduzida.py`** (the captions in another language, you translate phrase by phrase: `references/pelo-chat.md`)
 - **`captions_for_remotion.py`** (karaoke JSON) · **`face_track.py`** (eye-track JSON) · **`person_matte.py`** (RVM alpha matte, ONNX Runtime; `--motor torch` and resnet50 need `uv sync --extra matting`) · **`cenas_edit_data.py`** (prepares `cenas[]`: cut-out, measurement, `layout`, backgrounds; `references/cenas.md`) · **`voz_efeitos.py`** (the `voz` items of `efeitos.json`: helium, echo, robot, deep, radio; `mixar_final.py` calls it; `--previa` to hear one) · **`corte_alta.py`** (4K cut under the Remotion zoom, `cut-alta.mp4`; `gerar.py` calls it) · **`efeitos_sonoros.py`** (the kit's sound effects and the viral `v-*` ones: `listar`, `usar <edit> <id>` → `midia/sfx-<id>.mp3`; `references/efeitos-sonoros.md`) · **`graficos.py`** (checks `graficos[]` before the render: fields, beats in the window, icons, images in `public/`, an older template; `references/graficos.md`) · **`render_janelas.py`** (re-renders only some windows and splices them into `out/render.mp4`; then `mixar_final.py`) · **`atualizar_template.py`** (a project scaffolded with an older kit gets this kit's template code; `public/` and `CustomGraphics.tsx` stay) · **`pexels_search.py`** · **`wikimedia_images.py`** (no key, brands/people first choice) · **`google_images.py`** (fallback, mind rights) · **`pacotes.py`** (kit library: `listar --tipo trilha`, `camada <edit> <id>`, `abrir <id>`) · **`efeitos_render.py`** (filters and transitions from the editor into `public/cut.mp4`) · **`velocidade_final.py`** (the editor's speed spans on the finished video → `final-entrega.mp4`) · **`legenda_tempos.py`** (caption pieces the user dragged in time → `captions.json`) · **`conferir_legenda.py`** (caption × voice drift per 20 s window; run after every new `captions.json`) · **`captions_srt.py`** (longform .srt) · **`chapters.py`** (YouTube chapters) · **`treblo_music.py`** (AI soundtrack — pass a context-driven MUSICAL vibe: genre + instruments + tempo + mood, not SFX-y phrasing; auto-framed as a composed instrumental).
 
 ---

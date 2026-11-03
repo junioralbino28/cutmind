@@ -374,3 +374,35 @@ def test_no_video_final_o_clique_da_legenda_toca_no_tempo(tmp_path):
     taxa = 8000
     pcm = _ler_pcm(edit / "final.mp4", taxa)
     assert _goertzel(_janela(pcm, taxa, 1.03, 1.17), taxa, 1000) > 5 * max(_goertzel(_janela(pcm, taxa, 0.4, 0.8), taxa, 1000), 1e-3)
+
+
+# ---- as teclas dos gráficos que digitam ----
+def _com_graficos(tmp_path, graficos):
+    edit, public = _projeto(tmp_path, {"video": {"mudo": False}, "faixas": []})
+    (public / "edit-data.json").write_text(json.dumps({"graficos": graficos}), encoding="utf-8")
+    return edit
+
+
+def test_o_grafico_que_digita_toca_as_teclas_do_comeco_ao_fim_da_digitacao(tmp_path):
+    edit = _com_graficos(tmp_path, [{"tipo": "maquina", "start": 2.0, "end": 6.0, "texto": "oi", "digitaAt": 2.5, "digitaFimAt": 4.0}])
+    cmd, resumo = montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0)
+    f = _filtro(cmd)
+    assert resumo["teclas"] == 1 and any(e.endswith("digitacao.mp3") for e in _entradas(cmd))
+    assert "atrim=duration=1.500" in f  # do digitaAt ao digitaFimAt, em laço: digitar por mais que o arquivo não fica mudo
+    assert "aloop=loop=-1" in f and "adelay=2533:all=1" in f  # no tempo da imagem do Remotion
+
+
+def test_som_desligado_ou_grafico_desligado_nao_toca_tecla(tmp_path):
+    edit = _com_graficos(tmp_path, [
+        {"tipo": "maquina", "start": 2.0, "end": 6.0, "texto": "oi", "digitaAt": 2.5, "digitaFimAt": 4.0, "som": False},
+        {"tipo": "prompt", "start": 7.0, "end": 9.0, "texto": "oi", "digitaAt": 7.5, "digitaFimAt": 8.0, "desligada": True},
+        {"tipo": "comenta", "start": 1.0, "end": 2.0, "texto": "oi", "digitaAt": 1.2, "digitaFimAt": 1.5},
+    ])
+    cmd, resumo = montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0)
+    assert resumo["teclas"] == 0 and not any(e.endswith("digitacao.mp3") for e in _entradas(cmd))
+
+
+def test_digitar_alem_do_fim_do_video_para_no_fim(tmp_path):
+    edit = _com_graficos(tmp_path, [{"tipo": "prompt", "start": 8.0, "end": 12.0, "texto": "oi", "digitaAt": 9.0, "digitaFimAt": 12.0}])
+    cmd, _ = montar(edit, edit / "render.mp4", edit / "final.mp4", vd=10.0)
+    assert "atrim=duration=1.000" in _filtro(cmd)

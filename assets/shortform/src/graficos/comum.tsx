@@ -8,7 +8,7 @@
  * field with any other name stays behind.
  */
 import React from 'react';
-import {Easing, interpolate} from 'remotion';
+import {Easing, interpolate, useCurrentFrame, useVideoConfig} from 'remotion';
 import {loadFont} from '@remotion/google-fonts/Poppins';
 import editData from '../../public/edit-data.json';
 import {VIDEO_LAG} from '../videoLag';
@@ -31,6 +31,14 @@ export const tremor = (f: number, a: number, forca = 12) => {
   const k = f - a;
   if (k < 0 || k > 9) return 0;
   return Math.sin(k * 2.3) * forca * (1 - k / 9);
+};
+
+export type Base = {start: number; end: number; desligada?: boolean; y?: number};
+
+export const useJanela = (g: Base) => {
+  const f = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  return {f, fps, a: quadro(fps, g.start), b: quadro(fps, g.end)};
 };
 
 /** `#rrggbb` + alpha → rgba(), for glows in the accent colour. */

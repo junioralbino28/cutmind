@@ -42,6 +42,8 @@ def whisperx_falso(monkeypatch):
     wx.load_align_model = load_align_model
     wx.align = lambda *a, **k: {"segments": []}
     monkeypatch.setitem(sys.modules, "whisperx", wx)
+    # o modelo menor do kit baixa 1,5 GB: aqui não vem ao caso
+    monkeypatch.setitem(sys.modules, "modelo_whisper", types.SimpleNamespace(para_o_processador=lambda aviso: None))
     monkeypatch.setattr(t, "_whisperx_device", lambda: ("cpu", "int8"))
     # setenv antes do delenv: assim o monkeypatch devolve a variável ao estado de antes,
     # inclusive o valor que o próprio call_whisperx gravar

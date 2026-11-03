@@ -197,6 +197,8 @@ def _textos(public: Path, d: dict, camadas: dict, rec: _Recortes) -> list:
             t["curva"] = it["curva"]
         if it["acompanhar"]:
             t["acompanhar"] = True
+        if it.get("letreiro"):
+            t["letreiro"] = True
         if it["atras"]:
             matte = rec.de(it["id"])
             if matte:

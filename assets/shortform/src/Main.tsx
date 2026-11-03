@@ -44,6 +44,7 @@ import {CATALOGO, carregarFontesUsadas, familiaCss, useFontesProntas} from './fo
 import {CamadasTexto, rostoNaTela, type Texto} from './CamadasTexto';
 import {Cenas} from './cenas';
 import {Graficos} from './graficos';
+import {corDaPalavra} from './legendaCor';
 import {semAsOcultas, vazia} from './legendaOculta';
 import type {Cena} from './cenas/comum';
 
@@ -373,6 +374,7 @@ const Word: React.FC<{caption: Caption; lineFromFrame: number}> = ({caption, lin
         opacity: p,
         translate: `0px ${interpolate(p, [0, 1], [34, 0])}px`,
         marginRight: 18,
+        color: corDaPalavra(caption.text),
       }}
     >
       {cleanW(caption.text)}
